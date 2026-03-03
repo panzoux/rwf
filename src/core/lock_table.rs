@@ -1,26 +1,29 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use uuid::Uuid;
 
 pub struct LockTable {
-    locked_paths: HashSet<PathBuf>,
+    inner: Mutex<HashMap<String, Uuid>>,
 }
 
 impl LockTable {
     pub fn new() -> Self {
         Self {
-            locked_paths: HashSet::new(),
+            inner: Mutex::new(HashMap::new()),
         }
     }
 
-    pub fn try_lock(&mut self, path: PathBuf) -> bool {
-        if self.locked_paths.contains(&path) {
-            return false;
+    pub fn acquire(&self, path: &str, job_id: Uuid) -> Result<(), ()> {
+        let mut table = self.inner.lock().unwrap();
+        if table.contains_key(path) {
+            return Err(());
         }
-        self.locked_paths.insert(path);
-        true
+        table.insert(path.to_string(), job_id);
+        Ok(())
     }
 
-    pub fn unlock(&mut self, path: &PathBuf) {
-        self.locked_paths.remove(path);
+    pub fn release(&self, path: &str) {
+        let mut table = self.inner.lock().unwrap();
+        table.remove(path);
     }
 }

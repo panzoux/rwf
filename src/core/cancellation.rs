@@ -2,14 +2,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct CancellationHandle {
+pub struct CancellationToken {
     cancelled: Arc<AtomicBool>,
+    force: Arc<AtomicBool>,
 }
 
-impl CancellationHandle {
+impl CancellationToken {
     pub fn new() -> Self {
         Self {
             cancelled: Arc::new(AtomicBool::new(false)),
+            force: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -17,7 +19,15 @@ impl CancellationHandle {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 
+    pub fn force_cancel(&self) {
+        self.force.store(true, Ordering::SeqCst);
+    }
+
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
+    }
+
+    pub fn is_forced(&self) -> bool {
+        self.force.load(Ordering::SeqCst)
     }
 }

@@ -1,0 +1,24 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "twf", "twf.csproj", "{8DC39726-057A-04A2-FFE9-C1D0E539DF22}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8DC39726-057A-04A2-FFE9-C1D0E539DF22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8DC39726-057A-04A2-FFE9-C1D0E539DF22}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8DC39726-057A-04A2-FFE9-C1D0E539DF22}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8DC39726-057A-04A2-FFE9-C1D0E539DF22}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B9F27301-9A35-4A71-BF3E-3C4EFACC6687}
+	EndGlobalSection
+EndGlobal

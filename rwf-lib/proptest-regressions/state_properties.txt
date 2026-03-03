@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 11b9560df5ffa42685e55c2a8bca58cdc3a9d91fc13c8082dd09564ad798d0a6 # shrinks to transition = CloseTab { index: 2 }, seed = 76
+cc cfc23222023e63b60ae40e9ff6384ec71fc3a1d6244b44cbd29485ef406f9f3b # shrinks to transitions = [CreateTab, CloseTab { index: 2 }], seed = 0

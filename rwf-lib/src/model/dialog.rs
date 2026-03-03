@@ -1,0 +1,1723 @@
+//! Dialog system
+
+use crate::job::JobId;
+pub use crate::job::PipeToAction;
+use crate::model::Location;
+use std::collections::HashMap;
+
+/// Dialog stack
+#[derive(Debug)]
+pub struct DialogStack {
+    pub stack: Vec<Dialog>,
+    pub input_buffer: String,
+}
+
+impl DialogStack {
+    pub fn new() -> Self {
+        Self {
+            stack: Vec::new(),
+            input_buffer: String::new(),
+        }
+    }
+    
+    /// Push a dialog onto the stack
+    pub fn push(&mut self, dialog: Dialog) {
+        self.stack.push(dialog);
+        self.input_buffer.clear();
+    }
+    
+    /// Pop the top dialog
+    pub fn pop(&mut self) -> Option<Dialog> {
+        self.input_buffer.clear();
+        self.stack.pop()
+    }
+    
+    /// Get current dialog
+    pub fn current(&self) -> Option<&Dialog> {
+        self.stack.last()
+    }
+    
+    /// Get mutable current dialog
+    pub fn current_mut(&mut self) -> Option<&mut Dialog> {
+        self.stack.last_mut()
+    }
+    
+    /// Check if stack is empty
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+}
+
+/// Dialog definition
+#[derive(Debug, Clone)]
+pub struct Dialog {
+    pub title: String,
+    pub content: DialogContent,
+}
+
+/// Dialog content types
+#[derive(Debug, Clone)]
+pub enum DialogContent {
+    Confirmation {
+        message: String,
+    },
+    Input {
+        prompt: String,
+        default_value: String,
+    },
+    Progress {
+        operation: String,
+        progress: f64,
+        details: String,
+    },
+    Help {
+        content: String,
+    },
+    JobManager {
+        selected_index: usize,
+    },
+    CustomFunctionSelector {
+        functions: Vec<CustomFunction>,
+        filter: String,
+        selected_index: usize,
+    },
+    RegisteredFolderSelector {
+        folders: Vec<RegisteredFolder>,
+        filter: String,
+        selected_index: usize,
+    },
+    TabSelector {
+        tabs: Vec<String>,
+        selected_index: usize,
+    },
+    PatternRename {
+        pattern: String,
+        preview: Vec<(String, String)>,
+    },
+    Error {
+        message: String,
+        details: Option<String>,
+        error_type: ErrorType,
+    },
+    ComparisonView {
+        diff: crate::job::FileDiff,
+        scroll_offset: usize,
+    },
+    SplitJoinDialog {
+        mode: SplitJoinMode,
+        chunk_size_mb: u64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SplitJoinMode {
+    Split,
+    Join,
+}
+
+/// Error types for error dialogs
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorType {
+    /// General error
+    General,
+    /// Permission denied error
+    Permission,
+    /// File not found error
+    FileNotFound,
+    /// Invalid path error
+    InvalidPath,
+    /// Operation failed error
+    OperationFailed,
+}
+
+/// Custom function definition with macro expansion support
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CustomFunction {
+    pub name: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pipe_to_action: Option<PipeToAction>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub os_specific: HashMap<String, OsConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_binding: Option<String>,
+}
+
+/// OS-specific configuration for custom functions
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OsConfig {
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+}
+
+/// Registered folder definition
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RegisteredFolder {
+    pub name: String,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Job information for display in job manager dialog
+#[derive(Debug, Clone)]
+pub struct JobInfo {
+    pub id: JobId,
+    pub kind: JobKind,
+    pub state: JobState,
+    pub progress: f64,
+    pub source: Option<Location>,
+    pub destination: Option<Location>,
+    pub details: String,
+}
+
+/// Job kind for display
+#[derive(Debug, Clone)]
+pub enum JobKind {
+    ReadDirectory,
+    Copy,
+    Move,
+    Delete,
+    Mkdir,
+    Rename,
+    CalculateSize,
+    ExtractArchive,
+    CreateArchive,
+    ExecuteCustomFunction,
+    Search,
+}
+
+/// Job state for display
+#[derive(Debug, Clone)]
+pub enum JobState {
+    Queued,
+    Running,
+    Completed,
+    Failed(String),
+    Cancelled,
+}
+
+impl Dialog {
+    /// Create a confirmation dialog
+    pub fn confirmation(title: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            content: DialogContent::Confirmation {
+                message: message.into(),
+            },
+        }
+    }
+
+    /// Create an input dialog
+    pub fn input(title: impl Into<String>, prompt: impl Into<String>, default_value: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            content: DialogContent::Input {
+                prompt: prompt.into(),
+                default_value: default_value.into(),
+            },
+        }
+    }
+
+    /// Create a progress dialog
+    pub fn progress(title: impl Into<String>, operation: impl Into<String>, progress: f64, details: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            content: DialogContent::Progress {
+                operation: operation.into(),
+                progress,
+                details: details.into(),
+            },
+        }
+    }
+
+    /// Create a job manager dialog
+    pub fn job_manager() -> Self {
+        Self {
+            title: "Job Manager".to_string(),
+            content: DialogContent::JobManager {
+                selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a help dialog
+    pub fn help() -> Self {
+        let help_content = Self::generate_help_content();
+        Self {
+            title: "Help - Key Bindings".to_string(),
+            content: DialogContent::Help {
+                content: help_content,
+            },
+        }
+    }
+
+    /// Generate help content with all key bindings
+    fn generate_help_content() -> String {
+        let mut content = String::new();
+        
+        content.push_str("Navigation:\n");
+        content.push_str("  Tab              - Switch pane\n");
+        content.push_str("  Up/Down, j/k     - Move cursor\n");
+        content.push_str("  Home/End         - Jump to first/last entry\n");
+        content.push_str("  PageUp/PageDown  - Page navigation\n");
+        content.push_str("  Enter            - Enter directory\n");
+        content.push_str("  Backspace/Left   - Parent directory\n");
+        content.push_str("  Alt+Left/Right   - History navigation\n\n");
+        
+        content.push_str("File Operations:\n");
+        content.push_str("  C                - Copy\n");
+        content.push_str("  M                - Move\n");
+        content.push_str("  D                - Delete\n");
+        content.push_str("  R                - Rename\n");
+        content.push_str("  Shift+K          - Create directory\n\n");
+        
+        content.push_str("Marking:\n");
+        content.push_str("  Space            - Toggle mark\n");
+        content.push_str("  *                - Mark all\n");
+        content.push_str("  Ctrl+U           - Unmark all\n");
+        content.push_str("  @                - Wildcard marking\n");
+        content.push_str("  Ctrl+Space       - Range marking\n");
+        content.push_str("  Shift+Home       - Invert marks\n\n");
+        
+        content.push_str("Sorting:\n");
+        content.push_str("  s+n              - Sort by name\n");
+        content.push_str("  s+s              - Sort by size\n");
+        content.push_str("  s+d              - Sort by date\n");
+        content.push_str("  s+e              - Sort by extension\n\n");
+        
+        content.push_str("Search & Filter:\n");
+        content.push_str("  /, Ctrl+F        - Start search\n");
+        content.push_str("  f                - File mask filter\n");
+        content.push_str("  Ctrl+K           - Clear search/filter\n");
+        content.push_str("  Escape           - Exit search mode\n\n");
+        
+        content.push_str("Tab Management:\n");
+        content.push_str("  Ctrl+N           - New tab\n");
+        content.push_str("  Ctrl+T/Ctrl+B    - Tab selector\n");
+        content.push_str("  Ctrl+W           - Close tab\n");
+        content.push_str("  Ctrl+Right       - Next tab\n");
+        content.push_str("  Ctrl+Left        - Previous tab\n\n");
+        
+        content.push_str("Miscellaneous:\n");
+        content.push_str("  Q, Escape        - Quit application\n");
+        content.push_str("  ?, F1            - Show this help\n");
+        content.push_str("  Ctrl+J           - Job manager\n");
+        
+        content
+    }
+
+    /// Create a custom function selector dialog
+    pub fn custom_function_selector(functions: Vec<CustomFunction>) -> Self {
+        Self {
+            title: "Custom Functions".to_string(),
+            content: DialogContent::CustomFunctionSelector {
+                functions,
+                filter: String::new(),
+                selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a registered folder selector dialog
+    pub fn registered_folder_selector(folders: Vec<RegisteredFolder>) -> Self {
+        Self {
+            title: "Registered Folders".to_string(),
+            content: DialogContent::RegisteredFolderSelector {
+                folders,
+                filter: String::new(),
+                selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a tab selector dialog
+    pub fn tab_selector(tabs: Vec<String>) -> Self {
+        Self {
+            title: "Select Tab".to_string(),
+            content: DialogContent::TabSelector {
+                tabs,
+                selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a pattern rename dialog
+    pub fn pattern_rename(pattern: String, preview: Vec<(String, String)>) -> Self {
+        Self {
+            title: "Pattern Rename".to_string(),
+            content: DialogContent::PatternRename {
+                pattern,
+                preview,
+            },
+        }
+    }
+
+    /// Create an error dialog
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            title: "Error".to_string(),
+            content: DialogContent::Error {
+                message: message.into(),
+                details: None,
+                error_type: ErrorType::General,
+            },
+        }
+    }
+
+    /// Create an error dialog with details
+    pub fn error_with_details(message: impl Into<String>, details: impl Into<String>) -> Self {
+        Self {
+            title: "Error".to_string(),
+            content: DialogContent::Error {
+                message: message.into(),
+                details: Some(details.into()),
+                error_type: ErrorType::General,
+            },
+        }
+    }
+
+    /// Create a permission error dialog
+    pub fn permission_error(message: impl Into<String>) -> Self {
+        Self {
+            title: "Permission Denied".to_string(),
+            content: DialogContent::Error {
+                message: message.into(),
+                details: Some("This operation requires elevated privileges.".to_string()),
+                error_type: ErrorType::Permission,
+            },
+        }
+    }
+
+    /// Create a file not found error dialog
+    pub fn file_not_found_error(path: impl Into<String>) -> Self {
+        Self {
+            title: "File Not Found".to_string(),
+            content: DialogContent::Error {
+                message: format!("The file or directory could not be found: {}", path.into()),
+                details: None,
+                error_type: ErrorType::FileNotFound,
+            },
+        }
+    }
+
+    /// Create an invalid path error dialog
+    pub fn invalid_path_error(path: impl Into<String>) -> Self {
+        Self {
+            title: "Invalid Path".to_string(),
+            content: DialogContent::Error {
+                message: format!("The path is invalid: {}", path.into()),
+                details: None,
+                error_type: ErrorType::InvalidPath,
+            },
+        }
+    }
+
+    /// Create an operation failed error dialog from JobResult
+    pub fn from_job_failure(operation: &str, error_message: &str) -> Self {
+        // Detect error type from message
+        let error_type = if error_message.to_lowercase().contains("permission") 
+            || error_message.to_lowercase().contains("access denied") {
+            ErrorType::Permission
+        } else if error_message.to_lowercase().contains("not found") {
+            ErrorType::FileNotFound
+        } else if error_message.to_lowercase().contains("invalid") {
+            ErrorType::InvalidPath
+        } else {
+            ErrorType::OperationFailed
+        };
+
+        let title = match error_type {
+            ErrorType::Permission => "Permission Denied",
+            ErrorType::FileNotFound => "File Not Found",
+            ErrorType::InvalidPath => "Invalid Path",
+            _ => "Operation Failed",
+        };
+
+        let details = if error_type == ErrorType::Permission {
+            Some("This operation requires elevated privileges.".to_string())
+        } else {
+            None
+        };
+
+        Self {
+            title: title.to_string(),
+            content: DialogContent::Error {
+                message: format!("{} failed: {}", operation, error_message),
+                details,
+                error_type,
+            },
+        }
+    }
+    
+    /// Create a comparison view dialog
+    pub fn comparison_view(diff: crate::job::FileDiff) -> Self {
+        Self {
+            title: "File Comparison".to_string(),
+            content: DialogContent::ComparisonView {
+                diff,
+                scroll_offset: 0,
+            },
+        }
+    }
+    
+    /// Create a split/join dialog
+    pub fn split_join_dialog() -> Self {
+        Self {
+            title: "Split/Join Files".to_string(),
+            content: DialogContent::SplitJoinDialog {
+                mode: SplitJoinMode::Split,
+                chunk_size_mb: 100, // Default 100MB chunks
+            },
+        }
+    }
+}
+
+impl DialogContent {
+    /// Check if this dialog requires user input
+    pub fn requires_input(&self) -> bool {
+        matches!(
+            self,
+            DialogContent::Input { .. }
+                | DialogContent::CustomFunctionSelector { .. }
+                | DialogContent::RegisteredFolderSelector { .. }
+                | DialogContent::TabSelector { .. }
+                | DialogContent::PatternRename { .. }
+        )
+    }
+
+    /// Check if this dialog is a selector (list-based)
+    pub fn is_selector(&self) -> bool {
+        matches!(
+            self,
+            DialogContent::CustomFunctionSelector { .. }
+                | DialogContent::RegisteredFolderSelector { .. }
+                | DialogContent::TabSelector { .. }
+                | DialogContent::JobManager { .. }
+        )
+    }
+
+    /// Get the current selected index for selector dialogs
+    pub fn selected_index(&self) -> Option<usize> {
+        match self {
+            DialogContent::JobManager { selected_index }
+            | DialogContent::CustomFunctionSelector { selected_index, .. }
+            | DialogContent::RegisteredFolderSelector { selected_index, .. }
+            | DialogContent::TabSelector { selected_index, .. } => Some(*selected_index),
+            _ => None,
+        }
+    }
+
+    /// Update the selected index for selector dialogs
+    pub fn set_selected_index(&mut self, new_index: usize) {
+        match self {
+            DialogContent::JobManager { selected_index }
+            | DialogContent::CustomFunctionSelector { selected_index, .. }
+            | DialogContent::RegisteredFolderSelector { selected_index, .. }
+            | DialogContent::TabSelector { selected_index, .. } => {
+                *selected_index = new_index;
+            }
+            _ => {}
+        }
+    }
+
+    /// Get the filter string for filterable dialogs
+    pub fn filter(&self) -> Option<&str> {
+        match self {
+            DialogContent::CustomFunctionSelector { filter, .. }
+            | DialogContent::RegisteredFolderSelector { filter, .. } => Some(filter),
+            _ => None,
+        }
+    }
+
+    /// Update the filter string for filterable dialogs
+    pub fn set_filter(&mut self, new_filter: String) {
+        match self {
+            DialogContent::CustomFunctionSelector { filter, .. }
+            | DialogContent::RegisteredFolderSelector { filter, .. } => {
+                *filter = new_filter;
+            }
+            _ => {}
+        }
+    }
+}
+
+impl CustomFunction {
+    /// Create a new custom function
+    pub fn new(name: impl Into<String>, command: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            command: command.into(),
+            description: None,
+            shell: None,
+            working_dir: None,
+            pipe_to_action: None,
+            os_specific: HashMap::new(),
+            key_binding: None,
+        }
+    }
+
+    /// Set the description
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Set the shell
+    pub fn with_shell(mut self, shell: impl Into<String>) -> Self {
+        self.shell = Some(shell.into());
+        self
+    }
+
+    /// Set the working directory
+    pub fn with_working_dir(mut self, working_dir: impl Into<String>) -> Self {
+        self.working_dir = Some(working_dir.into());
+        self
+    }
+
+    /// Set the pipe to action
+    pub fn with_pipe_to_action(mut self, action: PipeToAction) -> Self {
+        self.pipe_to_action = Some(action);
+        self
+    }
+    
+    /// Get the command for the current OS
+    pub fn get_command(&self) -> &str {
+        #[cfg(target_os = "windows")]
+        let os_key = "windows";
+        #[cfg(target_os = "macos")]
+        let os_key = "macos";
+        #[cfg(target_os = "linux")]
+        let os_key = "linux";
+        
+        if let Some(os_config) = self.os_specific.get(os_key) {
+            &os_config.command
+        } else {
+            &self.command
+        }
+    }
+    
+    /// Get the shell for the current OS
+    pub fn get_shell(&self) -> Option<&str> {
+        #[cfg(target_os = "windows")]
+        let os_key = "windows";
+        #[cfg(target_os = "macos")]
+        let os_key = "macos";
+        #[cfg(target_os = "linux")]
+        let os_key = "linux";
+        
+        if let Some(os_config) = self.os_specific.get(os_key) {
+            os_config.shell.as_deref().or(self.shell.as_deref())
+        } else {
+            self.shell.as_deref()
+        }
+    }
+}
+
+impl RegisteredFolder {
+    /// Create a new registered folder
+    pub fn new(name: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            path: path.into(),
+            description: None,
+        }
+    }
+
+    /// Set the description
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+}
+
+impl JobInfo {
+    /// Create a new job info
+    pub fn new(id: JobId, kind: JobKind, state: JobState) -> Self {
+        Self {
+            id,
+            kind,
+            state,
+            progress: 0.0,
+            source: None,
+            destination: None,
+            details: String::new(),
+        }
+    }
+
+    /// Set the progress
+    pub fn with_progress(mut self, progress: f64) -> Self {
+        self.progress = progress;
+        self
+    }
+
+    /// Set the source location
+    pub fn with_source(mut self, source: Location) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// Set the destination location
+    pub fn with_destination(mut self, destination: Location) -> Self {
+        self.destination = Some(destination);
+        self
+    }
+
+    /// Set the details
+    pub fn with_details(mut self, details: impl Into<String>) -> Self {
+        self.details = details.into();
+        self
+    }
+
+    /// Get a display string for the job kind
+    pub fn kind_display(&self) -> &str {
+        match self.kind {
+            JobKind::ReadDirectory => "Read Directory",
+            JobKind::Copy => "Copy",
+            JobKind::Move => "Move",
+            JobKind::Delete => "Delete",
+            JobKind::Mkdir => "Create Directory",
+            JobKind::Rename => "Rename",
+            JobKind::CalculateSize => "Calculate Size",
+            JobKind::ExtractArchive => "Extract Archive",
+            JobKind::CreateArchive => "Create Archive",
+            JobKind::ExecuteCustomFunction => "Execute Function",
+            JobKind::Search => "Search",
+        }
+    }
+
+    /// Get a display string for the job state
+    pub fn state_display(&self) -> String {
+        match &self.state {
+            JobState::Queued => "Queued".to_string(),
+            JobState::Running => format!("Running ({}%)", (self.progress * 100.0) as u32),
+            JobState::Completed => "Completed".to_string(),
+            JobState::Failed(reason) => format!("Failed: {}", reason),
+            JobState::Cancelled => "Cancelled".to_string(),
+        }
+    }
+}
+
+/// Job manager dialog helper
+pub struct JobManagerDialog {
+    jobs: Vec<JobInfo>,
+    selected_index: usize,
+    scroll_offset: usize,
+}
+
+impl JobManagerDialog {
+    /// Create a new job manager dialog
+    pub fn new(jobs: Vec<JobInfo>) -> Self {
+        Self {
+            jobs,
+            selected_index: 0,
+            scroll_offset: 0,
+        }
+    }
+
+    /// Get all jobs
+    pub fn jobs(&self) -> &[JobInfo] {
+        &self.jobs
+    }
+
+    /// Get the selected job
+    pub fn selected_job(&self) -> Option<&JobInfo> {
+        self.jobs.get(self.selected_index)
+    }
+
+    /// Get the selected index
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    /// Get the scroll offset
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Move selection up
+    pub fn move_up(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            if self.selected_index < self.scroll_offset {
+                self.scroll_offset = self.selected_index;
+            }
+        }
+    }
+
+    /// Move selection down
+    pub fn move_down(&mut self) {
+        if self.selected_index + 1 < self.jobs.len() {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move selection to the top
+    pub fn move_to_top(&mut self) {
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+    }
+
+    /// Move selection to the bottom
+    pub fn move_to_bottom(&mut self) {
+        if !self.jobs.is_empty() {
+            self.selected_index = self.jobs.len() - 1;
+        }
+    }
+
+    /// Update scroll offset for a given visible height
+    pub fn update_scroll(&mut self, visible_height: usize) {
+        if self.selected_index >= self.scroll_offset + visible_height {
+            self.scroll_offset = self.selected_index - visible_height + 1;
+        } else if self.selected_index < self.scroll_offset {
+            self.scroll_offset = self.selected_index;
+        }
+    }
+
+    /// Get visible jobs for a given height
+    pub fn visible_jobs(&self, height: usize) -> &[JobInfo] {
+        let start = self.scroll_offset;
+        let end = (start + height).min(self.jobs.len());
+        &self.jobs[start..end]
+    }
+
+    /// Get queued jobs
+    pub fn queued_jobs(&self) -> Vec<&JobInfo> {
+        self.jobs
+            .iter()
+            .filter(|job| matches!(job.state, JobState::Queued))
+            .collect()
+    }
+
+    /// Get active jobs
+    pub fn active_jobs(&self) -> Vec<&JobInfo> {
+        self.jobs
+            .iter()
+            .filter(|job| matches!(job.state, JobState::Running))
+            .collect()
+    }
+
+    /// Get completed jobs
+    pub fn completed_jobs(&self) -> Vec<&JobInfo> {
+        self.jobs
+            .iter()
+            .filter(|job| {
+                matches!(
+                    job.state,
+                    JobState::Completed | JobState::Failed(_) | JobState::Cancelled
+                )
+            })
+            .collect()
+    }
+
+    /// Update jobs list
+    pub fn update_jobs(&mut self, jobs: Vec<JobInfo>) {
+        self.jobs = jobs;
+        // Ensure selected index is still valid
+        if self.selected_index >= self.jobs.len() && !self.jobs.is_empty() {
+            self.selected_index = self.jobs.len() - 1;
+        }
+    }
+
+    /// Check if there are any jobs
+    pub fn is_empty(&self) -> bool {
+        self.jobs.is_empty()
+    }
+
+    /// Get total job count
+    pub fn total_count(&self) -> usize {
+        self.jobs.len()
+    }
+
+    /// Get counts by state
+    pub fn state_counts(&self) -> (usize, usize, usize) {
+        let queued = self.queued_jobs().len();
+        let active = self.active_jobs().len();
+        let completed = self.completed_jobs().len();
+        (queued, active, completed)
+    }
+}
+
+impl DialogContent {
+    /// Create a job manager dialog content with jobs
+    pub fn job_manager_with_jobs(_jobs: Vec<JobInfo>) -> Self {
+        DialogContent::JobManager {
+            selected_index: 0,
+        }
+    }
+
+    /// Get job manager helper if this is a job manager dialog
+    pub fn as_job_manager(&self) -> Option<usize> {
+        match self {
+            DialogContent::JobManager { selected_index } => Some(*selected_index),
+            _ => None,
+        }
+    }
+}
+
+/// Custom function selector dialog helper
+pub struct CustomFunctionSelector {
+    functions: Vec<CustomFunction>,
+    filter: String,
+    selected_index: usize,
+    filtered_indices: Vec<usize>,
+}
+
+impl CustomFunctionSelector {
+    /// Create a new custom function selector
+    pub fn new(functions: Vec<CustomFunction>) -> Self {
+        let filtered_indices: Vec<usize> = (0..functions.len()).collect();
+        Self {
+            functions,
+            filter: String::new(),
+            selected_index: 0,
+            filtered_indices,
+        }
+    }
+
+    /// Get all functions
+    pub fn functions(&self) -> &[CustomFunction] {
+        &self.functions
+    }
+
+    /// Get filtered functions
+    pub fn filtered_functions(&self) -> Vec<&CustomFunction> {
+        self.filtered_indices
+            .iter()
+            .filter_map(|&i| self.functions.get(i))
+            .collect()
+    }
+
+    /// Get the selected function
+    pub fn selected_function(&self) -> Option<&CustomFunction> {
+        self.filtered_indices
+            .get(self.selected_index)
+            .and_then(|&i| self.functions.get(i))
+    }
+
+    /// Get the current filter
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    /// Get the selected index
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    /// Update the filter and recompute filtered indices
+    pub fn set_filter(&mut self, filter: String) {
+        self.filter = filter;
+        self.update_filtered_indices();
+        self.selected_index = 0;
+    }
+
+    /// Update filtered indices based on current filter
+    fn update_filtered_indices(&mut self) {
+        if self.filter.is_empty() {
+            self.filtered_indices = (0..self.functions.len()).collect();
+        } else {
+            let filter_lower = self.filter.to_lowercase();
+            self.filtered_indices = self
+                .functions
+                .iter()
+                .enumerate()
+                .filter(|(_, func)| {
+                    func.name.to_lowercase().contains(&filter_lower)
+                        || func
+                            .description
+                            .as_ref()
+                            .map(|d| d.to_lowercase().contains(&filter_lower))
+                            .unwrap_or(false)
+                })
+                .map(|(i, _)| i)
+                .collect();
+        }
+    }
+
+    /// Move selection up
+    pub fn move_up(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    /// Move selection down
+    pub fn move_down(&mut self) {
+        if self.selected_index + 1 < self.filtered_indices.len() {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move to top
+    pub fn move_to_top(&mut self) {
+        self.selected_index = 0;
+    }
+
+    /// Move to bottom
+    pub fn move_to_bottom(&mut self) {
+        if !self.filtered_indices.is_empty() {
+            self.selected_index = self.filtered_indices.len() - 1;
+        }
+    }
+
+    /// Check if there are any filtered functions
+    pub fn is_empty(&self) -> bool {
+        self.filtered_indices.is_empty()
+    }
+
+    /// Get filtered count
+    pub fn filtered_count(&self) -> usize {
+        self.filtered_indices.len()
+    }
+
+    /// Get total count
+    pub fn total_count(&self) -> usize {
+        self.functions.len()
+    }
+}
+
+impl DialogContent {
+    /// Get custom function selector helper if this is a custom function selector dialog
+    pub fn as_custom_function_selector(&self) -> Option<(&[CustomFunction], &str, usize)> {
+        match self {
+            DialogContent::CustomFunctionSelector {
+                functions,
+                filter,
+                selected_index,
+            } => Some((functions, filter, *selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable custom function selector data
+    pub fn as_custom_function_selector_mut(
+        &mut self,
+    ) -> Option<(&mut Vec<CustomFunction>, &mut String, &mut usize)> {
+        match self {
+            DialogContent::CustomFunctionSelector {
+                functions,
+                filter,
+                selected_index,
+            } => Some((functions, filter, selected_index)),
+            _ => None,
+        }
+    }
+}
+
+/// Registered folder selector dialog helper
+pub struct RegisteredFolderSelector {
+    folders: Vec<RegisteredFolder>,
+    filter: String,
+    selected_index: usize,
+    filtered_indices: Vec<usize>,
+}
+
+impl RegisteredFolderSelector {
+    /// Create a new registered folder selector
+    pub fn new(folders: Vec<RegisteredFolder>) -> Self {
+        let filtered_indices: Vec<usize> = (0..folders.len()).collect();
+        Self {
+            folders,
+            filter: String::new(),
+            selected_index: 0,
+            filtered_indices,
+        }
+    }
+
+    /// Get all folders
+    pub fn folders(&self) -> &[RegisteredFolder] {
+        &self.folders
+    }
+
+    /// Get filtered folders
+    pub fn filtered_folders(&self) -> Vec<&RegisteredFolder> {
+        self.filtered_indices
+            .iter()
+            .filter_map(|&i| self.folders.get(i))
+            .collect()
+    }
+
+    /// Get the selected folder
+    pub fn selected_folder(&self) -> Option<&RegisteredFolder> {
+        self.filtered_indices
+            .get(self.selected_index)
+            .and_then(|&i| self.folders.get(i))
+    }
+
+    /// Get the current filter
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    /// Get the selected index
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    /// Update the filter and recompute filtered indices
+    pub fn set_filter(&mut self, filter: String) {
+        self.filter = filter;
+        self.update_filtered_indices();
+        self.selected_index = 0;
+    }
+
+    /// Update filtered indices based on current filter
+    fn update_filtered_indices(&mut self) {
+        if self.filter.is_empty() {
+            self.filtered_indices = (0..self.folders.len()).collect();
+        } else {
+            let filter_lower = self.filter.to_lowercase();
+            self.filtered_indices = self
+                .folders
+                .iter()
+                .enumerate()
+                .filter(|(_, folder)| {
+                    folder.name.to_lowercase().contains(&filter_lower)
+                        || folder.path.to_lowercase().contains(&filter_lower)
+                        || folder
+                            .description
+                            .as_ref()
+                            .map(|d| d.to_lowercase().contains(&filter_lower))
+                            .unwrap_or(false)
+                })
+                .map(|(i, _)| i)
+                .collect();
+        }
+    }
+
+    /// Move selection up
+    pub fn move_up(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    /// Move selection down
+    pub fn move_down(&mut self) {
+        if self.selected_index + 1 < self.filtered_indices.len() {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move to top
+    pub fn move_to_top(&mut self) {
+        self.selected_index = 0;
+    }
+
+    /// Move to bottom
+    pub fn move_to_bottom(&mut self) {
+        if !self.filtered_indices.is_empty() {
+            self.selected_index = self.filtered_indices.len() - 1;
+        }
+    }
+
+    /// Check if there are any filtered folders
+    pub fn is_empty(&self) -> bool {
+        self.filtered_indices.is_empty()
+    }
+
+    /// Get filtered count
+    pub fn filtered_count(&self) -> usize {
+        self.filtered_indices.len()
+    }
+
+    /// Get total count
+    pub fn total_count(&self) -> usize {
+        self.folders.len()
+    }
+}
+
+impl DialogContent {
+    /// Get registered folder selector helper if this is a registered folder selector dialog
+    pub fn as_registered_folder_selector(&self) -> Option<(&[RegisteredFolder], &str, usize)> {
+        match self {
+            DialogContent::RegisteredFolderSelector {
+                folders,
+                filter,
+                selected_index,
+            } => Some((folders, filter, *selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable registered folder selector data
+    pub fn as_registered_folder_selector_mut(
+        &mut self,
+    ) -> Option<(&mut Vec<RegisteredFolder>, &mut String, &mut usize)> {
+        match self {
+            DialogContent::RegisteredFolderSelector {
+                folders,
+                filter,
+                selected_index,
+            } => Some((folders, filter, selected_index)),
+            _ => None,
+        }
+    }
+}
+
+/// Tab selector dialog helper
+pub struct TabSelector {
+    tabs: Vec<String>,
+    selected_index: usize,
+}
+
+impl TabSelector {
+    /// Create a new tab selector
+    pub fn new(tabs: Vec<String>) -> Self {
+        Self {
+            tabs,
+            selected_index: 0,
+        }
+    }
+
+    /// Get all tabs
+    pub fn tabs(&self) -> &[String] {
+        &self.tabs
+    }
+
+    /// Get the selected tab
+    pub fn selected_tab(&self) -> Option<&String> {
+        self.tabs.get(self.selected_index)
+    }
+
+    /// Get the selected index
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    /// Set the selected index
+    pub fn set_selected_index(&mut self, index: usize) {
+        if index < self.tabs.len() {
+            self.selected_index = index;
+        }
+    }
+
+    /// Move selection up
+    pub fn move_up(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    /// Move selection down
+    pub fn move_down(&mut self) {
+        if self.selected_index + 1 < self.tabs.len() {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move to top
+    pub fn move_to_top(&mut self) {
+        self.selected_index = 0;
+    }
+
+    /// Move to bottom
+    pub fn move_to_bottom(&mut self) {
+        if !self.tabs.is_empty() {
+            self.selected_index = self.tabs.len() - 1;
+        }
+    }
+
+    /// Check if there are any tabs
+    pub fn is_empty(&self) -> bool {
+        self.tabs.is_empty()
+    }
+
+    /// Get tab count
+    pub fn count(&self) -> usize {
+        self.tabs.len()
+    }
+}
+
+impl DialogContent {
+    /// Get tab selector helper if this is a tab selector dialog
+    pub fn as_tab_selector(&self) -> Option<(&[String], usize)> {
+        match self {
+            DialogContent::TabSelector {
+                tabs,
+                selected_index,
+            } => Some((tabs, *selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable tab selector data
+    pub fn as_tab_selector_mut(&mut self) -> Option<(&mut Vec<String>, &mut usize)> {
+        match self {
+            DialogContent::TabSelector {
+                tabs,
+                selected_index,
+            } => Some((tabs, selected_index)),
+            _ => None,
+        }
+    }
+}
+
+/// Pattern rename dialog helper
+pub struct PatternRenameDialog {
+    pattern: String,
+    preview: Vec<(String, String)>,
+}
+
+impl PatternRenameDialog {
+    /// Create a new pattern rename dialog
+    pub fn new(pattern: String, preview: Vec<(String, String)>) -> Self {
+        Self { pattern, preview }
+    }
+
+    /// Get the pattern
+    pub fn pattern(&self) -> &str {
+        &self.pattern
+    }
+
+    /// Get the preview
+    pub fn preview(&self) -> &[(String, String)] {
+        &self.preview
+    }
+
+    /// Update the pattern
+    pub fn set_pattern(&mut self, pattern: String) {
+        self.pattern = pattern;
+    }
+
+    /// Update the preview
+    pub fn set_preview(&mut self, preview: Vec<(String, String)>) {
+        self.preview = preview;
+    }
+
+    /// Check if there are any preview items
+    pub fn is_empty(&self) -> bool {
+        self.preview.is_empty()
+    }
+
+    /// Get preview count
+    pub fn count(&self) -> usize {
+        self.preview.len()
+    }
+
+    /// Get a specific preview item
+    pub fn get_preview(&self, index: usize) -> Option<&(String, String)> {
+        self.preview.get(index)
+    }
+
+    /// Check if the pattern is valid (not empty)
+    pub fn is_valid(&self) -> bool {
+        !self.pattern.is_empty()
+    }
+}
+
+impl DialogContent {
+    /// Get pattern rename helper if this is a pattern rename dialog
+    pub fn as_pattern_rename(&self) -> Option<(&str, &[(String, String)])> {
+        match self {
+            DialogContent::PatternRename { pattern, preview } => Some((pattern, preview)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable pattern rename data
+    pub fn as_pattern_rename_mut(&mut self) -> Option<(&mut String, &mut Vec<(String, String)>)> {
+        match self {
+            DialogContent::PatternRename { pattern, preview } => Some((pattern, preview)),
+            _ => None,
+        }
+    }
+    
+    /// Get split/join dialog data
+    pub fn as_split_join(&self) -> Option<(SplitJoinMode, u64)> {
+        match self {
+            DialogContent::SplitJoinDialog { mode, chunk_size_mb } => Some((*mode, *chunk_size_mb)),
+            _ => None,
+        }
+    }
+    
+    /// Get mutable split/join dialog data
+    pub fn as_split_join_mut(&mut self) -> Option<(&mut SplitJoinMode, &mut u64)> {
+        match self {
+            DialogContent::SplitJoinDialog { mode, chunk_size_mb } => Some((mode, chunk_size_mb)),
+            _ => None,
+        }
+    }
+}
+
+/// Load custom functions from a JSON file
+pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
+    if path.exists() {
+        let content = std::fs::read_to_string(path)?;
+        let functions: Vec<CustomFunction> = serde_json::from_str(&content)?;
+        Ok(functions)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod custom_function_tests {
+    use super::*;
+    
+    #[test]
+    fn test_custom_function_deserialization() {
+        let json = r#"{
+            "name": "Test Function",
+            "command": "echo $F",
+            "shell": "bash",
+            "description": "Test description"
+        }"#;
+        
+        let func: CustomFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(func.name, "Test Function");
+        assert_eq!(func.command, "echo $F");
+        assert_eq!(func.shell, Some("bash".to_string()));
+    }
+    
+    #[test]
+    fn test_os_specific_command() {
+        let func = CustomFunction {
+            name: "Test".to_string(),
+            command: "default command".to_string(),
+            description: None,
+            shell: None,
+            working_dir: None,
+            pipe_to_action: None,
+            os_specific: {
+                let mut map = HashMap::new();
+                map.insert("linux".to_string(), OsConfig {
+                    command: "linux command".to_string(),
+                    shell: None,
+                });
+                map
+            },
+            key_binding: None,
+        };
+        
+        #[cfg(target_os = "linux")]
+        assert_eq!(func.get_command(), "linux command");
+        
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(func.get_command(), "default command");
+    }
+}
+
+/// Manager for registered folders with persistence and environment variable expansion
+#[derive(Debug)]
+pub struct RegisteredFolderManager {
+    pub folders: Vec<RegisteredFolder>,
+}
+
+impl RegisteredFolderManager {
+    pub fn new() -> Self {
+        Self {
+            folders: Vec::new(),
+        }
+    }
+
+    /// Load registered folders from a JSON file
+    pub fn load_from_file(&mut self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        if path.exists() {
+            let content = std::fs::read_to_string(path)?;
+            self.folders = serde_json::from_str(&content)?;
+        }
+        Ok(())
+    }
+
+    /// Save registered folders to a JSON file
+    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(&self.folders)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// Add a new registered folder
+    pub fn add(&mut self, folder: RegisteredFolder) {
+        self.folders.push(folder);
+    }
+
+    /// Remove a registered folder by index
+    pub fn remove(&mut self, index: usize) -> Option<RegisteredFolder> {
+        if index < self.folders.len() {
+            Some(self.folders.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Expand environment variables in a folder path
+    pub fn expand_path(&self, folder: &RegisteredFolder) -> std::path::PathBuf {
+        let expanded = self.expand_env_vars(&folder.path);
+        std::path::PathBuf::from(expanded)
+    }
+
+    /// Expand environment variables in a path string
+    /// Supports multiple formats:
+    /// - Windows: %VAR%
+    /// - Unix: $VAR, ${VAR}
+    /// - PowerShell: $env:VAR
+    /// Expand environment variables in a path string
+    ///
+    /// Supports multiple formats:
+    /// - Windows: %VAR%
+    /// - PowerShell: $env:VAR
+    /// - Unix with braces: ${VAR}
+    /// - Unix simple: $VAR
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe for concurrent reads. It only reads environment
+    /// variables using `std::env::var()` and does not modify any shared state.
+    /// Multiple threads can safely call this method simultaneously.
+    pub fn expand_env_vars(&self, path: &str) -> String {
+        let mut result = path.to_string();
+        let mut all_replacements = Vec::new();
+
+        // Collect ALL patterns from the ORIGINAL string first, before any replacements
+        // This prevents issues where one replacement invalidates indices for later patterns
+
+        // Windows style: %VAR%
+        #[cfg(target_os = "windows")]
+        {
+            let pattern = regex::Regex::new(r"%([^%]+)%").unwrap();
+            for cap in pattern.captures_iter(path) {
+                if let Some(var_name) = cap.get(1) {
+                    if let Ok(value) = std::env::var(var_name.as_str()) {
+                        all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                    }
+                }
+            }
+        }
+
+        // PowerShell style: $env:VAR
+        let ps_pattern = regex::Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+        for cap in ps_pattern.captures_iter(path) {
+            if let Some(var_name) = cap.get(1) {
+                if let Ok(value) = std::env::var(var_name.as_str()) {
+                    all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                }
+            }
+        }
+
+        // Unix style with braces: ${VAR}
+        let braces_pattern = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap();
+        for cap in braces_pattern.captures_iter(path) {
+            if let Some(var_name) = cap.get(1) {
+                if let Ok(value) = std::env::var(var_name.as_str()) {
+                    all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                }
+            }
+        }
+
+        // Unix style without braces: $VAR (but not $env: which was already handled)
+        // We need to exclude matches that are part of $env: or ${
+        let simple_pattern = regex::Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+        for cap in simple_pattern.captures_iter(path) {
+            let full_match = cap.get(0).unwrap();
+            let start = full_match.start();
+            let end = full_match.end();
+            
+            // Skip if this is part of $env: (check if "env:" follows the $)
+            if path[start..].starts_with("$env:") {
+                continue;
+            }
+            
+            // Skip if this is part of ${ (check if '{' immediately follows the $)
+            if path.as_bytes().get(start + 1) == Some(&b'{') {
+                continue;
+            }
+            
+            // Skip if this position is already covered by another replacement
+            let already_covered = all_replacements.iter().any(|(s, e, _)| {
+                (start >= *s && start < *e) || (end > *s && end <= *e)
+            });
+            
+            if !already_covered {
+                if let Some(var_name) = cap.get(1) {
+                    if let Ok(value) = std::env::var(var_name.as_str()) {
+                        all_replacements.push((start, end, value));
+                    }
+                }
+            }
+        }
+
+        // Sort by start position (descending) to apply replacements from end to start
+        // This ensures indices remain valid as we modify the string
+        all_replacements.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // Apply all replacements in reverse order
+        for (start, end, value) in all_replacements {
+            result.replace_range(start..end, &value);
+        }
+
+        result
+    }
+
+    /// Filter folders by query (searches name and path)
+    pub fn filter(&self, query: &str) -> Vec<&RegisteredFolder> {
+        if query.is_empty() {
+            self.folders.iter().collect()
+        } else {
+            let query_lower = query.to_lowercase();
+            self.folders
+                .iter()
+                .filter(|f| {
+                    f.name.to_lowercase().contains(&query_lower)
+                        || f.path.to_lowercase().contains(&query_lower)
+                })
+                .collect()
+        }
+    }
+
+    /// Get the default path for registered_directory.json
+    pub fn default_path() -> std::path::PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("rwf")
+            .join("registered_directory.json")
+    }
+}
+
+impl Default for RegisteredFolderManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod registered_folder_tests {
+    use super::*;
+
+    #[test]
+    fn test_new_registered_folder() {
+        let folder = RegisteredFolder::new("Home".to_string(), "/home/user".to_string());
+        assert_eq!(folder.name, "Home");
+        assert_eq!(folder.path, "/home/user");
+        assert_eq!(folder.description, None);
+    }
+
+    #[test]
+    fn test_registered_folder_with_description() {
+        let folder = RegisteredFolder::new("Home".to_string(), "/home/user".to_string())
+            .with_description("My home directory".to_string());
+        assert_eq!(folder.description, Some("My home directory".to_string()));
+    }
+
+    #[test]
+    fn test_manager_add_remove() {
+        let mut manager = RegisteredFolderManager::new();
+        let folder = RegisteredFolder::new("Test".to_string(), "/test".to_string());
+        
+        manager.add(folder.clone());
+        assert_eq!(manager.folders.len(), 1);
+        
+        let removed = manager.remove(0);
+        assert_eq!(removed, Some(folder));
+        assert_eq!(manager.folders.len(), 0);
+    }
+
+    #[test]
+    fn test_expand_env_vars_unix_simple() {
+        let manager = RegisteredFolderManager::new();
+        std::env::set_var("TEST_VAR_UNIX_SIMPLE", "test_value");
+        
+        let result = manager.expand_env_vars("$TEST_VAR_UNIX_SIMPLE/path");
+        assert_eq!(result, "test_value/path");
+        
+        std::env::remove_var("TEST_VAR_UNIX_SIMPLE");
+    }
+
+    #[test]
+    fn test_expand_env_vars_unix_braces() {
+        let manager = RegisteredFolderManager::new();
+        std::env::set_var("TEST_VAR_UNIX_BRACES", "test_value");
+        
+        let result = manager.expand_env_vars("${TEST_VAR_UNIX_BRACES}/path");
+        assert_eq!(result, "test_value/path");
+        
+        std::env::remove_var("TEST_VAR_UNIX_BRACES");
+    }
+
+    #[test]
+    fn test_expand_env_vars_powershell() {
+        let manager = RegisteredFolderManager::new();
+        std::env::set_var("TEST_VAR_POWERSHELL", "test_value");
+        
+        let result = manager.expand_env_vars("$env:TEST_VAR_POWERSHELL/path");
+        assert_eq!(result, "test_value/path");
+        
+        std::env::remove_var("TEST_VAR_POWERSHELL");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_expand_env_vars_windows() {
+        let manager = RegisteredFolderManager::new();
+        std::env::set_var("TEST_VAR_WINDOWS", "test_value");
+        
+        let result = manager.expand_env_vars("%TEST_VAR_WINDOWS%/path");
+        assert_eq!(result, "test_value/path");
+        
+        std::env::remove_var("TEST_VAR_WINDOWS");
+    }
+
+    #[test]
+    fn test_expand_path() {
+        let manager = RegisteredFolderManager::new();
+        std::env::set_var("TEST_VAR_EXPAND_PATH", "test_value");
+        
+        let folder = RegisteredFolder::new("Test".to_string(), "$TEST_VAR_EXPAND_PATH/path".to_string());
+        let expanded = manager.expand_path(&folder);
+        assert_eq!(expanded, std::path::PathBuf::from("test_value/path"));
+        
+        std::env::remove_var("TEST_VAR_EXPAND_PATH");
+    }
+
+    #[test]
+    fn test_filter_empty_query() {
+        let mut manager = RegisteredFolderManager::new();
+        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
+        manager.add(RegisteredFolder::new("Work".to_string(), "/work".to_string()));
+        
+        let filtered = manager.filter("");
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_by_name() {
+        let mut manager = RegisteredFolderManager::new();
+        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
+        manager.add(RegisteredFolder::new("Work".to_string(), "/work".to_string()));
+        
+        let filtered = manager.filter("home");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "Home");
+    }
+
+    #[test]
+    fn test_filter_by_path() {
+        let mut manager = RegisteredFolderManager::new();
+        manager.add(RegisteredFolder::new("Home".to_string(), "/home/user".to_string()));
+        manager.add(RegisteredFolder::new("Work".to_string(), "/work/project".to_string()));
+        
+        let filtered = manager.filter("project");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "Work");
+    }
+
+    #[test]
+    fn test_filter_case_insensitive() {
+        let mut manager = RegisteredFolderManager::new();
+        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
+        
+        let filtered = manager.filter("HOME");
+        assert_eq!(filtered.len(), 1);
+    }
+}

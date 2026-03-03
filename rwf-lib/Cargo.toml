@@ -1,0 +1,38 @@
+[package]
+name = "rwf-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+crossterm = { workspace = true }
+zip = { workspace = true }
+
+# Additional dependencies
+async-trait = "0.1"
+dirs = "5.0"
+
+# Migemo support (optional)
+rustmigemo = { git = "https://github.com/oguna/rustmigemo", optional = true }
+
+[features]
+default = []
+migemo = ["rustmigemo"]
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+assert_fs = { workspace = true }
+predicates = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

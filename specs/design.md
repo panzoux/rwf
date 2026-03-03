@@ -4,6 +4,99 @@
 
 This document provides the detailed design specification for the Rust port of TWF (Two-pane Window Filer), following the single AppState architectural pattern with structured decomposition. The design emphasizes data-oriented programming, clear state boundaries, and idiomatic Rust patterns.
 
+## Overall Architecture (rwf)
+
+### 構造の意味
+
+**UI Layer**
+
+- ジョブ生成
+- Cancel / Force Cancel
+- 状態表示
+- StatusMessage 表示
+
+**JobManager**
+
+責務：
+
+- Job 生成
+- Job 登録
+- 状態管理
+- Cancel 指示
+- Force Cancel 指示
+- FIFO Queue へのジョブ投入
+- 依存評価：極小（基本なし）、trait レベルで最小限実装
+
+**FIFO Queue**
+
+- シンプルな先入先出キュー
+- 複雑な依存解決は持たない
+- JobManager から投入されたジョブを順に WorkerPool へ渡す
+
+**WorkerPool**
+
+- 固定スレッド数
+- 起動後変更不可
+- 各 Worker は：
+```rust
+loop {
+    job = queue.pop()
+    job.run()
+}
+```
+
+**Job**
+
+責務：
+
+- I/O 実行
+- cancel フラグチェック
+- 状態遷移管理
+- LockTable 利用
+- FailureReason 設定
+
+状態遷移：
+
+```
+Queued → Running → Completed
+                → Failed
+                → Cancelled
+Queued → Cancelled
+```
+
+Cancelling 状態なし。
+
+**LockTable**
+
+最小責務：
+
+- 同一パスの競合防止
+- ジョブ終了時に必ず解放
+- Cancel/Force Cancel でも同様
+
+### Architecture Flow Diagram
+
+```mermaid
+flowchart TD
+
+    UI --> JM[JobManager]
+    JM --> Q[FIFO Queue]
+    JM --> LT[LockTable]
+
+    Q --> WP[WorkerPool]
+
+    WP --> W1[Worker]
+    WP --> W2[Worker]
+    WP --> Wn[Worker]
+
+    W1 --> JOB1[Job]
+    W2 --> JOB2[Job]
+    Wn --> JOBn[Job]
+
+    JOB1 --> IO[File I/O]
+    JOB1 --> STATE[JobState]
+```
+
 ## Core Data Structures
 
 ### AppState
@@ -2381,7 +2474,7 @@ stateDiagram-v2
     Waiting --> Failed: Dependency failed
     Waiting --> Cancelled: Dependency cancelled
 
-    Ready --> Running: Scheduler start
+    Ready --> Running: Dispatch from FIFO Queue
 
     Running --> Completed: Success
     Running --> Failed: Execution error
@@ -2849,7 +2942,7 @@ Recommended defaults:
 
 - FIFO queue
 - Jobs become runnable when all dependencies are completed
-- Scheduler fills available execution slots
+- FIFO Queue dispatches jobs to available worker slots
 
 ### 10.3 Cancellation and Slot Handling
 
@@ -3338,7 +3431,7 @@ trait LockTable {
 - lock解放は必ずjob終了時に行う
 - Force Cancel時も必ずunlockされる
 
-## Scheduler (Simple Queue Based)
+## FIFO Queue
 
 Schedulerはジョブの状態遷移と実行管理を行う単純な制御機構である。
 
@@ -3364,6 +3457,15 @@ Schedulerは以下のみ保持する：
 依存評価はJob自身が持つ依存情報に基づき、
 Schedulerは「実行可能かどうか」の確認のみ行う。
 
+### Scheduler Responsibilities
+
+The scheduler:
+
+- Maintains a FIFO queue of jobs.
+- Evaluates dependency completion before execution.
+- Does not perform deep DAG traversal.
+- Does not implement priority or complex orchestration.
+
 ## Force Cancel Specification
 
 Force Cancelは、選択されたジョブを即時終了させる操作である。
@@ -3382,3 +3484,162 @@ Force Cancelが実行された場合、以下を必ず満たす：
 - CancellationTokenを待機しない
 - I/O中断はベストエフォート
 - 例外が発生してもStateはCancelledに固定
+
+## Execution Model
+
+rwf uses a fixed-size worker thread pool for background job execution.
+
+### 1️⃣ WorkerPool 型設計
+
+**目的**
+
+- 固定サイズ
+- 起動時生成
+- Scheduler が dispatch
+- Worker は実行専用
+
+**🔷 構造**
+```rust
+pub struct WorkerPool {
+    workers: Vec<Worker>,
+    job_sender: std::sync::mpsc::Sender<WorkerCommand>,
+}
+
+struct Worker {
+    handle: std::thread::JoinHandle<()>,
+}
+
+pub enum WorkerCommand {
+    Execute(JobExecution),
+    Shutdown,
+}
+
+pub struct JobExecution {
+    pub job_id: Uuid,
+    pub cancel_handle: CancellationHandle,
+}
+```
+
+※ Job 本体は Scheduler 側が保持。
+Worker は job_id を受け取り、共有アクセスで取得。
+
+### 2️⃣ Scheduler ⇄ Worker チャネル設計
+
+**🔷 双方向チャネル**
+
+**A) Scheduler → Worker**
+`WorkerCommand`
+
+用途：
+- Execute
+- Shutdown
+
+**B) Worker → Scheduler**
+```rust
+pub enum WorkerEvent {
+    Completed { job_id: Uuid },
+    Failed { job_id: Uuid, reason: FailureReason },
+    Cancelled { job_id: Uuid },
+}
+```
+
+**🔷 Scheduler 構造更新**
+```rust
+pub struct Scheduler {
+    queue: VecDeque<Uuid>,
+    jobs: HashMap<Uuid, Box<dyn Job>>,
+    running_jobs: HashSet<Uuid>,
+
+    lock_table: LockTable,
+
+    worker_pool: WorkerPool,
+
+    worker_event_receiver: Receiver<WorkerEvent>,
+
+    max_parallel_jobs: usize,
+}
+```
+
+### 3️⃣ スケルトン更新（Execution Model 対応）
+
+**🔷 Scheduler::dispatch()**
+```rust
+fn dispatch(&mut self) {
+    while self.running_jobs.len() < self.max_parallel_jobs {
+        if let Some(job_id) = self.next_runnable_job() {
+            self.start_job(job_id);
+        } else {
+            break;
+        }
+    }
+}
+```
+
+**🔷 next_runnable_job()**
+```rust
+fn next_runnable_job(&self) -> Option<Uuid> {
+    for job_id in &self.queue {
+        if self.can_run(*job_id) {
+            return Some(*job_id);
+        }
+    }
+    None
+}
+```
+
+**🔷 start_job()**
+```rust
+fn start_job(&mut self, job_id: Uuid) {
+    if let Some(job) = self.jobs.get_mut(&job_id) {
+        // Lock 取得
+        // state = Running
+        // cancel_handle 作成
+
+        let cancel_handle = CancellationHandle::new();
+
+        self.worker_pool.execute(job_id, cancel_handle);
+
+        self.running_jobs.insert(job_id);
+    }
+}
+```
+
+**🔷 WorkerPool::execute**
+```rust
+pub fn execute(&self, job_id: Uuid, cancel: CancellationHandle) {
+    self.job_sender
+        .send(WorkerCommand::Execute(JobExecution {
+            job_id,
+            cancel_handle: cancel,
+        }))
+        .unwrap();
+}
+```
+
+### 4️⃣ 依存評価と Lock 取得の厳密化
+
+**🔷 実行前チェック順序（確定）**
+
+1. JobState == Queued
+2. 全依存が Completed
+3. 依存に Failed → 即 `Failed(DependencyFailed)`
+4. 依存に Cancelled → 即 `Cancelled(DependencyCancelled)`
+5. LockTable.try_lock()
+6. running_jobs < max_parallel_jobs
+7. Dispatch
+
+**🔷 重要設計原則**
+
+- 依存評価は Scheduler 責務
+- Lock 取得も Scheduler 責務
+- Worker は純粋な実行装置
+- Job はロジックのみ
+
+**🔥 ForceCancel との整合**
+
+ForceCancel 時：
+
+1. Scheduler が running_jobs から削除
+2. LockTable unlock
+3. Worker に強制終了命令（設計上は協調停止でも OK）
+4. state = Cancelled(ForceTerminated)

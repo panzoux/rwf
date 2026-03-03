@@ -1,0 +1,29 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "View as Text",
+      "Action": "ViewFileAsText"
+    },
+    {
+      "Name": "View as Hex",
+      "Action": "ViewFileAsHex"
+    },
+    {
+      "Name": "-----",
+      "Function": ""
+    },
+    {
+      "Name": "Edit in External Editor",
+      "Action": "EditFile"
+    },
+    {
+      "Name": "-----",
+      "Function": ""
+    },
+    {
+      "Name": "Search in File",
+      "Action": "SearchInFile"
+    }
+  ]
+}

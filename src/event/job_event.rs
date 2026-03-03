@@ -1,18 +1,10 @@
-use uuid::Uuid;
-use crate::core::job_state::JobState;
+use crate::failure_reason::FailureReason;
+use crate::job_state::JobState;
 
-pub enum JobEvent {
-    StateChanged {
-        id: Uuid,
-        state: JobState,
-    },
-    Progress {
-        id: Uuid,
-        current: u64,
-        total: u64,
-    },
-    Message {
-        id: Uuid,
-        text: String,
-    },
+#[derive(Debug)]
+pub struct JobEvent {
+    pub job_id: usize,
+    pub state: JobState,
+    pub message: Option<String>,
+    pub failure: Option<FailureReason>,
 }

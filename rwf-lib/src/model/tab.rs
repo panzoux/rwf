@@ -1,0 +1,184 @@
+//! Tab management
+
+use super::{PaneModel, Location, NavigationHistory};
+use std::path::PathBuf;
+
+/// State for a single tab
+#[derive(Debug)]
+pub struct TabState {
+    pub id: usize,
+    pub left_pane: PaneModel,
+    pub right_pane: PaneModel,
+    pub history: NavigationHistory,
+}
+
+impl TabState {
+    pub fn new(id: usize) -> Self {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        Self {
+            id,
+            left_pane: PaneModel::new(Location::Local(cwd.clone())),
+            right_pane: PaneModel::new(Location::Local(cwd)),
+            history: NavigationHistory::new(),
+        }
+    }
+}
+
+/// Manages multiple tabs
+#[derive(Debug)]
+pub struct TabManager {
+    pub tabs: Vec<TabState>,
+    pub active_index: usize,
+}
+
+impl TabManager {
+    pub fn new() -> Self {
+        let initial_tab = TabState::new(0);
+        Self {
+            tabs: vec![initial_tab],
+            active_index: 0,
+        }
+    }
+    
+    /// Create a new tab
+    pub fn create_tab(&mut self) -> usize {
+        let new_id = self.tabs.len();
+        let new_tab = TabState::new(new_id);
+        self.tabs.push(new_tab);
+        new_id
+    }
+    
+    /// Close a tab by index
+    pub fn close_tab(&mut self, index: usize) -> bool {
+        if self.tabs.len() <= 1 {
+            return false; // Cannot close last tab
+        }
+        
+        self.tabs.remove(index);
+        
+        // Adjust active index if necessary
+        if self.active_index >= self.tabs.len() {
+            self.active_index = self.tabs.len() - 1;
+        }
+        
+        true
+    }
+    
+    /// Switch to next tab
+    pub fn switch_to_next(&mut self) {
+        self.active_index = (self.active_index + 1) % self.tabs.len();
+    }
+    
+    /// Switch to previous tab
+    pub fn switch_to_prev(&mut self) {
+        if self.active_index == 0 {
+            self.active_index = self.tabs.len() - 1;
+        } else {
+            self.active_index -= 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tab_manager_initialization() {
+        let manager = TabManager::new();
+        assert_eq!(manager.tabs.len(), 1);
+        assert_eq!(manager.active_index, 0);
+        assert_eq!(manager.tabs[0].id, 0);
+    }
+
+    #[test]
+    fn test_create_tab() {
+        let mut manager = TabManager::new();
+        let new_id = manager.create_tab();
+        assert_eq!(new_id, 1);
+        assert_eq!(manager.tabs.len(), 2);
+        assert_eq!(manager.tabs[1].id, 1);
+    }
+
+    #[test]
+    fn test_close_tab() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        
+        assert_eq!(manager.tabs.len(), 3);
+        
+        // Close middle tab
+        let result = manager.close_tab(1);
+        assert!(result);
+        assert_eq!(manager.tabs.len(), 2);
+    }
+
+    #[test]
+    fn test_cannot_close_last_tab() {
+        let mut manager = TabManager::new();
+        let result = manager.close_tab(0);
+        assert!(!result);
+        assert_eq!(manager.tabs.len(), 1);
+    }
+
+    #[test]
+    fn test_close_tab_adjusts_active_index() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        manager.active_index = 2;
+        
+        // Close the active tab
+        manager.close_tab(2);
+        
+        // Active index should be adjusted to last tab
+        assert_eq!(manager.active_index, 1);
+    }
+
+    #[test]
+    fn test_switch_to_next() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        
+        assert_eq!(manager.active_index, 0);
+        
+        manager.switch_to_next();
+        assert_eq!(manager.active_index, 1);
+        
+        manager.switch_to_next();
+        assert_eq!(manager.active_index, 2);
+        
+        // Should wrap around
+        manager.switch_to_next();
+        assert_eq!(manager.active_index, 0);
+    }
+
+    #[test]
+    fn test_switch_to_prev() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        
+        assert_eq!(manager.active_index, 0);
+        
+        // Should wrap around to last tab
+        manager.switch_to_prev();
+        assert_eq!(manager.active_index, 2);
+        
+        manager.switch_to_prev();
+        assert_eq!(manager.active_index, 1);
+        
+        manager.switch_to_prev();
+        assert_eq!(manager.active_index, 0);
+    }
+
+    #[test]
+    fn test_tab_state_initialization() {
+        let tab = TabState::new(5);
+        assert_eq!(tab.id, 5);
+        assert_eq!(tab.left_pane.entries.len(), 0);
+        assert_eq!(tab.right_pane.entries.len(), 0);
+    }
+}

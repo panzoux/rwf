@@ -1,0 +1,33 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "clip file name",
+      "Action": "clip file name"
+    },
+    {
+      "Name": "clip file path",
+      "Action": "clip file path"
+    },
+    {
+      "Name": "clip path",
+      "Action": "clip path"
+    },
+    {
+      "Name": "clip marked file path",
+      "Action": "clip marked file path"
+    },
+    {
+      "Name": "clip marked path",
+      "Action": "clip marked path"
+    },
+    {
+      "Name": "clip \"file path\"",
+      "Action": "clip \"file path\""
+    },
+    {
+      "Name": "clip \"path\"",
+      "Action": "clip \"path\""
+    }
+  ]
+}

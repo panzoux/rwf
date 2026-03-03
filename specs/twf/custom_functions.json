@@ -1,0 +1,159 @@
+{
+  "Version": "1.0",
+  "Functions": [
+    {
+      "Name": "File Operations",
+      "Menu": "menu_file_operations.json",
+      "Description": "Show file operations menu"
+    },
+    {
+      "Name": "Viewer Options",
+      "Menu": "menu_text_viewer_options.json",
+      "Description": "Show text viewer options"
+    },
+    {
+      "Name": "menu_clip_paths",
+      "Menu": "menu_copy_paths.json",
+      "Description": "Show copy paths menu"
+    },
+    {
+      "Name": "menu_config",
+      "Menu": "menu_config.json",
+      "Description": "Show config menu"
+    },
+    {
+      "Name": "clip file name",
+      "Command": "echo $F|clip.exe",
+      "Description": "clip current file name"
+    },
+    {
+      "Name": "clip file path",
+      "Command": "echo $P\\$F|clip.exe",
+      "Description": "clip current file path"
+    },
+    {
+      "Name": "clip path",
+      "Command": "echo $P|clip.exe",
+      "Description": "clip current path"
+    },
+    {
+      "Name": "clip \"file path\"",
+      "Command": "echo \"$P\\$F\"|clip.exe",
+      "Description": "clip current file path with double quotes"
+    },
+    {
+      "Name": "clip \"path\"",
+      "Command": "echo \"$P\"|clip.exe",
+      "Description": "clip current path with double quotes"
+    },
+    {
+      "Name": "edit config file",
+      "Command": "echo \"$V\"APPDATA\"\\TWF\\config.json\"",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "edit config file in notepad"
+    },
+    {
+      "Name": "edit keybindings file",
+      "Command": "echo \"$APPDATA\\TWF\\keybindings.json\"",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "edit keybindings file in notepad"
+    },
+    {
+      "Name": "edit custom functions file",
+      "Command": "echo \"%APPDATA%\\TWF\\custom_functions.json\"",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "edit custom functions file in notepad"
+    },
+    {
+      "Name": "create new file",
+      "Command": "cmd /c type nul > \"$P\\$I\"new file name\"\"",
+      "Description": "create a new file in the current directory"
+    },
+    {
+      "Name": "Execute File under cursor",
+      "Command": "echo \"$P\\$F\"",
+      "PipeToAction": "ExecuteFile"
+    },
+    {
+      "Name": "Open File under cursor with editor",
+      "Command": "echo \"$P\\$F\"",
+      "PipeToAction": "ExecuteFileWithEditor"
+    },
+    {
+        "Name": "Jump to Home",
+        "Command": "echo %USERPROFILE%",
+        "PipeToAction": "JumpToPath",
+        "Description": "Jump to HOME/USERPROFILE"
+    },
+    {
+        "Name": "Jump to Home/.gitconfig",
+        "Command": "echo %USERPROFILE%\\.gitconfig",
+        "PipeToAction": "JumpToPath",
+        "Description": "Jump to (HOME/USERPROFILE)/.gitconfig"
+    },
+    {
+        "Name": "Jump using fzf",
+        "Command": "powershell -command join-path (pwd) (fzf.exe)",
+        "PipeToAction": "JumpToPath",
+        "Description": "Use fzf to select a directory and jump to it"
+    },
+    {
+      "Name": "Open in Notepad",
+      "Command": "notepad \u0022$P\\$F\u0022",
+      "Description": "Open current file in Notepad"
+    },
+    {
+      "Name": "Copy to Other Pane",
+      "Command": "cmd /c copy \u0022$P\\$F\u0022 \u0022$O\\\u0022",
+      "Description": "Copy current file to other pane"
+    },
+    {
+      "Name": "Open Command Prompt Here",
+      "Command": "cmd /k cd /d \u0022$P\u0022",
+      "Description": "Open command prompt in current directory"
+    },
+    {
+      "Name": "Custom Copy",
+      "Command": "cmd /c copy \u0022$P\\$F\u0022 \u0022$I\u0022Destination path\u0022\u0022",
+      "Description": "Copy file to custom location (prompts for path)"
+    },
+    {
+      "Name": "Batch Rename",
+      "Command": "cmd /c ren \u0022$P\\$F\u0022 \u0022$I\u0022New filename\u0022\u0022",
+      "Description": "Rename current file (prompts for new name)"
+    },
+    {
+      "Name": "Winmerge Diff with Other Pane",
+      "Command": "\u0022C:\\Program Files (x86)\\WinMerge\\WinMergeU.exe /u \u0022$P\u0022 \u0022$O\u0022",
+      "Description": "Winmerge diff between current folder and folder in other pane"
+    },
+    {
+      "Name": "test parameters",
+      "Command": "cmd /c C:\\tmp\\test.bat \u0022$P\u0022 \u0022$O\u0022",
+      "Description": "Winmerge diff between current folder and folder in other pane"
+    },
+    {
+      "Name": "Echo Current Directory",
+      "Command": "echo $P",
+      "Shell": "/bin/sh",
+      "Description": "Echo current directory using specific shell"
+    },
+    {
+      "Name": "Echo Current Directory Windows",
+      "Command": "echo %P%",
+      "Shell": "cmd.exe",
+      "Description": "Echo current directory on Windows"
+    },
+    {
+      "Name": "PowerShell Example",
+      "Command": "Get-Location",
+      "Shell": "powershell.exe",
+      "Description": "Use PowerShell on Windows"
+    },
+    {
+      "Name": "Generic Function (uses config defaults)",
+      "Command": "pwd",
+      "Description": "Will use shell from config based on OS"
+    }
+  ]
+}

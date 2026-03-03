@@ -1,0 +1,237 @@
+[
+    {
+        "Category": "ナビゲーション",
+        "Action": "SwitchPane",
+        "Description": "左右のペインを切り替える"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "HandleEnterKey",
+        "Description": "ディレクトリに入る、またはファイルを開く"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "NavigateToParent",
+        "Description": "親ディレクトリへ移動"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "NavigateToRoot",
+        "Description": "ルートディレクトリへ移動"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "MoveCursorUp",
+        "Description": "カーソルを上に移動"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "MoveCursorDown",
+        "Description": "カーソルを下に移動"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "ScrollPageUp",
+        "Description": "前のページへ"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "ScrollPageDown",
+        "Description": "次のページへ"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "MoveCursorToFirst",
+        "Description": "先頭の項目にジャンプ"
+    },
+    {
+        "Category": "ナビゲーション",
+        "Action": "MoveCursorToLast",
+        "Description": "末尾の項目にジャンプ"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleCopyOperation",
+        "Description": "マークしたファイルをコピー"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleMoveOperation",
+        "Description": "マークしたファイルを移動"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleDeleteOperation",
+        "Description": "マークしたファイルを削除"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleCreateDirectory",
+        "Description": "新しいディレクトリを作成"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandlePatternRename",
+        "Description": "パターンによる一括リネーム"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleFileComparison",
+        "Description": "ファイルの比較 (Diff)"
+    },
+    {
+        "Category": "ファイル操作",
+        "Action": "HandleFileSplitOrJoin",
+        "Description": "ファイルの分割・結合"
+    },
+    {
+        "Category": "マーク",
+        "Action": "ToggleMarkAndMoveDown",
+        "Description": "マークを反転して下に移動"
+    },
+    {
+        "Category": "マーク",
+        "Action": "ToggleMarkAndMoveUp",
+        "Description": "マークを反転して上に移動"
+    },
+    {
+        "Category": "マーク",
+        "Action": "MarkRange",
+        "Description": "範囲指定でマーク"
+    },
+    {
+        "Category": "マーク",
+        "Action": "MarkAll",
+        "Description": "すべてのファイルにマーク"
+    },
+    {
+        "Category": "マーク",
+        "Action": "ClearMarks",
+        "Description": "すべてのマークを解除"
+    },
+    {
+        "Category": "マーク",
+        "Action": "ShowWildcardMarkingDialog",
+        "Description": "ワイルドカード指定でマーク"
+    },
+    {
+        "Category": "表示",
+        "Action": "DisplayMode1",
+        "Description": "表示モード: 1列"
+    },
+    {
+        "Category": "表示",
+        "Action": "DisplayMode2",
+        "Description": "表示モード: 2列"
+    },
+    {
+        "Category": "表示",
+        "Action": "DisplayMode3",
+        "Description": "表示モード: 3列"
+    },
+    {
+        "Category": "表示",
+        "Action": "DisplayMode4",
+        "Description": "表示モード: 4列"
+    },
+    {
+        "Category": "表示",
+        "Action": "DisplayModeDetailed",
+        "Description": "表示モード: 詳細表示"
+    },
+    {
+        "Category": "表示",
+        "Action": "CycleSortMode",
+        "Description": "ソート順を切り替える"
+    },
+    {
+        "Category": "表示",
+        "Action": "ShowSortDialog",
+        "Description": "ソート設定ダイアログを表示"
+    },
+    {
+        "Category": "表示",
+        "Action": "ShowFileMaskDialog",
+        "Description": "ファイルマスク(フィルタ)を設定"
+    },
+    {
+        "Category": "表示",
+        "Action": "EnterSearchMode",
+        "Description": "インクリメンタル検索 (Migemo対応)"
+    },
+    {
+        "Category": "表示",
+        "Action": "ViewFileAsText",
+        "Description": "テキストビューアで表示"
+    },
+    {
+        "Category": "表示",
+        "Action": "ShowFileInfoForCursor",
+        "Description": "ファイル情報を表示"
+    },
+    {
+        "Category": "表示",
+        "Action": "SyncPanes",
+        "Description": "反対側のペインと同じディレクトリに移動"
+    },
+    {
+        "Category": "アーカイブ",
+        "Action": "HandleCompressionOperation",
+        "Description": "アーカイブに圧縮"
+    },
+    {
+        "Category": "アーカイブ",
+        "Action": "HandleArchiveExtraction",
+        "Description": "アーカイブを展開"
+    },
+    {
+        "Category": "フォルダ",
+        "Action": "ShowRegisteredFolderDialog",
+        "Description": "登録済みフォルダの一覧"
+    },
+    {
+        "Category": "フォルダ",
+        "Action": "RegisterCurrentDirectory",
+        "Description": "現在のフォルダを登録"
+    },
+    {
+        "Category": "フォルダ",
+        "Action": "MoveToRegisteredFolder",
+        "Description": "登録済みフォルダへ移動"
+    },
+    {
+        "Category": "フォルダ",
+        "Action": "ShowDriveChangeDialog",
+        "Description": "ドライブ切り替え"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "HandleLaunchConfigurationProgram",
+        "Description": "設定を開く"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "ShowVersion",
+        "Description": "バージョン情報を表示"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "ShowTabSelector",
+        "Description": "タブ選択を表示"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "HandleContextMenu",
+        "Description": "コンテキストメニューを表示"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "ShowHelp",
+        "Description": "ヘルプを表示"
+    },
+    {
+        "Category": "アプリケーション",
+        "Action": "ExitApplication",
+        "Description": "TWFを終了"
+    }
+]

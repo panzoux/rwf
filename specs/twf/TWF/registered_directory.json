@@ -1,0 +1,62 @@
+[
+  {
+    "Name": "userprofile",
+    "Path": "%USERPROFILE%",
+    "SortOrder": 1
+  },
+  {
+    "Name": "Downloads",
+    "Path": "$USERPROFILE\\Downloads",
+    "SortOrder": 2
+  },
+  {
+    "Name": "repos",
+    "Path": "${USERPROFILE}\\source\\repos",
+    "SortOrder": 3
+  },
+  {
+    "Name": "TWF (config)",
+    "Path": "%APPDATA%\\TWF",
+    "SortOrder": 3
+  },
+  {
+    "Name": "twf",
+    "Path": "%USERPROFILE%\\source\\repos\\panzoux\\twf",
+    "SortOrder": 4
+  },
+  {
+    "Name": "TWF",
+    "Path": "%USERPROFILE%\\source\\repos\\panzoux\\twf\\TWF",
+    "SortOrder": 0
+  },
+  {
+    "Name": "twf/Services",
+    "Path": "%USERPROFILE%\\source\\repos\\panzoux\\twf\\Services",
+    "SortOrder": 0
+  },
+  {
+    "Name": "twf/Tests",
+    "Path": "$env:USERPROFILE\\source\\repos\\panzoux\\twf\\Tests",
+    "SortOrder": 0
+  },
+  {
+    "Name": ".config",
+    "Path": "\\\\xiyuxi27.local\\xiyuxi\\.config",
+    "SortOrder": 0
+  },
+  {
+    "Name": "Test Folder",
+    "Path": "C:\\Users\\currypain\\AppData\\Local\\Temp\\twf_test_registered_46c4a381-e94d-4599-a906-fd57ef2a8c32",
+    "SortOrder": 1
+  },
+  {
+    "Name": "Test Folder",
+    "Path": "C:\\Users\\currypain\\AppData\\Local\\Temp\\twf_test_registered_def77348-3717-4d8b-93d2-cf0375da16c4",
+    "SortOrder": 1
+  },
+  {
+    "Name": "Test Folder",
+    "Path": "C:\\Users\\currypain\\AppData\\Local\\Temp\\twf_test_registered_1a279d22-2301-4f7c-8428-4b72e4dff415",
+    "SortOrder": 1
+  }
+]

@@ -1,9 +1,6 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FailureReason {
-    IoError(std::io::Error),
+    IoError(String),
     DependencyFailed,
-    DependencyCancelled,
-    LockConflict,
-    ForceTerminated,
-    Unknown,
+    ForcedTermination,
 }

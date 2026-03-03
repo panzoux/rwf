@@ -1,0 +1,237 @@
+[
+    {
+        "Category": "Navigation",
+        "Action": "SwitchPane",
+        "Description": "Switch between left and right panes"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "HandleEnterKey",
+        "Description": "Enter directory or open file"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "NavigateToParent",
+        "Description": "Go to parent directory"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "NavigateToRoot",
+        "Description": "Go to root directory (Home)"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "MoveCursorUp",
+        "Description": "Move cursor up"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "MoveCursorDown",
+        "Description": "Move cursor down"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "ScrollPageUp",
+        "Description": "Scroll page up"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "ScrollPageDown",
+        "Description": "Scroll page down"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "MoveCursorToFirst",
+        "Description": "Jump to first entry"
+    },
+    {
+        "Category": "Navigation",
+        "Action": "MoveCursorToLast",
+        "Description": "Jump to last entry"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleCopyOperation",
+        "Description": "Copy marked files"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleMoveOperation",
+        "Description": "Move marked files"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleDeleteOperation",
+        "Description": "Delete marked files"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleCreateDirectory",
+        "Description": "Create new directory"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandlePatternRename",
+        "Description": "Batch rename with pattern"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleFileComparison",
+        "Description": "Compare files (Diff)"
+    },
+    {
+        "Category": "File Operations",
+        "Action": "HandleFileSplitOrJoin",
+        "Description": "Split or join files"
+    },
+    {
+        "Category": "Marking",
+        "Action": "ToggleMarkAndMoveDown",
+        "Description": "Toggle mark and move down"
+    },
+    {
+        "Category": "Marking",
+        "Action": "ToggleMarkAndMoveUp",
+        "Description": "Toggle mark and move up"
+    },
+    {
+        "Category": "Marking",
+        "Action": "MarkRange",
+        "Description": "Mark range of files"
+    },
+    {
+        "Category": "Marking",
+        "Action": "MarkAll",
+        "Description": "Mark all files"
+    },
+    {
+        "Category": "Marking",
+        "Action": "ClearMarks",
+        "Description": "Clear all marks"
+    },
+    {
+        "Category": "Marking",
+        "Action": "ShowWildcardMarkingDialog",
+        "Description": "Mark files by wildcard pattern"
+    },
+    {
+        "Category": "View",
+        "Action": "DisplayMode1",
+        "Description": "Display mode: 1 column"
+    },
+    {
+        "Category": "View",
+        "Action": "DisplayMode2",
+        "Description": "Display mode: 2 columns"
+    },
+    {
+        "Category": "View",
+        "Action": "DisplayMode3",
+        "Description": "Display mode: 3 columns"
+    },
+    {
+        "Category": "View",
+        "Action": "DisplayMode4",
+        "Description": "Display mode: 4 columns"
+    },
+    {
+        "Category": "View",
+        "Action": "DisplayModeDetailed",
+        "Description": "Display mode: Detailed view"
+    },
+    {
+        "Category": "View",
+        "Action": "CycleSortMode",
+        "Description": "Cycle through sort modes"
+    },
+    {
+        "Category": "View",
+        "Action": "ShowSortDialog",
+        "Description": "Show sort configuration dialog"
+    },
+    {
+        "Category": "View",
+        "Action": "ShowFileMaskDialog",
+        "Description": "Filter files by mask (colon)"
+    },
+    {
+        "Category": "View",
+        "Action": "EnterSearchMode",
+        "Description": "Incremental search (Migemo)"
+    },
+    {
+        "Category": "View",
+        "Action": "ViewFileAsText",
+        "Description": "View file in text viewer"
+    },
+    {
+        "Category": "View",
+        "Action": "ShowFileInfoForCursor",
+        "Description": "Show file information"
+    },
+    {
+        "Category": "View",
+        "Action": "SyncPanes",
+        "Description": "Synchronize panes to same directory"
+    },
+    {
+        "Category": "Archives",
+        "Action": "HandleCompressionOperation",
+        "Description": "Compress to archive"
+    },
+    {
+        "Category": "Archives",
+        "Action": "HandleArchiveExtraction",
+        "Description": "Extract archive contents"
+    },
+    {
+        "Category": "Folders",
+        "Action": "ShowRegisteredFolderDialog",
+        "Description": "List registered folders"
+    },
+    {
+        "Category": "Folders",
+        "Action": "RegisterCurrentDirectory",
+        "Description": "Register current directory"
+    },
+    {
+        "Category": "Folders",
+        "Action": "MoveToRegisteredFolder",
+        "Description": "Jump to registered folder"
+    },
+    {
+        "Category": "Folders",
+        "Action": "ShowDriveChangeDialog",
+        "Description": "Change drive"
+    },
+    {
+        "Category": "Application",
+        "Action": "HandleLaunchConfigurationProgram",
+        "Description": "Open configuration"
+    },
+    {
+        "Category": "Application",
+        "Action": "ShowVersion",
+        "Description": "Show version info"
+    },
+    {
+        "Category": "Application",
+        "Action": "ShowTabSelector",
+        "Description": "Show tab selector"
+    },
+    {
+        "Category": "Application",
+        "Action": "HandleContextMenu",
+        "Description": "Show context menu"
+    },
+    {
+        "Category": "Application",
+        "Action": "ShowHelp",
+        "Description": "Show this help"
+    },
+    {
+        "Category": "Application",
+        "Action": "ExitApplication",
+        "Description": "Exit TWF"
+    }
+]

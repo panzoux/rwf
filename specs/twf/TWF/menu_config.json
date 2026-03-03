@@ -1,0 +1,21 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "edit config file",
+      "Action": "edit config file"
+    },
+    {
+      "Name": "edit keybindings file",
+      "Action": "edit keybindings file"
+    },
+    {
+      "Name": "edit custom functions file",
+      "Action": "edit custom functions file"
+    },
+    {
+      "Name": "reload config",
+      "Action": "ReloadConfiguration"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "Open in Notepad",
+      "Action": "Open in Notepad"
+    },
+    {
+      "Name": "Copy to Other Pane",
+      "Action": "Copy to Other Pane"
+    },
+    {
+      "Name": "Custom Copy",
+      "Action": "Custom Copy"
+    },
+    {
+      "Name": "Batch Rename",
+      "Action": "Batch Rename"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "Open Command Prompt Here",
+      "Action": "Open Command Prompt Here"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "Delete File",
+      "Action": "DeleteFile"
+    },
+    {
+      "Name": "Move File",
+      "Action": "MoveFile"
+    }
+  ]
+}

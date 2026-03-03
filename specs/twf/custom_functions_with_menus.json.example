@@ -1,0 +1,40 @@
+{
+  "Version": "1.0",
+  "Functions": [
+    {
+      "Name": "Open in Notepad",
+      "Command": "notepad \"$P\\$F\"",
+      "Description": "Open current file in Notepad"
+    },
+    {
+      "Name": "Copy to Other Pane",
+      "Command": "cmd /c copy \"$P\\$F\" \"$O\\\"",
+      "Description": "Copy current file to other pane"
+    },
+    {
+      "Name": "Open Command Prompt Here",
+      "Command": "cmd /k cd /d \"$P\"",
+      "Description": "Open command prompt in current directory"
+    },
+    {
+      "Name": "Custom Copy",
+      "Command": "cmd /c copy \"$P\\$F\" \"$I\"Destination path\"\"",
+      "Description": "Copy file to custom location (prompts for path)"
+    },
+    {
+      "Name": "Batch Rename",
+      "Command": "cmd /c ren \"$P\\$F\" \"$I\"New filename\"\"",
+      "Description": "Rename current file (prompts for new name)"
+    },
+    {
+      "Name": "File Operations",
+      "Menu": "file_operations.json",
+      "Description": "Show file operations menu"
+    },
+    {
+      "Name": "Viewer Options",
+      "Menu": "text_viewer_options.json",
+      "Description": "Show text viewer options"
+    }
+  ]
+}

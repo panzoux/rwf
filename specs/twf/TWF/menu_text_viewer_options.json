@@ -1,0 +1,33 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "View as Text",
+      "Action": "ViewFileAsText"
+    },
+    {
+      "Name": "View as Hex",
+      "Action": "ViewFileAsHex"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "Edit in External Editor",
+      "Action": "Open in Notepad"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "* test parameters *",
+      "Action": "test parameters"
+    },
+    {
+      "Name": "Winmerge current folder with Other Pane",
+      "Action": "Winmerge Diff with Other Pane"
+    }
+  ]
+}

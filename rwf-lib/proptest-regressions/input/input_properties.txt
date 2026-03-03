@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3a53a1f89894a2431e8e5ed2c493140440667b6b22324d74e9873ecf1955d112 # shrinks to file_names = ["u.txt", "u.txt", "a.txt", "a.txt", "a.txt"], pattern_prefix = "u", pattern_suffix = None

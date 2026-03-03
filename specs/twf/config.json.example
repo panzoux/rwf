@@ -1,0 +1,76 @@
+{
+  "Display": {
+    "ForegroundColor": "White",
+    "BackgroundColor": "Black",
+    "HighlightForegroundColor": "Black",
+    "HighlightBackgroundColor": "Cyan",
+    "MarkedFileColor": "Cyan",
+    "DirectoryColor": "BrightCyan",
+    "DirectoryBackgroundColor": "Black",
+    "InactiveDirectoryColor": "Cyan",
+    "InactiveDirectoryBackgroundColor": "Black",
+    "PaneBorderColor": "Black",
+    "FilenameLabelForegroundColor": "White",
+    "FilenameLabelBackgroundColor": "Blue",
+    "DefaultDisplayMode": "Details",
+    "ShowHiddenFiles": true,
+    "ShowSystemFiles": false,
+    "CJK_CharacterWidth": 2,
+    "MaxSimultaneousJobs": 4,
+    "SmartRefreshEnabled": true,
+    "_comment": "Color options: Black, Blue, Green, Cyan, Red, Magenta, Brown, Gray, DarkGray, BrightBlue, BrightGreen, BrightCyan, BrightRed, BrightMagenta, Yellow, White",
+    "_comment_cjk": "CJK_CharacterWidth: Display width for CJK (Chinese/Japanese/Korean) characters. Default is 2 for proper alignment. Set to 1 if your terminal doesn't support double-width characters."
+  },
+  "KeyBindings": {
+    "KeyBindingFile": "keybindings.json"
+  },
+  "Migemo": {
+    "Enabled": true,
+    "DictPath": "dict",
+    "_comment": "Migemo enables Japanese incremental search using romaji input (e.g., 'nihon' matches '日本')",
+    "_comment_enabled": "Set to false to disable Migemo search",
+    "_comment_dict": "DictPath: Path to dictionary directory (relative to app dir or absolute). Common system paths: Windows='dict', Linux='/usr/share/cmigemo/utf-8', macOS='/usr/local/share/migemo/utf-8'"
+  },
+  "RegisteredFolders": [],
+  "ExtensionAssociations": {
+    ".txt": "notepad.exe",
+    ".log": "notepad.exe",
+    ".cs": "notepad.exe",
+    ".json": "notepad.exe",
+    ".md": "notepad.exe"
+  },
+  "Archive": {
+    "DefaultArchiveFormat": "ZIP",
+    "CompressionLevel": 5,
+    "ShowArchiveContentsAsVirtualFolder": true,
+    "ArchiveDllPaths": []
+  },
+  "Viewer": {
+    "DefaultTextEncoding": "UTF-8",
+    "TextEditorPath": "notepad.exe",
+    "ShowLineNumbers": true,
+    "TextViewerForegroundColor": "White",
+    "TextViewerBackgroundColor": "Black",
+    "TextViewerStatusForegroundColor": "White",
+    "TextViewerStatusBackgroundColor": "Gray",
+    "TextViewerEncodingForegroundColor": "White",
+    "TextViewerEncodingBackgroundColor": "Blue",
+    "DefaultImageViewMode": "FitToScreen",
+    "SupportedImageExtensions": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".gif",
+      ".bmp",
+      ".tiff",
+      ".ico"
+    ],
+    "_comment_colors": "Text viewer colors: TextViewerForegroundColor/BackgroundColor for main text, StatusForegroundColor/BackgroundColor for file info bar, EncodingForegroundColor/BackgroundColor for bottom help bar"
+  },
+  "SaveSessionState": true,
+  "MaxHistoryItems": 50,
+  "ConfigurationProgramPath": "notepad.exe",
+  "LogLevel": "Debug",
+  "_comment_loglevel": "LogLevel options: None (no logging), Trace, Debug, Information (default), Warning, Error, Critical. Set to 'None' to disable all logging.",
+  "_comment_history": "MaxHistoryItems: Maximum number of recently visited directories to keep per pane (default: 50)."
+}

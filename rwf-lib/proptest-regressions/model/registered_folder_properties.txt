@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0b470e5a205eabe6f83b3b7ba727ae76aa9ab5aeb6eb7bfbb7fd244ea1176150 # shrinks to var_name = "A", var_value = "A", path_template = "/home"
+cc eae0baee5c4b8393676a41d2c41afba7443c71b9aeaf1f063f52eada8b486b7f # shrinks to var1_name = "_", var1_value = "Q_ngbUKqUd", var2_name = "yZwF_", var2_value = "_L2S5_R"
+cc 3c6fb86b83f8eeea222560a4552f3796677276289694872deaa34b9c11dcb764 # shrinks to var_name = "_kXWKz_q", var_value = "J9\\tOVp_fHII_0", path_template = "%q_%/$env:O/${wR4bXOMf5_K}"
+cc 7860f2274ebbbf53e49d51a68d39840619d5c123386f382fe3182a4bdfade183 # shrinks to var_name = "b0_Nj", var_value = "i\\M_XerSj-a_\\\\/u5C", path_template = "%_JaQOuuTP2Y6_l%/$Xr0_An_W/%_%/C:\\Program Files"
+cc 2596d0dccede83dc14f8d4e9a61b8280cd1a7e1c6e42f620f751654a6d8872bd # shrinks to var1_name = "L", var1_value = "__Os", var2_name = "_rV6CKXA", var2_value = "Z7D_6_p4D"
+cc 7f35039cb72d05f6c672ab99324c9ebaf8a5846248819adcb097302edf34ebd8 # shrinks to var1_name = "l_GlU7eer5_JEi", var1_value = "9HCEjtqiT", var2_name = "_", var2_value = "uI"
+cc 511f283cd27aeb9e495149b7367ab033379be10fa03f8945f64f2509803538ee # shrinks to var1_name = "r4ikR_", var1_value = "__t_", var2_name = "_", var2_value = "Y9jL__wdy_"
