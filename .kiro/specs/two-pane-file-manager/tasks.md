@@ -1030,14 +1030,14 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Test cancellation
     - _Requirements: 37.1-37.9_
 
-- [ ] 41. Comprehensive property-based testing
+- [x] 41. Comprehensive property-based testing
   - [x] 41.1 Run all property tests
     - Execute all 31 property tests
     - Verify all properties hold across random inputs
     - Fix any failures discovered
     - _Requirements: All design properties_
   
-  - [-] 41.2 Add additional property tests for edge cases
+  - [x] 41.2 Add additional property tests for edge cases
     - Test boundary conditions
     - Test error conditions
     - Test concurrent operations

@@ -89,8 +89,6 @@ mod tests {
                 let tab = state.current_tab();
                 prop_assert_eq!(tab.left_pane.cursor, 0, "Cursor should remain at 0 for single-entry pane");
             }
-            
-            Ok(())
         });
     }
 
@@ -133,8 +131,6 @@ mod tests {
             let tab = state.current_tab();
             prop_assert!(tab.left_pane.cursor < entry_count, 
                 "Cursor {} should be less than entry count {}", tab.left_pane.cursor, entry_count);
-            
-            Ok(())
         });
     }
 
@@ -179,11 +175,17 @@ mod tests {
                 });
             }
             
-            // Cursor should be at least 0 (usize can't be negative, but checking bounds)
+            // Cursor should be at 0 after enough up operations (usize can't be negative)
             let tab = state.current_tab();
-            prop_assert_eq!(tab.left_pane.cursor, 0, "Cursor should be 0 after many up operations");
+            prop_assert!(tab.left_pane.cursor <= entry_count - 1, 
+                "Cursor {} should be within bounds (0..{})", tab.left_pane.cursor, entry_count);
             
-            Ok(())
+            // If we did more up operations than the entry count, cursor should be at 0
+            if up_operations >= entry_count {
+                prop_assert_eq!(tab.left_pane.cursor, 0, 
+                    "Cursor should be 0 after {} up operations from position {}", 
+                    up_operations, entry_count - 1);
+            }
         });
     }
 
@@ -215,8 +217,6 @@ mod tests {
             for i in 1..cancel_count {
                 prop_assert!(!results[i], "Subsequent cancellations should fail");
             }
-            
-            Ok(())
         });
     }
 
@@ -247,8 +247,6 @@ mod tests {
             // Queue should be unchanged
             prop_assert_eq!(manager.queue.len(), initial_queue_len, 
                 "Queue length should be unchanged");
-            
-            Ok(())
         });
     }
 
@@ -274,8 +272,6 @@ mod tests {
             
             // Count should be 0
             prop_assert_eq!(marking.count(), 0);
-            
-            Ok(())
         });
     }
 
@@ -313,12 +309,11 @@ mod tests {
             }
             
             // Dequeued IDs should match first N enqueued IDs
-            prop_assert_eq!(dequeued_ids, enqueued_ids[..dequeued_ids.len()].to_vec());
+            let dequeued_len = dequeued_ids.len();
+            prop_assert_eq!(dequeued_ids, enqueued_ids[..dequeued_len].to_vec());
             
             // Remaining queue size should be correct
-            prop_assert_eq!(manager.queue.len(), enqueue_count - dequeued_ids.len());
-            
-            Ok(())
+            prop_assert_eq!(manager.queue.len(), enqueue_count - dequeued_len);
         });
     }
 
@@ -354,8 +349,6 @@ mod tests {
                 prop_assert_eq!(is_marked, in_set, 
                     "is_marked should match set membership");
             }
-            
-            Ok(())
         });
     }
 
@@ -404,8 +397,6 @@ mod tests {
                 "Left pane cursor should be within bounds");
             prop_assert!(tab.right_pane.cursor < tab.right_pane.entries.len().max(1),
                 "Right pane cursor should be within bounds");
-            
-            Ok(())
         });
     }
 
@@ -448,8 +439,6 @@ mod tests {
                 position: 0 
             });
             prop_assert_eq!(state.current_tab().left_pane.cursor, 0);
-            
-            Ok(())
         });
     }
 
@@ -480,8 +469,6 @@ mod tests {
             }
             
             prop_assert_eq!(dequeued, ids, "FIFO order should be maintained");
-            
-            Ok(())
         });
     }
 
@@ -518,8 +505,430 @@ mod tests {
             // Total size should be 0
             let total = state.marking.total_size(&state.current_tab().left_pane.entries);
             prop_assert_eq!(total, 0, "Total size of zero-size files should be 0");
+        });
+    }
+
+    // ============================================================================
+    // Tab Management Edge Cases
+    // ============================================================================
+
+    /// **Property: Cannot Close Last Tab**
+    ///
+    /// Attempting to close the last remaining tab should fail gracefully.
+    #[test]
+    fn prop_cannot_close_last_tab() {
+        proptest!(|(close_attempts in 1usize..10)| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
             
-            Ok(())
+            // Should start with 1 tab
+            prop_assert_eq!(state.tabs.tabs.len(), 1);
+            
+            // Try to close tab multiple times
+            for _ in 0..close_attempts {
+                let _ = update_state(&mut state, Transition::CloseTab { index: 0 });
+            }
+            
+            // Should still have 1 tab
+            prop_assert_eq!(state.tabs.tabs.len(), 1, "Last tab should not be closeable");
+        });
+    }
+
+    /// **Property: Tab Index Bounds After Closure**
+    ///
+    /// Active tab index should remain valid after closing tabs.
+    #[test]
+    fn prop_tab_index_valid_after_closure() {
+        proptest!(|(
+            initial_tabs in 2usize..10,
+            close_index in 0usize..9
+        )| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Create multiple tabs
+            for _ in 1..initial_tabs {
+                let _ = update_state(&mut state, Transition::CreateTab);
+            }
+            
+            prop_assert_eq!(state.tabs.tabs.len(), initial_tabs);
+            
+            // Close a tab if index is valid
+            if close_index < initial_tabs && initial_tabs > 1 {
+                let _ = update_state(&mut state, Transition::CloseTab { index: close_index });
+                
+                // Active index should be valid
+                prop_assert!(state.tabs.active_index < state.tabs.tabs.len(),
+                    "Active index {} should be less than tab count {}", 
+                    state.tabs.active_index, state.tabs.tabs.len());
+            }
+        });
+    }
+
+    /// **Property: Tab Switching Wraps Around**
+    ///
+    /// Switching tabs should wrap around at boundaries.
+    #[test]
+    fn prop_tab_switching_wraps() {
+        proptest!(|(tab_count in 2usize..10)| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Create tabs
+            for _ in 1..tab_count {
+                let _ = update_state(&mut state, Transition::CreateTab);
+            }
+            
+            // Switch to last tab
+            state.tabs.active_index = tab_count - 1;
+            
+            // Switch to next (should wrap to 0)
+            state.tabs.switch_to_next();
+            prop_assert_eq!(state.tabs.active_index, 0, "Should wrap to first tab");
+            
+            // Switch to previous (should wrap to last)
+            state.tabs.switch_to_prev();
+            prop_assert_eq!(state.tabs.active_index, tab_count - 1, "Should wrap to last tab");
+        });
+    }
+
+    // ============================================================================
+    // Marking Edge Cases
+    // ============================================================================
+
+    /// **Property: Marking Empty Pane**
+    ///
+    /// Mark all on empty pane should not cause errors.
+    #[test]
+    fn prop_mark_all_empty_pane() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        // Pane is empty
+        assert_eq!(state.current_tab().left_pane.entries.len(), 0);
+        
+        // Mark all should not panic
+        let _ = update_state(&mut state, Transition::MarkAll);
+        
+        // Count should be 0
+        assert_eq!(state.marking.count(), 0);
+    }
+
+    /// **Property: Unmark All Idempotence**
+    ///
+    /// Calling unmark all multiple times should be safe.
+    #[test]
+    fn prop_unmark_all_idempotence() {
+        proptest!(|(
+            file_count in 1usize..20,
+            unmark_count in 1usize..10
+        )| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Create and mark files
+            let entries: Vec<FileEntry> = (0..file_count).map(|i| FileEntry {
+                name: format!("file{}.txt", i),
+                location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
+                size: 100,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            }).collect();
+            
+            state.current_tab_mut().left_pane.entries = entries;
+            let _ = update_state(&mut state, Transition::MarkAll);
+            
+            // Unmark all multiple times
+            for _ in 0..unmark_count {
+                let _ = update_state(&mut state, Transition::UnmarkAll);
+            }
+            
+            // Count should be 0
+            prop_assert_eq!(state.marking.count(), 0);
+        });
+    }
+
+    /// **Property: Toggle Mark Consistency**
+    ///
+    /// Toggling mark twice should return to original state.
+    #[test]
+    fn prop_toggle_mark_twice() {
+        proptest!(|(file_count in 1usize..20)| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Create files
+            let entries: Vec<FileEntry> = (0..file_count).map(|i| FileEntry {
+                name: format!("file{}.txt", i),
+                location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
+                size: 100,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            }).collect();
+            
+            state.current_tab_mut().left_pane.entries = entries.clone();
+            
+            // Toggle each file twice
+            for entry in &entries {
+                let location = entry.location.clone();
+                let _ = update_state(&mut state, Transition::ToggleMark { location: location.clone() });
+                let _ = update_state(&mut state, Transition::ToggleMark { location });
+            }
+            
+            // All should be unmarked
+            prop_assert_eq!(state.marking.count(), 0, "All files should be unmarked after double toggle");
+        });
+    }
+
+    // ============================================================================
+    // Job Queue Edge Cases
+    // ============================================================================
+
+    /// **Property: Job Completion Removes From Active**
+    ///
+    /// Completing a job should remove it from active jobs.
+    #[test]
+    fn prop_job_completion_cleanup() {
+        proptest!(|(job_count in 1usize..20)| {
+            let mut manager = JobManager::new(4);
+            
+            // Enqueue and start jobs
+            let mut ids = Vec::new();
+            for i in 0..job_count {
+                let id = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+                    location: Location::Local(PathBuf::from(format!("/test{}", i))),
+                }));
+                ids.push(id);
+                
+                if manager.can_start_job() {
+                    if let Some(spec) = manager.pop_next_job() {
+                        manager.start_job(spec);
+                    }
+                }
+            }
+            
+            let active_count = manager.active.len();
+            
+            // Complete all active jobs
+            let active_ids: Vec<_> = manager.active.keys().copied().collect();
+            for id in active_ids {
+                manager.complete_job(id, crate::job::OpResult::Success(
+                    crate::job::SuccessData::None
+                ));
+            }
+            
+            // Active should be empty
+            prop_assert_eq!(manager.active.len(), 0, "Active jobs should be empty after completion");
+            
+            // Completed should have the jobs
+            prop_assert!(manager.completed.len() >= active_count, 
+                "Completed should contain at least {} jobs", active_count);
+        });
+    }
+
+    /// **Property: Max Parallel Jobs Enforced**
+    ///
+    /// Active jobs should never exceed max_parallel limit.
+    #[test]
+    fn prop_max_parallel_enforced() {
+        proptest!(|(
+            max_parallel in 1usize..8,
+            job_count in 10usize..50
+        )| {
+            let mut manager = JobManager::new(max_parallel);
+            
+            // Enqueue many jobs
+            for i in 0..job_count {
+                manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+                    location: Location::Local(PathBuf::from(format!("/test{}", i))),
+                }));
+            }
+            
+            // Start as many as possible
+            while manager.can_start_job() {
+                if let Some(spec) = manager.pop_next_job() {
+                    manager.start_job(spec);
+                }
+            }
+            
+            // Active count should not exceed max_parallel
+            prop_assert!(manager.active.len() <= max_parallel,
+                "Active jobs {} should not exceed max_parallel {}", 
+                manager.active.len(), max_parallel);
+        });
+    }
+
+    /// **Property: Completed Jobs History Limit**
+    ///
+    /// Completed jobs should be limited to prevent unbounded growth.
+    #[test]
+    fn prop_completed_jobs_limited() {
+        proptest!(|(job_count in 150usize..200)| {
+            let mut manager = JobManager::new(4);
+            
+            // Complete many jobs
+            for i in 0..job_count {
+                let id = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+                    location: Location::Local(PathBuf::from(format!("/test{}", i))),
+                }));
+                
+                if let Some(spec) = manager.pop_next_job() {
+                    manager.start_job(spec);
+                    manager.complete_job(id, crate::job::OpResult::Success(
+                        crate::job::SuccessData::None
+                    ));
+                }
+            }
+            
+            // Completed should be limited to 100
+            prop_assert!(manager.completed.len() <= 100,
+                "Completed jobs {} should not exceed 100", manager.completed.len());
+        });
+    }
+
+    // ============================================================================
+    // Directory Navigation Edge Cases
+    // ============================================================================
+
+    /// **Property: Parent Navigation At Root**
+    ///
+    /// Attempting to navigate to parent at root should not cause errors.
+    #[test]
+    fn prop_parent_at_root() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        // Set location to root
+        state.current_tab_mut().left_pane.current_location = Location::Local(PathBuf::from("/"));
+        
+        // Try to navigate up (parent)
+        let _ = update_state(&mut state, Transition::NavigateUp { pane: ActivePane::Left });
+        
+        // Should still be at root (or handle gracefully)
+        // The exact behavior depends on implementation, but should not panic
+    }
+
+    /// **Property: Rapid Pane Switching**
+    ///
+    /// Rapidly switching panes should maintain correct active pane.
+    #[test]
+    fn prop_rapid_pane_switching() {
+        proptest!(|(switch_count in 1usize..100)| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            let initial_pane = state.ui.active_pane;
+            
+            // Switch many times
+            for _ in 0..switch_count {
+                let _ = update_state(&mut state, Transition::SwitchPane);
+            }
+            
+            // Parity should match
+            let expected_pane = if switch_count % 2 == 0 {
+                initial_pane
+            } else {
+                initial_pane.opposite()
+            };
+            
+            prop_assert_eq!(state.ui.active_pane, expected_pane,
+                "Active pane should match expected after {} switches", switch_count);
+        });
+    }
+
+    // ============================================================================
+    // Scroll Position Edge Cases
+    // ============================================================================
+
+    /// **Property: Scroll Offset Bounds**
+    ///
+    /// Scroll offset should never cause cursor to be invisible.
+    #[test]
+    fn prop_scroll_offset_valid() {
+        proptest!(|(
+            entry_count in 10usize..100,
+            cursor_pos in 0usize..99
+        )| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Create entries
+            let entries: Vec<FileEntry> = (0..entry_count).map(|i| FileEntry {
+                name: format!("file{}.txt", i),
+                location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
+                size: 100,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            }).collect();
+            
+            state.current_tab_mut().left_pane.entries = entries;
+            
+            // Move cursor
+            let actual_pos = cursor_pos.min(entry_count - 1);
+            let _ = update_state(&mut state, Transition::CursorJump { 
+                pane: ActivePane::Left, 
+                position: actual_pos 
+            });
+            
+            let pane = &state.current_tab().left_pane;
+            
+            // Cursor should be within scroll window
+            // (This assumes a reasonable page size, actual implementation may vary)
+            prop_assert!(pane.cursor >= pane.scroll_offset,
+                "Cursor {} should be >= scroll_offset {}", pane.cursor, pane.scroll_offset);
+        });
+    }
+
+    // ============================================================================
+    // State Consistency Under Errors
+    // ============================================================================
+
+    /// **Property: State Remains Valid After Failed Transitions**
+    ///
+    /// Even if transitions fail, state should remain consistent.
+    #[test]
+    fn prop_state_valid_after_failures() {
+        proptest!(|(operations in prop::collection::vec(0u8..9, 1..30))| {
+            let config = AppConfig::default();
+            let mut state = AppState::new(config);
+            
+            // Apply various transitions that might fail
+            for op in operations {
+                let transition = match op % 9 {
+                    0 => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
+                    1 => Transition::CursorMove { pane: ActivePane::Left, delta: -1 },
+                    2 => Transition::SwitchPane,
+                    3 => Transition::CloseTab { index: 0 }, // Should fail (last tab)
+                    4 => Transition::MarkAll,
+                    5 => Transition::UnmarkAll,
+                    6 => Transition::CursorJump { pane: ActivePane::Left, position: 0 },
+                    7 => Transition::NavigateUp { pane: ActivePane::Left },
+                    8 => Transition::CreateTab,
+                    _ => Transition::SwitchPane,
+                };
+                
+                let _ = update_state(&mut state, transition);
+            }
+            
+            // Verify basic invariants
+            prop_assert!(state.tabs.tabs.len() >= 1, "Should have at least one tab");
+            prop_assert!(state.tabs.active_index < state.tabs.tabs.len(), 
+                "Active tab index should be valid");
+            
+            let tab = state.current_tab();
+            prop_assert!(tab.left_pane.cursor < tab.left_pane.entries.len().max(1),
+                "Left cursor should be valid");
+            prop_assert!(tab.right_pane.cursor < tab.right_pane.entries.len().max(1),
+                "Right cursor should be valid");
         });
     }
 }
