@@ -1,4 +1,5 @@
 mod app;
+mod performance;
 mod terminal;
 mod ui;
 

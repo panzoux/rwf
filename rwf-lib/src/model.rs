@@ -46,5 +46,5 @@ pub use dialog::{
     CustomFunctionSelector, RegisteredFolderSelector, TabSelector, PatternRenameDialog,
     ErrorType, SplitJoinMode
 };
-pub use cache::{DirectoryCache, CachedDirectory};
+pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
 pub use viewer::{ViewerState, ViewerMode, TextEncoding};

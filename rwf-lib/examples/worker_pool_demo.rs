@@ -4,6 +4,7 @@
 
 use rwf_lib::{WorkerPool, JobSpec, JobKind, JobEvent};
 use rwf_lib::backend::LocalFilesystemBackend;
+use rwf_lib::archive::ZipArchiveHandler;
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,7 +13,8 @@ use std::sync::Arc;
 async fn main() {
     println!("Creating worker pool with 4 workers...");
     let backend = Arc::new(LocalFilesystemBackend::new());
-    let mut pool = WorkerPool::new(4, backend);
+    let archive_handler = Arc::new(ZipArchiveHandler::new());
+    let mut pool = WorkerPool::new(4, backend, archive_handler);
     
     // Submit some jobs
     println!("Submitting jobs...");

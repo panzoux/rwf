@@ -179,4 +179,145 @@ mod unit_tests {
         // Should only keep last 100
         assert_eq!(manager.completed.len(), 100);
     }
+
+    #[test]
+    fn test_batch_enqueue() {
+        let mut manager = JobManager::new(4);
+        
+        // Create multiple job specs
+        let specs = vec![
+            JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/test1")),
+            }),
+            JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/test2")),
+            }),
+            JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/test3")),
+            }),
+        ];
+        
+        // Enqueue in batch
+        let ids = manager.enqueue_batch(specs);
+        
+        // Should have 3 IDs
+        assert_eq!(ids.len(), 3);
+        
+        // Should have 3 jobs in queue
+        assert_eq!(manager.queue.len(), 3);
+        
+        // Pop and verify order
+        for expected_id in ids {
+            let spec = manager.pop_next_job().unwrap();
+            assert_eq!(spec.id, expected_id);
+        }
+    }
+
+    #[test]
+    fn test_batch_pop() {
+        let mut manager = JobManager::new(4);
+        
+        // Enqueue 5 jobs
+        for i in 0..5 {
+            manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from(format!("/test{}", i))),
+            }));
+        }
+        
+        // Pop 3 jobs in batch
+        let jobs = manager.pop_next_jobs(3);
+        assert_eq!(jobs.len(), 3);
+        
+        // Should have 2 jobs remaining
+        assert_eq!(manager.queue.len(), 2);
+    }
+
+    #[test]
+    fn test_batch_start() {
+        let mut manager = JobManager::new(4);
+        
+        // Create job specs
+        let specs = vec![
+            JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/test1")),
+            }),
+            JobSpec::new(JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/test2")),
+            }),
+        ];
+        
+        // Assign IDs
+        let ids: Vec<_> = specs.iter().enumerate().map(|(i, _)| {
+            crate::job::JobId(i as u64)
+        }).collect();
+        
+        let mut specs_with_ids = specs;
+        for (i, spec) in specs_with_ids.iter_mut().enumerate() {
+            spec.id = ids[i];
+        }
+        
+        // Start jobs in batch
+        manager.start_jobs(specs_with_ids);
+        
+        // Should have 2 active jobs
+        assert_eq!(manager.active.len(), 2);
+    }
+
+    #[test]
+    fn test_job_manager_stats() {
+        let mut manager = JobManager::new(4);
+        
+        // Enqueue some jobs
+        let id1 = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/test1")),
+        }));
+        let id2 = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/test2")),
+        }));
+        
+        // Start one job
+        let spec1 = manager.pop_next_job().unwrap();
+        manager.start_job(spec1);
+        
+        // Complete it successfully
+        manager.complete_job(id1, crate::job::OpResult::Success(crate::job::SuccessData::None));
+        
+        // Cancel the other
+        manager.request_cancel(id2);
+        
+        // Check stats
+        let stats = manager.stats();
+        assert_eq!(stats.queued, 0);
+        assert_eq!(stats.active, 0);
+        assert_eq!(stats.total_enqueued, 2);
+        assert_eq!(stats.total_completed, 1);
+        assert_eq!(stats.total_cancelled, 1);
+        assert_eq!(stats.total_failed, 0);
+        assert_eq!(stats.max_parallel, 4);
+    }
+
+    #[test]
+    fn test_cleanup_old_completed() {
+        use std::time::Duration;
+        
+        let mut manager = JobManager::new(4);
+        
+        // Complete a job
+        let id = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/test")),
+        }));
+        let spec = manager.pop_next_job().unwrap();
+        manager.start_job(spec);
+        manager.complete_job(id, crate::job::OpResult::Success(crate::job::SuccessData::None));
+        
+        assert_eq!(manager.completed.len(), 1);
+        
+        // Cleanup with very short max age (should remove nothing since job just completed)
+        manager.cleanup_old_completed(Duration::from_secs(10));
+        assert_eq!(manager.completed.len(), 1);
+        
+        // Cleanup with zero max age (should remove all)
+        manager.cleanup_old_completed(Duration::from_secs(0));
+        assert_eq!(manager.completed.len(), 0);
+    }
 }

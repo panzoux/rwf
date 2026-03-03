@@ -479,7 +479,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         // Navigation
         Transition::ChangeLocation { pane, location } => {
             // Check cache first (before any mutable borrows)
-            let cached_entries = state.cache.get(&location).cloned();
+            let cached_entries = state.cache.get(&location);
             
             let tab = state.current_tab_mut();
             
@@ -537,7 +537,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             
             if let Some(location) = location {
                 // Check cache (before any mutable borrows)
-                let cached_entries = state.cache.get(&location).cloned();
+                let cached_entries = state.cache.get(&location);
                 
                 // Now update the pane
                 let tab = state.current_tab_mut();

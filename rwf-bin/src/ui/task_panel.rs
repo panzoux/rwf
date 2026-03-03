@@ -145,5 +145,20 @@ fn format_job_kind(kind: &rwf_lib::job::JobKind) -> String {
         JobKind::Search { location, pattern, .. } => {
             format!("Searching for '{}' in {}", pattern, location.display_path())
         }
+        JobKind::LoadFileForViewer { location } => {
+            format!("Loading file {}", location.display_path())
+        }
+        JobKind::PatternRename { pattern, .. } => {
+            format!("Pattern rename: {}", pattern)
+        }
+        JobKind::CompareFiles { left, right } => {
+            format!("Comparing {} and {}", left.display_path(), right.display_path())
+        }
+        JobKind::SplitFile { source, .. } => {
+            format!("Splitting file {}", source.display_path())
+        }
+        JobKind::JoinFiles { parts, dest } => {
+            format!("Joining {} parts to {}", parts.len(), dest.display_path())
+        }
     }
 }

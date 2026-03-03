@@ -3,13 +3,14 @@
 //! This module implements the main event loop with rendering at 30+ FPS.
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rwf_lib::{AppState, Transition, KeyBindings, action_to_transitions};
 use std::io::Stdout;
 use std::time::{Duration, Instant};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
+use crate::performance::PerformanceMetrics;
 use crate::ui::render_ui;
 
 /// Target frame rate (30 FPS)
@@ -24,6 +25,8 @@ pub struct App {
     state: AppState,
     key_bindings: KeyBindings,
     should_quit: bool,
+    metrics: PerformanceMetrics,
+    last_metrics_log: Instant,
 }
 
 impl App {
@@ -33,6 +36,8 @@ impl App {
             state,
             key_bindings: KeyBindings::default(),
             should_quit: false,
+            metrics: PerformanceMetrics::new(),
+            last_metrics_log: Instant::now(),
         }
     }
     
@@ -42,6 +47,8 @@ impl App {
             state,
             key_bindings,
             should_quit: false,
+            metrics: PerformanceMetrics::new(),
+            last_metrics_log: Instant::now(),
         }
     }
 
@@ -67,9 +74,25 @@ impl App {
                 last_render = Instant::now();
             }
 
+            // Log performance metrics every 5 seconds
+            if self.last_metrics_log.elapsed() >= Duration::from_secs(5) {
+                info!("Performance: {}", self.metrics.summary());
+                
+                // Check for performance warnings
+                let warnings = self.metrics.check_warnings();
+                for warning in warnings {
+                    warn!("Performance warning: {}", warning);
+                }
+                
+                self.last_metrics_log = Instant::now();
+            }
+
             // Check if we should quit
             if self.should_quit {
                 info!("Application quit requested");
+                
+                // Log final performance metrics
+                info!("Final performance: {}", self.metrics.summary());
                 
                 // Save session state before quitting
                 if let Err(e) = self.state.save_session() {
@@ -112,6 +135,10 @@ impl App {
             // Check if we're waiting for next key in sequence
             if action == rwf_lib::Action::PendingSequence {
                 debug!("Waiting for next key in sequence: {:?}", self.key_bindings.get_pending_sequence());
+                
+                let elapsed = start.elapsed();
+                self.metrics.record_input_time(elapsed);
+                
                 return true; // UI needs to show pending sequence indicator
             }
             
@@ -124,6 +151,10 @@ impl App {
                 // Check for quit transition
                 if matches!(transition, Transition::Quit) {
                     self.should_quit = true;
+                    
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+                    
                     return true;
                 }
                 
@@ -135,8 +166,10 @@ impl App {
             }
             
             let elapsed = start.elapsed();
+            self.metrics.record_input_time(elapsed);
+            
             if elapsed > Duration::from_millis(16) {
-                debug!("Input processing took {:?} (exceeds 16ms target)", elapsed);
+                warn!("Input processing took {:?} (exceeds 16ms target)", elapsed);
             }
             
             return state_changed;
@@ -145,17 +178,28 @@ impl App {
         // Clear any pending sequence on unrecognized key
         if self.key_bindings.has_pending_sequence() {
             self.key_bindings.clear_pending_sequence();
+            
+            let elapsed = start.elapsed();
+            self.metrics.record_input_time(elapsed);
+            
             return true;
         }
+        
+        let elapsed = start.elapsed();
+        self.metrics.record_input_time(elapsed);
         
         false
     }
 
     /// Render the UI
     fn render(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+        self.metrics.start_frame();
+        
         terminal.draw(|frame| {
             render_ui(frame, &self.state);
         })?;
+        
+        self.metrics.end_frame();
 
         Ok(())
     }
