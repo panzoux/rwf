@@ -10,6 +10,12 @@ pub struct UIState {
     pub range_marking_start: Option<usize>,
 }
 
+impl Default for UIState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UIState {
     pub fn new() -> Self {
         Self {
@@ -28,6 +34,7 @@ pub struct LayoutState {
     pub show_status_bar: bool,
     pub show_task_panel: bool,
     pub show_tab_bar: bool,
+    pub pane_height: usize,
 }
 
 impl Default for LayoutState {
@@ -37,6 +44,7 @@ impl Default for LayoutState {
             show_status_bar: true,
             show_task_panel: true,
             show_tab_bar: true,
+            pane_height: 20, // Default fallback
         }
     }
 }

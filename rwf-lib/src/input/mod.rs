@@ -6,6 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::debug;
 
 use crate::state::Transition;
 use crate::AppState;
@@ -28,7 +29,7 @@ pub struct KeyBindings {
 
 impl KeyBindings {
     /// Create default TWF-compatible key bindings
-    pub fn default() -> Self {
+    pub fn twf_defaults() -> Self {
         let mut normal_mode = HashMap::new();
         
         // Navigation
@@ -37,23 +38,28 @@ impl KeyBindings {
         normal_mode.insert("Down".to_string(), Action::CursorDown);
         normal_mode.insert("k".to_string(), Action::CursorUp);
         normal_mode.insert("j".to_string(), Action::CursorDown);
-        normal_mode.insert("Home".to_string(), Action::CursorHome);
-        normal_mode.insert("End".to_string(), Action::CursorEnd);
+        normal_mode.insert("^".to_string(), Action::MoveCursorToFirst);
+        normal_mode.insert("$".to_string(), Action::MoveCursorToLast);
+        normal_mode.insert("G".to_string(), Action::MoveCursorToFirst);
+        normal_mode.insert("Shift+G".to_string(), Action::MoveCursorToLast);
         normal_mode.insert("PageUp".to_string(), Action::PageUp);
         normal_mode.insert("PageDown".to_string(), Action::PageDown);
         normal_mode.insert("Enter".to_string(), Action::EnterDirectory);
-        normal_mode.insert("Backspace".to_string(), Action::ParentDirectory);
-        normal_mode.insert("Left".to_string(), Action::ParentDirectory);
+        normal_mode.insert("Backspace".to_string(), Action::NavigateToParent);
+        normal_mode.insert("Left".to_string(), Action::SwitchToLeftPane);
+        normal_mode.insert("Right".to_string(), Action::SwitchToRightPane);
         normal_mode.insert("Alt+Left".to_string(), Action::HistoryBack);
         normal_mode.insert("Alt+Right".to_string(), Action::HistoryForward);
         
         // Marking
         normal_mode.insert("Space".to_string(), Action::ToggleMark);
-        normal_mode.insert("*".to_string(), Action::MarkAll);
+        normal_mode.insert("*".to_string(), Action::WildcardMarking);
+        normal_mode.insert("A".to_string(), Action::MarkAll);
         normal_mode.insert("Ctrl+u".to_string(), Action::UnmarkAll);
         normal_mode.insert("@".to_string(), Action::WildcardMarking);
         normal_mode.insert("Ctrl+Space".to_string(), Action::RangeMarking);
-        normal_mode.insert("Shift+Home".to_string(), Action::InvertMarks);
+        normal_mode.insert("Home".to_string(), Action::InvertMarks);
+        normal_mode.insert("End".to_string(), Action::ClearMarks);
         
         // File operations
         normal_mode.insert("C".to_string(), Action::Copy);
@@ -63,41 +69,46 @@ impl KeyBindings {
         normal_mode.insert("Shift+R".to_string(), Action::PatternRename);
         normal_mode.insert("Shift+K".to_string(), Action::CreateDirectory);
         
-        // Sorting (multi-key sequences)
-        normal_mode.insert("s+n".to_string(), Action::SortByName);
-        normal_mode.insert("s+s".to_string(), Action::SortBySize);
-        normal_mode.insert("s+d".to_string(), Action::SortByDate);
-        normal_mode.insert("s+e".to_string(), Action::SortByExtension);
+        // Sorting
+        normal_mode.insert("S".to_string(), Action::CycleSortMode);
         
         // Search and filter
         normal_mode.insert("/".to_string(), Action::StartSearch);
+        normal_mode.insert("F".to_string(), Action::StartSearch);
         normal_mode.insert("Ctrl+f".to_string(), Action::StartSearch);
-        normal_mode.insert("f".to_string(), Action::FileMaskFilter);
+        normal_mode.insert(":".to_string(), Action::FileMaskFilter);
         normal_mode.insert("Ctrl+k".to_string(), Action::ClearSearchFilter);
         normal_mode.insert("Escape".to_string(), Action::Quit);
         
+        // Refresh
+        normal_mode.insert("F5".to_string(), Action::Refresh);
+        
         // Tab management
         normal_mode.insert("Ctrl+n".to_string(), Action::NewTab);
+        normal_mode.insert("Alt+Z".to_string(), Action::NewTab);
         normal_mode.insert("Ctrl+t".to_string(), Action::TabSelector);
         normal_mode.insert("Ctrl+w".to_string(), Action::CloseTab);
         normal_mode.insert("Ctrl+Right".to_string(), Action::NextTab);
         normal_mode.insert("Ctrl+PageDown".to_string(), Action::NextTab);
+        normal_mode.insert("Alt+L".to_string(), Action::NextTab);
         normal_mode.insert("Ctrl+Left".to_string(), Action::PrevTab);
         normal_mode.insert("Ctrl+PageUp".to_string(), Action::PrevTab);
+        normal_mode.insert("Alt+H".to_string(), Action::PrevTab);
         normal_mode.insert("Ctrl+b".to_string(), Action::TabSelector);
         
         // Registered folders
         normal_mode.insert("Shift+B".to_string(), Action::RegisterCurrentFolder);
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("G".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("Shift+F".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("Shift+M".to_string(), Action::MoveToRegisteredFolder);
         
         // Miscellaneous
-        normal_mode.insert("Shift+Q".to_string(), Action::Quit);
-        normal_mode.insert("Shift+/".to_string(), Action::Help);
+        normal_mode.insert("Q".to_string(), Action::Quit);
+        normal_mode.insert("Shift+Q".to_string(), Action::ExitAndChangeDirectory);
+        normal_mode.insert("?".to_string(), Action::Help);
         normal_mode.insert("F1".to_string(), Action::Help);
-        normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
+        normal_mode.insert("Alt+J".to_string(), Action::JobManager);
+        normal_mode.insert("Ctrl+Shift+Right".to_string(), Action::JobManager);
         normal_mode.insert("H".to_string(), Action::CalculateDirectorySize);
         
         Self {
@@ -107,6 +118,15 @@ impl KeyBindings {
             pending_sequence: None,
         }
     }
+}
+
+impl Default for KeyBindings {
+    fn default() -> Self {
+        Self::twf_defaults()
+    }
+}
+
+impl KeyBindings {
     
     /// Load key bindings from a JSON file
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
@@ -185,11 +205,16 @@ pub enum Action {
     CursorRight,
     CursorHome,
     CursorEnd,
+    MoveCursorToFirst,
+    MoveCursorToLast,
     PageUp,
     PageDown,
     EnterDirectory,
     ParentDirectory,
+    NavigateToParent,
     SwitchPane,
+    SwitchToLeftPane,
+    SwitchToRightPane,
     HistoryBack,
     HistoryForward,
     
@@ -205,6 +230,7 @@ pub enum Action {
     ToggleMark,
     MarkAll,
     UnmarkAll,
+    ClearMarks,
     WildcardMarking,
     RangeMarking,
     InvertMarks,
@@ -214,6 +240,7 @@ pub enum Action {
     SortBySize,
     SortByDate,
     SortByExtension,
+    CycleSortMode,
     
     // Search and Filter
     StartSearch,
@@ -242,6 +269,7 @@ pub enum Action {
     
     // Miscellaneous
     Quit,
+    ExitAndChangeDirectory,
     Help,
     JobManager,
     CalculateDirectorySize,
@@ -253,7 +281,7 @@ pub enum Action {
 /// Format a key event as a string for key binding lookup
 pub fn format_key_event(event: &KeyEvent) -> String {
     let mut parts = Vec::new();
-    
+
     if event.modifiers.contains(KeyModifiers::CONTROL) {
         parts.push("Ctrl");
     }
@@ -263,10 +291,13 @@ pub fn format_key_event(event: &KeyEvent) -> String {
     if event.modifiers.contains(KeyModifiers::ALT) {
         parts.push("Alt");
     }
-    
+
     let key = match event.code {
         KeyCode::Char(c) => {
-            if event.modifiers.contains(KeyModifiers::SHIFT) && c.is_ascii_lowercase() {
+            // Handle space specially to match key binding format
+            if c == ' ' {
+                "Space".to_string()
+            } else if event.modifiers.contains(KeyModifiers::SHIFT) && c.is_ascii_lowercase() {
                 c.to_ascii_uppercase().to_string()
             } else {
                 c.to_string()
@@ -287,10 +318,11 @@ pub fn format_key_event(event: &KeyEvent) -> String {
         KeyCode::F(n) => format!("F{}", n),
         _ => return String::new(),
     };
-    
+
     parts.push(&key);
     parts.join("+")
 }
+
 
 /// Map an action to state transitions
 pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transition> {
@@ -307,7 +339,19 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             pane: state.ui.active_pane,
             position: 0,
         }],
+        Action::MoveCursorToFirst => vec![Transition::CursorJump {
+            pane: state.ui.active_pane,
+            position: 0,
+        }],
         Action::CursorEnd => {
+            let pane = state.active_pane();
+            let last = pane.entries.len().saturating_sub(1);
+            vec![Transition::CursorJump {
+                pane: state.ui.active_pane,
+                position: last,
+            }]
+        }
+        Action::MoveCursorToLast => {
             let pane = state.active_pane();
             let last = pane.entries.len().saturating_sub(1);
             vec![Transition::CursorJump {
@@ -324,10 +368,29 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             delta: 20,
         }],
         Action::SwitchPane => vec![Transition::SwitchPane],
+        Action::SwitchToLeftPane => {
+            // Only switch if not already on left pane
+            if state.ui.active_pane != crate::model::ActivePane::Left {
+                vec![Transition::SwitchPane]
+            } else {
+                vec![]
+            }
+        }
+        Action::SwitchToRightPane => {
+            // Only switch if not already on right pane
+            if state.ui.active_pane != crate::model::ActivePane::Right {
+                vec![Transition::SwitchPane]
+            } else {
+                vec![]
+            }
+        }
         Action::EnterDirectory => {
             if let Some(entry) = state.active_pane().current_entry() {
+                debug!("EnterDirectory: entry = {}, is_dir = {}", entry.name, entry.is_dir);
+                
                 if entry.is_dir {
                     // Enter directory
+                    debug!("EnterDirectory: entering directory {}", entry.location.display_path());
                     vec![Transition::ChangeLocation {
                         pane: state.ui.active_pane,
                         location: entry.location.clone(),
@@ -337,6 +400,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     use crate::backend::ZipArchiveHandler;
                     let handler = ZipArchiveHandler::new();
                     if handler.is_archive(&entry.name) {
+                        debug!("EnterDirectory: entering archive {}", entry.name);
                         // Enter archive as virtual folder
                         let archive_location = Location::Archive {
                             archive_path: Box::new(entry.location.clone()),
@@ -347,6 +411,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                             location: archive_location,
                         }]
                     } else {
+                        debug!("EnterDirectory: not a directory or archive, ignoring");
                         vec![]
                     }
                 }
@@ -355,6 +420,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }
         }
         Action::ParentDirectory => vec![Transition::NavigateUp {
+            pane: state.ui.active_pane,
+        }],
+        Action::NavigateToParent => vec![Transition::NavigateUp {
             pane: state.ui.active_pane,
         }],
         Action::HistoryBack => vec![Transition::NavigateHistory {
@@ -382,6 +450,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::MarkAll => vec![Transition::MarkAll],
         Action::UnmarkAll => vec![Transition::UnmarkAll],
+        Action::ClearMarks => vec![Transition::UnmarkAll],
+        Action::InvertMarks => vec![Transition::InvertMarks],
         Action::WildcardMarking => {
             // Show wildcard marking dialog
             vec![Transition::ShowDialog {
@@ -405,7 +475,6 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 vec![Transition::EnterRangeMarkingMode]
             }
         }
-        Action::InvertMarks => vec![Transition::InvertMarks],
         Action::SortByName => vec![Transition::ChangeSortMode {
             pane: state.ui.active_pane,
             mode: crate::model::SortMode::Name,
@@ -422,6 +491,20 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             pane: state.ui.active_pane,
             mode: crate::model::SortMode::Extension,
         }],
+        Action::CycleSortMode => {
+            // Cycle through sort modes: Name -> Size -> Date -> Extension -> Name
+            let current_mode = state.active_pane().sort_mode;
+            let next_mode = match current_mode {
+                crate::model::SortMode::Name => crate::model::SortMode::Size,
+                crate::model::SortMode::Size => crate::model::SortMode::Date,
+                crate::model::SortMode::Date => crate::model::SortMode::Extension,
+                crate::model::SortMode::Extension => crate::model::SortMode::Name,
+            };
+            vec![Transition::ChangeSortMode {
+                pane: state.ui.active_pane,
+                mode: next_mode,
+            }]
+        }
         Action::NewTab => vec![Transition::CreateTab],
         Action::CloseTab => vec![Transition::CloseTab {
             index: state.tabs.active_index,
@@ -691,6 +774,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 vec![Transition::Quit]
             }
         }
+        Action::ExitAndChangeDirectory => {
+            vec![Transition::ExitAndChangeDirectory]
+        }
         Action::Help => {
             // Show help dialog with all key bindings
             vec![Transition::ShowDialog {
@@ -720,6 +806,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             }
+        }
+        Action::Refresh => {
+            // Refresh the current pane by clearing cache and reloading directory
+            vec![Transition::Refresh {
+                pane: state.ui.active_pane,
+            }]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

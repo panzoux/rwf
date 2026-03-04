@@ -22,10 +22,12 @@ anyhow = "1.0"
 # Utilities
 regex = "1.11"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
+time = { version = "0.3", features = ["local-offset", "formatting"] }
+dirs = "5.0"
 
 # Existing dependencies
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 chrono = "0.4"
 
 # Property-based testing

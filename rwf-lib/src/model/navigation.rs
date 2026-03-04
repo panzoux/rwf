@@ -11,6 +11,12 @@ pub struct NavigationHistory {
     pub right_pos: usize,
 }
 
+impl Default for NavigationHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NavigationHistory {
     pub fn new() -> Self {
         Self {

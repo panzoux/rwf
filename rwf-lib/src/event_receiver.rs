@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_map_started_event() {
-        let job_id = JobId(42);
+        let job_id = JobId::new();
         let event = JobEvent::Started(job_id);
         
         let transition = map_job_event_to_transition(event);
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_map_progress_event() {
-        let job_id = JobId(42);
+        let job_id = JobId::new();
         let event = JobEvent::Progress(job_id, 0.5);
         
         let transition = map_job_event_to_transition(event);
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn test_map_completed_event() {
-        let job_id = JobId(42);
+        let job_id = JobId::new();
         let event = JobEvent::Completed(job_id, SuccessData::None);
         
         let transition = map_job_event_to_transition(event);
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_map_failed_event() {
-        let job_id = JobId(42);
+        let job_id = JobId::new();
         let error = "Test error".to_string();
         let event = JobEvent::Failed(job_id, error.clone());
         
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_map_cancelled_event() {
-        let job_id = JobId(42);
+        let job_id = JobId::new();
         let event = JobEvent::Cancelled(job_id);
         
         let transition = map_job_event_to_transition(event);

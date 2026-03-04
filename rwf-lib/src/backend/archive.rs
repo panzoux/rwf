@@ -381,7 +381,7 @@ impl ZipArchiveHandler {
                             .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
                         
                         // Add the directory entry itself
-                        zip.add_directory(&format!("{}/", dir_name), options)?;
+                        zip.add_directory(format!("{}/", dir_name), options)?;
                         
                         // Add contents with the directory as base
                         self.add_dir_contents_to_zip(&mut zip, path, dir_name, &options, cancel_token).await?;
@@ -486,7 +486,7 @@ impl ZipArchiveHandler {
                 
                 if path.is_dir() {
                     // Add directory entry with trailing slash
-                    zip.add_directory(&format!("{}/", name), *options)?;
+                    zip.add_directory(format!("{}/", name), *options)?;
                     // Recursively add contents
                     self.add_dir_contents_to_zip(zip, &path, &name, options, cancel_token).await?;
                 } else {

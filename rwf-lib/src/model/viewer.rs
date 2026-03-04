@@ -83,7 +83,7 @@ impl ViewerState {
 
     /// Get the number of lines in hex mode (16 bytes per line)
     pub fn hex_line_count(&self) -> usize {
-        (self.contents.len() + 15) / 16
+        self.contents.len().div_ceil(16)
     }
 
     /// Get a hex line at the given index
@@ -113,7 +113,7 @@ impl ViewerState {
         // Format ASCII representation
         let ascii_str: String = bytes.iter()
             .map(|&b| {
-                if b >= 32 && b <= 126 {
+                if (32..=126).contains(&b) {
                     b as char
                 } else {
                     '.'

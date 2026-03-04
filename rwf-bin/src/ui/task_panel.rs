@@ -4,31 +4,27 @@
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem},
+    widgets::{List, ListItem},
     Frame,
 };
 use rwf_lib::AppState;
+use super::parse_color;
 
 /// Render the task panel
 pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Tasks ")
-        .border_style(Style::default().fg(Color::Gray));
-
-    let inner_area = block.inner(area);
-    frame.render_widget(block, area);
-
+    // NO BORDER - render directly to area
+    let colors = &state.config.display.colors;
+    
     let mut items = Vec::new();
 
     // Show queued jobs
     for spec in &state.jobs.queue {
         let job_desc = format_job_kind(&spec.kind);
         let line = Line::from(vec![
-            Span::styled("[QUEUED] ", Style::default().fg(Color::Yellow)),
-            Span::styled(job_desc, Style::default().fg(Color::White)),
+            Span::styled("[QUEUED] ", Style::default().fg(parse_color(&colors.warning_color))),
+            Span::styled(job_desc, Style::default().fg(parse_color(&colors.foreground_color))),
         ]);
         items.push(ListItem::new(line));
     }
@@ -49,10 +45,10 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         );
         
         let line = Line::from(vec![
-            Span::styled("[RUNNING] ", Style::default().fg(Color::Cyan)),
-            Span::styled(job_desc, Style::default().fg(Color::White)),
+            Span::styled("[RUNNING] ", Style::default().fg(parse_color(&colors.directory_color))),
+            Span::styled(job_desc, Style::default().fg(parse_color(&colors.foreground_color))),
             Span::raw(" "),
-            Span::styled(progress_bar, Style::default().fg(Color::Green)),
+            Span::styled(progress_bar, Style::default().fg(parse_color(&colors.ok_color))),
         ]);
         items.push(ListItem::new(line));
     }
@@ -78,18 +74,18 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         let job_desc = format_job_kind(&result.kind);
         let status = match &result.result {
             rwf_lib::job::OpResult::Success(_) => {
-                Span::styled("[DONE] ", Style::default().fg(Color::Green))
+                Span::styled("[DONE] ", Style::default().fg(parse_color(&colors.ok_color)))
             }
             rwf_lib::job::OpResult::Failed(err) => {
-                Span::styled(format!("[FAILED: {}] ", err), Style::default().fg(Color::Red))
+                Span::styled(format!("[FAILED: {}] ", err), Style::default().fg(parse_color(&colors.error_color)))
             }
             rwf_lib::job::OpResult::Cancelled => {
-                Span::styled("[CANCELLED] ", Style::default().fg(Color::DarkGray))
+                Span::styled("[CANCELLED] ", Style::default().fg(parse_color(&colors.foreground_color)))
             }
         };
         let line = Line::from(vec![
             status,
-            Span::styled(job_desc, Style::default().fg(Color::Gray)),
+            Span::styled(job_desc, Style::default().fg(parse_color(&colors.foreground_color))),
         ]);
         items.push(ListItem::new(line));
     }
@@ -98,13 +94,13 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
     if items.is_empty() {
         let empty_msg = Line::from(Span::styled(
             "No active tasks",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(parse_color(&colors.foreground_color)),
         ));
         items.push(ListItem::new(empty_msg));
     }
 
     let list = List::new(items);
-    frame.render_widget(list, inner_area);
+    frame.render_widget(list, area);
 }
 
 /// Format job kind as a human-readable string

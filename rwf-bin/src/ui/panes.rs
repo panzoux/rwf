@@ -4,12 +4,13 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{List, ListItem, Paragraph},
     Frame,
 };
-use rwf_lib::{model::ActivePane, AppState, FileEntry};
+use rwf_lib::{model::ActivePane, AppState, FileEntry, config::ColorScheme};
+use super::parse_color;
 
 /// Render both panes side by side
 pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -20,6 +21,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         .split(area);
 
     let tab = state.current_tab();
+    let colors = &state.config.display.colors;
 
     // Render left pane
     render_pane(
@@ -28,6 +30,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         &tab.left_pane,
         state.ui.active_pane == ActivePane::Left,
         &state.marking,
+        colors,
     );
 
     // Render right pane
@@ -37,6 +40,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         &tab.right_pane,
         state.ui.active_pane == ActivePane::Right,
         &state.marking,
+        colors,
     );
 }
 
@@ -47,68 +51,62 @@ fn render_pane(
     pane: &rwf_lib::model::PaneModel,
     is_active: bool,
     marking: &rwf_lib::model::MarkingModel,
+    colors: &ColorScheme,
 ) {
-    // Create border with active indicator
-    let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let title = format!(" {} ", pane.current_location.display_path());
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(border_style)
-        .title(title);
-
-    let inner_area = block.inner(area);
-    frame.render_widget(block, area);
-
+    // NO BORDERS - render directly to area
+    
     // If no entries, show empty message
     if pane.entries.is_empty() {
         let empty_msg = Paragraph::new("(empty directory)")
-            .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(empty_msg, inner_area);
+            .style(Style::default().fg(parse_color(&colors.foreground_color)));
+        frame.render_widget(empty_msg, area);
         return;
     }
 
     // Render based on display mode
     match pane.display_mode {
         rwf_lib::model::DisplayMode::Detailed => {
-            render_detailed_mode(frame, inner_area, pane, marking);
+            render_detailed_mode(frame, area, pane, marking, colors, is_active);
         }
         rwf_lib::model::DisplayMode::Columns(cols) => {
-            render_column_mode(frame, inner_area, pane, marking, cols);
+            render_column_mode(frame, area, pane, marking, cols, colors, is_active);
         }
     }
 }
 
-/// Create a list item for a file entry
-fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool) -> ListItem<'static> {
+/// Create a list item for a file entry with selection indicator
+fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool) -> ListItem<'static> {
     let mut style = Style::default();
 
     // Apply cursor highlighting
     if is_cursor {
-        style = style.bg(Color::Cyan).fg(Color::Black);
+        style = style
+            .bg(parse_color(&colors.highlight_background_color))
+            .fg(parse_color(&colors.highlight_foreground_color));
     }
 
     // Apply directory coloring
     if entry.is_dir {
         style = style.fg(if is_cursor {
-            Color::Black
+            parse_color(&colors.highlight_foreground_color)
+        } else if is_active {
+            parse_color(&colors.directory_color)
         } else {
-            Color::LightCyan
+            parse_color(&colors.inactive_directory_color)
         });
     }
 
     // Apply marked file coloring
     if is_marked {
         style = style.fg(if is_cursor {
-            Color::Black
+            parse_color(&colors.highlight_foreground_color)
         } else {
-            Color::Yellow
+            parse_color(&colors.marked_file_color)
         });
     }
+
+    // Selection indicator: "*" for marked files, " " for others
+    let indicator = if is_marked { "*" } else { " " };
 
     // Format the entry
     let name = if entry.is_dir {
@@ -117,13 +115,19 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool) -> List
         entry.name.clone()
     };
 
-    let size = format_size(entry.size);
+    let size = if entry.is_dir {
+        "<DIR>".to_string()
+    } else {
+        format_size(entry.size)
+    };
     let date = format_date(&entry.modified);
 
-    // Create line with name, size, and date
+    // Create line with indicator, name, size, and date
+    // Format: "*info/   <DIR> 9999-12-31 21:47"
     let line = Line::from(vec![
+        Span::styled(indicator, style),
         Span::styled(
-            format!("{:<30}", truncate_string(&name, 30)),
+            format!("{:<29}", truncate_string(&name, 29)),
             style,
         ),
         Span::styled(format!("{:>10}", size), style),
@@ -139,6 +143,8 @@ fn render_detailed_mode(
     area: Rect,
     pane: &rwf_lib::model::PaneModel,
     marking: &rwf_lib::model::MarkingModel,
+    colors: &ColorScheme,
+    is_active: bool,
 ) {
     // Calculate visible range
     let visible_height = area.height as usize;
@@ -154,7 +160,7 @@ fn render_detailed_mode(
             let is_cursor = global_idx == pane.cursor;
             let is_marked = marking.is_marked(&entry.location);
 
-            create_list_item(entry, is_cursor, is_marked)
+            create_list_item(entry, is_cursor, is_marked, colors, is_active)
         })
         .collect();
 
@@ -170,8 +176,10 @@ fn render_column_mode(
     pane: &rwf_lib::model::PaneModel,
     marking: &rwf_lib::model::MarkingModel,
     columns: u8,
+    colors: &ColorScheme,
+    is_active: bool,
 ) {
-    let columns = columns.max(1).min(8) as usize;
+    let columns = columns.clamp(1, 8) as usize;
     
     // Calculate visible range
     let visible_height = area.height as usize;
@@ -203,26 +211,33 @@ fn render_column_mode(
                 
                 // Apply cursor highlighting
                 if is_cursor {
-                    style = style.bg(Color::Cyan).fg(Color::Black);
+                    style = style
+                        .bg(parse_color(&colors.highlight_background_color))
+                        .fg(parse_color(&colors.highlight_foreground_color));
                 }
                 
                 // Apply directory coloring
                 if entry.is_dir {
                     style = style.fg(if is_cursor {
-                        Color::Black
+                        parse_color(&colors.highlight_foreground_color)
+                    } else if is_active {
+                        parse_color(&colors.directory_color)
                     } else {
-                        Color::LightCyan
+                        parse_color(&colors.inactive_directory_color)
                     });
                 }
                 
                 // Apply marked file coloring
                 if is_marked {
                     style = style.fg(if is_cursor {
-                        Color::Black
+                        parse_color(&colors.highlight_foreground_color)
                     } else {
-                        Color::Yellow
+                        parse_color(&colors.marked_file_color)
                     });
                 }
+                
+                // Selection indicator
+                let indicator = if is_marked { "*" } else { " " };
                 
                 // Format the entry name
                 let name = if entry.is_dir {
@@ -231,8 +246,8 @@ fn render_column_mode(
                     entry.name.clone()
                 };
                 
-                let truncated = truncate_string(&name, col_width.saturating_sub(1));
-                let padded = format!("{:<width$}", truncated, width = col_width.saturating_sub(1));
+                let truncated = truncate_string(&name, col_width.saturating_sub(2));
+                let padded = format!("{}{:<width$}", indicator, truncated, width = col_width.saturating_sub(2));
                 
                 spans.push(Span::styled(padded, style));
                 spans.push(Span::raw(" "));

@@ -1104,20 +1104,20 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Document configuration schema
     - _Requirements: All requirements_
 
-- [ ] 45. Bug fixes and refinements
-  - [ ] 45.1 Fix any remaining bugs
+- [x] 45. Bug fixes and refinements
+  - [x] 45.1 Fix any remaining bugs
     - Address issues found during testing
     - Fix edge cases
     - Improve error messages
     - _Requirements: All requirements_
   
-  - [ ] 45.2 Polish UI and UX
+  - [x] 45.2 Polish UI and UX
     - Improve visual feedback
     - Refine dialog layouts
     - Optimize color schemes
     - _Requirements: 23.1-23.5, 39.1-39.10_
   
-  - [ ] 45.3 Final testing pass
+  - [x] 45.3 Final testing pass
     - Manual testing of all features
     - Verify all requirements met
     - Test on multiple platforms
@@ -1362,6 +1362,63 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
 
 - [ ] 56. Final checkpoint - All features complete
   - Ensure all tests pass, verify all 48 requirements are met, ask the user if questions arise.
+
+- [ ] 57. Major UI restructuring to match TWF layout
+  - [ ] 57.1 Fix scrolling logic in state.rs CursorMove transition
+    - Only scroll if entries.len() > visible_height
+    - When at bottom, scroll_offset should be max(0, entries.len() - visible_height)
+    - No blank lines below last entry
+    - _Requirements: 2.8, 21.4_
+  
+  - [ ] 57.2 Restructure main UI layout in ui.rs
+    - New layout: Tabs (1 line) → Path line (1 line) → Volume name line (1 line) → File panes (Min 10) → Pane info line (1 line) → Selected filename line (1 line) → Task view (5 lines, no border)
+    - Remove borders from file panes
+    - Remove borders from task panel
+    - _Requirements: 1.1, 1.2, 16.1-16.7_
+  
+  - [ ] 57.3 Create path_line.rs component
+    - Display left and right pane paths side by side
+    - Show ">" indicator for active pane
+    - White text on blue background
+    - _Requirements: 16.1_
+  
+  - [ ] 57.4 Create volume_line.rs component
+    - Display volume names for both panes
+    - Show drive letters on Windows
+    - Cyan text on dark gray background
+    - _Requirements: 39.1, 39.2_
+  
+  - [ ] 57.5 Create pane_info_line.rs component
+    - Display directory/file counts for both panes
+    - Show total size of files
+    - White text on dark gray background
+    - _Requirements: 16.2, 16.3, 16.4_
+  
+  - [ ] 57.6 Update panes.rs to remove borders
+    - Remove Block wrapper
+    - Add "*" selection indicator instead of highlighting
+    - Render list items directly without borders
+    - _Requirements: 1.1, 1.4, 4.6_
+  
+  - [ ] 57.7 Update task_panel.rs to remove border
+    - Render task list directly without border
+    - _Requirements: 15.2, 15.3_
+  
+  - [ ] 57.8 Delete obsolete UI components
+    - Delete top_separator.rs (replaced by path_line and volume_line)
+    - Delete status_bar.rs (replaced by pane_info_line)
+    - _Requirements: N/A_
+  
+  - [ ] 57.9 Update ui.rs module exports
+    - Export new components (path_line, volume_line, pane_info_line)
+    - Remove obsolete exports (top_separator, status_bar)
+    - _Requirements: N/A_
+  
+  - [ ] 57.10 Test UI restructuring
+    - Verify scrolling works correctly without blank lines
+    - Verify all UI components render properly
+    - Verify layout matches TWF exactly
+    - _Requirements: 1.1-1.6, 2.8, 16.1-16.7_
 
 
 ## Notes

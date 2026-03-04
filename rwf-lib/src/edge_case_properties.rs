@@ -226,7 +226,7 @@ mod tests {
     /// and not cause any state corruption.
     #[test]
     fn prop_invalid_job_cancellation() {
-        proptest!(|(invalid_id in 1000u64..10000u64)| {
+        proptest!(|(_invalid_id in 1000u64..10000u64)| {
             let mut manager = JobManager::new(4);
             
             // Enqueue a few jobs
@@ -238,8 +238,8 @@ mod tests {
             
             let initial_queue_len = manager.queue.len();
             
-            // Try to cancel a non-existent job
-            let result = manager.request_cancel(crate::job::JobId(invalid_id));
+            // Try to cancel a non-existent job (generate a random UUID that won't match)
+            let result = manager.request_cancel(crate::job::JobId::new());
             
             // Should return false
             prop_assert!(!result, "Cancelling invalid job should return false");

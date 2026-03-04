@@ -72,9 +72,8 @@ pub fn matches_wildcard(filename: &str, pattern: &str) -> bool {
 fn wildcard_to_regex(pattern: &str) -> (String, usize) {
     let mut regex = String::from("^");
     let mut wildcard_count = 0;
-    let mut chars = pattern.chars().peekable();
     
-    while let Some(ch) = chars.next() {
+    for ch in pattern.chars() {
         match ch {
             '*' => {
                 wildcard_count += 1;

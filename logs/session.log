@@ -1,0 +1,463 @@
+2026-03-03T13:03:43.320504Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:03:43.321274Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:03:43.324849Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:03:43.324954Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:03:43.324971Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:03:43.325010Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:03:43.325034Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:03:43.325048Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:03:43.329639Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:03:43.329657Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:03:43.329662Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:03:43.329667Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:03:43.329863Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T13:03:43.335251Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:03:43.336381Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:03:43.361904Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:05:46.341418Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:05:46.341505Z  INFO two_pane_fm::app: Final performance: FPS: 796.2 (avg frame: 1.26ms, max: 1.69ms) | Input: avg 0.01ms, max 0.02ms | Frames: 2727 | Inputs: 165
+2026-03-03T13:05:46.342379Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:05:46.342394Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:05:46.342480Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:05:46.342507Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:05:46.343046Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:05:48.662391Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:05:48.663021Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:05:48.667288Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:05:48.667401Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:05:48.667412Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:05:48.667434Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:05:48.667460Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:05:48.667475Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:05:48.667488Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:05:48.667500Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\$Recycle.Bin
+2026-03-03T13:05:48.667510Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:05:48.667520Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:05:48.667547Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:05:48.670045Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:05:48.701654Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:05:54.237700Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:05:54.263641Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:54.277365Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:54.299029Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:54.325572Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:54.346459Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:57.852803Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:57.872667Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:57.916779Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:06:57.933786Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:07:01.989297Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:07:02.015747Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:07:02.085611Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:07:02.108969Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:07.149311Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:07.178078Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:07.268520Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:07.287233Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:08.356739Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:08.387282Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:08.477483Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T13:09:51.293581Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:51.311140Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:51.357623Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:09:51.388717Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:14:59.257842Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:14:59.257916Z  INFO two_pane_fm::app: Final performance: FPS: 948.0 (avg frame: 1.05ms, max: 1.56ms) | Input: avg 0.01ms, max 0.02ms | Frames: 12030 | Inputs: 342
+2026-03-03T13:14:59.258948Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:14:59.258964Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:14:59.259185Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:14:59.259282Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:14:59.260131Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:15:00.877687Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:15:00.878508Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:15:00.883188Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:15:00.883254Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:15:00.883260Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:15:00.883276Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:15:00.883285Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:15:00.883291Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:00.883297Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:00.883302Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:15:00.883307Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users
+2026-03-03T13:15:00.883311Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:15:00.883328Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T13:15:00.885830Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:15:00.911571Z  INFO two_pane_fm::app: Processed 6 job events
+2026-03-03T13:15:00.922025Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:00.940510Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:06.049614Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:15:06.049658Z  INFO two_pane_fm::app: Final performance: FPS: 900.6 (avg frame: 1.11ms, max: 1.52ms) | Input: avg 0.03ms, max 0.06ms | Frames: 115 | Inputs: 6
+2026-03-03T13:15:06.050342Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:15:06.050381Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:15:06.050478Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:15:06.050537Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:15:06.051308Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:15:07.918350Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:15:07.919213Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:15:07.924231Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:15:07.924298Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:15:07.924303Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:15:07.924314Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:15:07.924326Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:15:07.924333Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:07.924340Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:07.924345Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:15:07.924350Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:15:07.924354Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:15:07.924369Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:07.926754Z  INFO two_pane_fm::app: Processed 5 job events
+2026-03-03T13:15:07.953183Z  INFO two_pane_fm::app: Processed 6 job events
+2026-03-03T13:15:15.674247Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:15:15.674302Z  INFO two_pane_fm::app: Final performance: FPS: 917.0 (avg frame: 1.09ms, max: 1.43ms) | Input: avg 0.01ms, max 0.02ms | Frames: 171 | Inputs: 6
+2026-03-03T13:15:15.675201Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:15:15.675213Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:15:15.675341Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:15:15.675366Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:15:15.675984Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:15:17.022567Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:15:17.023323Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:15:17.026711Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:15:17.026779Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:15:17.026785Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:15:17.026801Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:15:17.026810Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:15:17.026817Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:17.026823Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:17.026829Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:15:17.026834Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:15:17.026839Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:15:17.026857Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T13:15:17.029155Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T13:15:17.050274Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T13:15:43.065674Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:43.082799Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:43.129587Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:43.147074Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:15:45.193980Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:15:45.194045Z  INFO two_pane_fm::app: Final performance: FPS: 961.9 (avg frame: 1.04ms, max: 1.53ms) | Input: avg 0.01ms, max 0.04ms | Frames: 673 | Inputs: 150
+2026-03-03T13:15:45.194992Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:15:45.195008Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:15:45.195197Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:15:45.195272Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:15:45.196207Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:15:46.686634Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:15:46.687521Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:15:46.692998Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:15:46.693073Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:15:46.693080Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:15:46.693092Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:15:46.693102Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:15:46.693108Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:46.693115Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:15:46.693120Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:15:46.693125Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux
+2026-03-03T13:15:46.693129Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:15:46.693662Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:15:46.719807Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T13:15:46.732340Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T13:16:22.954240Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:16:22.954335Z  INFO two_pane_fm::app: Final performance: FPS: 1191.5 (avg frame: 0.84ms, max: 1.15ms) | Input: avg 0.01ms, max 0.07ms | Frames: 840 | Inputs: 89
+2026-03-03T13:16:22.955376Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:16:22.955391Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:16:22.955515Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:16:22.955537Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:16:22.956388Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:16:26.010303Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:16:26.011423Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:16:26.016187Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:16:26.016248Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:16:26.016253Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:16:26.016264Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:16:26.016277Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:16:26.016282Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:16:26.016289Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:16:26.016294Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:16:26.016298Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:16:26.016356Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:16:26.016377Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:16:26.019304Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:16:26.033300Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:16:33.762221Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:16:33.762287Z  INFO two_pane_fm::app: Final performance: FPS: 1323.9 (avg frame: 0.76ms, max: 1.21ms) | Input: avg 0.03ms, max 0.04ms | Frames: 175 | Inputs: 8
+2026-03-03T13:16:33.762964Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:16:33.762975Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:16:33.763058Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:16:33.763083Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:16:33.763669Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:27:07.315334Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:27:07.316022Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:27:07.320598Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:27:07.320681Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:27:07.320692Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:27:07.320720Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:27:07.320779Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:27:07.320791Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:27:07.320798Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:27:07.320804Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:27:07.320813Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:27:07.320819Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:27:07.320855Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:27:07.323412Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:27:07.327000Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:29:51.288071Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:29:51.288176Z  INFO two_pane_fm::app: Final performance: FPS: 1187.3 (avg frame: 0.84ms, max: 1.21ms) | Input: avg 0.02ms, max 0.05ms | Frames: 3602 | Inputs: 17
+2026-03-03T13:29:51.289265Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:29:51.289279Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:29:51.289420Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:29:51.289438Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:29:51.290040Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:29:52.996467Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:29:52.997255Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:29:53.000576Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:29:53.000640Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:29:53.000647Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:29:53.000663Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:29:53.000683Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:29:53.000694Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:29:53.000701Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:29:53.000706Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:29:53.000764Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:29:53.000771Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:29:53.000786Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:29:53.003800Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:29:53.024333Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:43:39.894314Z  WARN two_pane_fm::app: Performance warning: Frame time spike detected: 104.42ms
+2026-03-03T13:45:05.013597Z  WARN two_pane_fm::app: Performance warning: Frame time spike detected: 64.05ms
+2026-03-03T13:45:10.105619Z  WARN two_pane_fm::app: Performance warning: Frame time spike detected: 185.73ms
+2026-03-03T13:45:33.941603Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:45:33.941666Z  INFO two_pane_fm::app: Final performance: FPS: 383.6 (avg frame: 2.61ms, max: 34.15ms) | Input: avg 0.03ms, max 0.04ms | Frames: 21470 | Inputs: 2
+2026-03-03T13:45:33.943627Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:45:33.943665Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:45:33.943880Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:45:33.943904Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:45:33.944405Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:49:29.005434Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:49:29.006394Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:49:29.011723Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:49:29.011790Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:49:29.011797Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:49:29.011809Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:49:29.011840Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:49:29.011850Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:49:29.011857Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:49:29.011863Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:49:29.011869Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:49:29.011873Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:49:29.011888Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:49:29.014121Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:49:29.042648Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:51:40.485576Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:51:40.485638Z  INFO two_pane_fm::app: Final performance: FPS: 931.1 (avg frame: 1.07ms, max: 1.40ms) | Input: avg 0.02ms, max 0.06ms | Frames: 2943 | Inputs: 66
+2026-03-03T13:51:40.486760Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:51:40.486773Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:51:40.486875Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:51:40.486909Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:51:40.487780Z  INFO two_pane_fm: Terminal restored
+2026-03-03T13:53:59.019035Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:53:59.019890Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:53:59.023760Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:53:59.023827Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:53:59.023834Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:53:59.023847Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:53:59.023923Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:53:59.023934Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:53:59.023941Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:53:59.023946Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:53:59.023951Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:53:59.023956Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:53:59.023969Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:53:59.026190Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:53:59.052803Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:54:16.090559Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T13:54:16.091548Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T13:54:16.095066Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T13:54:16.095124Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T13:54:16.095130Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T13:54:16.095140Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T13:54:16.095157Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T13:54:16.095169Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:54:16.095175Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T13:54:16.095180Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T13:54:16.095185Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T13:54:16.095190Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T13:54:16.095206Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T13:54:16.098094Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T13:54:16.129469Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T13:54:24.974212Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T13:54:24.974278Z  INFO two_pane_fm::app: Final performance: FPS: 1123.8 (avg frame: 0.89ms, max: 1.15ms) | Input: avg 0.02ms, max 0.03ms | Frames: 197 | Inputs: 8
+2026-03-03T13:54:24.975095Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T13:54:24.975109Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T13:54:24.975209Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T13:54:24.975231Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T13:54:24.975822Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:00:05.979624Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:00:05.980483Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:00:05.984014Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:00:05.984078Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:00:05.984085Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:00:05.984095Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:00:05.984110Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:00:05.984123Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:00:05.984129Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:00:05.984189Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:00:05.984197Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:00:05.984203Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:00:05.984223Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:00:06.013829Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T14:00:47.544131Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:00:47.544921Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:00:47.549246Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:00:47.549312Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:00:47.549319Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:00:47.549333Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:00:47.549357Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:00:47.549365Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:00:47.549377Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:00:47.549382Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:00:47.549387Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:00:47.549392Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:00:47.549410Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:00:47.552446Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T14:00:47.581790Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:00:56.989540Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T14:00:58.485505Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:00:58.503490Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:02:19.925048Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:02:19.925106Z  INFO two_pane_fm::app: Final performance: FPS: 901.6 (avg frame: 1.11ms, max: 1.43ms) | Input: avg 0.05ms, max 0.57ms | Frames: 2027 | Inputs: 18
+2026-03-03T14:02:19.926119Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:02:19.926130Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:02:19.926235Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:02:19.926251Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:02:19.926823Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:02:43.137765Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:02:43.138988Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:02:43.143089Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:02:43.143157Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:02:43.143164Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:02:43.143178Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:02:43.143197Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:02:43.143204Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:02:43.143211Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:02:43.143216Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:02:43.143221Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:02:43.143225Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:02:43.143286Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:02:43.146077Z  INFO two_pane_fm::app: Processed 7 job events
+2026-03-03T14:02:43.166391Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:02:43.204560Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:02:43.225940Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:03:08.732749Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:03:08.737768Z  INFO two_pane_fm::app: Final performance: FPS: 848.7 (avg frame: 1.18ms, max: 1.44ms) | Input: avg 0.04ms, max 0.07ms | Frames: 570 | Inputs: 2
+2026-03-03T14:03:08.738888Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:03:08.738903Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:03:08.738984Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:03:08.738992Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:03:08.739535Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:03:22.566694Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:03:22.567966Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:03:22.572886Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:03:22.572950Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:03:22.572957Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:03:22.572969Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:03:22.572988Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:03:22.572995Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:03:22.573001Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:03:22.573006Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:03:22.573011Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:03:22.573016Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:03:22.573035Z  INFO two_pane_fm::app: Processed 1 job events
+2026-03-03T14:03:22.580666Z  INFO two_pane_fm::app: Processed 11 job events
+2026-03-03T14:03:49.788482Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:03:49.788528Z  INFO two_pane_fm::app: Final performance: FPS: 1243.8 (avg frame: 0.80ms, max: 1.16ms) | Input: avg 0.03ms, max 0.38ms | Frames: 610 | Inputs: 22
+2026-03-03T14:03:49.789217Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:03:49.789229Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:03:49.789338Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:03:49.789374Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:03:49.789869Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:04:47.384197Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:04:47.384983Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:04:47.388801Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:04:47.388868Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:04:47.388875Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:04:47.388885Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:04:47.388900Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:04:47.388913Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:04:47.388920Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:04:47.388925Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:04:47.388992Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:04:47.389000Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:04:47.389017Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T14:04:47.392320Z  INFO two_pane_fm::app: Processed 6 job events
+2026-03-03T14:04:47.411327Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:04:56.900344Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:04:56.900421Z  INFO two_pane_fm::app: Final performance: FPS: 1125.2 (avg frame: 0.89ms, max: 1.17ms) | Input: avg 0.02ms, max 0.03ms | Frames: 212 | Inputs: 2
+2026-03-03T14:04:56.901427Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:04:56.901446Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:04:56.901524Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:04:56.901542Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:04:56.902001Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:04:59.343116Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:04:59.343909Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:04:59.347626Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:04:59.347689Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:04:59.347696Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:04:59.347708Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:04:59.347727Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:04:59.347737Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:04:59.347747Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:04:59.347752Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:04:59.347757Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:04:59.347761Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:04:59.348152Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:04:59.374707Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T14:06:55.364427Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:06:55.364501Z  INFO two_pane_fm::app: Final performance: FPS: 1159.2 (avg frame: 0.86ms, max: 1.24ms) | Input: avg 0.03ms, max 0.05ms | Frames: 2572 | Inputs: 3
+2026-03-03T14:06:55.365392Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:06:55.365403Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:06:55.365499Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:06:55.365528Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:06:55.366239Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:07:01.817055Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:07:01.818082Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:07:01.822683Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:07:01.822759Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:07:01.822766Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:07:01.822784Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:07:01.822803Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:07:01.822815Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:07:01.822822Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:07:01.822970Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:07:01.822979Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:07:01.822984Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:07:01.823159Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:07:01.825287Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:07:01.847295Z  INFO two_pane_fm::app: Processed 4 job events
+2026-03-03T14:07:19.611355Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:07:19.611431Z  INFO two_pane_fm::app: Final performance: FPS: 1197.8 (avg frame: 0.83ms, max: 1.17ms) | Input: avg 0.03ms, max 0.04ms | Frames: 394 | Inputs: 3
+2026-03-03T14:07:19.612407Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:07:19.612424Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:07:19.612522Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:07:19.612537Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:07:19.613111Z  INFO two_pane_fm: Terminal restored
+2026-03-03T14:15:07.275594Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T14:15:07.276320Z  INFO two_pane_fm: Terminal initialized
+2026-03-03T14:15:07.280493Z  INFO two_pane_fm: Application state initialized with session restoration
+2026-03-03T14:15:07.280559Z  INFO two_pane_fm::app: Starting main application loop
+2026-03-03T14:15:07.280566Z  INFO two_pane_fm::app: Triggering initial directory reads for all panes
+2026-03-03T14:15:07.280581Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T14:15:07.280602Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T14:15:07.280609Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:15:07.280616Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T14:15:07.280621Z  INFO two_pane_fm::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T14:15:07.280626Z  INFO two_pane_fm::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T14:15:07.280631Z  INFO two_pane_fm::app: Initial directory read jobs submitted
+2026-03-03T14:15:07.280647Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T14:15:07.283089Z  INFO two_pane_fm::app: Processed 2 job events
+2026-03-03T14:15:07.306530Z  INFO two_pane_fm::app: Processed 8 job events
+2026-03-03T14:16:04.259096Z  INFO two_pane_fm::app: Application quit requested
+2026-03-03T14:16:04.259165Z  INFO two_pane_fm::app: Final performance: FPS: 1318.8 (avg frame: 0.76ms, max: 1.25ms) | Input: avg 0.02ms, max 0.04ms | Frames: 1279 | Inputs: 3
+2026-03-03T14:16:04.260053Z  INFO two_pane_fm::app: Session state saved successfully
+2026-03-03T14:16:04.260074Z  INFO two_pane_fm::app: Shutting down worker pool...
+2026-03-03T14:16:04.260186Z  INFO rwf_lib::worker_pool: Worker pool shut down
+2026-03-03T14:16:04.260204Z  INFO two_pane_fm::app: Worker pool shut down
+2026-03-03T14:16:04.260599Z  INFO two_pane_fm: Terminal restored

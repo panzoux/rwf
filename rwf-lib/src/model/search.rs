@@ -22,6 +22,12 @@ pub struct SearchModel {
     migemo_dict: Option<CompactDictionary>,
 }
 
+impl Default for SearchModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchModel {
     pub fn new() -> Self {
         Self {
@@ -156,9 +162,9 @@ impl SearchModel {
     /// Check if entry matches a single pattern
     fn matches_pattern(&self, entry: &FileEntry, pattern: &str) -> bool {
         // Check for regex pattern (/pattern/ or /pattern/i)
-        if pattern.starts_with('/') {
-            if let Some(end_pos) = pattern[1..].rfind('/') {
-                let regex_pattern = &pattern[1..end_pos + 1];
+        if let Some(stripped) = pattern.strip_prefix('/') {
+            if let Some(end_pos) = stripped.rfind('/') {
+                let regex_pattern = &stripped[..end_pos];
                 let case_insensitive = pattern.ends_with("/i");
                 
                 return self.matches_regex(entry, regex_pattern, case_insensitive);

@@ -42,6 +42,8 @@ impl FilesystemBackend for LocalFilesystemBackend {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
+        use tracing::{debug, warn};
+        
         let path = match location {
             Location::Local(path) => path,
             _ => bail!("LocalFilesystemBackend only supports Local locations"),
@@ -51,6 +53,8 @@ impl FilesystemBackend for LocalFilesystemBackend {
         if cancel_token.is_cancelled() {
             bail!("Operation cancelled");
         }
+        
+        debug!("Reading directory: {}", location.display_path());
         
         let mut entries = Vec::new();
         let mut read_dir = tokio::fs::read_dir(path)
@@ -78,6 +82,13 @@ impl FilesystemBackend for LocalFilesystemBackend {
             };
             
             entries.push(file_entry);
+        }
+        
+        debug!("Found {} entries in {}", entries.len(), location.display_path());
+        
+        // Special warning for C:\ with 0 entries
+        if location.display_path() == "C:\\" && entries.is_empty() {
+            warn!("C:\\ returned 0 entries - this may indicate a permissions issue");
         }
         
         Ok(entries)
@@ -503,7 +514,7 @@ impl LocalFilesystemBackend {
                 let size = current_size.fetch_add(metadata.len(), std::sync::atomic::Ordering::Relaxed) + metadata.len();
                 
                 // Report progress every 100 items
-                if items % 100 == 0 {
+                if items.is_multiple_of(100) {
                     progress_callback(items, size);
                 }
             }

@@ -3,10 +3,13 @@
 //! This module handles all UI rendering using ratatui.
 
 mod panes;
-mod status_bar;
 mod tab_bar;
 mod task_panel;
-mod top_separator;
+mod filename_line;
+mod path_line;
+mod volume_line;
+mod pane_info_line;
+mod colors;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -15,24 +18,32 @@ use ratatui::{
 use rwf_lib::AppState;
 
 pub use panes::render_panes;
-pub use status_bar::render_status_bar;
 pub use tab_bar::render_tab_bar;
 pub use task_panel::render_task_panel;
-pub use top_separator::render_top_separator;
+pub use filename_line::render_filename_line;
+pub use path_line::render_path_line;
+pub use volume_line::render_volume_line;
+pub use pane_info_line::render_pane_info_line;
+pub use colors::parse_color;
 
 /// Main UI rendering function
 pub fn render_ui(frame: &mut Frame, state: &AppState) {
     let size = frame.area();
 
-    // Create main layout: tab bar, top separator, panes, task panel, status bar
+    // Create main layout matching TWF exactly:
+    // Tabs (1 line) → Path line (1 line) → Volume name line (1 line) → 
+    // File panes (Min 10, NO BORDERS) → Pane info line (1 line) → 
+    // Selected filename line (1 line) → Task view (5 lines, NO BORDER)
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(if state.ui.layout.show_tab_bar { 1 } else { 0 }),
-            Constraint::Length(1), // Top separator (always shown)
-            Constraint::Min(10), // Panes area
-            Constraint::Length(if state.ui.layout.show_task_panel { 5 } else { 0 }),
-            Constraint::Length(if state.ui.layout.show_status_bar { 1 } else { 0 }),
+            Constraint::Length(if state.ui.layout.show_tab_bar { 1 } else { 0 }), // Tabs
+            Constraint::Length(1), // Path line (left | right)
+            Constraint::Length(1), // Volume name line (left | right)
+            Constraint::Min(10),   // File panes (NO BORDERS)
+            Constraint::Length(1), // Pane info line (left | right)
+            Constraint::Length(1), // Selected filename line
+            Constraint::Length(if state.ui.layout.show_task_panel { 5 } else { 0 }), // Task view (NO BORDER)
         ])
         .split(size);
 
@@ -44,22 +55,28 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
         chunk_idx += 1;
     }
 
-    // Render top separator
-    render_top_separator(frame, chunks[chunk_idx], state);
+    // Render path line
+    render_path_line(frame, chunks[chunk_idx], state);
     chunk_idx += 1;
 
-    // Render panes
+    // Render volume name line
+    render_volume_line(frame, chunks[chunk_idx], state);
+    chunk_idx += 1;
+
+    // Render panes (NO BORDERS)
     render_panes(frame, chunks[chunk_idx], state);
     chunk_idx += 1;
 
-    // Render task panel
+    // Render pane info line
+    render_pane_info_line(frame, chunks[chunk_idx], state);
+    chunk_idx += 1;
+
+    // Render filename line
+    render_filename_line(frame, chunks[chunk_idx], state);
+    chunk_idx += 1;
+
+    // Render task panel (NO BORDER)
     if state.ui.layout.show_task_panel {
         render_task_panel(frame, chunks[chunk_idx], state);
-        chunk_idx += 1;
-    }
-
-    // Render status bar
-    if state.ui.layout.show_status_bar {
-        render_status_bar(frame, chunks[chunk_idx], state);
     }
 }

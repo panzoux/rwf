@@ -12,6 +12,12 @@ pub struct DialogStack {
     pub input_buffer: String,
 }
 
+impl Default for DialogStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DialogStack {
     pub fn new() -> Self {
         Self {
@@ -1460,13 +1466,11 @@ impl RegisteredFolderManager {
     }
 
     /// Expand environment variables in a path string
+    ///
     /// Supports multiple formats:
     /// - Windows: %VAR%
     /// - Unix: $VAR, ${VAR}
     /// - PowerShell: $env:VAR
-    /// Expand environment variables in a path string
-    ///
-    /// Supports multiple formats:
     /// - Windows: %VAR%
     /// - PowerShell: $env:VAR
     /// - Unix with braces: ${VAR}

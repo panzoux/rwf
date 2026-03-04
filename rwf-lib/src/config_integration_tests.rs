@@ -176,7 +176,7 @@ mod tests {
         // Reload config (simulating Shift+Z)
         let loaded_config = manager.load_config().unwrap();
         update_state(&mut state, Transition::UpdateConfig {
-            config: loaded_config,
+            config: Box::new(loaded_config),
         });
         
         assert_eq!(state.config.worker_pool_size, 8);
@@ -263,7 +263,7 @@ mod tests {
         
         let reloaded_config = manager.load_config().unwrap();
         update_state(&mut state, Transition::UpdateConfig {
-            config: reloaded_config,
+            config: Box::new(reloaded_config),
         });
         
         assert_eq!(state.config.worker_pool_size, 8);

@@ -28,7 +28,7 @@ mod tests {
         new_config.session_persistence = false;
         
         let result = update_state(&mut state, Transition::UpdateConfig {
-            config: new_config.clone(),
+            config: Box::new(new_config.clone()),
         });
         
         assert!(result.ui_changed);
@@ -47,7 +47,7 @@ mod tests {
         new_config.worker_pool_size = 6;
         
         update_state(&mut state, Transition::UpdateConfig {
-            config: new_config,
+            config: Box::new(new_config),
         });
         
         assert_eq!(state.jobs.max_parallel, 6);
@@ -78,7 +78,7 @@ mod tests {
         // Reload config
         let loaded_config = manager.load_config().unwrap();
         update_state(&mut state, Transition::UpdateConfig {
-            config: loaded_config,
+            config: Box::new(loaded_config),
         });
         
         assert_eq!(state.config.worker_pool_size, 8);
@@ -98,7 +98,7 @@ mod tests {
         new_config.worker_pool_size = 6;
         
         update_state(&mut state, Transition::UpdateConfig {
-            config: new_config,
+            config: Box::new(new_config),
         });
         
         // Verify state is preserved
@@ -121,7 +121,7 @@ mod tests {
         new_config.display.show_hidden = true;
         
         update_state(&mut state, Transition::UpdateConfig {
-            config: new_config,
+            config: Box::new(new_config),
         });
         
         // Verify config updated without losing state

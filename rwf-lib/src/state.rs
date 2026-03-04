@@ -204,6 +204,7 @@ pub enum Transition {
     
     // UI operations
     ChangeUIMode { mode: crate::model::UIMode },
+    UpdatePaneHeight { height: usize },
     ShowDialog { dialog: crate::model::Dialog },
     CloseDialog,
     UpdateDialogInput { input: String },
@@ -218,7 +219,7 @@ pub enum Transition {
     
     // Configuration
     ReloadConfig,
-    UpdateConfig { config: AppConfig },
+    UpdateConfig { config: Box<AppConfig> },
     
     // Registered folder operations
     RegisterCurrentFolder { name: String },
@@ -343,10 +344,14 @@ pub struct PaneRefresh {
 
 /// Pure function to update state based on transition
 pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdateResult {
+    use tracing::debug;
+    
     match transition {
         // Pane switching
         Transition::SwitchPane => {
+            let old_pane = state.ui.active_pane;
             state.ui.active_pane = state.ui.active_pane.opposite();
+            debug!("SwitchPane transition: {:?} -> {:?}", old_pane, state.ui.active_pane);
             StateUpdateResult::with_ui_change()
         }
         
@@ -430,6 +435,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         
         // Cursor movement
         Transition::CursorMove { pane, delta } => {
+            // Get visible height before mutable borrow
+            let visible_height = state.ui.layout.pane_height;
+            let scroll_margin = 3; // Keep cursor at least 3 lines from edges
+            
             let tab = state.current_tab_mut();
             let pane_model = match pane {
                 crate::model::ActivePane::Left => &mut tab.left_pane,
@@ -442,12 +451,23 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     .min(pane_model.entries.len() as isize - 1) as usize;
                 pane_model.cursor = new_cursor;
                 
-                // Adjust scroll if needed (assuming visible height of 20 for now)
-                let visible_height = 20;
-                if pane_model.cursor < pane_model.scroll_offset {
-                    pane_model.scroll_offset = pane_model.cursor;
-                } else if pane_model.cursor >= pane_model.scroll_offset + visible_height {
-                    pane_model.scroll_offset = pane_model.cursor - visible_height + 1;
+                // Only scroll if we have more entries than visible height
+                if pane_model.entries.len() > visible_height {
+                    // Scroll up if cursor is too close to top
+                    if pane_model.cursor < pane_model.scroll_offset + scroll_margin {
+                        pane_model.scroll_offset = pane_model.cursor.saturating_sub(scroll_margin);
+                    }
+                    // Scroll down if cursor is too close to bottom
+                    else if pane_model.cursor >= pane_model.scroll_offset + visible_height.saturating_sub(scroll_margin) {
+                        // Calculate new scroll offset to keep cursor visible
+                        let new_offset = pane_model.cursor + scroll_margin + 1 - visible_height;
+                        // But don't scroll past the end (no blank lines)
+                        let max_offset = pane_model.entries.len().saturating_sub(visible_height);
+                        pane_model.scroll_offset = new_offset.min(max_offset);
+                    }
+                } else {
+                    // If all entries fit, no scrolling needed
+                    pane_model.scroll_offset = 0;
                 }
             }
             
@@ -455,6 +475,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::CursorJump { pane, position } => {
+            // Get visible height before mutable borrow
+            let visible_height = state.ui.layout.pane_height;
+            let scroll_margin = 3;
+            
             let tab = state.current_tab_mut();
             let pane_model = match pane {
                 crate::model::ActivePane::Left => &mut tab.left_pane,
@@ -464,12 +488,23 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             if !pane_model.entries.is_empty() {
                 pane_model.cursor = position.min(pane_model.entries.len() - 1);
                 
-                // Adjust scroll if needed
-                let visible_height = 20;
-                if pane_model.cursor < pane_model.scroll_offset {
-                    pane_model.scroll_offset = pane_model.cursor;
-                } else if pane_model.cursor >= pane_model.scroll_offset + visible_height {
-                    pane_model.scroll_offset = pane_model.cursor - visible_height + 1;
+                // Only scroll if we have more entries than visible height
+                if pane_model.entries.len() > visible_height {
+                    // Scroll up if cursor is too close to top
+                    if pane_model.cursor < pane_model.scroll_offset + scroll_margin {
+                        pane_model.scroll_offset = pane_model.cursor.saturating_sub(scroll_margin);
+                    }
+                    // Scroll down if cursor is too close to bottom
+                    else if pane_model.cursor >= pane_model.scroll_offset + visible_height.saturating_sub(scroll_margin) {
+                        // Calculate new scroll offset to keep cursor visible
+                        let new_offset = pane_model.cursor + scroll_margin + 1 - visible_height;
+                        // But don't scroll past the end (no blank lines)
+                        let max_offset = pane_model.entries.len().saturating_sub(visible_height);
+                        pane_model.scroll_offset = new_offset.min(max_offset);
+                    }
+                } else {
+                    // If all entries fit, no scrolling needed
+                    pane_model.scroll_offset = 0;
                 }
             }
             
@@ -478,8 +513,17 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         
         // Navigation
         Transition::ChangeLocation { pane, location } => {
+            debug!("ChangeLocation: pane = {:?}, location = {}", pane, location.display_path());
+            debug!("ChangeLocation: location debug format: {:?}", location);
+            
             // Check cache first (before any mutable borrows)
             let cached_entries = state.cache.get(&location);
+            
+            if cached_entries.is_some() {
+                debug!("ChangeLocation: using cached entries for {}", location.display_path());
+            } else {
+                debug!("ChangeLocation: cache miss, will create ReadDirectory job for {}", location.display_path());
+            }
             
             let tab = state.current_tab_mut();
             
@@ -496,16 +540,19 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 crate::model::ActivePane::Right => &mut tab.right_pane,
             };
             pane_model.current_location = location.clone();
+            debug!("ChangeLocation: pane location after update: {:?}", pane_model.current_location);
             pane_model.cursor = 0;
             pane_model.scroll_offset = 0;
             
             // Use cached entries if available
             if let Some(entries) = cached_entries {
+                debug!("ChangeLocation: loaded {} cached entries", entries.len());
                 pane_model.entries = entries;
                 pane_model.apply_sort();
                 StateUpdateResult::with_ui_change()
             } else {
                 // Create job to read directory
+                debug!("ChangeLocation: creating ReadDirectory job");
                 let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
                 StateUpdateResult::with_job(job_spec)
             }
@@ -518,9 +565,13 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 crate::model::ActivePane::Right => &tab.right_pane.current_location,
             };
             
+            debug!("NavigateUp: current_location = {}", current_location.display_path());
+            
             if let Some(parent) = current_location.parent() {
+                debug!("NavigateUp: parent = {}", parent.display_path());
                 update_state(state, Transition::ChangeLocation { pane, location: parent })
             } else {
+                debug!("NavigateUp: no parent (at root)");
                 StateUpdateResult::none()
             }
         }
@@ -589,8 +640,30 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::CompleteJob { job_id, result } => {
+            // Debug logging before job_spec check
+            debug!("CompleteJob: job_id={:?}, result type={}", job_id, match &result {
+                crate::job::OpResult::Success(_) => "Success",
+                crate::job::OpResult::Failed(_) => "Failed",
+                crate::job::OpResult::Cancelled => "Cancelled",
+            });
+            
             // Get the job spec before completing it to determine what panes need refreshing
             let job_spec = state.jobs.active.get(&job_id).map(|job| job.spec.clone());
+            debug!("CompleteJob: job_spec found={}", job_spec.is_some());
+            
+            // Debug log the SuccessData variant
+            if let crate::job::OpResult::Success(ref success_data) = result {
+                let variant_name = match success_data {
+                    crate::job::SuccessData::DirectoryRead(entries) => format!("DirectoryRead({} entries)", entries.len()),
+                    crate::job::SuccessData::None => "None".to_string(),
+                    crate::job::SuccessData::SizeCalculated(size) => format!("SizeCalculated({})", size),
+                    crate::job::SuccessData::CustomFunctionOutput(output) => format!("CustomFunctionOutput({} bytes)", output.len()),
+                    crate::job::SuccessData::SearchResults(results) => format!("SearchResults({} results)", results.len()),
+                    crate::job::SuccessData::FileContents(contents) => format!("FileContents({} bytes)", contents.len()),
+                    crate::job::SuccessData::ComparisonResult(_) => "ComparisonResult".to_string(),
+                };
+                debug!("CompleteJob: SuccessData variant={}", variant_name);
+            }
             
             // Show error dialog and log error if job failed
             if let crate::job::OpResult::Failed(ref error_message) = result {
@@ -816,16 +889,36 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     crate::job::JobKind::ReadDirectory { location } => {
                         // Update panes that are viewing this location
                         if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = &result {
-                            for tab in state.tabs.tabs.iter_mut() {
-                                if tab.left_pane.current_location == *location {
+                            debug!("CompleteJob: ReadDirectory succeeded for {}, got {} entries", 
+                                   location.display_path(), entries.len());
+                            debug!("CompleteJob: Job location debug format: {:?}", location);
+                            
+                            for (tab_idx, tab) in state.tabs.tabs.iter_mut().enumerate() {
+                                debug!("CompleteJob: Checking tab {} - left: {}, right: {}", 
+                                       tab_idx, 
+                                       tab.left_pane.current_location.display_path(),
+                                       tab.right_pane.current_location.display_path());
+                                debug!("CompleteJob: Tab {} left pane location debug: {:?}", tab_idx, tab.left_pane.current_location);
+                                debug!("CompleteJob: Tab {} right pane location debug: {:?}", tab_idx, tab.right_pane.current_location);
+                                
+                                let left_matches = tab.left_pane.current_location == *location;
+                                let right_matches = tab.right_pane.current_location == *location;
+                                
+                                debug!("CompleteJob: Tab {} left_matches={}, right_matches={}", tab_idx, left_matches, right_matches);
+                                
+                                if left_matches {
+                                    debug!("CompleteJob: updating left pane of tab {} with {} entries", tab_idx, entries.len());
                                     tab.left_pane.entries = entries.clone();
                                     tab.left_pane.apply_sort();
                                 }
-                                if tab.right_pane.current_location == *location {
+                                if right_matches {
+                                    debug!("CompleteJob: updating right pane of tab {} with {} entries", tab_idx, entries.len());
                                     tab.right_pane.entries = entries.clone();
                                     tab.right_pane.apply_sort();
                                 }
                             }
+                        } else {
+                            debug!("CompleteJob: ReadDirectory failed for {}", location.display_path());
                         }
                     }
                     crate::job::JobKind::LoadFileForViewer { .. } => {
@@ -1017,6 +1110,51 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             };
             pane_model.file_mask = mask;
             StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::Refresh { pane } => {
+            // Clear cache for the current location and reload directory
+            let tab = state.current_tab();
+            let location = match pane {
+                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
+            };
+            
+            // Invalidate cache for this location
+            state.cache.invalidate(&location);
+            
+            // Create job to read directory
+            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+            StateUpdateResult::with_job(job_spec)
+        }
+        
+        Transition::RefreshAndClearMarks { pane } => {
+            // Clear marks first
+            state.marking.unmark_all();
+            
+            // Then refresh
+            let tab = state.current_tab();
+            let location = match pane {
+                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
+            };
+            
+            state.cache.invalidate(&location);
+            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+            StateUpdateResult::with_job(job_spec)
+        }
+        
+        Transition::RefreshNoClearMarks { pane } => {
+            // Just refresh without clearing marks
+            let tab = state.current_tab();
+            let location = match pane {
+                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
+            };
+            
+            state.cache.invalidate(&location);
+            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+            StateUpdateResult::with_job(job_spec)
         }
         
         // Dialog operations
@@ -1326,6 +1464,11 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             StateUpdateResult::with_ui_change()
         }
         
+        Transition::UpdatePaneHeight { height } => {
+            state.ui.layout.pane_height = height;
+            StateUpdateResult::none()
+        }
+        
         // Search operations
         Transition::StartSearch { query } => {
             state.search.query = query;
@@ -1453,12 +1596,14 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::UpdateConfig { config } => {
-            // Update the configuration
-            state.config = config.clone();
-            
             // Update worker pool size if changed
-            if state.jobs.max_parallel != config.worker_pool_size {
-                state.jobs.max_parallel = config.worker_pool_size;
+            let new_worker_pool_size = config.worker_pool_size;
+            
+            // Update the configuration
+            state.config = *config;
+            
+            if state.jobs.max_parallel != new_worker_pool_size {
+                state.jobs.max_parallel = new_worker_pool_size;
             }
             
             StateUpdateResult::with_ui_change()

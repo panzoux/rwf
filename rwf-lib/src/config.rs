@@ -25,6 +25,10 @@ pub struct AppConfig {
     pub log_level: crate::logging::LogLevel,
     /// Enable session state persistence
     pub session_persistence: bool,
+    /// Key repeat delay in milliseconds (initial debounce)
+    pub key_repeat_delay_ms: u32,
+    /// Key repeat rate in milliseconds (after initial delay)
+    pub key_repeat_rate_ms: u32,
 }
 
 impl Default for AppConfig {
@@ -38,6 +42,8 @@ impl Default for AppConfig {
             worker_pool_size: 4,
             log_level: crate::logging::LogLevel::Information,
             session_persistence: true,
+            key_repeat_delay_ms: 300,
+            key_repeat_rate_ms: 30,
         }
     }
 }
@@ -388,7 +394,7 @@ impl ConfigManager {
     pub fn load_config(&self) -> Result<AppConfig, ConfigError> {
         if self.config_path.exists() {
             let content = std::fs::read_to_string(&self.config_path)
-                .map_err(|e| ConfigError::IoError(e))?;
+                .map_err(ConfigError::IoError)?;
             
             let config: AppConfig = serde_json::from_str(&content)
                 .map_err(|e| ConfigError::ParseError(format!("Invalid config.json: {}", e)))?;
@@ -408,14 +414,14 @@ impl ConfigManager {
         // Ensure directory exists
         if let Some(parent) = self.config_path.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| ConfigError::IoError(e))?;
+                .map_err(ConfigError::IoError)?;
         }
         
         let content = serde_json::to_string_pretty(config)
             .map_err(|e| ConfigError::SerializeError(format!("Failed to serialize config: {}", e)))?;
         
         std::fs::write(&self.config_path, content)
-            .map_err(|e| ConfigError::IoError(e))?;
+            .map_err(ConfigError::IoError)?;
         
         Ok(())
     }
@@ -425,7 +431,7 @@ impl ConfigManager {
     pub fn load_keybindings(&self) -> Result<KeyBindings, ConfigError> {
         if self.keybindings_path.exists() {
             let content = std::fs::read_to_string(&self.keybindings_path)
-                .map_err(|e| ConfigError::IoError(e))?;
+                .map_err(ConfigError::IoError)?;
             
             let keybindings: KeyBindings = serde_json::from_str(&content)
                 .map_err(|e| ConfigError::ParseError(format!("Invalid keybindings.json: {}", e)))?;
@@ -441,14 +447,14 @@ impl ConfigManager {
         // Ensure directory exists
         if let Some(parent) = self.keybindings_path.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| ConfigError::IoError(e))?;
+                .map_err(ConfigError::IoError)?;
         }
         
         let content = serde_json::to_string_pretty(keybindings)
             .map_err(|e| ConfigError::SerializeError(format!("Failed to serialize keybindings: {}", e)))?;
         
         std::fs::write(&self.keybindings_path, content)
-            .map_err(|e| ConfigError::IoError(e))?;
+            .map_err(ConfigError::IoError)?;
         
         Ok(())
     }
@@ -605,7 +611,9 @@ mod tests {
             },
             "worker_pool_size": 8,
             "log_level": "Debug",
-            "session_persistence": false
+            "session_persistence": false,
+            "key_repeat_delay_ms": 300,
+            "key_repeat_rate_ms": 50
         }"#;
         
         std::fs::write(&config_path, config_json).unwrap();

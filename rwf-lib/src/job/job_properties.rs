@@ -246,18 +246,9 @@ mod unit_tests {
             }),
         ];
         
-        // Assign IDs
-        let ids: Vec<_> = specs.iter().enumerate().map(|(i, _)| {
-            crate::job::JobId(i as u64)
-        }).collect();
-        
-        let mut specs_with_ids = specs;
-        for (i, spec) in specs_with_ids.iter_mut().enumerate() {
-            spec.id = ids[i];
-        }
-        
+        // Jobs already have unique UUIDs from JobSpec::new()
         // Start jobs in batch
-        manager.start_jobs(specs_with_ids);
+        manager.start_jobs(specs);
         
         // Should have 2 active jobs
         assert_eq!(manager.active.len(), 2);

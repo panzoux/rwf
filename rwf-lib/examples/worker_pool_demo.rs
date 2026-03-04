@@ -3,8 +3,7 @@
 //! This example shows how to use the WorkerPool to execute jobs asynchronously.
 
 use rwf_lib::{WorkerPool, JobSpec, JobKind, JobEvent};
-use rwf_lib::backend::LocalFilesystemBackend;
-use rwf_lib::archive::ZipArchiveHandler;
+use rwf_lib::backend::{LocalFilesystemBackend, ZipArchiveHandler};
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,13 +21,11 @@ async fn main() {
     let job1 = JobSpec::new(JobKind::ReadDirectory {
         location: Location::Local(PathBuf::from("/tmp")),
     });
-    let id1 = job1.id;
     pool.submit_job(job1);
     
     let job2 = JobSpec::new(JobKind::Mkdir {
         location: Location::Local(PathBuf::from("/tmp/test_dir")),
     });
-    let id2 = job2.id;
     pool.submit_job(job2);
     
     // Process events

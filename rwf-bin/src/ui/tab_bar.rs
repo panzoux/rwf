@@ -4,15 +4,17 @@
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
 use rwf_lib::AppState;
+use super::parse_color;
 
 /// Render the tab bar
 pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+    let colors = &state.config.display.colors;
     let mut spans = Vec::new();
     
     // Calculate how many tabs can fit in the available width
@@ -47,7 +49,7 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     if start_idx > 0 {
         spans.push(Span::styled(
             " < ",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(parse_color(&colors.warning_color)),
         ));
     }
 
@@ -62,23 +64,39 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
                 || matches_tab_location(job, &tab.right_pane.current_location)
         });
 
-        // Format tab label
-        let label = if has_jobs {
-            format!(" [~{}~] ", idx + 1)
-        } else if is_active {
-            format!(" [{}] ", idx + 1)
+        // Get shortened paths for left and right panes
+        let left_path = shorten_path(&tab.left_pane.current_location.display_path(), 15);
+        let right_path = shorten_path(&tab.right_pane.current_location.display_path(), 15);
+        
+        // Determine which pane is active (only for the active tab)
+        let active_marker = if is_active {
+            match state.ui.active_pane {
+                rwf_lib::model::ActivePane::Left => format!("{}*|{}", left_path, right_path),
+                rwf_lib::model::ActivePane::Right => format!("{}|{}*", left_path, right_path),
+            }
         } else {
-            format!("  {}  ", idx + 1)
+            format!("{}|{}", left_path, right_path)
+        };
+
+        // Format tab label with pane paths
+        let label = if has_jobs {
+            format!(" [~{}:{}~] ", idx + 1, active_marker)
+        } else if is_active {
+            format!(" [{}:{}] ", idx + 1, active_marker)
+        } else {
+            format!(" {}:{} ", idx + 1, active_marker)
         };
 
         // Apply style
         let style = if is_active {
             Style::default()
-                .fg(Color::White)
-                .bg(Color::Blue)
+                .fg(parse_color(&colors.active_tab_foreground_color))
+                .bg(parse_color(&colors.active_tab_background_color))
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Gray).bg(Color::Black)
+            Style::default()
+                .fg(parse_color(&colors.inactive_tab_foreground_color))
+                .bg(parse_color(&colors.inactive_tab_background_color))
         };
 
         spans.push(Span::styled(label, style));
@@ -88,12 +106,13 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     if end_idx < total_tabs {
         spans.push(Span::styled(
             " > ",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(parse_color(&colors.warning_color)),
         ));
     }
 
     let line = Line::from(spans);
-    let paragraph = Paragraph::new(line).style(Style::default().bg(Color::Black));
+    let paragraph = Paragraph::new(line)
+        .style(Style::default().bg(parse_color(&colors.tabbar_background_color)));
 
     frame.render_widget(paragraph, area);
 }
@@ -119,4 +138,22 @@ fn matches_tab_location(
         JobKind::CalculateSize { location: loc } => loc == location,
         _ => false,
     }
+}
+
+/// Shorten a path to fit within a maximum length
+fn shorten_path(path: &str, max_len: usize) -> String {
+    if path.len() <= max_len {
+        return path.to_string();
+    }
+    
+    // Try to show the last component (filename/directory)
+    if let Some(last_sep) = path.rfind(|c| c == '/' || c == '\\') {
+        let last_component = &path[last_sep + 1..];
+        if last_component.len() <= max_len {
+            return format!("...{}", last_component);
+        }
+    }
+    
+    // If even the last component is too long, truncate it
+    format!("...{}", &path[path.len().saturating_sub(max_len - 3)..])
 }

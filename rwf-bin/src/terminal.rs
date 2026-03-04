@@ -18,16 +18,19 @@ pub struct TerminalManager {
 impl TerminalManager {
     /// Initialize the terminal with raw mode and alternate screen
     pub fn new() -> Result<Self> {
-        // Enable raw mode for character-by-character input
-        enable_raw_mode()?;
-
-        // Enter alternate screen to preserve terminal content
+        // Enter alternate screen FIRST before any output
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
 
+        // Enable raw mode for character-by-character input
+        enable_raw_mode()?;
+
         // Create ratatui terminal
         let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let mut terminal = Terminal::new(backend)?;
+        
+        // Clear the terminal to ensure clean state
+        terminal.clear()?;
 
         Ok(Self { terminal })
     }
@@ -61,8 +64,6 @@ impl Drop for TerminalManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_terminal_manager_creation() {
         // This test is mainly to ensure the code compiles

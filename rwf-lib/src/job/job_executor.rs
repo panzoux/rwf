@@ -647,7 +647,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let total_size = metadata.len();
         
         // Calculate number of chunks (for potential future use)
-        let _num_chunks = (total_size + chunk_size - 1) / chunk_size;
+        let _num_chunks = total_size.div_ceil(chunk_size);
         
         // Get base filename
         let base_name = source_path.file_name()

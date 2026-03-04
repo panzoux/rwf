@@ -13,11 +13,12 @@ use tracing::Level;
 use tracing_subscriber::{fmt, fmt::MakeWriter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Log level configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum LogLevel {
     None,
     Trace,
     Debug,
+    #[default]
     Information,
     Warning,
     Error,
@@ -49,12 +50,6 @@ impl LogLevel {
             LogLevel::Error => "error",
             LogLevel::Critical => "error",
         }
-    }
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Information
     }
 }
 

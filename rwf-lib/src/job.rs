@@ -6,11 +6,20 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, Duration};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 use crate::model::Location;
 
 /// Unique identifier for a job
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct JobId(pub u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct JobId(pub Uuid);
+
+impl JobId {
+    /// Generate a new unique job ID
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
 
 /// Job specification submitted to the worker pool
 #[derive(Debug, Clone)]
@@ -24,7 +33,7 @@ pub struct JobSpec {
 impl JobSpec {
     pub fn new(kind: JobKind) -> Self {
         Self {
-            id: JobId(0), // Will be assigned by JobManager
+            id: JobId::new(), // Generate unique UUID immediately
             kind,
             created_at: SystemTime::now(),
             cancel_token: CancellationToken::new(),
@@ -191,8 +200,6 @@ pub struct JobManager {
     pub completed: VecDeque<JobResult>,
     /// Maximum parallel jobs
     pub max_parallel: usize,
-    /// Next job ID
-    next_id: u64,
     /// Performance metrics
     total_enqueued: u64,
     total_completed: u64,
@@ -207,7 +214,6 @@ impl JobManager {
             active: HashMap::with_capacity(max_parallel),
             completed: VecDeque::with_capacity(100),
             max_parallel,
-            next_id: 0,
             total_enqueued: 0,
             total_completed: 0,
             total_cancelled: 0,
@@ -216,9 +222,7 @@ impl JobManager {
     }
     
     /// Enqueue a new job and return its ID
-    pub fn enqueue(&mut self, mut spec: JobSpec) -> JobId {
-        spec.id = JobId(self.next_id);
-        self.next_id += 1;
+    pub fn enqueue(&mut self, spec: JobSpec) -> JobId {
         let id = spec.id;
         self.queue.push_back(spec);
         self.total_enqueued += 1;
@@ -228,9 +232,7 @@ impl JobManager {
     /// Enqueue multiple jobs in batch (more efficient than individual enqueues)
     pub fn enqueue_batch(&mut self, specs: Vec<JobSpec>) -> Vec<JobId> {
         let mut ids = Vec::with_capacity(specs.len());
-        for mut spec in specs {
-            spec.id = JobId(self.next_id);
-            self.next_id += 1;
+        for spec in specs {
             ids.push(spec.id);
             self.queue.push_back(spec);
             self.total_enqueued += 1;

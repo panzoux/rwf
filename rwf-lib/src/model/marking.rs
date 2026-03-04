@@ -9,6 +9,12 @@ pub struct MarkingModel {
     pub marked_locations: HashSet<Location>,
 }
 
+impl Default for MarkingModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MarkingModel {
     pub fn new() -> Self {
         Self {

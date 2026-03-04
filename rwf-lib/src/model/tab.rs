@@ -31,6 +31,12 @@ pub struct TabManager {
     pub active_index: usize,
 }
 
+impl Default for TabManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TabManager {
     pub fn new() -> Self {
         let initial_tab = TabState::new(0);

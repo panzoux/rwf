@@ -118,6 +118,7 @@ impl PerformanceMetrics {
     }
 
     /// Check if performance meets requirements (30+ FPS, <16ms input)
+    #[allow(dead_code)]
     pub fn meets_requirements(&self) -> bool {
         let fps_ok = self.current_fps() >= 30.0;
         let input_ok = self.avg_input_time_ms() < 16.0;
