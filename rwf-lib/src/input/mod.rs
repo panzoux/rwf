@@ -115,6 +115,11 @@ impl KeyBindings {
         normal_mode.insert("O".to_string(), Action::SyncPanes);
         normal_mode.insert("Shift+O".to_string(), Action::SwapPanes);
         
+        // Context menu and drive selection
+        normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
+        normal_mode.insert("`".to_string(), Action::ShowContextMenu);
+        normal_mode.insert("Shift+L".to_string(), Action::ShowDriveChangeDialog);
+        
         Self {
             normal_mode,
             search_mode: HashMap::new(),
@@ -281,6 +286,10 @@ pub enum Action {
     // Pane operations
     SyncPanes,
     SwapPanes,
+    
+    // Context menu and drive selection
+    ShowContextMenu,
+    ShowDriveChangeDialog,
     
     // Internal
     PendingSequence,
@@ -829,6 +838,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::SwapPanes => {
             // Swap the paths of left and right panes
             vec![Transition::SwapPanes]
+        }
+        Action::ShowContextMenu => {
+            // Show context menu dialog
+            vec![Transition::ShowContextMenu]
+        }
+        Action::ShowDriveChangeDialog => {
+            // Show drive selection dialog
+            vec![Transition::ShowDriveChangeDialog]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

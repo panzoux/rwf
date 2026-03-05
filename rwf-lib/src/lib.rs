@@ -93,6 +93,9 @@ mod error_recovery_integration_tests;
 mod pane_sync_swap_integration_tests;
 
 #[cfg(test)]
+mod context_menu_drive_selection_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};

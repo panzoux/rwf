@@ -313,3 +313,193 @@ fn format_unix_volume_info(device: &str, mount_point: &str, label: &str) -> Stri
         format!("{} ({} - {})", device, mount_point, label)
     }
 }
+
+/// Get all available drives and network shares
+/// **Validates: Requirements 42.4, 42.6**
+pub fn get_all_drives() -> Vec<crate::model::dialog::DriveInfo> {
+    #[cfg(target_os = "windows")]
+    {
+        get_windows_drives()
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        get_unix_drives()
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        Vec::new()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
+    use crate::model::dialog::{DriveInfo, DriveType};
+    use windows::Win32::Storage::FileSystem::{
+        GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives,
+    };
+    use windows::core::PCWSTR;
+    
+    let mut drives = Vec::new();
+    
+    // Get logical drive bitmask
+    let drive_mask = unsafe { GetLogicalDrives() };
+    
+    // Iterate through all possible drive letters (A-Z)
+    for i in 0..26 {
+        if (drive_mask & (1 << i)) != 0 {
+            let drive_letter = (b'A' + i) as char;
+            let drive_path = format!("{}:\\", drive_letter);
+            
+            // Convert to wide string
+            let mut wide_path: Vec<u16> = drive_path.encode_utf16().collect();
+            wide_path.push(0);
+            
+            // Get drive type
+            let drive_type_raw = unsafe { GetDriveTypeW(PCWSTR(wide_path.as_ptr())) };
+            let drive_type = match drive_type_raw {
+                2 => DriveType::Removable, // DRIVE_REMOVABLE
+                3 => DriveType::Local,     // DRIVE_FIXED
+                4 => DriveType::Network,   // DRIVE_REMOTE
+                _ => DriveType::Unknown,
+            };
+            
+            // Get volume label
+            let label = get_volume_label_windows(&drive_path)
+                .unwrap_or_else(|| format!("({}:)", drive_letter));
+            
+            // Get disk space information
+            let mut free_bytes = 0u64;
+            let mut total_bytes = 0u64;
+            let mut total_free_bytes = 0u64;
+            
+            let space_result = unsafe {
+                GetDiskFreeSpaceExW(
+                    PCWSTR(wide_path.as_ptr()),
+                    Some(&mut free_bytes),
+                    Some(&mut total_bytes),
+                    Some(&mut total_free_bytes),
+                )
+            };
+            
+            let (total_space, free_space) = if space_result.is_ok() {
+                (Some(total_bytes), Some(free_bytes))
+            } else {
+                (None, None)
+            };
+            
+            drives.push(DriveInfo {
+                path: drive_path,
+                label,
+                drive_type,
+                total_space,
+                free_space,
+            });
+        }
+    }
+    
+    drives
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn get_unix_drives() -> Vec<crate::model::dialog::DriveInfo> {
+    use crate::model::dialog::{DriveInfo, DriveType};
+    use std::fs;
+    
+    let mut drives = Vec::new();
+    
+    // Read mount points
+    #[cfg(target_os = "linux")]
+    let mounts_path = "/proc/mounts";
+    #[cfg(target_os = "macos")]
+    let mounts_path = "/etc/fstab";
+    
+    if let Ok(mounts_content) = fs::read_to_string(mounts_path) {
+        for line in mounts_content.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let device = parts[0];
+                let mount_point = parts[1];
+                
+                // Skip special filesystems
+                if device.starts_with("/dev/") || mount_point == "/" {
+                    let drive_type = if device.contains("nfs") || device.contains("cifs") {
+                        DriveType::Network
+                    } else if device.contains("usb") || device.contains("sd") {
+                        DriveType::Removable
+                    } else {
+                        DriveType::Local
+                    };
+                    
+                    let label = get_volume_label_unix(device)
+                        .unwrap_or_else(|| mount_point.to_string());
+                    
+                    // Try to get disk space
+                    let (total_space, free_space) = get_unix_disk_space(mount_point);
+                    
+                    drives.push(DriveInfo {
+                        path: mount_point.to_string(),
+                        label,
+                        drive_type,
+                        total_space,
+                        free_space,
+                    });
+                }
+            }
+        }
+    }
+    
+    // Always include root if not already present
+    if !drives.iter().any(|d| d.path == "/") {
+        let (total_space, free_space) = get_unix_disk_space("/");
+        drives.push(DriveInfo {
+            path: "/".to_string(),
+            label: "Root".to_string(),
+            drive_type: DriveType::Local,
+            total_space,
+            free_space,
+        });
+    }
+    
+    drives
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn get_unix_disk_space(path: &str) -> (Option<u64>, Option<u64>) {
+    use std::ffi::CString;
+    use std::mem;
+    
+    #[repr(C)]
+    struct StatVfs {
+        f_bsize: u64,
+        f_frsize: u64,
+        f_blocks: u64,
+        f_bfree: u64,
+        f_bavail: u64,
+        f_files: u64,
+        f_ffree: u64,
+        f_favail: u64,
+        f_fsid: u64,
+        f_flag: u64,
+        f_namemax: u64,
+    }
+    
+    extern "C" {
+        fn statvfs(path: *const i8, buf: *mut StatVfs) -> i32;
+    }
+    
+    let c_path = match CString::new(path) {
+        Ok(p) => p,
+        Err(_) => return (None, None),
+    };
+    
+    let mut stat: StatVfs = unsafe { mem::zeroed() };
+    let result = unsafe { statvfs(c_path.as_ptr(), &mut stat) };
+    
+    if result == 0 {
+        let total = stat.f_blocks * stat.f_frsize;
+        let free = stat.f_bavail * stat.f_frsize;
+        (Some(total), Some(free))
+    } else {
+        (None, None)
+    }
+}

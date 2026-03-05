@@ -44,7 +44,7 @@ pub use dialog::{
     DialogStack, Dialog, DialogContent, CustomFunction, RegisteredFolder, RegisteredFolderManager,
     PipeToAction, OsConfig, JobInfo, JobKind, JobState, JobManagerDialog,
     CustomFunctionSelector, RegisteredFolderSelector, TabSelector, PatternRenameDialog,
-    ErrorType, SplitJoinMode
+    ErrorType, SplitJoinMode, ContextMenuOption, ContextMenuAction, DriveInfo, DriveType
 };
 pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
 pub use viewer::{ViewerState, ViewerMode, TextEncoding};

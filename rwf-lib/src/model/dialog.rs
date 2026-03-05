@@ -113,6 +113,14 @@ pub enum DialogContent {
         mode: SplitJoinMode,
         chunk_size_mb: u64,
     },
+    ContextMenu {
+        options: Vec<ContextMenuOption>,
+        selected_index: usize,
+    },
+    DriveSelection {
+        drives: Vec<DriveInfo>,
+        selected_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,6 +142,43 @@ pub enum ErrorType {
     InvalidPath,
     /// Operation failed error
     OperationFailed,
+}
+
+/// Context menu option
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContextMenuOption {
+    pub label: String,
+    pub action: ContextMenuAction,
+}
+
+/// Context menu action
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContextMenuAction {
+    Copy,
+    Move,
+    Delete,
+    Rename,
+    View,
+    CustomFunction(String),
+}
+
+/// Drive information for drive selection dialog
+#[derive(Debug, Clone, PartialEq)]
+pub struct DriveInfo {
+    pub path: String,
+    pub label: String,
+    pub drive_type: DriveType,
+    pub total_space: Option<u64>,
+    pub free_space: Option<u64>,
+}
+
+/// Drive type
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DriveType {
+    Local,
+    Network,
+    Removable,
+    Unknown,
 }
 
 /// Custom function definition with macro expansion support
@@ -366,6 +411,51 @@ impl Dialog {
         }
     }
 
+    /// Create a context menu dialog
+    pub fn context_menu() -> Self {
+        let options = vec![
+            ContextMenuOption {
+                label: "Copy".to_string(),
+                action: ContextMenuAction::Copy,
+            },
+            ContextMenuOption {
+                label: "Move".to_string(),
+                action: ContextMenuAction::Move,
+            },
+            ContextMenuOption {
+                label: "Delete".to_string(),
+                action: ContextMenuAction::Delete,
+            },
+            ContextMenuOption {
+                label: "Rename".to_string(),
+                action: ContextMenuAction::Rename,
+            },
+            ContextMenuOption {
+                label: "View".to_string(),
+                action: ContextMenuAction::View,
+            },
+        ];
+        
+        Self {
+            title: "Context Menu".to_string(),
+            content: DialogContent::ContextMenu {
+                options,
+                selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a drive selection dialog
+    pub fn drive_selection(drives: Vec<DriveInfo>) -> Self {
+        Self {
+            title: "Drive Selection".to_string(),
+            content: DialogContent::DriveSelection {
+                drives,
+                selected_index: 0,
+            },
+        }
+    }
+
     /// Create an error dialog
     pub fn error(message: impl Into<String>) -> Self {
         Self {
@@ -496,6 +586,8 @@ impl DialogContent {
                 | DialogContent::RegisteredFolderSelector { .. }
                 | DialogContent::TabSelector { .. }
                 | DialogContent::PatternRename { .. }
+                | DialogContent::ContextMenu { .. }
+                | DialogContent::DriveSelection { .. }
         )
     }
 
@@ -507,6 +599,8 @@ impl DialogContent {
                 | DialogContent::RegisteredFolderSelector { .. }
                 | DialogContent::TabSelector { .. }
                 | DialogContent::JobManager { .. }
+                | DialogContent::ContextMenu { .. }
+                | DialogContent::DriveSelection { .. }
         )
     }
 
@@ -516,7 +610,9 @@ impl DialogContent {
             DialogContent::JobManager { selected_index }
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
-            | DialogContent::TabSelector { selected_index, .. } => Some(*selected_index),
+            | DialogContent::TabSelector { selected_index, .. }
+            | DialogContent::ContextMenu { selected_index, .. }
+            | DialogContent::DriveSelection { selected_index, .. } => Some(*selected_index),
             _ => None,
         }
     }
@@ -527,7 +623,9 @@ impl DialogContent {
             DialogContent::JobManager { selected_index }
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
-            | DialogContent::TabSelector { selected_index, .. } => {
+            | DialogContent::TabSelector { selected_index, .. }
+            | DialogContent::ContextMenu { selected_index, .. }
+            | DialogContent::DriveSelection { selected_index, .. } => {
                 *selected_index = new_index;
             }
             _ => {}
@@ -1262,6 +1360,50 @@ impl DialogContent {
                 tabs,
                 selected_index,
             } => Some((tabs, selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get context menu data if this is a context menu dialog
+    pub fn as_context_menu(&self) -> Option<(&[ContextMenuOption], usize)> {
+        match self {
+            DialogContent::ContextMenu {
+                options,
+                selected_index,
+            } => Some((options, *selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable context menu data
+    pub fn as_context_menu_mut(&mut self) -> Option<(&mut Vec<ContextMenuOption>, &mut usize)> {
+        match self {
+            DialogContent::ContextMenu {
+                options,
+                selected_index,
+            } => Some((options, selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get drive selection data if this is a drive selection dialog
+    pub fn as_drive_selection(&self) -> Option<(&[DriveInfo], usize)> {
+        match self {
+            DialogContent::DriveSelection {
+                drives,
+                selected_index,
+            } => Some((drives, *selected_index)),
+            _ => None,
+        }
+    }
+
+    /// Get mutable drive selection data
+    pub fn as_drive_selection_mut(&mut self) -> Option<(&mut Vec<DriveInfo>, &mut usize)> {
+        match self {
+            DialogContent::DriveSelection {
+                drives,
+                selected_index,
+            } => Some((drives, selected_index)),
             _ => None,
         }
     }

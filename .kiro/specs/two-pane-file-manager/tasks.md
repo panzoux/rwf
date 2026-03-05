@@ -1151,28 +1151,28 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Test marked file preservation during swap
     - _Requirements: 41.1-41.7_
 
-- [ ] 48. Implement context menu and drive selection
-  - [ ] 48.1 Implement context menu dialog
+- [x] 48. Implement context menu and drive selection
+  - [x] 48.1 Implement context menu dialog
     - Display common file operations
     - Include copy, move, delete, rename, view, custom functions
     - _Requirements: 42.1, 42.2_
   
-  - [ ] 48.2 Implement drive selection dialog
+  - [x] 48.2 Implement drive selection dialog
     - List all available drives and network shares
     - Display drive information (size, free space, type)
     - _Requirements: 42.3, 42.4, 42.6_
   
-  - [ ] 48.3 Implement drive navigation
+  - [x] 48.3 Implement drive navigation
     - Navigate to selected drive or share
     - Support quick drive switching
     - _Requirements: 42.5, 42.7_
   
-  - [ ] 48.4 Add key bindings for dialogs
+  - [x] 48.4 Add key bindings for dialogs
     - \ or backtick: ShowContextMenu
     - Shift+L: ShowDriveChangeDialog
     - _Requirements: 42.1, 42.3_
   
-  - [ ] 48.5 Write integration tests for context menu and drive selection
+  - [x] 48.5 Write integration tests for context menu and drive selection
     - Test context menu display
     - Test drive selection
     - Test drive navigation

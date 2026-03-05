@@ -1636,6 +1636,130 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                             }
                         }
                     }
+                    crate::model::DialogContent::ContextMenu { options, selected_index } => {
+                        // Clone the selected option to avoid borrow checker issues
+                        let selected_option = options.get(*selected_index).cloned();
+                        
+                        state.dialogs.pop();
+                        
+                        if let Some(option) = selected_option {
+                            match &option.action {
+                                crate::model::ContextMenuAction::Copy => {
+                                    // Show copy confirmation dialog
+                                    let sources = if state.marking.count() > 0 {
+                                        state.active_pane()
+                                            .entries
+                                            .iter()
+                                            .filter(|e| state.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = state.active_pane().current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    };
+                                    
+                                    if !sources.is_empty() {
+                                        let dest = state.opposite_pane().current_location.clone();
+                                        let total_size: u64 = state.active_pane()
+                                            .entries
+                                            .iter()
+                                            .filter(|e| sources.contains(&e.location))
+                                            .map(|e| e.size)
+                                            .sum();
+                                        let size_str = crate::model::format_size(total_size);
+                                        let message = if sources.len() == 1 {
+                                            format!("Copy {} ({}) to {}?", sources[0].display_path(), size_str, dest.display_path())
+                                        } else {
+                                            format!("Copy {} files ({}) to {}?", sources.len(), size_str, dest.display_path())
+                                        };
+                                        let dialog = crate::model::Dialog::confirmation("Copy", message);
+                                        state.dialogs.push(dialog);
+                                    }
+                                }
+                                crate::model::ContextMenuAction::Move => {
+                                    // Show move confirmation dialog
+                                    let sources = if state.marking.count() > 0 {
+                                        state.active_pane()
+                                            .entries
+                                            .iter()
+                                            .filter(|e| state.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = state.active_pane().current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    };
+                                    
+                                    if !sources.is_empty() {
+                                        let dest = state.opposite_pane().current_location.clone();
+                                        let message = if sources.len() == 1 {
+                                            format!("Move {} to {}?", sources[0].display_path(), dest.display_path())
+                                        } else {
+                                            format!("Move {} files to {}?", sources.len(), dest.display_path())
+                                        };
+                                        let dialog = crate::model::Dialog::confirmation("Move", message);
+                                        state.dialogs.push(dialog);
+                                    }
+                                }
+                                crate::model::ContextMenuAction::Delete => {
+                                    // Show delete confirmation dialog
+                                    let targets = if state.marking.count() > 0 {
+                                        state.active_pane()
+                                            .entries
+                                            .iter()
+                                            .filter(|e| state.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = state.active_pane().current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    };
+                                    
+                                    if !targets.is_empty() {
+                                        let message = if targets.len() == 1 {
+                                            format!("Delete {}?", targets[0].display_path())
+                                        } else {
+                                            format!("Delete {} files?", targets.len())
+                                        };
+                                        let dialog = crate::model::Dialog::confirmation("Delete", message);
+                                        state.dialogs.push(dialog);
+                                    }
+                                }
+                                crate::model::ContextMenuAction::Rename => {
+                                    // Show rename input dialog
+                                    if let Some(entry) = state.active_pane().current_entry() {
+                                        let dialog = crate::model::Dialog::input("Rename", "New name:", &entry.name);
+                                        state.dialogs.push(dialog);
+                                    }
+                                }
+                                crate::model::ContextMenuAction::View => {
+                                    // Open text viewer
+                                    if let Some(entry) = state.active_pane().current_entry() {
+                                        let location = entry.location.clone();
+                                        return update_state(state, Transition::OpenTextViewer { location });
+                                    }
+                                }
+                                crate::model::ContextMenuAction::CustomFunction(name) => {
+                                    // Trigger custom function
+                                    // TODO: Load and execute custom function by name
+                                    let _ = name; // Suppress unused warning for now
+                                }
+                            }
+                        }
+                    }
+                    crate::model::DialogContent::DriveSelection { drives, selected_index } => {
+                        // Navigate to the selected drive
+                        if let Some(drive) = drives.get(*selected_index) {
+                            let location = crate::model::Location::Local(std::path::PathBuf::from(&drive.path));
+                            let pane = state.ui.active_pane;
+                            
+                            state.dialogs.pop();
+                            return update_state(state, Transition::ChangeLocation { pane, location });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2056,6 +2180,24 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             
             state.dialogs.pop();
             StateUpdateResult::with_job(job_spec)
+        }
+        
+        // Context menu and drive selection
+        Transition::ShowContextMenu => {
+            // Show context menu dialog
+            let dialog = crate::model::Dialog::context_menu();
+            state.dialogs.push(dialog);
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::ShowDriveChangeDialog => {
+            // Get all available drives
+            let drives = crate::volume_info::get_all_drives();
+            
+            // Show drive selection dialog
+            let dialog = crate::model::Dialog::drive_selection(drives);
+            state.dialogs.push(dialog);
+            StateUpdateResult::with_ui_change()
         }
         
         // Placeholder implementations for other transitions
