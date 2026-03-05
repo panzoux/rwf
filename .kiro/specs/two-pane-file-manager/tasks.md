@@ -1128,24 +1128,24 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
 
 ### Phase 8 (Continued): Additional Features
 
-- [ ] 47. Implement pane synchronization and swapping
-  - [ ] 47.1 Implement SyncPanes transition
+- [x] 47. Implement pane synchronization and swapping
+  - [x] 47.1 Implement SyncPanes transition
     - Navigate opposite pane to active pane's location
     - Create job to read directory
     - _Requirements: 41.1, 41.2, 41.6_
   
-  - [ ] 47.2 Implement SwapPanes transition
+  - [x] 47.2 Implement SwapPanes transition
     - Exchange current_location of both panes
     - Maintain cursor positions and marked files
     - Create jobs to refresh both panes
     - _Requirements: 41.3, 41.4, 41.5, 41.6_
   
-  - [ ] 47.3 Add key bindings for pane operations
+  - [x] 47.3 Add key bindings for pane operations
     - O: SyncPanes
     - Shift+O: SwapPanes
     - _Requirements: 41.1, 41.3_
   
-  - [ ] 47.4 Write integration tests for pane operations
+  - [x] 47.4 Write integration tests for pane operations
     - Test pane synchronization
     - Test pane swapping
     - Test marked file preservation during swap

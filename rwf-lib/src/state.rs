@@ -1235,6 +1235,120 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             StateUpdateResult::with_job(job_spec)
         }
         
+        // Pane operations
+        Transition::SyncPanes => {
+            // Navigate opposite pane to active pane's location
+            let active_location = state.active_pane().current_location.clone();
+            let opposite_pane = state.ui.active_pane.opposite();
+            
+            debug!("SyncPanes: syncing {} pane to {}", 
+                   match opposite_pane {
+                       crate::model::ActivePane::Left => "left",
+                       crate::model::ActivePane::Right => "right",
+                   },
+                   active_location.display_path());
+            
+            // Check cache first
+            let cached_entries = state.cache.get(&active_location);
+            
+            // Update opposite pane location
+            let tab = state.current_tab_mut();
+            let opposite_pane_model = match opposite_pane {
+                crate::model::ActivePane::Left => &mut tab.left_pane,
+                crate::model::ActivePane::Right => &mut tab.right_pane,
+            };
+            
+            // Add current location to history
+            tab.history.push(opposite_pane, opposite_pane_model.current_location.clone());
+            
+            // Update location
+            opposite_pane_model.current_location = active_location.clone();
+            opposite_pane_model.cursor = 0;
+            opposite_pane_model.scroll_offset = 0;
+            
+            // Use cached entries if available
+            if let Some(entries) = cached_entries {
+                debug!("SyncPanes: using cached entries ({} entries)", entries.len());
+                opposite_pane_model.entries = entries;
+                opposite_pane_model.apply_sort();
+                StateUpdateResult::with_ui_change()
+            } else {
+                // Create job to read directory
+                debug!("SyncPanes: creating ReadDirectory job");
+                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                    location: active_location 
+                });
+                StateUpdateResult::with_job(job_spec)
+            }
+        }
+        
+        Transition::SwapPanes => {
+            // Exchange current_location of both panes
+            let tab = state.current_tab_mut();
+            
+            debug!("SwapPanes: swapping left ({}) and right ({})", 
+                   tab.left_pane.current_location.display_path(),
+                   tab.right_pane.current_location.display_path());
+            
+            // Swap locations
+            std::mem::swap(&mut tab.left_pane.current_location, &mut tab.right_pane.current_location);
+            
+            // Maintain cursor positions and marked files (they stay with their panes)
+            // No need to swap cursor or marked files - they remain with their respective panes
+            
+            // Get locations for both panes
+            let left_location = tab.left_pane.current_location.clone();
+            let right_location = tab.right_pane.current_location.clone();
+            
+            // Check cache for both locations (before mutable borrow)
+            let left_cached = state.cache.get(&left_location);
+            let right_cached = state.cache.get(&right_location);
+            
+            // Now update the panes with cached data if available
+            let tab = state.current_tab_mut();
+            
+            // Update left pane
+            let left_needs_job = if let Some(entries) = left_cached {
+                debug!("SwapPanes: using cached entries for left pane ({} entries)", entries.len());
+                tab.left_pane.entries = entries;
+                tab.left_pane.apply_sort();
+                false
+            } else {
+                true
+            };
+            
+            // Update right pane
+            let right_needs_job = if let Some(entries) = right_cached {
+                debug!("SwapPanes: using cached entries for right pane ({} entries)", entries.len());
+                tab.right_pane.entries = entries;
+                tab.right_pane.apply_sort();
+                false
+            } else {
+                true
+            };
+            
+            // Create jobs for any panes that weren't cached
+            let mut result = StateUpdateResult::with_ui_change();
+            
+            if left_needs_job {
+                debug!("SwapPanes: creating ReadDirectory job for left pane");
+                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                    location: left_location 
+                });
+                result.jobs_to_start.push(job_spec);
+            }
+            
+            if right_needs_job {
+                debug!("SwapPanes: creating ReadDirectory job for right pane");
+                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                    location: right_location 
+                });
+                result.jobs_to_start.push(job_spec);
+            }
+            
+            result
+        }
+        
         // Dialog operations
         Transition::ShowDialog { dialog } => {
             state.dialogs.push(dialog);

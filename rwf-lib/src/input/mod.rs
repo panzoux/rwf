@@ -111,6 +111,10 @@ impl KeyBindings {
         normal_mode.insert("Ctrl+Shift+Right".to_string(), Action::JobManager);
         normal_mode.insert("H".to_string(), Action::CalculateDirectorySize);
         
+        // Pane operations
+        normal_mode.insert("O".to_string(), Action::SyncPanes);
+        normal_mode.insert("Shift+O".to_string(), Action::SwapPanes);
+        
         Self {
             normal_mode,
             search_mode: HashMap::new(),
@@ -273,6 +277,10 @@ pub enum Action {
     Help,
     JobManager,
     CalculateDirectorySize,
+    
+    // Pane operations
+    SyncPanes,
+    SwapPanes,
     
     // Internal
     PendingSequence,
@@ -813,6 +821,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::Refresh {
                 pane: state.ui.active_pane,
             }]
+        }
+        Action::SyncPanes => {
+            // Synchronize opposite pane to active pane's location
+            vec![Transition::SyncPanes]
+        }
+        Action::SwapPanes => {
+            // Swap the paths of left and right panes
+            vec![Transition::SwapPanes]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

@@ -90,6 +90,9 @@ mod concurrent_operations_integration_tests;
 mod error_recovery_integration_tests;
 
 #[cfg(test)]
+mod pane_sync_swap_integration_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
