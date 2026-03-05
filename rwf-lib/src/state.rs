@@ -5,6 +5,7 @@
 
 use crate::job::{JobManager, JobId, JobSpec};
 use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState};
+use crate::log_manager::LogManager;
 use std::time::Duration;
 
 /// Central application state coordinating all components
@@ -28,6 +29,8 @@ pub struct AppState {
     pub cache: DirectoryCache,
     /// File viewer state (when in viewer mode)
     pub viewer: Option<ViewerState>,
+    /// Session log manager
+    pub log_manager: LogManager,
     /// Application configuration
     pub config: AppConfig,
 }
@@ -41,6 +44,21 @@ impl AppState {
             tracing::warn!("Failed to load registered folders: {}", e);
         }
         
+        // Create log manager with configured settings
+        let log_path = if config.log_save_path.starts_with('/') || config.log_save_path.contains(':') {
+            // Absolute path
+            std::path::PathBuf::from(&config.log_save_path)
+        } else {
+            // Relative to data directory
+            crate::logging::default_log_dir().parent().unwrap().join(&config.log_save_path)
+        };
+        
+        let log_manager = LogManager::new(
+            config.max_log_lines_in_memory,
+            log_path,
+            config.log_file_progress_threshold_ms,
+        );
+        
         Self {
             tabs: TabManager::new(),
             jobs: JobManager::new(config.worker_pool_size),
@@ -51,6 +69,7 @@ impl AppState {
             registered_folders,
             cache: DirectoryCache::new(Duration::from_secs(30)),
             viewer: None,
+            log_manager,
             config,
         }
     }
@@ -2216,6 +2235,22 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             let dialog = crate::model::Dialog::version();
             state.dialogs.push(dialog);
             StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::SaveLog => {
+            // Save the current session log to file
+            match state.log_manager.save_to_file() {
+                Ok(()) => {
+                    state.log_manager.info("Session log saved successfully".to_string());
+                    StateUpdateResult::with_ui_change()
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to save log: {}", e);
+                    state.log_manager.error(error_msg.clone());
+                    tracing::error!("Failed to save session log: {}", e);
+                    StateUpdateResult::with_ui_change()
+                }
+            }
         }
         
         // Placeholder implementations for other transitions

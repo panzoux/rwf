@@ -25,6 +25,7 @@ pub mod worker_pool;
 pub mod event_receiver;
 pub mod input;
 pub mod logging;
+pub mod log_manager;
 pub mod session;
 pub mod macro_expander;
 pub mod pipe_to_action;
@@ -99,6 +100,9 @@ mod context_menu_drive_selection_tests;
 mod file_info_version_tests;
 
 #[cfg(test)]
+mod log_management_integration_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
@@ -109,6 +113,7 @@ pub use event_receiver::{map_job_event_to_transition, process_pending_events, pr
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
 pub use input::{KeyBindings, Action, format_key_event, action_to_transitions};
 pub use logging::{LogLevel, init_logging, default_log_dir};
+pub use log_manager::{LogManager, LogEntry, LogEntryLevel};
 pub use session::{SessionState, SessionError, save_session, restore_tabs, restore_marked_locations};
 pub use macro_expander::MacroExpander;
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};

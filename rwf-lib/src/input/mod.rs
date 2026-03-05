@@ -294,6 +294,7 @@ pub enum Action {
     // Information dialogs
     ShowFileInfoForCursor,
     ShowVersion,
+    SaveLog,
     
     // Internal
     PendingSequence,
@@ -858,6 +859,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::ShowVersion => {
             // Show version information dialog
             vec![Transition::ShowVersion]
+        }
+        Action::SaveLog => {
+            // Save the current session log to file
+            vec![Transition::SaveLog]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

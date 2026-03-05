@@ -33,6 +33,18 @@ pub struct AppConfig {
     /// Ellipsis character for truncation (default: "…")
     #[serde(rename = "Ellipsis")]
     pub ellipsis: String,
+    /// Maximum log lines to keep in memory (default: 2000)
+    #[serde(rename = "MaxLogLinesInMemory")]
+    pub max_log_lines_in_memory: usize,
+    /// Path where session logs are saved (default: "logs/session.log")
+    #[serde(rename = "LogSavePath")]
+    pub log_save_path: String,
+    /// Save log on exit (default: true)
+    #[serde(rename = "SaveLogOnExit")]
+    pub save_log_on_exit: bool,
+    /// Threshold in milliseconds for logging slow file operations (default: 5000)
+    #[serde(rename = "LogFileProgressThresholdMs")]
+    pub log_file_progress_threshold_ms: u64,
 }
 
 impl Default for AppConfig {
@@ -49,6 +61,10 @@ impl Default for AppConfig {
             key_repeat_delay_ms: 300,
             key_repeat_rate_ms: 15,
             ellipsis: "…".to_string(),  // Unicode ellipsis U+2026
+            max_log_lines_in_memory: 2000,
+            log_save_path: "logs/session.log".to_string(),
+            save_log_on_exit: true,
+            log_file_progress_threshold_ms: 5000,
         }
     }
 }
@@ -322,6 +338,7 @@ impl Default for KeyBindings {
         normal_mode.insert("Alt+Left".to_string(), Action::HistoryBack);
         normal_mode.insert("Alt+Right".to_string(), Action::HistoryForward);
         normal_mode.insert("Shift+Z".to_string(), Action::ReloadConfig);
+        normal_mode.insert("Ctrl+L".to_string(), Action::SaveLog);
         normal_mode.insert("Q".to_string(), Action::Quit);
         normal_mode.insert("Escape".to_string(), Action::Quit);
         
@@ -398,6 +415,7 @@ pub enum Action {
     // Application
     Quit,
     ReloadConfig,
+    SaveLog,
 }
 
 /// File operation configuration
