@@ -121,7 +121,29 @@ pub enum DialogContent {
         drives: Vec<DriveInfo>,
         selected_index: usize,
     },
+    FileInfo {
+        file_name: String,
+        file_path: String,
+        size: u64,
+        created: Option<std::time::SystemTime>,
+        modified: std::time::SystemTime,
+        accessed: Option<std::time::SystemTime>,
+        is_dir: bool,
+        is_readonly: bool,
+        #[cfg(unix)]
+        permissions: Option<u32>,
+        #[cfg(unix)]
+        owner: Option<String>,
+        #[cfg(unix)]
+        group: Option<String>,
+    },
+    Version {
+        version: String,
+        build_date: String,
+        copyright: String,
+    },
 }
+
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SplitJoinMode {
@@ -452,6 +474,93 @@ impl Dialog {
             content: DialogContent::DriveSelection {
                 drives,
                 selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a file information dialog
+    pub fn file_info(entry: &crate::model::FileEntry) -> Self {
+        #[cfg(unix)]
+        let (permissions, owner, group) = {
+            use std::os::unix::fs::MetadataExt;
+            use std::os::unix::fs::PermissionsExt;
+            
+            // Try to get metadata for permissions and ownership
+            let metadata_result = if let crate::model::Location::Local(path) = &entry.location {
+                std::fs::metadata(path).ok()
+            } else {
+                None
+            };
+            
+            let permissions = metadata_result.as_ref().map(|m| m.permissions().mode());
+            let owner = metadata_result.as_ref().and_then(|m| {
+                users::get_user_by_uid(m.uid()).map(|u| u.name().to_string_lossy().to_string())
+            });
+            let group = metadata_result.as_ref().and_then(|m| {
+                users::get_group_by_gid(m.gid()).map(|g| g.name().to_string_lossy().to_string())
+            });
+            
+            (permissions, owner, group)
+        };
+        
+        // Try to get created and accessed times
+        let (created, accessed) = if let crate::model::Location::Local(path) = &entry.location {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                let created = metadata.created().ok();
+                let accessed = metadata.accessed().ok();
+                (created, accessed)
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+        
+        // Check if readonly
+        let is_readonly = if let crate::model::Location::Local(path) = &entry.location {
+            std::fs::metadata(path)
+                .ok()
+                .map(|m| m.permissions().readonly())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        
+        Self {
+            title: "File Information".to_string(),
+            content: DialogContent::FileInfo {
+                file_name: entry.name.clone(),
+                file_path: entry.location.display_path(),
+                size: entry.calculated_size.unwrap_or(entry.size),
+                created,
+                modified: entry.modified,
+                accessed,
+                is_dir: entry.is_dir,
+                is_readonly,
+                #[cfg(unix)]
+                permissions,
+                #[cfg(unix)]
+                owner,
+                #[cfg(unix)]
+                group,
+            },
+        }
+    }
+
+    /// Create a version information dialog
+    pub fn version() -> Self {
+        let version = env!("CARGO_PKG_VERSION").to_string();
+        let build_date = option_env!("BUILD_DATE")
+            .unwrap_or("Unknown")
+            .to_string();
+        let copyright = "Copyright © 2024 RWF Contributors".to_string();
+        
+        Self {
+            title: "Version Information".to_string(),
+            content: DialogContent::Version {
+                version,
+                build_date,
+                copyright,
             },
         }
     }

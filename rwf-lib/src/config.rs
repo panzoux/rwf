@@ -47,7 +47,7 @@ impl Default for AppConfig {
             log_level: crate::logging::LogLevel::Information,
             session_persistence: true,
             key_repeat_delay_ms: 300,
-            key_repeat_rate_ms: 30,
+            key_repeat_rate_ms: 15,
             ellipsis: "…".to_string(),  // Unicode ellipsis U+2026
         }
     }

@@ -1178,26 +1178,26 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Test drive navigation
     - _Requirements: 42.1-42.7_
 
-- [ ] 49. Implement file information and version display
-  - [ ] 49.1 Implement file information dialog
+- [x] 49. Implement file information and version display
+  - [x] 49.1 Implement file information dialog
     - Display file name, path, size, dates, attributes
     - Display permissions and ownership
     - _Requirements: 43.1, 43.2, 43.3_
   
-  - [ ] 49.2 Implement version dialog
+  - [x] 49.2 Implement version dialog
     - Display version number, build date, copyright
     - _Requirements: 43.4, 43.5_
   
-  - [ ] 49.3 Add key bindings for information dialogs
+  - [x] 49.3 Add key bindings for information dialogs
     - Shift+I: ShowFileInfo
     - Configured key: ShowVersion
     - _Requirements: 43.1, 43.4_
   
-  - [ ] 49.4 Implement dialog dismissal
+  - [x] 49.4 Implement dialog dismissal
     - Support Escape and Enter to close
     - _Requirements: 43.6_
   
-  - [ ] 49.5 Write integration tests for information dialogs
+  - [x] 49.5 Write integration tests for information dialogs
     - Test file info display
     - Test version display
     - _Requirements: 43.1-43.6_

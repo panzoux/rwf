@@ -2200,6 +2200,24 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             StateUpdateResult::with_ui_change()
         }
         
+        Transition::ShowFileInfo => {
+            // Show file information dialog for current cursor entry
+            if let Some(entry) = state.active_pane().current_entry() {
+                let dialog = crate::model::Dialog::file_info(entry);
+                state.dialogs.push(dialog);
+                StateUpdateResult::with_ui_change()
+            } else {
+                StateUpdateResult::none()
+            }
+        }
+        
+        Transition::ShowVersion => {
+            // Show version information dialog
+            let dialog = crate::model::Dialog::version();
+            state.dialogs.push(dialog);
+            StateUpdateResult::with_ui_change()
+        }
+        
         // Placeholder implementations for other transitions
         _ => StateUpdateResult::none(),
     }

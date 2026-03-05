@@ -23,6 +23,9 @@ zip = { workspace = true }
 async-trait = "0.1"
 dirs = "5.0"
 
+[target.'cfg(unix)'.dependencies]
+users = "0.11"
+
 # Migemo support (optional)
 rustmigemo = { git = "https://github.com/oguna/rustmigemo", optional = true }
 

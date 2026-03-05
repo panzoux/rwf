@@ -291,6 +291,10 @@ pub enum Action {
     ShowContextMenu,
     ShowDriveChangeDialog,
     
+    // Information dialogs
+    ShowFileInfoForCursor,
+    ShowVersion,
+    
     // Internal
     PendingSequence,
 }
@@ -846,6 +850,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::ShowDriveChangeDialog => {
             // Show drive selection dialog
             vec![Transition::ShowDriveChangeDialog]
+        }
+        Action::ShowFileInfoForCursor => {
+            // Show file information dialog for current cursor entry
+            vec![Transition::ShowFileInfo]
+        }
+        Action::ShowVersion => {
+            // Show version information dialog
+            vec![Transition::ShowVersion]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

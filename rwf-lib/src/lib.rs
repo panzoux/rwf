@@ -96,6 +96,9 @@ mod pane_sync_swap_integration_tests;
 mod context_menu_drive_selection_tests;
 
 #[cfg(test)]
+mod file_info_version_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
