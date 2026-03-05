@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 3a53a1f89894a2431e8e5ed2c493140440667b6b22324d74e9873ecf1955d112 # shrinks to file_names = ["u.txt", "u.txt", "a.txt", "a.txt", "a.txt"], pattern_prefix = "u", pattern_suffix = None
+cc c1adae9ee564dc2307817f8d304c1fc47e3d7571fd080685dd2b063ef97410bb # shrinks to entry_count = 30, target_position = 29

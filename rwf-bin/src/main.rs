@@ -74,7 +74,14 @@ async fn main() -> Result<()> {
     info!("Terminal initialized");
 
     // Initialize application state with session restoration
-    let config = rwf_lib::state::AppConfig::default();
+    // Load configuration from file or use defaults
+    let config_manager = rwf_lib::config::ConfigManager::new();
+    let config = config_manager.load_config().unwrap_or_else(|e| {
+        tracing::warn!("Failed to load config: {:?}, using defaults", e);
+        rwf_lib::config::AppConfig::default()
+    });
+    info!("Configuration loaded from {:?}", config_manager.config_path());
+    
     let state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
 

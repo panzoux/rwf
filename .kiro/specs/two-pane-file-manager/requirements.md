@@ -57,6 +57,11 @@ The architecture follows these core principles:
 - **Session_State**: Persistent storage of application state including tabs, pane locations, and marked files
 - **Log_Level**: The verbosity of application logging (None, Trace, Debug, Information, Warning, Error, Critical)
 - **Job_Manager_Dialog**: A modal UI displaying detailed information about all jobs
+- **Scroll_Offset**: The number of lines from the top or bottom edge that triggers automatic scrolling (configurable, default: 3)
+- **Volume_Name**: The label or identifier for a storage device, drive, or network share
+- **Top_Separator**: The UI element displaying volume names and marked file statistics above the file panes
+- **Pane_Info_Bar**: The UI element displaying pane-specific information (UI area 5)
+- **Filename_Label**: The UI element displaying the currently selected filename (UI area 6)
 
 ## Requirements
 
@@ -87,6 +92,20 @@ The architecture follows these core principles:
 6. WHEN the user presses Page Up, THE Application SHALL move the Cursor up by one page in the Active_Pane
 7. WHEN the user presses Page Down, THE Application SHALL move the Cursor down by one page in the Active_Pane
 8. WHEN the Cursor moves beyond visible bounds, THE Application SHALL automatically scroll the Active_Pane to keep the Cursor visible
+
+### Requirement 2A: File Pane Scrolling Behavior
+
+**User Story:** As a user, I want smooth and predictable scrolling behavior in file panes, so that I can navigate efficiently without blank space at the bottom.
+
+#### Acceptance Criteria
+
+1. THE Application SHALL NOT display blank lines at the bottom of the file pane
+2. WHEN the Cursor reaches 3 lines from the top of the visible area, THE Application SHALL scroll the pane upward by one line
+3. WHEN the Cursor reaches 3 lines from the bottom of the visible area, THE Application SHALL scroll the pane downward by one line
+4. THE Application SHALL honor the scroll_offset configuration value from config.json (default: 3)
+5. WHEN scroll_offset is configured to N, THE Application SHALL trigger scrolling when the Cursor is N lines from the top or bottom
+6. WHEN scrolling to the end of the file list, THE Application SHALL position the last entry at the bottom of the visible area with no blank lines below
+7. WHEN scrolling to the beginning of the file list, THE Application SHALL position the first entry at the top of the visible area
 
 ### Requirement 3: Directory Navigation
 
@@ -659,6 +678,8 @@ The architecture follows these core principles:
 8. THE Application SHALL support multi-language help system via configuration
 9. THE Application SHALL validate configuration on load and display errors for invalid settings
 10. IF config.json is malformed, THEN THE Application SHALL display an error and use default settings
+11. THE Application SHALL support configurable scroll_offset value (default: 3) that controls when automatic scrolling triggers
+12. THE Application SHALL support all color configuration options for UI customization including FilePaneCursorForegroundColor, FilePaneCursorBackgroundColor, PaneInfoForegroundColor, PaneInfoBackgroundColor, InactiveFilePaneCursorForegroundColor, and InactiveFilePaneCursorBackgroundColor
 
 ### Requirement 39: Enhanced UI Elements
 
@@ -676,6 +697,27 @@ The architecture follows these core principles:
 8. THE Application SHALL support configurable colors for all UI elements via config.json
 9. THE Application SHALL update all UI elements within 16 milliseconds of state changes
 10. THE Application SHALL render the UI at least 30 times per second
+
+### Requirement 39A: Volume Name Display in Top Separator
+
+**User Story:** As a user, I want to see volume names and marked file statistics in the top separator, so that I can quickly identify which drives or shares I am working with and track marked files.
+
+#### Acceptance Criteria
+
+1. THE Application SHALL display volume names or network share names in the top separator for each pane
+2. WHEN the path is a network path (\\server\share), THE Application SHALL display the server name in the format "\\server"
+3. WHEN the path is a Linux or MacOS filesystem, THE Application SHALL display the device path and mount point with volume label if available
+4. WHEN a Linux or MacOS volume has a label, THE Application SHALL display it in the format "{device} ({mount_point} - {label})"
+5. WHEN a Linux or MacOS volume has no label, THE Application SHALL display it in the format "{device} ({mount_point})"
+6. WHEN the mount point is root (/), THE Application SHALL display "Root" if no device path is available
+7. WHEN the path is a Windows drive letter, THE Application SHALL display the volume label if available
+8. WHEN a Windows drive has no volume label, THE Application SHALL display the drive letter in brackets in the format "(C:)"
+9. THE Application SHALL display marked file statistics in the format "{count} {Dirs/Files} {size} marked"
+10. WHEN marked files include both directories and files, THE Application SHALL display both counts (e.g., "2 Dirs 3 Files 1.5 MB marked")
+11. WHEN marked files include only directories, THE Application SHALL display only directory count (e.g., "1 Dir marked")
+12. WHEN marked files include only files, THE Application SHALL display only file count (e.g., "5 Files 2.3 GB marked")
+13. THE Application SHALL format the top separator as "{volume_name} {marked_stats}" for each pane
+14. THE Application SHALL use TopSeparatorForegroundColor and TopSeparatorBackgroundColor for the top separator display
 
 ### Requirement 40: Job Manager Dialog
 
@@ -802,3 +844,23 @@ The architecture follows these core principles:
 5. THE help dialog SHALL display all key bindings with descriptions in the selected language
 6. THE Application SHALL persist the selected help language in configuration
 7. THE Application SHALL fall back to English if the configured language file is not found
+
+### Requirement 49: Color Configuration Mapping
+
+**User Story:** As a user, I want to understand which color settings apply to which UI areas, so that I can customize the appearance effectively.
+
+#### Acceptance Criteria
+
+1. THE Application SHALL apply ActiveTabForegroundColor, ActiveTabBackgroundColor, InactiveTabForegroundColor, InactiveTabBackgroundColor, and TabbarBackgroundColor to the tab bar (UI area 1)
+2. THE Application SHALL apply ForegroundColor and BackgroundColor to the path display (UI area 2)
+3. THE Application SHALL apply TopSeparatorForegroundColor and TopSeparatorBackgroundColor to the top separator showing volume names (UI area 3)
+4. THE Application SHALL apply ForegroundColor, BackgroundColor, FilePaneCursorForegroundColor, FilePaneCursorBackgroundColor, MarkedFileColor, DirectoryColor, and DirectoryBackgroundColor to the active file pane (UI area 4)
+5. THE Application SHALL apply InactiveForegroundColor, InactiveBackgroundColor, InactiveDirectoryColor, InactiveDirectoryBackgroundColor, InactiveFilePaneCursorForegroundColor, and InactiveFilePaneCursorBackgroundColor to the inactive file pane (UI area 4)
+6. THE Application SHALL apply PaneInfoForegroundColor and PaneInfoBackgroundColor to the pane info bar (UI area 5)
+7. THE Application SHALL apply FilenameLabelForegroundColor and FilenameLabelBackgroundColor to the selected filename line (UI area 6)
+8. THE Application SHALL apply ForegroundColor and BackgroundColor to the task view pane (UI area 7)
+9. THE Application SHALL support backward compatibility by treating HighlightForegroundColor as an alias for FilePaneCursorForegroundColor
+10. THE Application SHALL support backward compatibility by treating HighlightBackgroundColor as an alias for FilePaneCursorBackgroundColor
+11. THE Application SHALL support backward compatibility by treating TopSeparatorForegroundColor as an alias for PaneInfoForegroundColor when PaneInfoForegroundColor is not specified
+12. THE Application SHALL support backward compatibility by treating TopSeparatorBackgroundColor as an alias for PaneInfoBackgroundColor when PaneInfoBackgroundColor is not specified
+13. THE Application SHALL support backward compatibility by treating InactiveMarkedFileColor as an alias for InactiveFilePaneCursorBackgroundColor when InactiveFilePaneCursorBackgroundColor is not specified

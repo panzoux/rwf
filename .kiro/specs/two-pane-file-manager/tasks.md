@@ -1363,58 +1363,188 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
 - [ ] 56. Final checkpoint - All features complete
   - Ensure all tests pass, verify all 48 requirements are met, ask the user if questions arise.
 
-- [ ] 57. Major UI restructuring to match TWF layout
-  - [ ] 57.1 Fix scrolling logic in state.rs CursorMove transition
+- [ ] 57. Implement Requirement 2A: File Pane Scrolling Behavior
+  - [x] 57.1 Add scroll_offset to UIConfig struct
+    - Add scroll_offset field with default value of 3
+    - Update UIConfig::default() implementation
+    - _Requirements: 2A.4, 38.11_
+  
+  - [ ] 57.2 Implement calculate_scroll_position function
+    - Create ScrollContext struct with visible_height, total_entries, cursor_position, scroll_offset, config_offset
+    - Implement scrolling algorithm that prevents blank lines at bottom
+    - Trigger scrolling when cursor is within scroll_offset lines from top/bottom
+    - _Requirements: 2A.1, 2A.2, 2A.3, 2A.5, 2A.6, 2A.7_
+  
+  - [x] 57.3 Update CursorMove transition in state.rs
+    - Use calculate_scroll_position to update scroll_offset
+    - Pass visible_height from layout state
+    - Pass config_offset from UIConfig
+    - _Requirements: 2A.2, 2A.3, 2A.5_
+  
+  - [ ] 57.4 Update ChangeLocation transition to reset scroll_offset
+    - Set scroll_offset to 0 when location changes
+    - _Requirements: 2A.7_
+  
+  - [ ] 57.5 Write integration tests for scrolling behavior
+    - Test scrolling triggers at correct offset
+    - Test no blank lines at bottom
+    - Test cursor visibility maintained
+    - _Requirements: 2A.1-2A.7_
+
+- [ ] 58. Implement Requirement 39A: Volume Name Display in Top Separator
+  - [x] 58.1 Create volume info data structures
+    - Create VolumeInfo struct with display_name and volume_type
+    - Create VolumeType enum (Local, Network, Removable, Unknown)
+    - Create MarkedFileStats struct with dir_count, file_count, total_size
+    - _Requirements: 39A.1_
+  
+  - [x] 58.2 Implement get_drive_or_share_name function
+    - Implement platform-specific logic for Windows, Linux, MacOS
+    - Windows: Extract drive letter and volume label, handle network paths (\\server\share)
+    - Linux/MacOS: Read mount points, extract device and volume label
+    - _Requirements: 39A.2, 39A.3, 39A.4, 39A.5, 39A.6, 39A.7, 39A.8_
+  
+  - [x] 58.3 Implement calculate_marked_stats function
+    - Count marked directories and files separately
+    - Calculate total size of marked files
+    - _Requirements: 39A.9, 39A.10, 39A.11, 39A.12_
+  
+  - [x] 58.4 Implement format_top_separator_info function
+    - Format marked stats as "{count} {Dirs/Files} {size} marked"
+    - Handle cases with only dirs, only files, or both
+    - Combine volume name with marked stats
+    - _Requirements: 39A.9, 39A.10, 39A.11, 39A.12, 39A.13_
+  
+  - [x] 58.5 Update render_top_separator in top_separator.rs
+    - Call get_drive_or_share_name for both panes
+    - Call calculate_marked_stats for both panes
+    - Call format_top_separator_info for both panes
+    - Use TopSeparatorForegroundColor and TopSeparatorBackgroundColor
+    - _Requirements: 39A.1, 39A.13, 39A.14_
+  
+  - [ ] 58.6 Write integration tests for volume name display
+    - Test Windows drive letter display
+    - Test network path display
+    - Test Linux/MacOS mount point display
+    - Test marked file statistics formatting
+    - _Requirements: 39A.1-39A.14_
+
+- [ ] 59. Implement Requirement 49: Color Configuration Mapping
+  - [x] 59.1 Update ColorScheme struct with new color properties
+    - Add file_pane_cursor_foreground_color and file_pane_cursor_background_color (UI area 4)
+    - Add inactive_file_pane_cursor_foreground_color and inactive_file_pane_cursor_background_color (UI area 4)
+    - Add pane_info_foreground_color and pane_info_background_color (UI area 5)
+    - Add filename_label_foreground_color and filename_label_background_color (UI area 6)
+    - Keep old properties for backward compatibility (highlight_foreground_color, highlight_background_color)
+    - _Requirements: 49.4, 49.5, 49.6, 49.7_
+  
+  - [x] 59.2 Implement backward compatibility layer in ColorScheme
+    - Add get_file_pane_cursor_foreground() method that falls back to highlight_foreground_color
+    - Add get_file_pane_cursor_background() method that falls back to highlight_background_color
+    - Add get_inactive_file_pane_cursor_foreground() method with fallback
+    - Add get_inactive_file_pane_cursor_background() method with fallback
+    - Add get_pane_info_foreground() method with fallback to top_separator_foreground_color
+    - Add get_pane_info_background() method with fallback to top_separator_background_color
+    - _Requirements: 49.9, 49.10_
+  
+  - [ ] 59.3 Update render_panes to use correct colors for active pane
+    - Use file_pane_cursor_foreground_color and file_pane_cursor_background_color for cursor
+    - Use foreground_color and background_color for regular files
+    - Use marked_file_color for marked files
+    - Use directory_color and directory_background_color for directories
+    - _Requirements: 49.4_
+  
+  - [ ] 59.4 Update render_panes to use correct colors for inactive pane
+    - Use inactive_file_pane_cursor_foreground_color and inactive_file_pane_cursor_background_color for cursor
+    - Use inactive_foreground_color and inactive_background_color for regular files
+    - Use inactive_directory_color and inactive_directory_background_color for directories
+    - _Requirements: 49.5_
+  
+  - [ ] 59.5 Create pane_info_line.rs component (if not exists)
+    - Render pane info bar with pane_info_foreground_color and pane_info_background_color
+    - Display directory/file counts and total size
+    - _Requirements: 49.6_
+  
+  - [ ] 59.6 Create filename_label.rs component (if not exists)
+    - Render selected filename with filename_label_foreground_color and filename_label_background_color
+    - _Requirements: 49.7_
+  
+  - [ ] 59.7 Update tab_bar.rs to use correct colors
+    - Use active_tab_foreground_color and active_tab_background_color for active tab
+    - Use inactive_tab_foreground_color and inactive_tab_background_color for inactive tabs
+    - Use tabbar_background_color for tab bar background
+    - _Requirements: 49.1_
+  
+  - [ ] 59.8 Update path display rendering to use correct colors
+    - Use foreground_color and background_color for path display
+    - _Requirements: 49.2_
+  
+  - [ ] 59.9 Update top_separator.rs to use correct colors
+    - Use top_separator_foreground_color and top_separator_background_color
+    - _Requirements: 49.3_
+  
+  - [ ] 59.10 Update task_panel.rs to use correct colors
+    - Use foreground_color and background_color for task view
+    - _Requirements: 49.8_
+  
+  - [ ] 59.11 Write integration tests for color configuration
+    - Test all UI areas use correct colors
+    - Test backward compatibility with old color names
+    - Test color fallback behavior
+    - _Requirements: 49.1-49.10_
+
+- [ ] 60. Major UI restructuring to match TWF layout
+  - [ ] 60.1 Fix scrolling logic in state.rs CursorMove transition
     - Only scroll if entries.len() > visible_height
     - When at bottom, scroll_offset should be max(0, entries.len() - visible_height)
     - No blank lines below last entry
     - _Requirements: 2.8, 21.4_
   
-  - [ ] 57.2 Restructure main UI layout in ui.rs
+  - [ ] 60.2 Restructure main UI layout in ui.rs
     - New layout: Tabs (1 line) → Path line (1 line) → Volume name line (1 line) → File panes (Min 10) → Pane info line (1 line) → Selected filename line (1 line) → Task view (5 lines, no border)
     - Remove borders from file panes
     - Remove borders from task panel
     - _Requirements: 1.1, 1.2, 16.1-16.7_
   
-  - [ ] 57.3 Create path_line.rs component
+  - [ ] 60.3 Create path_line.rs component
     - Display left and right pane paths side by side
     - Show ">" indicator for active pane
     - White text on blue background
     - _Requirements: 16.1_
   
-  - [ ] 57.4 Create volume_line.rs component
+  - [ ] 60.4 Create volume_line.rs component
     - Display volume names for both panes
     - Show drive letters on Windows
     - Cyan text on dark gray background
     - _Requirements: 39.1, 39.2_
   
-  - [ ] 57.5 Create pane_info_line.rs component
+  - [ ] 60.5 Create pane_info_line.rs component
     - Display directory/file counts for both panes
     - Show total size of files
     - White text on dark gray background
     - _Requirements: 16.2, 16.3, 16.4_
   
-  - [ ] 57.6 Update panes.rs to remove borders
+  - [ ] 60.6 Update panes.rs to remove borders
     - Remove Block wrapper
     - Add "*" selection indicator instead of highlighting
     - Render list items directly without borders
     - _Requirements: 1.1, 1.4, 4.6_
   
-  - [ ] 57.7 Update task_panel.rs to remove border
+  - [ ] 60.7 Update task_panel.rs to remove border
     - Render task list directly without border
     - _Requirements: 15.2, 15.3_
   
-  - [ ] 57.8 Delete obsolete UI components
+  - [ ] 60.8 Delete obsolete UI components
     - Delete top_separator.rs (replaced by path_line and volume_line)
     - Delete status_bar.rs (replaced by pane_info_line)
     - _Requirements: N/A_
   
-  - [ ] 57.9 Update ui.rs module exports
+  - [ ] 60.9 Update ui.rs module exports
     - Export new components (path_line, volume_line, pane_info_line)
     - Remove obsolete exports (top_separator, status_bar)
     - _Requirements: N/A_
   
-  - [ ] 57.10 Test UI restructuring
+  - [ ] 60.10 Test UI restructuring
     - Verify scrolling works correctly without blank lines
     - Verify all UI components render properly
     - Verify layout matches TWF exactly

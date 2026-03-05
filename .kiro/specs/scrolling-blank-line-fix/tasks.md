@@ -1,0 +1,91 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Fault Condition** - Scrolling Trigger and Blank Lines Bug
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate both bugs exist (premature scrolling with blank lines, and scroll margin violation at last entry)
+  - **Scoped PBT Approach**: Scope the property to concrete failing cases identified in the design
+  - Test Case 1: cursor=66, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70, move cursor to 67
+    - Assert scroll_offset should position cursor at line 16 (bottom_trigger)
+    - Assert viewport shows exactly 19 entries with no blank lines
+  - Test Case 2: cursor=73, scroll_offset=55, visible_height=19, scroll_margin=3, total_entries=74
+    - Assert scroll_offset should be 58 to position cursor at line 15 (maintaining scroll_margin)
+    - Assert cursor_in_view == 15 (not 18)
+  - Test Case 3: cursor=65, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70, move cursor to 66
+    - Assert scrolling triggers at cursor_in_view=16 (>= bottom_trigger)
+    - Assert scroll_offset maintains cursor at bottom_trigger position
+  - Run test on UNFIXED code in rwf-lib/src/state.rs
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bugs exist)
+  - Document counterexamples found:
+    - Scrolling triggers at wrong position (cursor_in_view=17 instead of 16)
+    - scroll_offset overshoots to max_offset leaving blank lines
+    - Cursor at last entry violates scroll_margin (sits on line 18 instead of 15)
+  - Mark task complete when test is written, run, and failures are documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Non-Downward-Scrolling Behavior
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs (scrolling up, small lists, cursor jumps)
+  - Write property-based tests capturing observed behavior patterns:
+    - Property: For all scroll states where cursor_in_view < scroll_margin and cursor moves up, scroll_offset = cursor - scroll_margin
+    - Property: For all scroll states where total_entries <= visible_height, scroll_offset = 0
+    - Property: For all cursor jumps above viewport, scroll_offset = cursor - scroll_margin
+    - Property: For all cursor jumps below viewport, scroll_offset calculation matches original logic
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4_
+
+- [x] 3. Fix for scrolling blank line bugs
+
+  - [x] 3.1 Implement the fix in rwf-lib/src/state.rs
+    - Fix bottom_trigger calculation: change to `visible_height - scroll_margin - 1` (0-indexed)
+    - Fix trigger condition: change from `cursor_in_view > bottom_trigger` to `cursor_in_view >= bottom_trigger`
+    - Implement desired position algorithm for CursorMove downward scrolling:
+      - Calculate `desired_offset = cursor - bottom_trigger`
+      - Calculate `max_offset = total_entries - visible_height`
+      - Set `scroll_offset = min(desired_offset, max_offset)`
+    - Implement desired position algorithm for CursorJump downward scrolling (when cursor is visible):
+      - Use same calculation as CursorMove
+      - Calculate `desired_offset = cursor - bottom_trigger`
+      - Set `scroll_offset = min(desired_offset, max_offset)`
+    - Preserve all existing logic for scrolling up, cursor jumps above viewport, and small lists
+    - _Bug_Condition: isBugCondition(input) where (cursor_in_view > bottom_trigger AND scroll_offset < max_offset) OR (cursor == total_entries - 1 AND cursor_in_view > visible_height - scroll_margin - 1)_
+    - _Expected_Behavior: viewport shows visible_height entries (or all remaining), cursor maintains scroll_margin spacing from bottom edge, no blank lines_
+    - _Preservation: Scrolling up (cursor_in_view < scroll_margin), small lists (total_entries <= visible_height), cursor jumps outside viewport_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4_
+
+  - [x] 3.2 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Correct Scrolling Trigger and No Blank Lines
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bugs are fixed)
+    - Verify all three test cases pass:
+      - Scrolling triggers at correct position (cursor_in_view >= 16)
+      - No blank lines appear at bottom of viewport
+      - Cursor at last entry maintains scroll_margin spacing
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+
+  - [x] 3.3 Verify preservation tests still pass
+    - **Property 2: Preservation** - Non-Downward-Scrolling Behavior
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all preservation properties still hold:
+      - Scrolling up behavior unchanged
+      - Small list behavior unchanged
+      - Cursor jump behavior unchanged
+    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Run all unit tests and property-based tests
+  - Verify no blank lines appear during scrolling in manual testing
+  - Verify scroll_margin is maintained at all cursor positions
+  - Verify scrolling up, small lists, and cursor jumps work correctly
+  - Ensure all tests pass, ask the user if questions arise

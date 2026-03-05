@@ -95,7 +95,7 @@ impl SessionState {
 
     /// Get the default session file path
     pub fn default_path() -> PathBuf {
-        let mut path = dirs::data_local_dir()
+        let mut path = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."));
         path.push("rwf");
         path.push("session.json");
@@ -207,6 +207,11 @@ pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
                 tab.right_pane.current_location = saved_tab.right_location.clone().into();
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
+                
+                // Don't adjust scroll_offset here - let the normal scrolling logic
+                // handle it when entries are loaded via CompleteJob transition.
+                // The cursor movement logic will ensure the cursor is visible.
+                
                 tab
             })
             .collect()

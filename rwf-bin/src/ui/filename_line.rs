@@ -10,12 +10,13 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::AppState;
-use super::parse_color;
+use super::{parse_color, smart_truncate};
 
 /// Render the filename line
 pub fn render_filename_line(frame: &mut Frame, area: Rect, state: &AppState) {
     let active_pane = state.active_pane();
     let colors = &state.config.display.colors;
+    let ellipsis = &state.config.ellipsis;
     
     // Get the current entry (at cursor position)
     let filename = if let Some(entry) = active_pane.current_entry() {
@@ -27,11 +28,7 @@ pub fn render_filename_line(frame: &mut Frame, area: Rect, state: &AppState) {
     // Show full filename using entire line width
     // Truncate if too long to fit in the area
     let max_width = area.width.saturating_sub(2) as usize; // Leave space for padding
-    let display_name = if filename.len() > max_width {
-        format!("{}...", &filename[..max_width.saturating_sub(3)])
-    } else {
-        filename
-    };
+    let display_name = smart_truncate(&filename, max_width, ellipsis);
     
     let line = Line::from(vec![
         Span::styled(

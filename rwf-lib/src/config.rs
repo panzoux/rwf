@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct AppConfig {
     /// Display configuration (colors, CJK width, etc.)
     pub display: DisplayConfig,
@@ -29,6 +30,9 @@ pub struct AppConfig {
     pub key_repeat_delay_ms: u32,
     /// Key repeat rate in milliseconds (after initial delay)
     pub key_repeat_rate_ms: u32,
+    /// Ellipsis character for truncation (default: "…")
+    #[serde(rename = "Ellipsis")]
+    pub ellipsis: String,
 }
 
 impl Default for AppConfig {
@@ -44,14 +48,17 @@ impl Default for AppConfig {
             session_persistence: true,
             key_repeat_delay_ms: 300,
             key_repeat_rate_ms: 30,
+            ellipsis: "…".to_string(),  // Unicode ellipsis U+2026
         }
     }
 }
 
 /// Display configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct DisplayConfig {
     /// Show hidden files
+    #[serde(rename = "ShowHiddenFiles")]
     pub show_hidden: bool,
     /// Show system files
     pub show_system: bool,
@@ -61,7 +68,8 @@ pub struct DisplayConfig {
     pub time_format: TimeFormat,
     /// CJK character width (1 or 2)
     pub cjk_width: u8,
-    /// Color scheme
+    /// Color scheme (flattened into Display for TWF compatibility)
+    #[serde(flatten)]
     pub colors: ColorScheme,
 }
 
@@ -87,12 +95,26 @@ pub enum TimeFormat {
 
 /// Color scheme configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct ColorScheme {
     // Main UI colors
     pub foreground_color: String,
     pub background_color: String,
     pub highlight_foreground_color: String,
     pub highlight_background_color: String,
+    
+    // Active file pane cursor colors (UI area 4)
+    pub file_pane_cursor_foreground_color: Option<String>,
+    pub file_pane_cursor_background_color: Option<String>,
+    
+    // Inactive file pane cursor colors (UI area 4)
+    pub inactive_file_pane_cursor_foreground_color: Option<String>,
+    pub inactive_file_pane_cursor_background_color: Option<String>,
+    
+    // Inactive pane colors (UI area 4)
+    pub inactive_foreground_color: Option<String>,
+    pub inactive_background_color: Option<String>,
     
     // File and directory colors
     pub marked_file_color: String,
@@ -101,12 +123,16 @@ pub struct ColorScheme {
     pub inactive_directory_color: String,
     pub inactive_directory_background_color: String,
     
+    // Pane info bar colors (UI area 5)
+    pub pane_info_foreground_color: Option<String>,
+    pub pane_info_background_color: Option<String>,
+    
     // Pane and border colors
     pub filename_label_foreground_color: String,
     pub filename_label_background_color: String,
     pub pane_border_color: String,
     
-    // Top separator colors
+    // Top separator colors (UI area 3)
     pub top_separator_foreground_color: String,
     pub top_separator_background_color: String,
     
@@ -114,7 +140,7 @@ pub struct ColorScheme {
     pub dialog_help_foreground_color: String,
     pub dialog_help_background_color: String,
     
-    // Tab colors
+    // Tab colors (UI area 1)
     pub active_tab_foreground_color: String,
     pub active_tab_background_color: String,
     pub inactive_tab_foreground_color: String,
@@ -143,11 +169,19 @@ impl Default for ColorScheme {
             background_color: "Black".to_string(),
             highlight_foreground_color: "Black".to_string(),
             highlight_background_color: "Cyan".to_string(),
+            file_pane_cursor_foreground_color: None, // Falls back to highlight_foreground_color
+            file_pane_cursor_background_color: None, // Falls back to highlight_background_color
+            inactive_file_pane_cursor_foreground_color: Some("Black".to_string()),
+            inactive_file_pane_cursor_background_color: Some("DarkGray".to_string()),
+            inactive_foreground_color: Some("Gray".to_string()),
+            inactive_background_color: Some("Black".to_string()),
             marked_file_color: "Cyan".to_string(),
             directory_color: "BrightCyan".to_string(),
             directory_background_color: "Black".to_string(),
             inactive_directory_color: "Cyan".to_string(),
             inactive_directory_background_color: "Black".to_string(),
+            pane_info_foreground_color: Some("Black".to_string()),
+            pane_info_background_color: Some("DarkGray".to_string()),
             filename_label_foreground_color: "White".to_string(),
             filename_label_background_color: "Blue".to_string(),
             pane_border_color: "Red".to_string(),
@@ -173,8 +207,83 @@ impl Default for ColorScheme {
     }
 }
 
+impl ColorScheme {
+    /// Get file pane cursor foreground color with backward compatibility
+    /// Falls back to highlight_foreground_color if not set
+    /// **Validates: Requirements 49.9**
+    pub fn get_file_pane_cursor_foreground(&self) -> &str {
+        self.file_pane_cursor_foreground_color
+            .as_deref()
+            .unwrap_or(&self.highlight_foreground_color)
+    }
+    
+    /// Get file pane cursor background color with backward compatibility
+    /// Falls back to highlight_background_color if not set
+    /// **Validates: Requirements 49.10**
+    pub fn get_file_pane_cursor_background(&self) -> &str {
+        self.file_pane_cursor_background_color
+            .as_deref()
+            .unwrap_or(&self.highlight_background_color)
+    }
+    
+    /// Get inactive file pane cursor foreground color with backward compatibility
+    /// Falls back to inactive_foreground_color, then foreground_color
+    /// **Validates: Requirements 49.9**
+    pub fn get_inactive_file_pane_cursor_foreground(&self) -> &str {
+        self.inactive_file_pane_cursor_foreground_color
+            .as_deref()
+            .or(self.inactive_foreground_color.as_deref())
+            .unwrap_or(&self.foreground_color)
+    }
+    
+    /// Get inactive file pane cursor background color with backward compatibility
+    /// Falls back to inactive_background_color, then background_color
+    /// **Validates: Requirements 49.10**
+    pub fn get_inactive_file_pane_cursor_background(&self) -> &str {
+        self.inactive_file_pane_cursor_background_color
+            .as_deref()
+            .or(self.inactive_background_color.as_deref())
+            .unwrap_or(&self.background_color)
+    }
+    
+    /// Get inactive foreground color with backward compatibility
+    /// Falls back to foreground_color if not set
+    pub fn get_inactive_foreground(&self) -> &str {
+        self.inactive_foreground_color
+            .as_deref()
+            .unwrap_or(&self.foreground_color)
+    }
+    
+    /// Get inactive background color with backward compatibility
+    /// Falls back to background_color if not set
+    pub fn get_inactive_background(&self) -> &str {
+        self.inactive_background_color
+            .as_deref()
+            .unwrap_or(&self.background_color)
+    }
+    
+    /// Get pane info foreground color with backward compatibility
+    /// Falls back to top_separator_foreground_color if not set
+    /// **Validates: Requirements 49.9**
+    pub fn get_pane_info_foreground(&self) -> &str {
+        self.pane_info_foreground_color
+            .as_deref()
+            .unwrap_or(&self.top_separator_foreground_color)
+    }
+    
+    /// Get pane info background color with backward compatibility
+    /// Falls back to top_separator_background_color if not set
+    /// **Validates: Requirements 49.10**
+    pub fn get_pane_info_background(&self) -> &str {
+        self.pane_info_background_color
+            .as_deref()
+            .unwrap_or(&self.top_separator_background_color)
+    }
+}
+
 /// Key bindings configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct KeyBindings {
     pub normal_mode: HashMap<String, Action>,
     pub search_mode: HashMap<String, Action>,
@@ -293,6 +402,7 @@ pub enum Action {
 
 /// File operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct FileOpConfig {
     /// Confirm before deleting files
     pub confirm_delete: bool,
@@ -317,6 +427,7 @@ impl Default for FileOpConfig {
 
 /// Search configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct SearchConfig {
     /// Case-sensitive search by default
     pub case_sensitive: bool,
@@ -341,6 +452,7 @@ impl Default for SearchConfig {
 
 /// UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct UIConfig {
     /// UI refresh rate (Hz)
     pub refresh_rate: u64,
@@ -372,7 +484,7 @@ impl ConfigManager {
     pub fn new() -> Self {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("two-pane-fm");
+            .join("rwf");
         
         Self {
             config_path: config_dir.join("config.json"),
@@ -457,6 +569,11 @@ impl ConfigManager {
             .map_err(ConfigError::IoError)?;
         
         Ok(())
+    }
+    
+    /// Get the config file path
+    pub fn config_path(&self) -> &std::path::Path {
+        &self.config_path
     }
     
     /// Validate configuration settings
@@ -547,73 +664,74 @@ mod tests {
         
         // Write a config file
         let config_json = r#"{
-            "display": {
-                "show_hidden": true,
-                "show_system": false,
-                "date_format": "%Y-%m-%d",
-                "time_format": "TwentyFourHour",
-                "cjk_width": 2,
-                "colors": {
-                    "foreground_color": "White",
-                    "background_color": "Black",
-                    "highlight_foreground_color": "Black",
-                    "highlight_background_color": "Cyan",
-                    "marked_file_color": "Cyan",
-                    "directory_color": "BrightCyan",
-                    "directory_background_color": "Black",
-                    "inactive_directory_color": "Cyan",
-                    "inactive_directory_background_color": "Black",
-                    "filename_label_foreground_color": "White",
-                    "filename_label_background_color": "Blue",
-                    "pane_border_color": "Red",
-                    "top_separator_foreground_color": "Black",
-                    "top_separator_background_color": "Gray",
-                    "dialog_help_foreground_color": "BrightYellow",
-                    "dialog_help_background_color": "Blue",
-                    "active_tab_foreground_color": "White",
-                    "active_tab_background_color": "Blue",
-                    "inactive_tab_foreground_color": "Gray",
-                    "inactive_tab_background_color": "Black",
-                    "tabbar_background_color": "Black",
-                    "ok_color": "Green",
-                    "warning_color": "Yellow",
-                    "error_color": "Red",
-                    "text_viewer_foreground_color": "White",
-                    "text_viewer_background_color": "Black",
-                    "text_viewer_status_foreground_color": "White",
-                    "text_viewer_status_background_color": "Gray",
-                    "text_viewer_message_foreground_color": "White",
-                    "text_viewer_message_background_color": "Blue"
+            "Display": {
+                "ShowHidden": true,
+                "ShowSystem": false,
+                "DateFormat": "%Y-%m-%d",
+                "TimeFormat": "TwentyFourHour",
+                "CjkWidth": 2,
+                "Colors": {
+                    "ForegroundColor": "White",
+                    "BackgroundColor": "Black",
+                    "HighlightForegroundColor": "Black",
+                    "HighlightBackgroundColor": "Cyan",
+                    "MarkedFileColor": "Cyan",
+                    "DirectoryColor": "BrightCyan",
+                    "DirectoryBackgroundColor": "Black",
+                    "InactiveDirectoryColor": "Cyan",
+                    "InactiveDirectoryBackgroundColor": "Black",
+                    "FilenameLabelForegroundColor": "White",
+                    "FilenameLabelBackgroundColor": "Blue",
+                    "PaneBorderColor": "Red",
+                    "TopSeparatorForegroundColor": "Black",
+                    "TopSeparatorBackgroundColor": "Gray",
+                    "DialogHelpForegroundColor": "BrightYellow",
+                    "DialogHelpBackgroundColor": "Blue",
+                    "ActiveTabForegroundColor": "White",
+                    "ActiveTabBackgroundColor": "Blue",
+                    "InactiveTabForegroundColor": "Gray",
+                    "InactiveTabBackgroundColor": "Black",
+                    "TabbarBackgroundColor": "Black",
+                    "OkColor": "Green",
+                    "WarningColor": "Yellow",
+                    "ErrorColor": "Red",
+                    "TextViewerForegroundColor": "White",
+                    "TextViewerBackgroundColor": "Black",
+                    "TextViewerStatusForegroundColor": "White",
+                    "TextViewerStatusBackgroundColor": "Gray",
+                    "TextViewerMessageForegroundColor": "White",
+                    "TextViewerMessageBackgroundColor": "Blue"
                 }
             },
-            "key_bindings": {
-                "normal_mode": {},
-                "search_mode": {},
-                "dialog_mode": {},
-                "viewer_mode": {}
+            "KeyBindings": {
+                "NormalMode": {},
+                "SearchMode": {},
+                "DialogMode": {},
+                "ViewerMode": {}
             },
-            "file_operations": {
-                "confirm_delete": true,
-                "confirm_overwrite": true,
-                "buffer_size": 8192,
-                "preserve_timestamps": true
+            "FileOperations": {
+                "ConfirmDelete": true,
+                "ConfirmOverwrite": true,
+                "BufferSize": 8192,
+                "PreserveTimestamps": true
             },
-            "search": {
-                "case_sensitive": false,
-                "use_regex": false,
-                "use_migemo": false,
-                "max_results": 1000
+            "Search": {
+                "CaseSensitive": false,
+                "UseRegex": false,
+                "UseMigemo": false,
+                "MaxResults": 1000
             },
-            "ui": {
-                "refresh_rate": 30,
-                "scroll_offset": 3,
-                "tab_width": 4
+            "Ui": {
+                "RefreshRate": 30,
+                "ScrollOffset": 3,
+                "TabWidth": 4
             },
-            "worker_pool_size": 8,
-            "log_level": "Debug",
-            "session_persistence": false,
-            "key_repeat_delay_ms": 300,
-            "key_repeat_rate_ms": 50
+            "WorkerPoolSize": 8,
+            "LogLevel": "Debug",
+            "SessionPersistence": false,
+            "KeyRepeatDelayMs": 300,
+            "KeyRepeatRateMs": 50,
+            "Ellipsis": "…"
         }"#;
         
         std::fs::write(&config_path, config_json).unwrap();

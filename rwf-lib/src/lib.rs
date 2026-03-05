@@ -30,6 +30,7 @@ pub mod macro_expander;
 pub mod pipe_to_action;
 pub mod pattern_rename;
 pub mod config;
+pub mod volume_info;
 
 #[cfg(test)]
 mod error_handling_tests;
@@ -103,3 +104,4 @@ pub use session::{SessionState, SessionError, save_session, restore_tabs, restor
 pub use macro_expander::MacroExpander;
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
 pub use pattern_rename::{apply_pattern, generate_preview, validate_pattern};
+pub use volume_info::{VolumeInfo, VolumeType, MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};

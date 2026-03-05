@@ -69,9 +69,12 @@ impl FilesystemBackend for LocalFilesystemBackend {
             
             let metadata = entry.metadata().await?;
             let entry_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            
+            debug!("Processing file: {}", name);
             
             let file_entry = FileEntry {
-                name: entry.file_name().to_string_lossy().to_string(),
+                name,
                 location: Location::Local(entry_path.clone()),
                 size: metadata.len(),
                 is_dir: metadata.is_dir(),

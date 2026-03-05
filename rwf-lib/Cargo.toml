@@ -30,6 +30,9 @@ rustmigemo = { git = "https://github.com/oguna/rustmigemo", optional = true }
 default = []
 migemo = ["rustmigemo"]
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }

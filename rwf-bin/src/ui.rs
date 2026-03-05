@@ -10,6 +10,7 @@ mod path_line;
 mod volume_line;
 mod pane_info_line;
 mod colors;
+mod unicode_utils;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -25,6 +26,7 @@ pub use path_line::render_path_line;
 pub use volume_line::render_volume_line;
 pub use pane_info_line::render_pane_info_line;
 pub use colors::parse_color;
+pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
 
 /// Main UI rendering function
 pub fn render_ui(frame: &mut Frame, state: &AppState) {

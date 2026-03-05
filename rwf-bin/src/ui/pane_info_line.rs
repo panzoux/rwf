@@ -30,15 +30,15 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
     // Left info
     let left_para = Paragraph::new(Span::raw(left_info))
         .style(Style::default()
-            .fg(parse_color(&colors.foreground_color))
-            .bg(parse_color(&colors.background_color)));
+            .fg(parse_color(colors.get_pane_info_foreground()))
+            .bg(parse_color(colors.get_pane_info_background())));
     frame.render_widget(left_para, halves[0]);
     
     // Right info
     let right_para = Paragraph::new(Span::raw(right_info))
         .style(Style::default()
-            .fg(parse_color(&colors.foreground_color))
-            .bg(parse_color(&colors.background_color)));
+            .fg(parse_color(colors.get_pane_info_foreground()))
+            .bg(parse_color(colors.get_pane_info_background())));
     frame.render_widget(right_para, halves[1]);
 }
 

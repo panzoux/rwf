@@ -270,6 +270,106 @@ mod tests {
     }
     
     #[test]
+    fn test_twf_config_format() {
+        // Test loading TWF-style config with colors directly under Display (not nested)
+        // This verifies that #[serde(flatten)] works correctly
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        
+        // Create a TWF-style config with colors directly under Display
+        let config_json = r#"{
+            "Display": {
+                "ShowHidden": false,
+                "ShowSystem": false,
+                "DateFormat": "%Y-%m-%d %H:%M",
+                "TimeFormat": "TwentyFourHour",
+                "CjkWidth": 2,
+                "ForegroundColor": "White",
+                "BackgroundColor": "Black",
+                "HighlightForegroundColor": "Black",
+                "HighlightBackgroundColor": "Cyan",
+                "PaneInfoForegroundColor": "Black",
+                "PaneInfoBackgroundColor": "Gray",
+                "InactiveFilePaneCursorForegroundColor": "Black",
+                "InactiveFilePaneCursorBackgroundColor": "DarkGray",
+                "MarkedFileColor": "Cyan",
+                "DirectoryColor": "BrightCyan",
+                "DirectoryBackgroundColor": "Black",
+                "InactiveDirectoryColor": "Cyan",
+                "InactiveDirectoryBackgroundColor": "Black",
+                "FilenameLabelForegroundColor": "White",
+                "FilenameLabelBackgroundColor": "Blue",
+                "PaneBorderColor": "Red",
+                "TopSeparatorForegroundColor": "Black",
+                "TopSeparatorBackgroundColor": "Gray",
+                "DialogHelpForegroundColor": "BrightYellow",
+                "DialogHelpBackgroundColor": "Blue",
+                "ActiveTabForegroundColor": "White",
+                "ActiveTabBackgroundColor": "Blue",
+                "InactiveTabForegroundColor": "Gray",
+                "InactiveTabBackgroundColor": "Black",
+                "TabbarBackgroundColor": "Black",
+                "OkColor": "Green",
+                "WarningColor": "Yellow",
+                "ErrorColor": "Red",
+                "TextViewerForegroundColor": "White",
+                "TextViewerBackgroundColor": "Black",
+                "TextViewerStatusForegroundColor": "White",
+                "TextViewerStatusBackgroundColor": "Gray",
+                "TextViewerMessageForegroundColor": "White",
+                "TextViewerMessageBackgroundColor": "Blue"
+            },
+            "KeyBindings": {
+                "NormalMode": {},
+                "SearchMode": {},
+                "DialogMode": {},
+                "ViewerMode": {}
+            },
+            "FileOperations": {
+                "ConfirmDelete": true,
+                "ConfirmOverwrite": true,
+                "BufferSize": 8192,
+                "PreserveTimestamps": true
+            },
+            "Search": {
+                "CaseSensitive": false,
+                "UseRegex": false,
+                "UseMigemo": false,
+                "MaxResults": 1000
+            },
+            "Ui": {
+                "RefreshRate": 30,
+                "ScrollOffset": 3,
+                "TabWidth": 4
+            },
+            "WorkerPoolSize": 4,
+            "LogLevel": "Information",
+            "SessionPersistence": true,
+            "KeyRepeatDelayMs": 300,
+            "KeyRepeatRateMs": 30,
+            "Ellipsis": "…"
+        }"#;
+        
+        fs::write(&config_path, config_json).unwrap();
+        
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+        let config = manager.load_config().unwrap();
+        
+        // Verify PaneInfo colors are loaded correctly
+        assert_eq!(config.display.colors.pane_info_background_color, Some("Gray".to_string()));
+        assert_eq!(config.display.colors.pane_info_foreground_color, Some("Black".to_string()));
+        
+        // Verify inactive file pane cursor colors are loaded correctly
+        assert_eq!(config.display.colors.inactive_file_pane_cursor_background_color, Some("DarkGray".to_string()));
+        assert_eq!(config.display.colors.inactive_file_pane_cursor_foreground_color, Some("Black".to_string()));
+        
+        // Verify other colors are also loaded
+        assert_eq!(config.display.colors.foreground_color, "White");
+        assert_eq!(config.display.colors.background_color, "Black");
+    }
+    
+    #[test]
     fn test_config_validation_cjk_width() {
         // Test CJK width validation
         let temp_dir = TempDir::new().unwrap();

@@ -1253,8 +1253,18 @@ pub struct ColorScheme {
     // Main UI colors
     pub foreground_color: String,
     pub background_color: String,
-    pub highlight_foreground_color: String,
-    pub highlight_background_color: String,
+    
+    // Active file pane cursor colors (UI area 4)
+    pub file_pane_cursor_foreground_color: Option<String>,
+    pub file_pane_cursor_background_color: Option<String>,
+    
+    // Inactive file pane cursor colors (UI area 4)
+    pub inactive_file_pane_cursor_foreground_color: Option<String>,
+    pub inactive_file_pane_cursor_background_color: Option<String>,
+    
+    // Backward compatibility aliases
+    pub highlight_foreground_color: Option<String>,  // Alias for file_pane_cursor_foreground_color
+    pub highlight_background_color: Option<String>,  // Alias for file_pane_cursor_background_color
     
     // File and directory colors
     pub marked_file_color: String,
@@ -1262,13 +1272,22 @@ pub struct ColorScheme {
     pub directory_background_color: String,
     pub inactive_directory_color: String,
     pub inactive_directory_background_color: String,
+    pub inactive_foreground_color: Option<String>,
+    pub inactive_background_color: Option<String>,
+    pub inactive_marked_file_color: Option<String>,  // Backward compatibility alias
     
-    // Pane and border colors
+    // Pane info bar colors (UI area 5)
+    pub pane_info_foreground_color: Option<String>,
+    pub pane_info_background_color: Option<String>,
+    
+    // Filename label colors (UI area 6)
     pub filename_label_foreground_color: String,
     pub filename_label_background_color: String,
+    
+    // Pane and border colors
     pub pane_border_color: String,
     
-    // Top separator colors
+    // Top separator colors (UI area 3)
     pub top_separator_foreground_color: String,
     pub top_separator_background_color: String,
     
@@ -1276,7 +1295,7 @@ pub struct ColorScheme {
     pub dialog_help_foreground_color: String,
     pub dialog_help_background_color: String,
     
-    // Tab colors
+    // Tab colors (UI area 1)
     pub active_tab_foreground_color: String,
     pub active_tab_background_color: String,
     pub inactive_tab_foreground_color: String,
@@ -1303,13 +1322,22 @@ impl Default for ColorScheme {
         Self {
             foreground_color: "White".to_string(),
             background_color: "Black".to_string(),
-            highlight_foreground_color: "Black".to_string(),
-            highlight_background_color: "Cyan".to_string(),
+            file_pane_cursor_foreground_color: Some("Black".to_string()),
+            file_pane_cursor_background_color: Some("Cyan".to_string()),
+            inactive_file_pane_cursor_foreground_color: Some("White".to_string()),
+            inactive_file_pane_cursor_background_color: Some("DarkGray".to_string()),
+            highlight_foreground_color: Some("Black".to_string()),
+            highlight_background_color: Some("Cyan".to_string()),
             marked_file_color: "Cyan".to_string(),
             directory_color: "BrightCyan".to_string(),
             directory_background_color: "Black".to_string(),
             inactive_directory_color: "Cyan".to_string(),
             inactive_directory_background_color: "Black".to_string(),
+            inactive_foreground_color: Some("Gray".to_string()),
+            inactive_background_color: Some("Black".to_string()),
+            inactive_marked_file_color: Some("DarkCyan".to_string()),
+            pane_info_foreground_color: Some("Black".to_string()),
+            pane_info_background_color: Some("Gray".to_string()),
             filename_label_foreground_color: "White".to_string(),
             filename_label_background_color: "Blue".to_string(),
             pane_border_color: "Red".to_string(),
@@ -1332,6 +1360,67 @@ impl Default for ColorScheme {
             text_viewer_message_foreground_color: "White".to_string(),
             text_viewer_message_background_color: "Blue".to_string(),
         }
+    }
+}
+
+impl ColorScheme {
+    /// Resolves the active file pane cursor foreground color with backward compatibility
+    pub fn get_file_pane_cursor_foreground(&self) -> &str {
+        self.file_pane_cursor_foreground_color
+            .as_deref()
+            .or(self.highlight_foreground_color.as_deref())
+            .unwrap_or("Black")
+    }
+    
+    /// Resolves the active file pane cursor background color with backward compatibility
+    pub fn get_file_pane_cursor_background(&self) -> &str {
+        self.file_pane_cursor_background_color
+            .as_deref()
+            .or(self.highlight_background_color.as_deref())
+            .unwrap_or("Cyan")
+    }
+    
+    /// Resolves the inactive file pane cursor foreground color with backward compatibility
+    pub fn get_inactive_file_pane_cursor_foreground(&self) -> &str {
+        self.inactive_file_pane_cursor_foreground_color
+            .as_deref()
+            .unwrap_or("White")
+    }
+    
+    /// Resolves the inactive file pane cursor background color with backward compatibility
+    pub fn get_inactive_file_pane_cursor_background(&self) -> &str {
+        self.inactive_file_pane_cursor_background_color
+            .as_deref()
+            .or(self.inactive_marked_file_color.as_deref())
+            .unwrap_or("DarkGray")
+    }
+    
+    /// Resolves the pane info foreground color with backward compatibility
+    pub fn get_pane_info_foreground(&self) -> &str {
+        self.pane_info_foreground_color
+            .as_deref()
+            .unwrap_or_else(|| &self.top_separator_foreground_color)
+    }
+    
+    /// Resolves the pane info background color with backward compatibility
+    pub fn get_pane_info_background(&self) -> &str {
+        self.pane_info_background_color
+            .as_deref()
+            .unwrap_or_else(|| &self.top_separator_background_color)
+    }
+    
+    /// Resolves the inactive foreground color
+    pub fn get_inactive_foreground(&self) -> &str {
+        self.inactive_foreground_color
+            .as_deref()
+            .unwrap_or("Gray")
+    }
+    
+    /// Resolves the inactive background color
+    pub fn get_inactive_background(&self) -> &str {
+        self.inactive_background_color
+            .as_deref()
+            .unwrap_or("Black")
     }
 }
 
@@ -1476,8 +1565,15 @@ impl Default for SearchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UIConfig {
+    /// UI refresh rate in frames per second
     pub refresh_rate: u64,
+    
+    /// Number of lines from top/bottom edge that triggers automatic scrolling
+    /// When the cursor is within this many lines from the edge, the pane scrolls
+    /// Default: 3
     pub scroll_offset: usize,
+    
+    /// Tab width for text display
     pub tab_width: usize,
 }
 
@@ -1485,7 +1581,7 @@ impl Default for UIConfig {
     fn default() -> Self {
         Self {
             refresh_rate: 30,
-            scroll_offset: 3,
+            scroll_offset: 3,  // Trigger scrolling when cursor is 3 lines from edge
             tab_width: 4,
         }
     }
@@ -1968,6 +2064,552 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
 ```
 
 ## Component Designs
+
+### Filepane Scrolling Algorithm
+
+The filepane scrolling system ensures smooth navigation without blank lines at the bottom of the pane. The algorithm uses a configurable scroll_offset (default: 3) to trigger automatic scrolling when the cursor approaches the top or bottom edges.
+
+#### Scrolling Data Structures
+
+```rust
+pub struct PaneModel {
+    pub current_location: Location,
+    pub entries: Vec<FileEntry>,
+    pub cursor: usize,              // Index of currently selected entry
+    pub scroll_offset: usize,       // First visible entry index
+    pub sort_mode: SortMode,
+    pub display_mode: DisplayMode,
+    pub file_mask: Option<String>,
+}
+
+pub struct ScrollContext {
+    pub visible_height: usize,      // Number of visible lines in pane
+    pub total_entries: usize,       // Total number of entries
+    pub cursor_position: usize,     // Current cursor index
+    pub scroll_offset: usize,       // Current scroll offset
+    pub config_offset: usize,       // Configured scroll trigger offset (default: 3)
+}
+```
+
+#### Scrolling Algorithm
+
+The scrolling algorithm maintains these invariants:
+1. The cursor is always visible within the pane
+2. No blank lines appear at the bottom when entries exist
+3. Scrolling triggers when cursor is within scroll_offset lines from top/bottom edges
+4. The last entry can be positioned at the bottom of the visible area
+
+```rust
+pub fn calculate_scroll_position(ctx: &ScrollContext) -> usize {
+    let cursor = ctx.cursor_position;
+    let current_offset = ctx.scroll_offset;
+    let visible_height = ctx.visible_height;
+    let total_entries = ctx.total_entries;
+    let trigger_offset = ctx.config_offset;
+    
+    // Handle empty list
+    if total_entries == 0 {
+        return 0;
+    }
+    
+    // Calculate cursor position relative to visible area
+    let cursor_in_view = cursor.saturating_sub(current_offset);
+    
+    // Check if cursor is too close to top edge
+    if cursor_in_view < trigger_offset && cursor > 0 {
+        // Scroll up: position cursor at trigger_offset from top
+        return cursor.saturating_sub(trigger_offset);
+    }
+    
+    // Check if cursor is too close to bottom edge
+    let bottom_trigger = visible_height.saturating_sub(trigger_offset + 1);
+    if cursor_in_view > bottom_trigger && cursor < total_entries - 1 {
+        // Scroll down: position cursor at trigger_offset from bottom
+        let desired_offset = cursor + trigger_offset + 1;
+        return desired_offset.saturating_sub(visible_height);
+    }
+    
+    // Ensure cursor is visible (handle jumps like Home/End)
+    if cursor < current_offset {
+        // Cursor jumped above visible area
+        return cursor;
+    }
+    
+    if cursor >= current_offset + visible_height {
+        // Cursor jumped below visible area
+        return cursor.saturating_sub(visible_height - 1);
+    }
+    
+    // Prevent blank lines at bottom
+    let max_offset = total_entries.saturating_sub(visible_height);
+    let new_offset = current_offset.min(max_offset);
+    
+    new_offset
+}
+```
+
+#### Scrolling Pseudocode
+
+```
+FUNCTION UpdateScroll(pane, visible_height, scroll_offset_config):
+    cursor = pane.cursor
+    current_offset = pane.scroll_offset
+    total = pane.entries.length
+    
+    IF total == 0 THEN
+        pane.scroll_offset = 0
+        RETURN
+    END IF
+    
+    // Calculate relative cursor position
+    cursor_in_view = cursor - current_offset
+    
+    // Scroll up if cursor too close to top
+    IF cursor_in_view < scroll_offset_config AND cursor > 0 THEN
+        pane.scroll_offset = MAX(0, cursor - scroll_offset_config)
+        RETURN
+    END IF
+    
+    // Scroll down if cursor too close to bottom
+    bottom_trigger = visible_height - scroll_offset_config - 1
+    IF cursor_in_view > bottom_trigger AND cursor < total - 1 THEN
+        desired_offset = cursor + scroll_offset_config + 1 - visible_height
+        pane.scroll_offset = MAX(0, desired_offset)
+        RETURN
+    END IF
+    
+    // Handle cursor jumps (Home/End/PageUp/PageDown)
+    IF cursor < current_offset THEN
+        pane.scroll_offset = cursor
+        RETURN
+    END IF
+    
+    IF cursor >= current_offset + visible_height THEN
+        pane.scroll_offset = cursor - visible_height + 1
+        RETURN
+    END IF
+    
+    // Prevent blank lines at bottom
+    max_offset = MAX(0, total - visible_height)
+    pane.scroll_offset = MIN(current_offset, max_offset)
+END FUNCTION
+```
+
+#### Integration with State Transitions
+
+The scrolling algorithm integrates with the cursor movement transitions:
+
+```rust
+Transition::CursorMove { pane, delta } => {
+    let tab = state.current_tab_mut();
+    let pane_model = match pane {
+        ActivePane::Left => &mut tab.left_pane,
+        ActivePane::Right => &mut tab.right_pane,
+    };
+    
+    if !pane_model.entries.is_empty() {
+        // Update cursor position
+        let new_cursor = (pane_model.cursor as isize + delta)
+            .max(0)
+            .min(pane_model.entries.len() as isize - 1) as usize;
+        pane_model.cursor = new_cursor;
+        
+        // Calculate new scroll position
+        let ctx = ScrollContext {
+            visible_height: state.ui.layout.pane_height,
+            total_entries: pane_model.entries.len(),
+            cursor_position: new_cursor,
+            scroll_offset: pane_model.scroll_offset,
+            config_offset: state.config.ui.scroll_offset,
+        };
+        
+        pane_model.scroll_offset = calculate_scroll_position(&ctx);
+    }
+    
+    StateUpdateResult::with_ui_change()
+}
+```
+
+#### Edge Cases
+
+1. **List shorter than visible area**: scroll_offset remains 0
+2. **Cursor at first entry**: scroll_offset = 0
+3. **Cursor at last entry**: scroll_offset positions last entry at bottom
+4. **Page Up/Down**: Cursor jumps trigger immediate scroll adjustment
+5. **Home/End**: Cursor jumps to extremes, scroll follows
+6. **Rapid cursor movement**: Each movement recalculates scroll independently
+
+### Volume Name Display Functions
+
+The top separator displays volume names and marked file statistics. This requires platform-specific logic to extract volume information.
+
+#### Data Structures
+
+```rust
+pub struct VolumeInfo {
+    pub display_name: String,
+    pub volume_type: VolumeType,
+}
+
+pub enum VolumeType {
+    Local,
+    Network,
+    Removable,
+    Unknown,
+}
+
+pub struct MarkedFileStats {
+    pub dir_count: usize,
+    pub file_count: usize,
+    pub total_size: u64,
+}
+```
+
+#### GetDriveOrShareName Function
+
+```rust
+pub fn get_drive_or_share_name(location: &Location) -> String {
+    match location {
+        Location::Local(path) => {
+            #[cfg(target_os = "windows")]
+            {
+                get_windows_volume_name(path)
+            }
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            {
+                get_unix_volume_name(path)
+            }
+            #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+            {
+                path.display().to_string()
+            }
+        }
+        Location::Ssh { host, .. } => {
+            format!("ssh://{}", host)
+        }
+        Location::Cloud { provider, bucket, .. } => {
+            format!("{}://{}", provider, bucket)
+        }
+        Location::Archive { archive_path, .. } => {
+            format!("Archive: {}", get_drive_or_share_name(archive_path))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_volume_name(path: &Path) -> String {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    
+    // Extract drive letter (e.g., "C:" from "C:\Users\...")
+    let path_str = path.to_string_lossy();
+    
+    // Check for network path (\\server\share)
+    if path_str.starts_with("\\\\") {
+        if let Some(server_end) = path_str[2..].find('\\') {
+            let server = &path_str[2..2 + server_end];
+            return format!("\\\\{}", server);
+        }
+        return path_str.to_string();
+    }
+    
+    // Extract drive letter for local paths
+    if let Some(drive_letter) = path_str.chars().next() {
+        if path_str.len() >= 2 && path_str.chars().nth(1) == Some(':') {
+            let drive_root = format!("{}:\\", drive_letter);
+            
+            // Try to get volume label using Windows API
+            if let Some(label) = get_volume_label_windows(&drive_root) {
+                return label;
+            }
+            
+            // Fallback to drive letter in brackets
+            return format!("({}:)", drive_letter);
+        }
+    }
+    
+    path_str.to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn get_volume_label_windows(drive_root: &str) -> Option<String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr;
+    
+    // Convert drive root to wide string for Windows API
+    let wide: Vec<u16> = OsStr::new(drive_root)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    
+    let mut volume_name_buffer = vec![0u16; 261]; // MAX_PATH + 1
+    let mut file_system_buffer = vec![0u16; 261];
+    let mut serial_number: u32 = 0;
+    let mut max_component_length: u32 = 0;
+    let mut file_system_flags: u32 = 0;
+    
+    unsafe {
+        let result = winapi::um::fileapi::GetVolumeInformationW(
+            wide.as_ptr(),
+            volume_name_buffer.as_mut_ptr(),
+            volume_name_buffer.len() as u32,
+            &mut serial_number,
+            &mut max_component_length,
+            &mut file_system_flags,
+            file_system_buffer.as_mut_ptr(),
+            file_system_buffer.len() as u32,
+        );
+        
+        if result != 0 {
+            // Find null terminator
+            if let Some(null_pos) = volume_name_buffer.iter().position(|&c| c == 0) {
+                if null_pos > 0 {
+                    let label = String::from_utf16_lossy(&volume_name_buffer[..null_pos]);
+                    return Some(label);
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn get_unix_volume_name(path: &Path) -> String {
+    use std::fs;
+    
+    // Read /proc/mounts (Linux) or /etc/mtab (Unix-like)
+    #[cfg(target_os = "linux")]
+    let mounts_path = "/proc/mounts";
+    #[cfg(target_os = "macos")]
+    let mounts_path = "/etc/fstab";
+    
+    if let Ok(mounts_content) = fs::read_to_string(mounts_path) {
+        // Find the mount point that matches this path
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        
+        let mut best_match: Option<(String, String, String)> = None; // (device, mount_point, label)
+        let mut best_match_len = 0;
+        
+        for line in mounts_content.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let device = parts[0];
+                let mount_point = parts[1];
+                
+                // Check if this mount point is a prefix of our path
+                if canonical_path.starts_with(mount_point) {
+                    let match_len = mount_point.len();
+                    if match_len > best_match_len {
+                        // Try to get volume label
+                        let label = get_volume_label_unix(device);
+                        best_match = Some((
+                            device.to_string(),
+                            mount_point.to_string(),
+                            label.unwrap_or_default(),
+                        ));
+                        best_match_len = match_len;
+                    }
+                }
+            }
+        }
+        
+        if let Some((device, mount_point, label)) = best_match {
+            return format_unix_volume_info(&device, &mount_point, &label);
+        }
+    }
+    
+    // Fallback: check if path is root
+    if path == Path::new("/") {
+        return "Root".to_string();
+    }
+    
+    path.display().to_string()
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn get_volume_label_unix(device: &str) -> Option<String> {
+    use std::process::Command;
+    
+    // Try to get label using blkid (Linux) or diskutil (macOS)
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(output) = Command::new("blkid")
+            .arg("-s")
+            .arg("LABEL")
+            .arg("-o")
+            .arg("value")
+            .arg(device)
+            .output()
+        {
+            if output.status.success() {
+                let label = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !label.is_empty() {
+                    return Some(label);
+                }
+            }
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = Command::new("diskutil")
+            .arg("info")
+            .arg(device)
+            .output()
+        {
+            if output.status.success() {
+                let info = String::from_utf8_lossy(&output.stdout);
+                for line in info.lines() {
+                    if line.trim().starts_with("Volume Name:") {
+                        let label = line.split(':').nth(1)?.trim().to_string();
+                        if !label.is_empty() {
+                            return Some(label);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn format_unix_volume_info(device: &str, mount_point: &str, label: &str) -> String {
+    if mount_point == "/" {
+        if label.is_empty() {
+            return "Root".to_string();
+        } else {
+            return format!("{} (Root - {})", device, label);
+        }
+    }
+    
+    if label.is_empty() {
+        format!("{} ({})", device, mount_point)
+    } else {
+        format!("{} ({} - {})", device, mount_point, label)
+    }
+}
+```
+
+#### FormatTopSeparatorInfo Function
+
+```rust
+pub fn format_top_separator_info(
+    volume_name: &str,
+    marked_stats: &MarkedFileStats,
+) -> String {
+    if marked_stats.dir_count == 0 && marked_stats.file_count == 0 {
+        // No marked files
+        return volume_name.to_string();
+    }
+    
+    let mut parts = Vec::new();
+    
+    // Add directory count if any
+    if marked_stats.dir_count > 0 {
+        if marked_stats.dir_count == 1 {
+            parts.push("1 Dir".to_string());
+        } else {
+            parts.push(format!("{} Dirs", marked_stats.dir_count));
+        }
+    }
+    
+    // Add file count if any
+    if marked_stats.file_count > 0 {
+        if marked_stats.file_count == 1 {
+            parts.push("1 File".to_string());
+        } else {
+            parts.push(format!("{} Files", marked_stats.file_count));
+        }
+    }
+    
+    // Add total size
+    let size_str = format_size(marked_stats.total_size);
+    
+    // Combine parts
+    let marked_info = if parts.is_empty() {
+        format!("{} marked", size_str)
+    } else {
+        format!("{} {} marked", parts.join(" "), size_str)
+    };
+    
+    format!("{} {}", volume_name, marked_info)
+}
+
+pub fn calculate_marked_stats(
+    entries: &[FileEntry],
+    marking: &MarkingModel,
+) -> MarkedFileStats {
+    let mut dir_count = 0;
+    let mut file_count = 0;
+    let mut total_size = 0;
+    
+    for entry in entries {
+        if marking.is_marked(&entry.location) {
+            if entry.is_dir {
+                dir_count += 1;
+            } else {
+                file_count += 1;
+            }
+            total_size += entry.calculated_size.unwrap_or(entry.size);
+        }
+    }
+    
+    MarkedFileStats {
+        dir_count,
+        file_count,
+        total_size,
+    }
+}
+```
+
+#### Top Separator Rendering Integration
+
+```rust
+pub fn render_top_separator(
+    frame: &mut Frame,
+    area: Rect,
+    left_pane: &PaneModel,
+    right_pane: &PaneModel,
+    marking: &MarkingModel,
+    colors: &ColorScheme,
+) {
+    // Get volume names
+    let left_volume = get_drive_or_share_name(&left_pane.current_location);
+    let right_volume = get_drive_or_share_name(&right_pane.current_location);
+    
+    // Calculate marked stats
+    let left_stats = calculate_marked_stats(&left_pane.entries, marking);
+    let right_stats = calculate_marked_stats(&right_pane.entries, marking);
+    
+    // Format separator info
+    let left_info = format_top_separator_info(&left_volume, &left_stats);
+    let right_info = format_top_separator_info(&right_volume, &right_stats);
+    
+    // Split area in half
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+    
+    // Render left separator
+    let left_paragraph = Paragraph::new(left_info)
+        .style(Style::default()
+            .fg(parse_color(&colors.top_separator_foreground_color))
+            .bg(parse_color(&colors.top_separator_background_color)));
+    frame.render_widget(left_paragraph, chunks[0]);
+    
+    // Render right separator
+    let right_paragraph = Paragraph::new(right_info)
+        .style(Style::default()
+            .fg(parse_color(&colors.top_separator_foreground_color))
+            .bg(parse_color(&colors.top_separator_background_color)));
+    frame.render_widget(right_paragraph, chunks[1]);
+}
+```
 
 ### Input Processing
 
@@ -3795,6 +4437,396 @@ impl Renderer {
         self.terminal.show_cursor()?;
         Ok(())
     }
+}
+```
+
+### Color Configuration Mapping
+
+The application uses a comprehensive color scheme that maps specific color properties to different UI areas. This section details which color properties apply to each UI area and how backward compatibility is maintained.
+
+#### UI Area Definitions
+
+The application UI is divided into 7 distinct areas:
+
+1. **Tab Bar (UI Area 1)**: Displays all open tabs with active/inactive indicators
+2. **Path Display (UI Area 2)**: Shows the current directory path for each pane
+3. **Top Separator (UI Area 3)**: Displays volume names and marked file statistics
+4. **File Panes (UI Area 4)**: The main file listing areas (left and right panes)
+5. **Pane Info Bar (UI Area 5)**: Shows pane-specific information below each file pane
+6. **Filename Label (UI Area 6)**: Displays the currently selected filename
+7. **Task View Pane (UI Area 7)**: Shows active and queued jobs
+
+#### Color Property Mapping
+
+```rust
+pub struct UIAreaColors {
+    pub tab_bar: TabBarColors,
+    pub path_display: PathDisplayColors,
+    pub top_separator: TopSeparatorColors,
+    pub file_pane_active: FilePaneColors,
+    pub file_pane_inactive: FilePaneColors,
+    pub pane_info: PaneInfoColors,
+    pub filename_label: FilenameLabelColors,
+    pub task_view: TaskViewColors,
+}
+
+pub struct TabBarColors {
+    pub active_foreground: Color,
+    pub active_background: Color,
+    pub inactive_foreground: Color,
+    pub inactive_background: Color,
+    pub background: Color,
+}
+
+pub struct PathDisplayColors {
+    pub foreground: Color,
+    pub background: Color,
+}
+
+pub struct TopSeparatorColors {
+    pub foreground: Color,
+    pub background: Color,
+}
+
+pub struct FilePaneColors {
+    pub foreground: Color,
+    pub background: Color,
+    pub cursor_foreground: Color,
+    pub cursor_background: Color,
+    pub marked_file: Color,
+    pub directory_foreground: Color,
+    pub directory_background: Color,
+}
+
+pub struct PaneInfoColors {
+    pub foreground: Color,
+    pub background: Color,
+}
+
+pub struct FilenameLabelColors {
+    pub foreground: Color,
+    pub background: Color,
+}
+
+pub struct TaskViewColors {
+    pub foreground: Color,
+    pub background: Color,
+}
+```
+
+#### Color Resolution with Backward Compatibility
+
+```rust
+impl UIAreaColors {
+    pub fn from_color_scheme(scheme: &ColorScheme) -> Self {
+        Self {
+            // UI Area 1: Tab Bar
+            tab_bar: TabBarColors {
+                active_foreground: parse_color(&scheme.active_tab_foreground_color),
+                active_background: parse_color(&scheme.active_tab_background_color),
+                inactive_foreground: parse_color(&scheme.inactive_tab_foreground_color),
+                inactive_background: parse_color(&scheme.inactive_tab_background_color),
+                background: parse_color(&scheme.tabbar_background_color),
+            },
+            
+            // UI Area 2: Path Display
+            path_display: PathDisplayColors {
+                foreground: parse_color(&scheme.foreground_color),
+                background: parse_color(&scheme.background_color),
+            },
+            
+            // UI Area 3: Top Separator
+            top_separator: TopSeparatorColors {
+                foreground: parse_color(&scheme.top_separator_foreground_color),
+                background: parse_color(&scheme.top_separator_background_color),
+            },
+            
+            // UI Area 4: Active File Pane
+            file_pane_active: FilePaneColors {
+                foreground: parse_color(&scheme.foreground_color),
+                background: parse_color(&scheme.background_color),
+                cursor_foreground: parse_color(scheme.get_file_pane_cursor_foreground()),
+                cursor_background: parse_color(scheme.get_file_pane_cursor_background()),
+                marked_file: parse_color(&scheme.marked_file_color),
+                directory_foreground: parse_color(&scheme.directory_color),
+                directory_background: parse_color(&scheme.directory_background_color),
+            },
+            
+            // UI Area 4: Inactive File Pane
+            file_pane_inactive: FilePaneColors {
+                foreground: parse_color(scheme.get_inactive_foreground()),
+                background: parse_color(scheme.get_inactive_background()),
+                cursor_foreground: parse_color(scheme.get_inactive_file_pane_cursor_foreground()),
+                cursor_background: parse_color(scheme.get_inactive_file_pane_cursor_background()),
+                marked_file: parse_color(scheme.inactive_marked_file_color.as_deref().unwrap_or(&scheme.marked_file_color)),
+                directory_foreground: parse_color(&scheme.inactive_directory_color),
+                directory_background: parse_color(&scheme.inactive_directory_background_color),
+            },
+            
+            // UI Area 5: Pane Info Bar
+            pane_info: PaneInfoColors {
+                foreground: parse_color(scheme.get_pane_info_foreground()),
+                background: parse_color(scheme.get_pane_info_background()),
+            },
+            
+            // UI Area 6: Filename Label
+            filename_label: FilenameLabelColors {
+                foreground: parse_color(&scheme.filename_label_foreground_color),
+                background: parse_color(&scheme.filename_label_background_color),
+            },
+            
+            // UI Area 7: Task View Pane
+            task_view: TaskViewColors {
+                foreground: parse_color(&scheme.foreground_color),
+                background: parse_color(&scheme.background_color),
+            },
+        }
+    }
+}
+
+fn parse_color(color_name: &str) -> Color {
+    match color_name.to_lowercase().as_str() {
+        "black" => Color::Black,
+        "red" => Color::Red,
+        "green" => Color::Green,
+        "yellow" => Color::Yellow,
+        "blue" => Color::Blue,
+        "magenta" => Color::Magenta,
+        "cyan" => Color::Cyan,
+        "gray" | "grey" => Color::Gray,
+        "darkgray" | "darkgrey" => Color::DarkGray,
+        "lightred" | "brightred" => Color::LightRed,
+        "lightgreen" | "brightgreen" => Color::LightGreen,
+        "lightyellow" | "brightyellow" => Color::LightYellow,
+        "lightblue" | "brightblue" => Color::LightBlue,
+        "lightmagenta" | "brightmagenta" => Color::LightMagenta,
+        "lightcyan" | "brightcyan" => Color::LightCyan,
+        "white" => Color::White,
+        _ => {
+            // Try to parse as RGB hex (#RRGGBB)
+            if color_name.starts_with('#') && color_name.len() == 7 {
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    u8::from_str_radix(&color_name[1..3], 16),
+                    u8::from_str_radix(&color_name[3..5], 16),
+                    u8::from_str_radix(&color_name[5..7], 16),
+                ) {
+                    return Color::Rgb(r, g, b);
+                }
+            }
+            Color::White // Default fallback
+        }
+    }
+}
+```
+
+#### Rendering Functions with Color Mapping
+
+```rust
+// UI Area 1: Tab Bar Rendering
+fn render_tab_bar_with_colors(
+    frame: &mut Frame,
+    area: Rect,
+    tabs: &TabManager,
+    colors: &TabBarColors,
+) {
+    let tab_titles: Vec<Span> = tabs.tabs.iter()
+        .enumerate()
+        .map(|(i, _tab)| {
+            let is_active = i == tabs.active_index;
+            let style = if is_active {
+                Style::default()
+                    .fg(colors.active_foreground)
+                    .bg(colors.active_background)
+            } else {
+                Style::default()
+                    .fg(colors.inactive_foreground)
+                    .bg(colors.inactive_background)
+            };
+            
+            let text = if is_active {
+                format!("[Tab {}]", i + 1)
+            } else {
+                format!(" Tab {} ", i + 1)
+            };
+            
+            Span::styled(text, style)
+        })
+        .collect();
+    
+    let line = Line::from(tab_titles);
+    let paragraph = Paragraph::new(line)
+        .style(Style::default().bg(colors.background));
+    
+    frame.render_widget(paragraph, area);
+}
+
+// UI Area 4: File Pane Rendering with Active/Inactive Colors
+fn render_file_pane_with_colors(
+    frame: &mut Frame,
+    area: Rect,
+    pane: &PaneModel,
+    colors: &FilePaneColors,
+    is_active: bool,
+) {
+    let items: Vec<ListItem> = pane.entries.iter()
+        .enumerate()
+        .skip(pane.scroll_offset)
+        .take(area.height as usize)
+        .map(|(i, entry)| {
+            let is_cursor = i == pane.cursor;
+            
+            let style = if is_cursor {
+                // Cursor position
+                Style::default()
+                    .fg(colors.cursor_foreground)
+                    .bg(colors.cursor_background)
+            } else if entry.marked {
+                // Marked file
+                Style::default()
+                    .fg(colors.marked_file)
+                    .bg(colors.background)
+            } else if entry.is_dir {
+                // Directory
+                Style::default()
+                    .fg(colors.directory_foreground)
+                    .bg(colors.directory_background)
+            } else {
+                // Regular file
+                Style::default()
+                    .fg(colors.foreground)
+                    .bg(colors.background)
+            };
+            
+            let size = entry.formatted_size();
+            let date = entry.formatted_date();
+            let line = format!("{:<30} {:>10} {}", entry.name, size, date);
+            
+            ListItem::new(line).style(style)
+        })
+        .collect();
+    
+    let list = List::new(items);
+    frame.render_widget(list, area);
+}
+
+// UI Area 5: Pane Info Bar Rendering
+fn render_pane_info_with_colors(
+    frame: &mut Frame,
+    area: Rect,
+    pane: &PaneModel,
+    colors: &PaneInfoColors,
+) {
+    let info_text = format!(
+        " {} files | {} dirs ",
+        pane.entries.iter().filter(|e| !e.is_dir).count(),
+        pane.entries.iter().filter(|e| e.is_dir).count(),
+    );
+    
+    let paragraph = Paragraph::new(info_text)
+        .style(Style::default()
+            .fg(colors.foreground)
+            .bg(colors.background));
+    
+    frame.render_widget(paragraph, area);
+}
+
+// UI Area 6: Filename Label Rendering
+fn render_filename_label_with_colors(
+    frame: &mut Frame,
+    area: Rect,
+    filename: &str,
+    colors: &FilenameLabelColors,
+) {
+    let paragraph = Paragraph::new(filename)
+        .style(Style::default()
+            .fg(colors.foreground)
+            .bg(colors.background));
+    
+    frame.render_widget(paragraph, area);
+}
+```
+
+#### Backward Compatibility Layer
+
+The color scheme includes a backward compatibility layer that maps old color property names to new ones:
+
+```rust
+impl ColorScheme {
+    /// Loads color scheme from JSON with backward compatibility
+    pub fn from_json(json: &serde_json::Value) -> Result<Self, serde_json::Error> {
+        let mut scheme: ColorScheme = serde_json::from_value(json.clone())?;
+        
+        // Apply backward compatibility mappings
+        scheme.apply_backward_compatibility();
+        
+        Ok(scheme)
+    }
+    
+    fn apply_backward_compatibility(&mut self) {
+        // If new properties are not set, use old property names as fallback
+        if self.file_pane_cursor_foreground_color.is_none() {
+            self.file_pane_cursor_foreground_color = self.highlight_foreground_color.clone();
+        }
+        
+        if self.file_pane_cursor_background_color.is_none() {
+            self.file_pane_cursor_background_color = self.highlight_background_color.clone();
+        }
+        
+        if self.pane_info_foreground_color.is_none() {
+            self.pane_info_foreground_color = Some(self.top_separator_foreground_color.clone());
+        }
+        
+        if self.pane_info_background_color.is_none() {
+            self.pane_info_background_color = Some(self.top_separator_background_color.clone());
+        }
+        
+        if self.inactive_file_pane_cursor_background_color.is_none() {
+            self.inactive_file_pane_cursor_background_color = self.inactive_marked_file_color.clone();
+        }
+    }
+}
+```
+
+#### Color Configuration Example
+
+Example config.json with all color properties:
+
+```json
+{
+  "display": {
+    "colors": {
+      "foreground_color": "White",
+      "background_color": "Black",
+      
+      "file_pane_cursor_foreground_color": "Black",
+      "file_pane_cursor_background_color": "Cyan",
+      "inactive_file_pane_cursor_foreground_color": "White",
+      "inactive_file_pane_cursor_background_color": "DarkGray",
+      
+      "marked_file_color": "Yellow",
+      "directory_color": "BrightCyan",
+      "directory_background_color": "Black",
+      "inactive_directory_color": "Cyan",
+      "inactive_directory_background_color": "Black",
+      "inactive_foreground_color": "Gray",
+      "inactive_background_color": "Black",
+      
+      "pane_info_foreground_color": "Black",
+      "pane_info_background_color": "Gray",
+      
+      "filename_label_foreground_color": "White",
+      "filename_label_background_color": "Blue",
+      
+      "top_separator_foreground_color": "Black",
+      "top_separator_background_color": "Gray",
+      
+      "active_tab_foreground_color": "White",
+      "active_tab_background_color": "Blue",
+      "inactive_tab_foreground_color": "Gray",
+      "inactive_tab_background_color": "Black",
+      "tabbar_background_color": "Black"
+    }
+  }
 }
 ```
 

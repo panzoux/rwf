@@ -1,6 +1,7 @@
 //! Volume name line rendering
 //!
-//! Displays volume names for both panes
+//! Displays volume names and marked file statistics for both panes
+//! **Validates: Requirements 39A.1-39A.14**
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -9,21 +10,26 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::{AppState, model::Location};
-use std::path::Component;
+use rwf_lib::{AppState, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};
 use super::parse_color;
 
-#[cfg(windows)]
-use std::path::Prefix;
-
-/// Render the volume name line showing drive/volume names for both panes
+/// Render the volume name line showing drive/volume names and marked stats for both panes
+/// **Validates: Requirements 39A.1, 39A.13, 39A.14**
 pub fn render_volume_line(frame: &mut Frame, area: Rect, state: &AppState) {
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
     
     // Get volume names
-    let left_volume = get_volume_name(&tab.left_pane.current_location);
-    let right_volume = get_volume_name(&tab.right_pane.current_location);
+    let left_volume = get_drive_or_share_name(&tab.left_pane.current_location);
+    let right_volume = get_drive_or_share_name(&tab.right_pane.current_location);
+    
+    // Calculate marked stats
+    let left_stats = calculate_marked_stats(&tab.left_pane.entries, &state.marking);
+    let right_stats = calculate_marked_stats(&tab.right_pane.entries, &state.marking);
+    
+    // Format separator info
+    let left_info = format_top_separator_info(&left_volume, &left_stats);
+    let right_info = format_top_separator_info(&right_volume, &right_stats);
     
     // Split into two halves
     let halves = Layout::default()
@@ -31,42 +37,17 @@ pub fn render_volume_line(frame: &mut Frame, area: Rect, state: &AppState) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
     
-    // Left volume
-    let left_para = Paragraph::new(Span::raw(format!(" {}", left_volume)))
+    // Left volume with marked stats
+    let left_para = Paragraph::new(Span::raw(format!(" {}", left_info)))
         .style(Style::default()
-            .fg(parse_color(&colors.directory_color))
-            .bg(parse_color(&colors.background_color)));
+            .fg(parse_color(&colors.top_separator_foreground_color))
+            .bg(parse_color(&colors.top_separator_background_color)));
     frame.render_widget(left_para, halves[0]);
     
-    // Right volume
-    let right_para = Paragraph::new(Span::raw(format!(" {}", right_volume)))
+    // Right volume with marked stats
+    let right_para = Paragraph::new(Span::raw(format!(" {}", right_info)))
         .style(Style::default()
-            .fg(parse_color(&colors.directory_color))
-            .bg(parse_color(&colors.background_color)));
+            .fg(parse_color(&colors.top_separator_foreground_color))
+            .bg(parse_color(&colors.top_separator_background_color)));
     frame.render_widget(right_para, halves[1]);
-}
-
-/// Get volume name for a location
-fn get_volume_name(location: &Location) -> String {
-    match location {
-        Location::Local(path) => {
-            #[cfg(windows)]
-            {
-                if let Some(Component::Prefix(prefix)) = path.components().next() {
-                    match prefix.kind() {
-                        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
-                            return format!("{}:", (letter as char).to_uppercase());
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            "Local".to_string()
-        }
-        Location::Ssh { host, .. } => format!("SSH: {}", host),
-        Location::Cloud { provider, bucket, .. } => format!("{}: {}", provider, bucket),
-        Location::Archive { archive_path, .. } => {
-            format!("Archive: {}", get_volume_name(archive_path))
-        }
-    }
 }

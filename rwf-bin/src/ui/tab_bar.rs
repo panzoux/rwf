@@ -10,11 +10,12 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::AppState;
-use super::parse_color;
+use super::{parse_color, shorten_path};
 
 /// Render the tab bar
 pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     let colors = &state.config.display.colors;
+    let ellipsis = &state.config.ellipsis;
     let mut spans = Vec::new();
     
     // Calculate how many tabs can fit in the available width
@@ -65,8 +66,8 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         });
 
         // Get shortened paths for left and right panes
-        let left_path = shorten_path(&tab.left_pane.current_location.display_path(), 15);
-        let right_path = shorten_path(&tab.right_pane.current_location.display_path(), 15);
+        let left_path = shorten_path(&tab.left_pane.current_location.display_path(), 15, ellipsis);
+        let right_path = shorten_path(&tab.right_pane.current_location.display_path(), 15, ellipsis);
         
         // Determine which pane is active (only for the active tab)
         let active_marker = if is_active {
@@ -138,22 +139,4 @@ fn matches_tab_location(
         JobKind::CalculateSize { location: loc } => loc == location,
         _ => false,
     }
-}
-
-/// Shorten a path to fit within a maximum length
-fn shorten_path(path: &str, max_len: usize) -> String {
-    if path.len() <= max_len {
-        return path.to_string();
-    }
-    
-    // Try to show the last component (filename/directory)
-    if let Some(last_sep) = path.rfind(|c| c == '/' || c == '\\') {
-        let last_component = &path[last_sep + 1..];
-        if last_component.len() <= max_len {
-            return format!("...{}", last_component);
-        }
-    }
-    
-    // If even the last component is too long, truncate it
-    format!("...{}", &path[path.len().saturating_sub(max_len - 3)..])
 }

@@ -297,7 +297,8 @@ pub fn format_key_event(event: &KeyEvent) -> String {
             // Handle space specially to match key binding format
             if c == ' ' {
                 "Space".to_string()
-            } else if event.modifiers.contains(KeyModifiers::SHIFT) && c.is_ascii_lowercase() {
+            } else if c.is_ascii_alphabetic() {
+                // Always uppercase alphabetic characters for consistency with keybindings
                 c.to_ascii_uppercase().to_string()
             } else {
                 c.to_string()

@@ -16,6 +16,7 @@ tracing-subscriber = { workspace = true }
 time = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+unicode-width = "0.1"
 
 [dev-dependencies]
 proptest = { workspace = true }

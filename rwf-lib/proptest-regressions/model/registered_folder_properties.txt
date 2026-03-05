@@ -11,3 +11,4 @@ cc 7860f2274ebbbf53e49d51a68d39840619d5c123386f382fe3182a4bdfade183 # shrinks to
 cc 2596d0dccede83dc14f8d4e9a61b8280cd1a7e1c6e42f620f751654a6d8872bd # shrinks to var1_name = "L", var1_value = "__Os", var2_name = "_rV6CKXA", var2_value = "Z7D_6_p4D"
 cc 7f35039cb72d05f6c672ab99324c9ebaf8a5846248819adcb097302edf34ebd8 # shrinks to var1_name = "l_GlU7eer5_JEi", var1_value = "9HCEjtqiT", var2_name = "_", var2_value = "uI"
 cc 511f283cd27aeb9e495149b7367ab033379be10fa03f8945f64f2509803538ee # shrinks to var1_name = "r4ikR_", var1_value = "__t_", var2_name = "_", var2_value = "Y9jL__wdy_"
+cc aad6b1ca274444c00b52f8a96fb4f7ff49b19b01884dab130c6c7b4255ea2e65 # shrinks to var1_name = "RWFTEST_S", var1_value = "a", var2_name = "RWFTEST_s", var2_value = "b"

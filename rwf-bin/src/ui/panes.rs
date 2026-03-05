@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::{model::ActivePane, AppState, FileEntry, config::ColorScheme};
-use super::parse_color;
+use super::{parse_color, pad_to_width, smart_truncate};
 
 /// Render both panes side by side
 pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -22,6 +22,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
+    let ellipsis = &state.config.ellipsis;
 
     // Render left pane
     render_pane(
@@ -31,6 +32,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         state.ui.active_pane == ActivePane::Left,
         &state.marking,
         colors,
+        ellipsis,
     );
 
     // Render right pane
@@ -41,6 +43,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         state.ui.active_pane == ActivePane::Right,
         &state.marking,
         colors,
+        ellipsis,
     );
 }
 
@@ -52,6 +55,7 @@ fn render_pane(
     is_active: bool,
     marking: &rwf_lib::model::MarkingModel,
     colors: &ColorScheme,
+    ellipsis: &str,
 ) {
     // NO BORDERS - render directly to area
     
@@ -66,29 +70,53 @@ fn render_pane(
     // Render based on display mode
     match pane.display_mode {
         rwf_lib::model::DisplayMode::Detailed => {
-            render_detailed_mode(frame, area, pane, marking, colors, is_active);
+            render_detailed_mode(frame, area, pane, marking, colors, is_active, ellipsis);
         }
         rwf_lib::model::DisplayMode::Columns(cols) => {
-            render_column_mode(frame, area, pane, marking, cols, colors, is_active);
+            render_column_mode(frame, area, pane, marking, cols, colors, is_active, ellipsis);
         }
     }
 }
 
 /// Create a list item for a file entry with selection indicator
-fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool) -> ListItem<'static> {
-    let mut style = Style::default();
+fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool, name_width: usize, ellipsis: &str) -> ListItem<'static> {
+    // Set base colors based on active state
+    let mut style = if is_active {
+        Style::default()
+            .fg(parse_color(&colors.foreground_color))
+            .bg(parse_color(&colors.background_color))
+    } else {
+        Style::default()
+            .fg(parse_color(colors.get_inactive_foreground()))
+            .bg(parse_color(colors.get_inactive_background()))
+    };
 
     // Apply cursor highlighting
     if is_cursor {
+        let bg_color = if is_active {
+            colors.get_file_pane_cursor_background()
+        } else {
+            colors.get_inactive_file_pane_cursor_background()
+        };
+        let fg_color = if is_active {
+            colors.get_file_pane_cursor_foreground()
+        } else {
+            colors.get_inactive_file_pane_cursor_foreground()
+        };
         style = style
-            .bg(parse_color(&colors.highlight_background_color))
-            .fg(parse_color(&colors.highlight_foreground_color));
+            .bg(parse_color(&bg_color))
+            .fg(parse_color(&fg_color));
     }
 
     // Apply directory coloring
     if entry.is_dir {
         style = style.fg(if is_cursor {
-            parse_color(&colors.highlight_foreground_color)
+            let fg_color = if is_active {
+                colors.get_file_pane_cursor_foreground()
+            } else {
+                colors.get_inactive_file_pane_cursor_foreground()
+            };
+            parse_color(&fg_color)
         } else if is_active {
             parse_color(&colors.directory_color)
         } else {
@@ -99,7 +127,12 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
     // Apply marked file coloring
     if is_marked {
         style = style.fg(if is_cursor {
-            parse_color(&colors.highlight_foreground_color)
+            let fg_color = if is_active {
+                colors.get_file_pane_cursor_foreground()
+            } else {
+                colors.get_inactive_file_pane_cursor_foreground()
+            };
+            parse_color(&fg_color)
         } else {
             parse_color(&colors.marked_file_color)
         });
@@ -127,7 +160,7 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
     let line = Line::from(vec![
         Span::styled(indicator, style),
         Span::styled(
-            format!("{:<29}", truncate_string(&name, 29)),
+            pad_to_width(&smart_truncate(&name, name_width, ellipsis), name_width),
             style,
         ),
         Span::styled(format!("{:>10}", size), style),
@@ -145,11 +178,16 @@ fn render_detailed_mode(
     marking: &rwf_lib::model::MarkingModel,
     colors: &ColorScheme,
     is_active: bool,
+    ellipsis: &str,
 ) {
     // Calculate visible range
     let visible_height = area.height as usize;
     let start_idx = pane.scroll_offset;
     let end_idx = (start_idx + visible_height).min(pane.entries.len());
+
+    // Calculate dynamic name width based on terminal width
+    // Reserve 30 chars for indicator(1) + size(10) + date(19), minimum 10 for name
+    let name_width = (area.width as usize).saturating_sub(30).max(10);
 
     // Create list items for visible entries
     let items: Vec<ListItem> = pane.entries[start_idx..end_idx]
@@ -160,7 +198,7 @@ fn render_detailed_mode(
             let is_cursor = global_idx == pane.cursor;
             let is_marked = marking.is_marked(&entry.location);
 
-            create_list_item(entry, is_cursor, is_marked, colors, is_active)
+            create_list_item(entry, is_cursor, is_marked, colors, is_active, name_width, ellipsis)
         })
         .collect();
 
@@ -178,6 +216,7 @@ fn render_column_mode(
     columns: u8,
     colors: &ColorScheme,
     is_active: bool,
+    ellipsis: &str,
 ) {
     let columns = columns.clamp(1, 8) as usize;
     
@@ -207,19 +246,43 @@ fn render_column_mode(
                 let is_cursor = idx == pane.cursor;
                 let is_marked = marking.is_marked(&entry.location);
                 
-                let mut style = Style::default();
+                // Set base colors based on active state
+                let mut style = if is_active {
+                    Style::default()
+                        .fg(parse_color(&colors.foreground_color))
+                        .bg(parse_color(&colors.background_color))
+                } else {
+                    Style::default()
+                        .fg(parse_color(colors.get_inactive_foreground()))
+                        .bg(parse_color(colors.get_inactive_background()))
+                };
                 
                 // Apply cursor highlighting
                 if is_cursor {
+                    let bg_color = if is_active {
+                        colors.get_file_pane_cursor_background()
+                    } else {
+                        colors.get_inactive_file_pane_cursor_background()
+                    };
+                    let fg_color = if is_active {
+                        colors.get_file_pane_cursor_foreground()
+                    } else {
+                        colors.get_inactive_file_pane_cursor_foreground()
+                    };
                     style = style
-                        .bg(parse_color(&colors.highlight_background_color))
-                        .fg(parse_color(&colors.highlight_foreground_color));
+                        .bg(parse_color(&bg_color))
+                        .fg(parse_color(&fg_color));
                 }
                 
                 // Apply directory coloring
                 if entry.is_dir {
                     style = style.fg(if is_cursor {
-                        parse_color(&colors.highlight_foreground_color)
+                        let fg_color = if is_active {
+                            colors.get_file_pane_cursor_foreground()
+                        } else {
+                            colors.get_inactive_file_pane_cursor_foreground()
+                        };
+                        parse_color(&fg_color)
                     } else if is_active {
                         parse_color(&colors.directory_color)
                     } else {
@@ -230,7 +293,12 @@ fn render_column_mode(
                 // Apply marked file coloring
                 if is_marked {
                     style = style.fg(if is_cursor {
-                        parse_color(&colors.highlight_foreground_color)
+                        let fg_color = if is_active {
+                            colors.get_file_pane_cursor_foreground()
+                        } else {
+                            colors.get_inactive_file_pane_cursor_foreground()
+                        };
+                        parse_color(&fg_color)
                     } else {
                         parse_color(&colors.marked_file_color)
                     });
@@ -246,8 +314,9 @@ fn render_column_mode(
                     entry.name.clone()
                 };
                 
-                let truncated = truncate_string(&name, col_width.saturating_sub(2));
-                let padded = format!("{}{:<width$}", indicator, truncated, width = col_width.saturating_sub(2));
+                let truncated = smart_truncate(&name, col_width.saturating_sub(2), ellipsis);
+                let combined = format!("{}{}", indicator, truncated);
+                let padded = pad_to_width(&combined, col_width);
                 
                 spans.push(Span::styled(padded, style));
                 spans.push(Span::raw(" "));
@@ -289,13 +358,4 @@ fn format_date(time: &std::time::SystemTime) -> String {
 
     let datetime: DateTime<Local> = (*time).into();
     datetime.format("%Y-%m-%d %H:%M").to_string()
-}
-
-/// Truncate string to max length
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
-    }
 }

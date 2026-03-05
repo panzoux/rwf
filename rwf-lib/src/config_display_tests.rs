@@ -173,4 +173,58 @@ mod tests {
         assert_eq!(colors.text_viewer_message_foreground_color, "White");
         assert_eq!(colors.text_viewer_message_background_color, "Blue");
     }
+    
+    #[test]
+    fn test_twf_format_flattened_colors() {
+        // Test that TWF format with colors directly under Display works
+        let json = r#"{
+            "ShowHidden": false,
+            "ShowSystem": false,
+            "DateFormat": "%Y-%m-%d %H:%M",
+            "TimeFormat": "TwentyFourHour",
+            "CjkWidth": 2,
+            "ForegroundColor": "White",
+            "BackgroundColor": "Black",
+            "HighlightForegroundColor": "Black",
+            "HighlightBackgroundColor": "Cyan",
+            "MarkedFileColor": "Cyan",
+            "DirectoryColor": "BrightCyan",
+            "DirectoryBackgroundColor": "Black",
+            "InactiveDirectoryColor": "Cyan",
+            "InactiveDirectoryBackgroundColor": "Black",
+            "PaneInfoForegroundColor": "White",
+            "PaneInfoBackgroundColor": "Gray",
+            "FilenameLabelForegroundColor": "White",
+            "FilenameLabelBackgroundColor": "Blue",
+            "PaneBorderColor": "Gray",
+            "TopSeparatorForegroundColor": "Gray",
+            "TopSeparatorBackgroundColor": "Black",
+            "DialogHelpForegroundColor": "White",
+            "DialogHelpBackgroundColor": "Blue",
+            "ActiveTabForegroundColor": "White",
+            "ActiveTabBackgroundColor": "Blue",
+            "InactiveTabForegroundColor": "Gray",
+            "InactiveTabBackgroundColor": "Black",
+            "TabbarBackgroundColor": "Black",
+            "OkColor": "Green",
+            "WarningColor": "Yellow",
+            "ErrorColor": "Red",
+            "TextViewerForegroundColor": "White",
+            "TextViewerBackgroundColor": "Black",
+            "TextViewerStatusForegroundColor": "White",
+            "TextViewerStatusBackgroundColor": "Gray",
+            "TextViewerMessageForegroundColor": "White",
+            "TextViewerMessageBackgroundColor": "Blue"
+        }"#;
+        
+        let config: serde_json::Result<DisplayConfig> = serde_json::from_str(json);
+        assert!(config.is_ok(), "Failed to deserialize TWF format DisplayConfig: {:?}", config.err());
+        
+        let config = config.unwrap();
+        assert_eq!(config.colors.foreground_color, "White");
+        assert_eq!(config.colors.background_color, "Black");
+        assert_eq!(config.colors.pane_info_background_color, Some("Gray".to_string()));
+        assert_eq!(config.show_hidden, false);
+        assert_eq!(config.cjk_width, 2);
+    }
 }
