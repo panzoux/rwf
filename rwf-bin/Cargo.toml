@@ -18,6 +18,9 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 unicode-width = "0.1"
 
+# Command-line argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }

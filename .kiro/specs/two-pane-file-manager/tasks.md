@@ -1260,28 +1260,28 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Test validation and fallback
     - _Requirements: 45.1-45.6_
 
-- [ ] 52. Implement exit and change directory
-  - [ ] 52.1 Implement exit with directory output
+- [x] 52. Implement exit and change directory
+  - [x] 52.1 Implement exit with directory output
     - Output current active pane directory on exit
     - Support -cwd command-line flag
     - _Requirements: 46.1, 46.3, 46.4_
   
-  - [ ] 52.2 Create wrapper scripts
+  - [x] 52.2 Create wrapper scripts
     - Provide bash wrapper script
     - Provide zsh wrapper script
     - Provide PowerShell wrapper script
     - _Requirements: 46.2, 46.5_
   
-  - [ ] 52.3 Implement directory capture in wrappers
+  - [x] 52.3 Implement directory capture in wrappers
     - Capture stdout directory from application
     - Change shell working directory after exit
     - _Requirements: 46.6_
   
-  - [ ] 52.4 Add key binding for exit with cd
+  - [x] 52.4 Add key binding for exit with cd
     - Shift+Q: ExitAndChangeDirectory
     - _Requirements: 46.1_
   
-  - [ ] 52.5 Write integration tests for exit and cd
+  - [x] 52.5 Write integration tests for exit and cd
     - Test directory output
     - Test -cwd flag
     - Test wrapper script functionality

@@ -27,15 +27,22 @@ pub struct App {
     state: AppState,
     key_bindings: KeyBindings,
     should_quit: bool,
+    should_exit_and_cd: bool,
     metrics: PerformanceMetrics,
     last_metrics_log: Instant,
     worker_pool: Option<WorkerPool>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
+    cwd_flag: bool, // Whether -cwd flag was provided
 }
 
 impl App {
     /// Create a new application instance
     pub fn new(state: AppState) -> Self {
+        Self::with_cwd_flag(state, false)
+    }
+    
+    /// Create a new application instance with cwd flag
+    pub fn with_cwd_flag(state: AppState, cwd_flag: bool) -> Self {
         // Create worker pool with filesystem backend and archive handler
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(ZipArchiveHandler::new());
@@ -45,10 +52,12 @@ impl App {
             state,
             key_bindings: KeyBindings::default(),
             should_quit: false,
+            should_exit_and_cd: false,
             metrics: PerformanceMetrics::new(),
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
+            cwd_flag,
         }
     }
     
@@ -64,10 +73,12 @@ impl App {
             state,
             key_bindings,
             should_quit: false,
+            should_exit_and_cd: false,
             metrics: PerformanceMetrics::new(),
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
+            cwd_flag: false,
         }
     }
 
@@ -111,6 +122,22 @@ impl App {
         }
         
         info!("Initial directory read jobs submitted");
+    }
+    
+    /// Get the directory to output on exit (current active pane directory)
+    fn get_exit_directory(&self) -> String {
+        let active_pane = self.state.active_pane();
+        active_pane.current_location.display_path()
+    }
+    
+    /// Check if directory should be output (for use after run() completes)
+    pub fn should_output_directory(&self) -> bool {
+        self.should_exit_and_cd
+    }
+    
+    /// Get the exit directory (for use after run() completes)
+    pub fn get_exit_directory_public(&self) -> String {
+        self.get_exit_directory()
     }
 
     /// Run the main application loop
@@ -302,6 +329,17 @@ impl App {
             for transition in transitions {
                 // Check for quit transition
                 if matches!(transition, Transition::Quit) {
+                    self.should_quit = true;
+                    
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+                    
+                    return true;
+                }
+                
+                // Check for exit and change directory transition
+                if matches!(transition, Transition::ExitAndChangeDirectory) {
+                    self.should_exit_and_cd = true;
                     self.should_quit = true;
                     
                     let elapsed = start.elapsed();

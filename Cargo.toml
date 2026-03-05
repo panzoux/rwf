@@ -36,6 +36,9 @@ proptest = "1.5"
 # Archive handling
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
+# Command-line argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
 # Testing utilities
 tempfile = "3.14"
 assert_fs = "1.1"

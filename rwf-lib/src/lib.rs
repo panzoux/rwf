@@ -106,6 +106,9 @@ mod file_info_version_tests;
 mod log_management_integration_tests;
 
 #[cfg(test)]
+mod exit_cd_integration_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};

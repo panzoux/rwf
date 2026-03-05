@@ -5,12 +5,26 @@ mod ui;
 
 use anyhow::Result;
 use app::App;
+use clap::Parser;
 use rwf_lib::AppState;
 use terminal::TerminalManager;
 use tracing::info;
 
+/// Two-Pane File Manager
+#[derive(Parser, Debug)]
+#[command(name = "rwf")]
+#[command(about = "A two-pane file manager for the terminal", long_about = None)]
+struct Args {
+    /// Enable directory change on exit (outputs final directory to stdout)
+    #[arg(long)]
+    cwd: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command-line arguments
+    let args = Args::parse();
+    
     // Initialize tracing subscriber to write to file instead of stdout
     // This prevents logs from interfering with the TUI
     
@@ -86,12 +100,19 @@ async fn main() -> Result<()> {
     info!("Application state initialized with session restoration");
 
     // Create and run application
-    let mut app = App::new(state);
+    let mut app = App::with_cwd_flag(state, args.cwd);
     app.run(terminal_manager.terminal_mut()).await?;
 
     // Restore terminal state
     terminal_manager.restore()?;
     info!("Terminal restored");
+    
+    // Output directory to stdout if -cwd flag was provided or Shift+Q was pressed
+    if args.cwd || app.should_output_directory() {
+        let exit_dir = app.get_exit_directory_public();
+        println!("{}", exit_dir);
+        info!("Output exit directory: {}", exit_dir);
+    }
     
     Ok(())
 }
