@@ -61,6 +61,9 @@ mod config_display_tests;
 mod config_reload_tests;
 
 #[cfg(test)]
+mod config_launch_integration_tests;
+
+#[cfg(test)]
 mod config_integration_tests;
 
 #[cfg(test)]

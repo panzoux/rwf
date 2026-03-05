@@ -295,6 +295,7 @@ pub enum Action {
     ShowFileInfoForCursor,
     ShowVersion,
     SaveLog,
+    LaunchConfigurationProgram,
     
     // Internal
     PendingSequence,
@@ -863,6 +864,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::SaveLog => {
             // Save the current session log to file
             vec![Transition::SaveLog]
+        }
+        Action::LaunchConfigurationProgram => {
+            // Launch the configured editor with the configuration file
+            vec![Transition::LaunchConfigurationProgram]
         }
         Action::RegisterCurrentFolder => {
             // Show input dialog to get folder name

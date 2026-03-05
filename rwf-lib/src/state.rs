@@ -1157,6 +1157,24 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                             }
                         }
                     }
+                    crate::job::JobKind::ExecuteCustomFunction { command, .. } => {
+                        // Check if this was a configuration editor launch
+                        let config_manager = crate::config::ConfigManager::new();
+                        let config_path = config_manager.config_path().to_string_lossy().to_string();
+                        
+                        if command.contains(&config_path) {
+                            // This was the config editor, show reload prompt
+                            if let crate::job::OpResult::Success(_) = result {
+                                let dialog = crate::model::Dialog {
+                                    title: "Configuration Editor Closed".to_string(),
+                                    content: crate::model::DialogContent::Confirmation {
+                                        message: "Reload configuration?".to_string(),
+                                    },
+                                };
+                                state.dialogs.push(dialog);
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1476,6 +1494,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                                 state.dialogs.pop();
                                 return StateUpdateResult::with_job(job_spec);
                             }
+                        } else if title == "Configuration Editor Closed" {
+                            // User confirmed reload, trigger config reload
+                            state.dialogs.pop();
+                            return update_state(state, Transition::ReloadConfig);
                         }
                     }
                     crate::model::DialogContent::Input { prompt: _, default_value: _ } => {
@@ -1924,10 +1946,90 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         // Configuration operations
+        Transition::LaunchConfigurationProgram => {
+            // Get the editor command from config, or use system default
+            let editor_command = state.config.editor_command.clone()
+                .unwrap_or_else(|| {
+                    // Use system default editor
+                    #[cfg(target_os = "windows")]
+                    { "notepad".to_string() }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        std::env::var("EDITOR")
+                            .or_else(|_| std::env::var("VISUAL"))
+                            .unwrap_or_else(|_| "vi".to_string())
+                    }
+                });
+            
+            // Get the config file path
+            let config_manager = crate::config::ConfigManager::new();
+            let config_path = config_manager.config_path().to_string_lossy().to_string();
+            
+            // Build the command to launch the editor
+            let command = format!("{} \"{}\"", editor_command, config_path);
+            
+            // Get current working directory
+            let working_dir = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            
+            // Create a job to execute the editor
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                command,
+                working_dir: crate::model::Location::Local(working_dir),
+                pipe_to_action: None,
+                shell: None,  // Use default shell
+            });
+            
+            StateUpdateResult::with_job(job_spec)
+        }
+        
         Transition::ReloadConfig => {
-            // Configuration reload is handled externally by loading config
-            // and calling UpdateConfig transition
-            StateUpdateResult::with_ui_change()
+            // Store the current config as backup
+            let previous_config = state.config.clone();
+            
+            // Try to load the new configuration
+            let config_manager = crate::config::ConfigManager::new();
+            match config_manager.load_config() {
+                Ok(new_config) => {
+                    // Validate the new configuration
+                    match config_manager.validate_config(&new_config) {
+                        Ok(_) => {
+                            // Configuration is valid, apply it
+                            return update_state(state, Transition::UpdateConfig {
+                                config: Box::new(new_config),
+                            });
+                        }
+                        Err(e) => {
+                            // Validation failed, show error and keep previous config
+                            let error_dialog = crate::model::Dialog {
+                                title: "Configuration Validation Error".to_string(),
+                                content: crate::model::DialogContent::Confirmation {
+                                    message: format!("Configuration validation failed: {}\n\nKeeping previous configuration.", e),
+                                },
+                            };
+                            state.dialogs.push(error_dialog);
+                            
+                            // Keep the previous config
+                            state.config = previous_config;
+                            StateUpdateResult::with_ui_change()
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Failed to load config, show error and keep previous config
+                    let error_dialog = crate::model::Dialog {
+                        title: "Configuration Load Error".to_string(),
+                        content: crate::model::DialogContent::Confirmation {
+                            message: format!("Failed to load configuration: {}\n\nKeeping previous configuration.", e),
+                        },
+                    };
+                    state.dialogs.push(error_dialog);
+                    
+                    // Keep the previous config
+                    state.config = previous_config;
+                    StateUpdateResult::with_ui_change()
+                }
+            }
         }
         
         Transition::UpdateConfig { config } => {
