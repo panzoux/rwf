@@ -13,6 +13,7 @@ pub mod ui;
 pub mod dialog;
 pub mod cache;
 pub mod viewer;
+pub mod navigation_cache;
 
 #[cfg(test)]
 mod location_properties;
@@ -48,3 +49,4 @@ pub use dialog::{
 };
 pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
 pub use viewer::{ViewerState, ViewerMode, TextEncoding};
+pub use navigation_cache::NavigationStateCache;

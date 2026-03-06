@@ -116,7 +116,13 @@ mod exit_cd_integration_tests;
 mod task_panel_management_integration_tests;
 
 #[cfg(test)]
+mod scrolling_integration_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
+
+#[cfg(test)]
+mod comprehensive_phase8_integration_tests;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
 pub use job::{JobManager, JobId, JobSpec, JobKind, Job, JobResult};

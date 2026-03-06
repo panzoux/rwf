@@ -4,7 +4,7 @@
 //! for explicit state changes following the AppState pattern.
 
 use crate::job::{JobManager, JobId, JobSpec};
-use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState};
+use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState, NavigationStateCache};
 use crate::log_manager::LogManager;
 use std::time::Duration;
 
@@ -27,6 +27,8 @@ pub struct AppState {
     pub registered_folders: crate::model::RegisteredFolderManager,
     /// Directory cache for fast navigation
     pub cache: DirectoryCache,
+    /// Navigation state cache for cursor/scroll position memory
+    pub navigation_cache: NavigationStateCache,
     /// File viewer state (when in viewer mode)
     pub viewer: Option<ViewerState>,
     /// Session log manager
@@ -68,6 +70,7 @@ impl AppState {
             dialogs: DialogStack::new(),
             registered_folders,
             cache: DirectoryCache::new(Duration::from_secs(30)),
+            navigation_cache: NavigationStateCache::new(),
             viewer: None,
             log_manager,
             config,
@@ -616,13 +619,39 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 debug!("ChangeLocation: cache miss, will create ReadDirectory job for {}", location.display_path());
             }
             
+            // Get current pane state before changing location (no mutable borrow yet)
+            let tab = state.current_tab();
+            let (current_location, current_cursor, current_scroll) = match pane {
+                crate::model::ActivePane::Left => (
+                    tab.left_pane.current_location.clone(),
+                    tab.left_pane.cursor,
+                    tab.left_pane.scroll_offset,
+                ),
+                crate::model::ActivePane::Right => (
+                    tab.right_pane.current_location.clone(),
+                    tab.right_pane.cursor,
+                    tab.right_pane.scroll_offset,
+                ),
+            };
+            
+            // Save current cursor and scroll position to navigation cache
+            state.navigation_cache.save(current_location.clone(), current_cursor, current_scroll);
+            debug!("ChangeLocation: saved position for {} (cursor={}, scroll={})", 
+                   current_location.display_path(), current_cursor, current_scroll);
+            
+            // Try to restore cursor and scroll position from navigation cache
+            let restored_position = state.navigation_cache.restore(&location);
+            if let Some((cached_cursor, cached_scroll)) = restored_position {
+                debug!("ChangeLocation: restored position from cache (cursor={}, scroll={})", 
+                       cached_cursor, cached_scroll);
+            } else {
+                debug!("ChangeLocation: first visit to location, starting at cursor=0, scroll=0");
+            }
+            
+            // Now do mutable operations on the tab
             let tab = state.current_tab_mut();
             
             // Add current location to history
-            let current_location = match pane {
-                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
-                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
-            };
             tab.history.push(pane, current_location);
             
             // Update location
@@ -632,14 +661,33 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             };
             pane_model.current_location = location.clone();
             debug!("ChangeLocation: pane location after update: {:?}", pane_model.current_location);
-            pane_model.cursor = 0;
-            pane_model.scroll_offset = 0;
+            
+            // Apply restored position or default to 0,0
+            if let Some((cached_cursor, cached_scroll)) = restored_position {
+                // Will be clamped after entries are loaded
+                pane_model.cursor = cached_cursor;
+                pane_model.scroll_offset = cached_scroll;
+            } else {
+                // First visit to this directory - start at top
+                pane_model.cursor = 0;
+                pane_model.scroll_offset = 0;
+            }
             
             // Use cached entries if available
             if let Some(entries) = cached_entries {
                 debug!("ChangeLocation: loaded {} cached entries", entries.len());
                 pane_model.entries = entries;
                 pane_model.apply_sort();
+                
+                // Clamp cursor and scroll to valid ranges
+                if !pane_model.entries.is_empty() {
+                    pane_model.cursor = pane_model.cursor.min(pane_model.entries.len() - 1);
+                    debug!("ChangeLocation: clamped cursor to {}", pane_model.cursor);
+                } else {
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+                }
+                
                 StateUpdateResult::with_ui_change()
             } else {
                 // Create job to read directory
