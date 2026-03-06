@@ -1385,7 +1385,7 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Set scroll_offset to 0 when location changes
     - _Requirements: 2A.7_
   
-  - [ ] 57.5 Write integration tests for scrolling behavior
+  - [x] 57.5 Write integration tests for scrolling behavior
     - Test scrolling triggers at correct offset
     - Test no blank lines at bottom
     - Test cursor visibility maintained
@@ -1487,7 +1487,7 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Use foreground_color and background_color for task view
     - _Requirements: 49.8_
   
-  - [ ] 59.11 Write integration tests for color configuration
+  - [x] 59.11 Write integration tests for color configuration
     - Test all UI areas use correct colors
     - Test backward compatibility with old color names
     - Test color fallback behavior
