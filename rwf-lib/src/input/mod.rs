@@ -120,6 +120,13 @@ impl KeyBindings {
         normal_mode.insert("`".to_string(), Action::ShowContextMenu);
         normal_mode.insert("Shift+L".to_string(), Action::ShowDriveChangeDialog);
         
+        // Task panel operations
+        normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
+        normal_mode.insert("Ctrl+Up".to_string(), Action::IncreaseTaskPanelHeight);
+        normal_mode.insert("Ctrl+Down".to_string(), Action::DecreaseTaskPanelHeight);
+        normal_mode.insert("Alt+Up".to_string(), Action::ScrollTaskPanelUp);
+        normal_mode.insert("Alt+Down".to_string(), Action::ScrollTaskPanelDown);
+        
         Self {
             normal_mode,
             search_mode: HashMap::new(),
@@ -296,6 +303,13 @@ pub enum Action {
     ShowVersion,
     SaveLog,
     LaunchConfigurationProgram,
+    
+    // Task panel operations
+    ToggleTaskPanel,
+    IncreaseTaskPanelHeight,
+    DecreaseTaskPanelHeight,
+    ScrollTaskPanelUp,
+    ScrollTaskPanelDown,
     
     // Internal
     PendingSequence,
@@ -891,6 +905,21 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             }
+        }
+        Action::ToggleTaskPanel => {
+            vec![Transition::ToggleTaskPanel]
+        }
+        Action::IncreaseTaskPanelHeight => {
+            vec![Transition::IncreaseTaskPanelHeight]
+        }
+        Action::DecreaseTaskPanelHeight => {
+            vec![Transition::DecreaseTaskPanelHeight]
+        }
+        Action::ScrollTaskPanelUp => {
+            vec![Transition::ScrollTaskPanelUp]
+        }
+        Action::ScrollTaskPanelDown => {
+            vec![Transition::ScrollTaskPanelDown]
         }
         Action::PendingSequence => vec![],
         _ => vec![],

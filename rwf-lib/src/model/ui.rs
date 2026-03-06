@@ -35,6 +35,10 @@ pub struct LayoutState {
     pub show_task_panel: bool,
     pub show_tab_bar: bool,
     pub pane_height: usize,
+    /// Task panel height in lines (default: 5)
+    pub task_panel_height: usize,
+    /// Task panel scroll offset (for scrolling through task history)
+    pub task_panel_scroll_offset: usize,
 }
 
 impl Default for LayoutState {
@@ -45,6 +49,8 @@ impl Default for LayoutState {
             show_task_panel: true,
             show_tab_bar: true,
             pane_height: 20, // Default fallback
+            task_panel_height: 5,
+            task_panel_scroll_offset: 0,
         }
     }
 }

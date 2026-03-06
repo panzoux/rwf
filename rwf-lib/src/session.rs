@@ -19,6 +19,20 @@ pub struct SessionState {
     pub active_pane: SavedActivePane,
     /// Marked file locations
     pub marked_locations: Vec<SavedLocation>,
+    /// Task panel visibility
+    #[serde(default = "default_show_task_panel")]
+    pub show_task_panel: bool,
+    /// Task panel height
+    #[serde(default = "default_task_panel_height")]
+    pub task_panel_height: usize,
+}
+
+fn default_show_task_panel() -> bool {
+    true
+}
+
+fn default_task_panel_height() -> usize {
+    5
 }
 
 /// Saved tab state
@@ -58,6 +72,8 @@ impl SessionState {
             active_tab_index: 0,
             active_pane: SavedActivePane::Left,
             marked_locations: Vec::new(),
+            show_task_panel: true,
+            task_panel_height: 5,
         }
     }
 
@@ -167,6 +183,8 @@ pub fn save_session(
     active_tab_index: usize,
     active_pane: ActivePane,
     marked_locations: &HashSet<Location>,
+    show_task_panel: bool,
+    task_panel_height: usize,
 ) -> SessionState {
     let saved_tabs = tabs
         .iter()
@@ -189,6 +207,8 @@ pub fn save_session(
         active_tab_index,
         active_pane: active_pane.into(),
         marked_locations: saved_marked,
+        show_task_panel,
+        task_panel_height,
     }
 }
 
@@ -311,7 +331,7 @@ mod tests {
         ];
 
         let marked = HashSet::new();
-        let session = save_session(&tabs, 1, ActivePane::Right, &marked);
+        let session = save_session(&tabs, 1, ActivePane::Right, &marked, true, 5);
 
         assert_eq!(session.tabs.len(), 3);
         assert_eq!(session.active_tab_index, 1);
@@ -392,7 +412,7 @@ mod tests {
         marked.insert(Location::Local(PathBuf::from("/tmp/file2.txt")));
 
         // Save session
-        let session = save_session(&tabs, 1, ActivePane::Right, &marked);
+        let session = save_session(&tabs, 1, ActivePane::Right, &marked, true, 5);
 
         // Verify session state
         assert_eq!(session.tabs.len(), 2);
@@ -477,7 +497,7 @@ mod tests {
 
         // Save session with marked files
         let tabs = vec![TabState::new(0)];
-        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked);
+        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked, true, 5);
 
         // Verify marked locations are saved
         assert_eq!(session.marked_locations.len(), 3);
@@ -496,7 +516,7 @@ mod tests {
 
         let tabs = vec![TabState::new(0)];
         let marked = HashSet::new();
-        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked);
+        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked, true, 5);
 
         assert_eq!(session.marked_locations.len(), 0);
 
@@ -514,7 +534,7 @@ mod tests {
 
         let tabs = vec![tab];
         let marked = std::collections::HashSet::new();
-        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked);
+        let session = save_session(&tabs, 0, crate::model::ActivePane::Left, &marked, true, 5);
 
         assert_eq!(session.tabs[0].left_cursor, 42);
         assert_eq!(session.tabs[0].right_cursor, 99);
@@ -533,13 +553,13 @@ mod tests {
         let marked = HashSet::new();
 
         // Test Left pane
-        let session_left = save_session(&tabs, 0, ActivePane::Left, &marked);
+        let session_left = save_session(&tabs, 0, ActivePane::Left, &marked, true, 5);
         assert!(matches!(session_left.active_pane, SavedActivePane::Left));
         let restored_left: ActivePane = session_left.active_pane.into();
         assert_eq!(restored_left, ActivePane::Left);
 
         // Test Right pane
-        let session_right = save_session(&tabs, 0, ActivePane::Right, &marked);
+        let session_right = save_session(&tabs, 0, ActivePane::Right, &marked, true, 5);
         assert!(matches!(session_right.active_pane, SavedActivePane::Right));
         let restored_right: ActivePane = session_right.active_pane.into();
         assert_eq!(restored_right, ActivePane::Right);
@@ -561,7 +581,7 @@ mod tests {
         }
 
         let marked = HashSet::new();
-        let session = save_session(&tabs, 2, crate::model::ActivePane::Right, &marked);
+        let session = save_session(&tabs, 2, crate::model::ActivePane::Right, &marked, true, 5);
 
         assert_eq!(session.tabs.len(), 5);
         assert_eq!(session.active_tab_index, 2);

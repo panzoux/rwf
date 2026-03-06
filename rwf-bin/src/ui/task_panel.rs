@@ -99,7 +99,17 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         items.push(ListItem::new(empty_msg));
     }
 
-    let list = List::new(items);
+    // Apply scrolling
+    let scroll_offset = state.ui.layout.task_panel_scroll_offset;
+    let visible_height = area.height as usize;
+    let total_items = items.len();
+    
+    // Calculate which items to display based on scroll offset
+    let start_idx = scroll_offset.min(total_items.saturating_sub(1));
+    let end_idx = (start_idx + visible_height).min(total_items);
+    let visible_items: Vec<_> = items.into_iter().skip(start_idx).take(end_idx - start_idx).collect();
+    
+    let list = List::new(visible_items);
     frame.render_widget(list, area);
 }
 

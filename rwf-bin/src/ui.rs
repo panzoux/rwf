@@ -35,7 +35,13 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
     // Create main layout matching TWF exactly:
     // Tabs (1 line) → Path line (1 line) → Volume name line (1 line) → 
     // File panes (Min 10, NO BORDERS) → Pane info line (1 line) → 
-    // Selected filename line (1 line) → Task view (5 lines, NO BORDER)
+    // Selected filename line (1 line) → Task view (dynamic height, NO BORDER)
+    let task_panel_height = if state.ui.layout.show_task_panel {
+        state.ui.layout.task_panel_height as u16
+    } else {
+        0
+    };
+    
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -45,7 +51,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
             Constraint::Min(10),   // File panes (NO BORDERS)
             Constraint::Length(1), // Pane info line (left | right)
             Constraint::Length(1), // Selected filename line
-            Constraint::Length(if state.ui.layout.show_task_panel { 5 } else { 0 }), // Task view (NO BORDER)
+            Constraint::Length(task_panel_height), // Task view (NO BORDER, dynamic height)
         ])
         .split(size);
 

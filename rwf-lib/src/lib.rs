@@ -109,6 +109,9 @@ mod log_management_integration_tests;
 mod exit_cd_integration_tests;
 
 #[cfg(test)]
+mod task_panel_management_integration_tests;
+
+#[cfg(test)]
 mod edge_case_properties;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};

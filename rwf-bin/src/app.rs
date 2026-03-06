@@ -398,7 +398,11 @@ impl App {
         let tab_bar_height = if self.state.ui.layout.show_tab_bar { 1 } else { 0 };
         let top_separator_height = 1;
         let filename_line_height = 1; // Always shown
-        let task_panel_height = if self.state.ui.layout.show_task_panel { 5 } else { 0 };
+        let task_panel_height = if self.state.ui.layout.show_task_panel { 
+            self.state.ui.layout.task_panel_height as u16
+        } else { 
+            0 
+        };
         let status_bar_height = if self.state.ui.layout.show_status_bar { 1 } else { 0 };
         
         // Pane height = total height - (tab bar + top separator + filename line + task panel + status bar + borders)

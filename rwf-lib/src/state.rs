@@ -119,6 +119,8 @@ impl AppState {
             self.tabs.active_index,
             self.ui.active_pane,
             &self.marking.marked_locations,
+            self.ui.layout.show_task_panel,
+            self.ui.layout.task_panel_height,
         );
         
         let path = crate::session::SessionState::default_path();
@@ -145,6 +147,10 @@ impl AppState {
 
         // Restore marked locations
         self.marking.marked_locations = crate::session::restore_marked_locations(&session);
+
+        // Restore task panel settings
+        self.ui.layout.show_task_panel = session.show_task_panel;
+        self.ui.layout.task_panel_height = session.task_panel_height;
 
         Ok(())
     }
@@ -235,6 +241,13 @@ pub enum Transition {
     ShowVersion,
     SaveLog,
     LaunchConfigurationProgram,
+    
+    // Task panel operations
+    ToggleTaskPanel,
+    IncreaseTaskPanelHeight,
+    DecreaseTaskPanelHeight,
+    ScrollTaskPanelUp,
+    ScrollTaskPanelDown,
     
     // Configuration
     ReloadConfig,
@@ -2355,6 +2368,52 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             }
         }
         
+        // Task panel operations
+        Transition::ToggleTaskPanel => {
+            state.ui.layout.show_task_panel = !state.ui.layout.show_task_panel;
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::IncreaseTaskPanelHeight => {
+            // Increase height by 1, max 20 lines
+            if state.ui.layout.task_panel_height < 20 {
+                state.ui.layout.task_panel_height += 1;
+            }
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::DecreaseTaskPanelHeight => {
+            // Decrease height by 1, min 3 lines
+            if state.ui.layout.task_panel_height > 3 {
+                state.ui.layout.task_panel_height -= 1;
+            }
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::ScrollTaskPanelUp => {
+            // Scroll up by 1 line
+            if state.ui.layout.task_panel_scroll_offset > 0 {
+                state.ui.layout.task_panel_scroll_offset -= 1;
+            }
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::ScrollTaskPanelDown => {
+            // Calculate total number of task items
+            let total_items = state.jobs.queue.len() 
+                + state.jobs.active.len() 
+                + state.jobs.completed.len();
+            
+            // Only scroll if there are more items than visible height
+            if total_items > state.ui.layout.task_panel_height {
+                let max_scroll = total_items.saturating_sub(state.ui.layout.task_panel_height);
+                if state.ui.layout.task_panel_scroll_offset < max_scroll {
+                    state.ui.layout.task_panel_scroll_offset += 1;
+                }
+            }
+            StateUpdateResult::with_ui_change()
+        }
+        
         // Placeholder implementations for other transitions
         _ => StateUpdateResult::none(),
     }
@@ -2823,6 +2882,8 @@ mod tests {
             state.tabs.active_index,
             state.ui.active_pane,
             &state.marking.marked_locations,
+            state.ui.layout.show_task_panel,
+            state.ui.layout.task_panel_height,
         );
         session.save_to_file(&session_path).unwrap();
         

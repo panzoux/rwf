@@ -309,6 +309,8 @@ mod tests {
             state.tabs.active_index,
             state.ui.active_pane,
             &state.marking.marked_locations,
+            state.ui.layout.show_task_panel,
+            state.ui.layout.task_panel_height,
         );
         session.save_to_file(&session_path).unwrap();
         
