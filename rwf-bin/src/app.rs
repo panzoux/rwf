@@ -32,17 +32,11 @@ pub struct App {
     last_metrics_log: Instant,
     worker_pool: Option<WorkerPool>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
-    cwd_flag: bool, // Whether -cwd flag was provided
 }
 
 impl App {
-    /// Create a new application instance
-    pub fn new(state: AppState) -> Self {
-        Self::with_cwd_flag(state, false)
-    }
-    
     /// Create a new application instance with cwd flag
-    pub fn with_cwd_flag(state: AppState, cwd_flag: bool) -> Self {
+    pub fn with_cwd_flag(state: AppState, _cwd_flag: bool) -> Self {
         // Create worker pool with filesystem backend and archive handler
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(ZipArchiveHandler::new());
@@ -57,7 +51,6 @@ impl App {
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
-            cwd_flag,
         }
     }
     
@@ -78,7 +71,6 @@ impl App {
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
-            cwd_flag: false,
         }
     }
 

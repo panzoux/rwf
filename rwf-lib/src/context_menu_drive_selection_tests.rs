@@ -92,7 +92,7 @@ mod tests {
         if let Some(dialog) = state.dialogs.current() {
             assert_eq!(dialog.title, "Drive Selection");
             
-            if let DialogContent::DriveSelection { drives, selected_index } = &dialog.content {
+            if let DialogContent::DriveSelection { drives: _, selected_index } = &dialog.content {
                 assert_eq!(selected_index, &0);
                 // Note: drives may be empty in test environment, but the dialog should still be shown
                 // In a real environment, drives would be populated

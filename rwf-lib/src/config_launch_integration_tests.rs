@@ -100,7 +100,7 @@ mod tests {
         state.jobs.start_job(job_spec);
         
         // Simulate job completion
-        let result = update_state(&mut state, Transition::CompleteJob {
+        let _result = update_state(&mut state, Transition::CompleteJob {
             job_id,
             result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
         });

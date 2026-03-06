@@ -3063,7 +3063,7 @@ mod tests {
         let cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
         let visible_height = state.ui.layout.pane_height;
         let scroll_margin = state.config.ui.scroll_offset;
-        let bottom_trigger = visible_height - scroll_margin - 1; // Should be 15 (0-indexed)
+        let _bottom_trigger = visible_height - scroll_margin - 1; // Should be 15 (0-indexed)
         let max_offset = pane.entries.len().saturating_sub(visible_height); // 70 - 19 = 51
         
         // Expected behavior: scroll_offset should be at max_offset (51) to avoid blank lines
@@ -3120,7 +3120,7 @@ mod tests {
         let pane = &state.current_tab().left_pane;
         let cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
         let visible_height = state.ui.layout.pane_height;
-        let scroll_margin = state.config.ui.scroll_offset;
+        let _scroll_margin = state.config.ui.scroll_offset;
         let max_offset = pane.entries.len().saturating_sub(visible_height); // 74 - 19 = 55
         
         // Expected behavior: when at last entry and max_offset, cursor can be on last line
@@ -3270,7 +3270,7 @@ mod tests {
                 scroll_margin,
             );
             
-            let old_scroll_offset = state.current_tab().left_pane.scroll_offset;
+            let _old_scroll_offset = state.current_tab().left_pane.scroll_offset;
             
             // Move cursor up by 1
             update_state(&mut state, Transition::CursorMove { 

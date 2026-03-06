@@ -341,61 +341,7 @@ impl Dialog {
         }
     }
 
-    /// Generate help content with all key bindings (deprecated - kept for compatibility)
-    #[deprecated(note = "Use help_with_language instead")]
-    fn generate_help_content() -> String {
-        let mut content = String::new();
-        
-        content.push_str("Navigation:\n");
-        content.push_str("  Tab              - Switch pane\n");
-        content.push_str("  Up/Down, j/k     - Move cursor\n");
-        content.push_str("  Home/End         - Jump to first/last entry\n");
-        content.push_str("  PageUp/PageDown  - Page navigation\n");
-        content.push_str("  Enter            - Enter directory\n");
-        content.push_str("  Backspace/Left   - Parent directory\n");
-        content.push_str("  Alt+Left/Right   - History navigation\n\n");
-        
-        content.push_str("File Operations:\n");
-        content.push_str("  C                - Copy\n");
-        content.push_str("  M                - Move\n");
-        content.push_str("  D                - Delete\n");
-        content.push_str("  R                - Rename\n");
-        content.push_str("  Shift+K          - Create directory\n\n");
-        
-        content.push_str("Marking:\n");
-        content.push_str("  Space            - Toggle mark\n");
-        content.push_str("  *                - Mark all\n");
-        content.push_str("  Ctrl+U           - Unmark all\n");
-        content.push_str("  @                - Wildcard marking\n");
-        content.push_str("  Ctrl+Space       - Range marking\n");
-        content.push_str("  Shift+Home       - Invert marks\n\n");
-        
-        content.push_str("Sorting:\n");
-        content.push_str("  s+n              - Sort by name\n");
-        content.push_str("  s+s              - Sort by size\n");
-        content.push_str("  s+d              - Sort by date\n");
-        content.push_str("  s+e              - Sort by extension\n\n");
-        
-        content.push_str("Search & Filter:\n");
-        content.push_str("  /, Ctrl+F        - Start search\n");
-        content.push_str("  f                - File mask filter\n");
-        content.push_str("  Ctrl+K           - Clear search/filter\n");
-        content.push_str("  Escape           - Exit search mode\n\n");
-        
-        content.push_str("Tab Management:\n");
-        content.push_str("  Ctrl+N           - New tab\n");
-        content.push_str("  Ctrl+T/Ctrl+B    - Tab selector\n");
-        content.push_str("  Ctrl+W           - Close tab\n");
-        content.push_str("  Ctrl+Right       - Next tab\n");
-        content.push_str("  Ctrl+Left        - Previous tab\n\n");
-        
-        content.push_str("Miscellaneous:\n");
-        content.push_str("  Q, Escape        - Quit application\n");
-        content.push_str("  ?, F1            - Show this help\n");
-        content.push_str("  Ctrl+J           - Job manager\n");
-        
-        content
-    }
+
 
     /// Create a custom function selector dialog
     pub fn custom_function_selector(functions: Vec<CustomFunction>) -> Self {

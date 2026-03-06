@@ -12,7 +12,6 @@ mod tests {
     use crate::config::AppConfig;
     use crate::model::{ActivePane, FileEntry, Location};
     use crate::state::{update_state, AppState, Transition};
-    use std::path::PathBuf;
     use std::time::SystemTime;
     use tempfile::TempDir;
 
@@ -102,13 +101,13 @@ mod tests {
         // Requirement 41.2: WHEN synchronization occurs, THE Application SHALL navigate 
         // the opposite pane to the same location as the active pane
         
-        let (mut state, left_dir, _right_dir) = create_test_state_with_different_panes();
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         
         let left_location = state.current_tab().left_pane.current_location.clone();
         let right_location_before = state.current_tab().right_pane.current_location.clone();
         
         // Active pane is left, so sync should update right pane to left's location
-        let result = update_state(&mut state, Transition::SyncPanes);
+        let _result = update_state(&mut state, Transition::SyncPanes);
         
         // Verify right pane location was updated to match left pane
         assert_eq!(
@@ -155,7 +154,7 @@ mod tests {
     fn test_sync_panes_from_right_to_left() {
         // Requirement 41.1, 41.2: Test synchronization from right to left pane
         
-        let (mut state, _left_dir, right_dir) = create_test_state_with_different_panes();
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         
         // Switch to right pane
         state.ui.active_pane = ActivePane::Right;
@@ -164,7 +163,7 @@ mod tests {
         let left_location_before = state.current_tab().left_pane.current_location.clone();
         
         // Active pane is right, so sync should update left pane to right's location
-        let result = update_state(&mut state, Transition::SyncPanes);
+        let _result = update_state(&mut state, Transition::SyncPanes);
         
         // Verify left pane location was updated to match right pane
         assert_eq!(
@@ -214,13 +213,13 @@ mod tests {
         // Requirement 41.4: WHEN swapping occurs, THE Application SHALL exchange 
         // the current_location of both panes
         
-        let (mut state, left_dir, right_dir) = create_test_state_with_different_panes();
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         
         let left_location_before = state.current_tab().left_pane.current_location.clone();
         let right_location_before = state.current_tab().right_pane.current_location.clone();
         
         // Swap panes
-        let result = update_state(&mut state, Transition::SwapPanes);
+        let _result = update_state(&mut state, Transition::SwapPanes);
         
         // Verify locations were swapped
         assert_eq!(
@@ -246,7 +245,7 @@ mod tests {
         let right_cursor_before = state.current_tab().right_pane.cursor;
         
         // Swap panes
-        let result = update_state(&mut state, Transition::SwapPanes);
+        let _result = update_state(&mut state, Transition::SwapPanes);
         
         // Verify cursor positions were maintained (stayed with their panes)
         assert_eq!(
@@ -278,7 +277,7 @@ mod tests {
         assert_eq!(state.marking.count(), 2, "Should have 2 marked files");
         
         // Swap panes
-        let result = update_state(&mut state, Transition::SwapPanes);
+        let _result = update_state(&mut state, Transition::SwapPanes);
         
         // Verify marked files are still marked
         assert!(
@@ -397,7 +396,7 @@ mod tests {
         
         // Measure that sync completes quickly
         let start = std::time::Instant::now();
-        let result = update_state(&mut state, Transition::SyncPanes);
+        let _result = update_state(&mut state, Transition::SyncPanes);
         let duration = start.elapsed();
         
         // State update should complete in less than 10ms
