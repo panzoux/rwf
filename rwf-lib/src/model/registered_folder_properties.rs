@@ -130,8 +130,8 @@ mod tests {
             var2_name in env_var_name(),
             var2_value in "[a-zA-Z0-9_]{1,10}"
         ) {
-            // Ensure variable names are different
-            prop_assume!(var1_name != var2_name);
+            // Ensure variable names are different (case-insensitive on Windows)
+            prop_assume!(var1_name.to_uppercase() != var2_name.to_uppercase());
             
             let _lock = ENV_MUTEX.lock().unwrap();
             let manager = RegisteredFolderManager::new();

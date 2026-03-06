@@ -90,14 +90,14 @@ mod tests {
         
         // Write custom keybindings
         let keybindings_json = r#"{
-            "normal_mode": {
+            "NormalMode": {
                 "c": "Copy",
                 "m": "Move",
                 "d": "Delete"
             },
-            "search_mode": {},
-            "dialog_mode": {},
-            "viewer_mode": {}
+            "SearchMode": {},
+            "DialogMode": {},
+            "ViewerMode": {}
         }"#;
         
         std::fs::write(&keybindings_path, keybindings_json).unwrap();

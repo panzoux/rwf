@@ -212,13 +212,13 @@ mod tests {
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
         let keybindings_json = r#"{
-            "normal_mode": {
+            "NormalMode": {
                 "c": "Copy",
                 "m": "Move"
             },
-            "search_mode": {},
-            "dialog_mode": {},
-            "viewer_mode": {}
+            "SearchMode": {},
+            "DialogMode": {},
+            "ViewerMode": {}
         }"#;
         
         fs::write(&keybindings_path, keybindings_json).unwrap();
@@ -280,7 +280,7 @@ mod tests {
         // Create a TWF-style config with colors directly under Display
         let config_json = r#"{
             "Display": {
-                "ShowHidden": false,
+                "ShowHiddenFiles": false,
                 "ShowSystem": false,
                 "DateFormat": "%Y-%m-%d %H:%M",
                 "TimeFormat": "TwentyFourHour",
@@ -348,7 +348,13 @@ mod tests {
             "SessionPersistence": true,
             "KeyRepeatDelayMs": 300,
             "KeyRepeatRateMs": 30,
-            "Ellipsis": "…"
+            "Ellipsis": "…",
+            "MaxLogLinesInMemory": 2000,
+            "LogSavePath": "logs/session.log",
+            "SaveLogOnExit": true,
+            "LogFileProgressThresholdMs": 5000,
+            "EditorCommand": null,
+            "HelpLanguage": "en"
         }"#;
         
         fs::write(&config_path, config_json).unwrap();

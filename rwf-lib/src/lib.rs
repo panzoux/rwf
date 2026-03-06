@@ -126,7 +126,7 @@ mod comprehensive_phase8_integration_tests;
 
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
 pub use job::{JobManager, JobId, JobSpec, JobKind, Job, JobResult};
-pub use model::{Location, FileEntry, PaneModel, TabState, TabManager};
+pub use model::{Location, FileEntry, PaneModel, TabState, TabManager, DialogContent};
 pub use worker_pool::{WorkerPool, JobEvent};
 pub use event_receiver::{map_job_event_to_transition, process_pending_events, process_next_event};
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};

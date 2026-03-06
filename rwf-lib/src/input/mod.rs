@@ -17,10 +17,13 @@ use crate::backend::ArchiveHandler;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyBindings {
     /// Key bindings for normal mode
+    #[serde(rename = "NormalMode")]
     pub normal_mode: HashMap<String, Action>,
     /// Key bindings for search mode
+    #[serde(rename = "SearchMode")]
     pub search_mode: HashMap<String, Action>,
     /// Key bindings for dialog mode
+    #[serde(rename = "DialogMode")]
     pub dialog_mode: HashMap<String, Action>,
     /// Multi-key sequence state
     #[serde(skip)]
@@ -40,8 +43,8 @@ impl KeyBindings {
         normal_mode.insert("j".to_string(), Action::CursorDown);
         normal_mode.insert("^".to_string(), Action::MoveCursorToFirst);
         normal_mode.insert("$".to_string(), Action::MoveCursorToLast);
-        normal_mode.insert("G".to_string(), Action::MoveCursorToFirst);
-        normal_mode.insert("Shift+G".to_string(), Action::MoveCursorToLast);
+        normal_mode.insert("g".to_string(), Action::MoveCursorToFirst);
+        normal_mode.insert("G".to_string(), Action::MoveCursorToLast);
         normal_mode.insert("PageUp".to_string(), Action::PageUp);
         normal_mode.insert("PageDown".to_string(), Action::PageDown);
         normal_mode.insert("Enter".to_string(), Action::EnterDirectory);
@@ -66,16 +69,19 @@ impl KeyBindings {
         normal_mode.insert("M".to_string(), Action::Move);
         normal_mode.insert("D".to_string(), Action::Delete);
         normal_mode.insert("R".to_string(), Action::Rename);
-        normal_mode.insert("Shift+R".to_string(), Action::PatternRename);
-        normal_mode.insert("Shift+K".to_string(), Action::CreateDirectory);
+        normal_mode.insert("Shift+r".to_string(), Action::PatternRename);
+        normal_mode.insert("K".to_string(), Action::CreateDirectory);
         
         // Sorting
-        normal_mode.insert("S".to_string(), Action::CycleSortMode);
+        normal_mode.insert("s+n".to_string(), Action::SortByName);
+        normal_mode.insert("s+s".to_string(), Action::SortBySize);
+        normal_mode.insert("s+d".to_string(), Action::SortByDate);
+        normal_mode.insert("s+e".to_string(), Action::SortByExtension);
         
         // Search and filter
         normal_mode.insert("/".to_string(), Action::StartSearch);
-        normal_mode.insert("F".to_string(), Action::StartSearch);
         normal_mode.insert("Ctrl+f".to_string(), Action::StartSearch);
+        normal_mode.insert("f".to_string(), Action::FileMaskFilter);
         normal_mode.insert(":".to_string(), Action::FileMaskFilter);
         normal_mode.insert("Ctrl+k".to_string(), Action::ClearSearchFilter);
         normal_mode.insert("Escape".to_string(), Action::Quit);
@@ -85,40 +91,42 @@ impl KeyBindings {
         
         // Tab management
         normal_mode.insert("Ctrl+n".to_string(), Action::NewTab);
-        normal_mode.insert("Alt+Z".to_string(), Action::NewTab);
+        normal_mode.insert("Alt+z".to_string(), Action::NewTab);
         normal_mode.insert("Ctrl+t".to_string(), Action::TabSelector);
         normal_mode.insert("Ctrl+w".to_string(), Action::CloseTab);
         normal_mode.insert("Ctrl+Right".to_string(), Action::NextTab);
         normal_mode.insert("Ctrl+PageDown".to_string(), Action::NextTab);
-        normal_mode.insert("Alt+L".to_string(), Action::NextTab);
+        normal_mode.insert("Alt+l".to_string(), Action::NextTab);
         normal_mode.insert("Ctrl+Left".to_string(), Action::PrevTab);
         normal_mode.insert("Ctrl+PageUp".to_string(), Action::PrevTab);
-        normal_mode.insert("Alt+H".to_string(), Action::PrevTab);
+        normal_mode.insert("Alt+h".to_string(), Action::PrevTab);
         normal_mode.insert("Ctrl+b".to_string(), Action::TabSelector);
         
         // Registered folders
-        normal_mode.insert("Shift+B".to_string(), Action::RegisterCurrentFolder);
+        normal_mode.insert("B".to_string(), Action::RegisterCurrentFolder);
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("Shift+F".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("Shift+M".to_string(), Action::MoveToRegisteredFolder);
+        normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
+        normal_mode.insert("Shift+m".to_string(), Action::MoveToRegisteredFolder);
         
         // Miscellaneous
-        normal_mode.insert("Q".to_string(), Action::Quit);
-        normal_mode.insert("Shift+Q".to_string(), Action::ExitAndChangeDirectory);
+        normal_mode.insert("q".to_string(), Action::Quit);
+        normal_mode.insert("Q".to_string(), Action::ExitAndChangeDirectory);
         normal_mode.insert("?".to_string(), Action::Help);
+        normal_mode.insert("Shift+/".to_string(), Action::Help);
         normal_mode.insert("F1".to_string(), Action::Help);
-        normal_mode.insert("Alt+J".to_string(), Action::JobManager);
+        normal_mode.insert("Alt+j".to_string(), Action::JobManager);
+        normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
         normal_mode.insert("Ctrl+Shift+Right".to_string(), Action::JobManager);
         normal_mode.insert("H".to_string(), Action::CalculateDirectorySize);
         
         // Pane operations
         normal_mode.insert("O".to_string(), Action::SyncPanes);
-        normal_mode.insert("Shift+O".to_string(), Action::SwapPanes);
+        normal_mode.insert("Shift+o".to_string(), Action::SwapPanes);
         
         // Context menu and drive selection
         normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
         normal_mode.insert("`".to_string(), Action::ShowContextMenu);
-        normal_mode.insert("Shift+L".to_string(), Action::ShowDriveChangeDialog);
+        normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
         
         // Task panel operations
         normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
@@ -320,10 +328,13 @@ pub enum Action {
 pub fn format_key_event(event: &KeyEvent) -> String {
     let mut parts = Vec::new();
 
+    // For alphabetic characters, don't include SHIFT modifier since case already represents it
+    let is_alpha = matches!(event.code, KeyCode::Char(c) if c.is_ascii_alphabetic());
+    
     if event.modifiers.contains(KeyModifiers::CONTROL) {
         parts.push("Ctrl");
     }
-    if event.modifiers.contains(KeyModifiers::SHIFT) {
+    if event.modifiers.contains(KeyModifiers::SHIFT) && !is_alpha {
         parts.push("Shift");
     }
     if event.modifiers.contains(KeyModifiers::ALT) {
@@ -335,10 +346,8 @@ pub fn format_key_event(event: &KeyEvent) -> String {
             // Handle space specially to match key binding format
             if c == ' ' {
                 "Space".to_string()
-            } else if c.is_ascii_alphabetic() {
-                // Always uppercase alphabetic characters for consistency with keybindings
-                c.to_ascii_uppercase().to_string()
             } else {
+                // Use character as-is (preserving case for alphabetic, exact char for others)
                 c.to_string()
             }
         }
@@ -953,8 +962,10 @@ mod tests {
         let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
         assert_eq!(format_key_event(&event), "Ctrl+a");
 
+        // When SHIFT is pressed with an alphabetic character, the character itself is uppercase
+        // and we don't include "Shift+" in the key string
         let event = KeyEvent::new(KeyCode::Char('A'), KeyModifiers::SHIFT);
-        assert_eq!(format_key_event(&event), "Shift+A");
+        assert_eq!(format_key_event(&event), "A");
 
         let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         assert_eq!(format_key_event(&event), "Enter");

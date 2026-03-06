@@ -667,16 +667,16 @@ mod tests {
         
         assert_eq!(state.current_tab().left_pane.cursor, 29);
         
-        // Calculate max_offset: entries.len() - visible_height - 1 = 30 - 20 - 1 = 9
-        let max_offset = 30 - 20 - 1;
+        // Calculate max_offset: entries.len() - visible_height = 30 - 20 = 10
+        let max_offset = 30 - 20;
         assert_eq!(state.current_tab().left_pane.scroll_offset, max_offset);
         
         // Verify last entry is at bottom of visible area
         let cursor_in_view = state.current_tab().left_pane.cursor - state.current_tab().left_pane.scroll_offset;
-        assert_eq!(cursor_in_view, 20); // Last visible position (0-indexed: 0-19, so 20 entries visible)
+        assert_eq!(cursor_in_view, 19); // Last visible position (0-indexed: 0-19)
         
         // Verify no blank lines: scroll_offset + visible_height should equal entries.len()
-        assert_eq!(state.current_tab().left_pane.scroll_offset + 20, 29);
+        assert_eq!(state.current_tab().left_pane.scroll_offset + 20, 30);
     }
 
     /// Test that cursor visibility is maintained during scrolling
@@ -906,17 +906,17 @@ mod tests {
         
         assert_eq!(state.current_tab().left_pane.cursor, 24);
         
-        // Calculate expected scroll_offset: max_offset = entries.len() - visible_height - 1
-        let max_offset = 25 - 20 - 1; // = 4
+        // Calculate expected scroll_offset: max_offset = entries.len() - visible_height
+        let max_offset = 25 - 20; // = 5
         assert_eq!(state.current_tab().left_pane.scroll_offset, max_offset);
         
         // Verify last entry is visible at bottom
         let cursor_in_view = state.current_tab().left_pane.cursor - state.current_tab().left_pane.scroll_offset;
-        assert_eq!(cursor_in_view, 20); // Last position in 20-line viewport
+        assert_eq!(cursor_in_view, 19); // Last position in 20-line viewport (0-indexed)
         
         // Verify no blank lines below
         let visible_end = state.current_tab().left_pane.scroll_offset + 20;
-        assert_eq!(visible_end, 24); // Should equal last entry index
+        assert_eq!(visible_end, 25); // Should equal entries.len()
     }
 
     /// Test scrolling with small file list (fewer entries than visible height)
@@ -985,7 +985,7 @@ mod tests {
         assert_eq!(state.current_tab().left_pane.cursor, 99);
         
         // Should be at max_offset with no blank lines
-        let max_offset = 100 - 20 - 1; // = 79
+        let max_offset = 100 - 20; // = 80
         assert_eq!(state.current_tab().left_pane.scroll_offset, max_offset);
         
         // Jump to beginning

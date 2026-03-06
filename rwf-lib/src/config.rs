@@ -309,9 +309,13 @@ impl ColorScheme {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBindings {
+    #[serde(rename = "NormalMode")]
     pub normal_mode: HashMap<String, Action>,
+    #[serde(rename = "SearchMode")]
     pub search_mode: HashMap<String, Action>,
+    #[serde(rename = "DialogMode")]
     pub dialog_mode: HashMap<String, Action>,
+    #[serde(rename = "ViewerMode")]
     pub viewer_mode: HashMap<String, Action>,
 }
 
@@ -693,7 +697,7 @@ mod tests {
         // Write a config file
         let config_json = r#"{
             "Display": {
-                "ShowHidden": true,
+                "ShowHiddenFiles": true,
                 "ShowSystem": false,
                 "DateFormat": "%Y-%m-%d",
                 "TimeFormat": "TwentyFourHour",
@@ -760,6 +764,11 @@ mod tests {
             "KeyRepeatDelayMs": 300,
             "KeyRepeatRateMs": 50,
             "Ellipsis": "…",
+            "MaxLogLinesInMemory": 2000,
+            "LogSavePath": "logs/session.log",
+            "SaveLogOnExit": true,
+            "LogFileProgressThresholdMs": 5000,
+            "EditorCommand": null,
             "HelpLanguage": "en"
         }"#;
         
