@@ -32,6 +32,7 @@ pub mod pipe_to_action;
 pub mod pattern_rename;
 pub mod config;
 pub mod volume_info;
+pub mod help_content;
 
 #[cfg(test)]
 mod error_handling_tests;
@@ -95,6 +96,9 @@ mod error_recovery_integration_tests;
 
 #[cfg(test)]
 mod pane_sync_swap_integration_tests;
+
+#[cfg(test)]
+mod multi_language_help_integration_tests;
 
 #[cfg(test)]
 mod context_menu_drive_selection_tests;

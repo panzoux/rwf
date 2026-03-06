@@ -309,6 +309,25 @@ impl App {
             self.last_key_press = Some((key_string.clone(), now, false));
         }
         
+        // Special handling for help dialog language rotation
+        // **Validates: Requirements 48.3**
+        if let Some(dialog) = self.state.dialogs.current() {
+            if matches!(dialog.content, rwf_lib::DialogContent::Help { .. }) {
+                // Check if 'L' key is pressed (case-insensitive)
+                if matches!(key.code, crossterm::event::KeyCode::Char('l') | crossterm::event::KeyCode::Char('L')) 
+                    && !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(crossterm::event::KeyModifiers::ALT) {
+                    // Rotate help language
+                    let result = rwf_lib::state::update_state(&mut self.state, Transition::RotateHelpLanguage);
+                    
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+                    
+                    return result.ui_changed;
+                }
+            }
+        }
+        
         // Map key event to action using KeyBindings
         if let Some(action) = self.key_bindings.map_key(&key) {
             // Check if we're waiting for next key in sequence

@@ -287,6 +287,7 @@ pub enum Action {
     Quit,
     ExitAndChangeDirectory,
     Help,
+    RotateHelpLanguage,
     JobManager,
     CalculateDirectorySize,
     
@@ -816,10 +817,16 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::ExitAndChangeDirectory]
         }
         Action::Help => {
-            // Show help dialog with all key bindings
+            // Show help dialog with configured language
+            // **Validates: Requirements 48.2, 48.5**
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::help(),
+                dialog: crate::model::Dialog::help_with_language(&state.config.help_language),
             }]
+        }
+        Action::RotateHelpLanguage => {
+            // Rotate through available help languages
+            // **Validates: Requirements 48.3**
+            vec![Transition::RotateHelpLanguage]
         }
         Action::JobManager => {
             // Show job manager dialog

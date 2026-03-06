@@ -78,6 +78,7 @@ pub enum DialogContent {
     },
     Help {
         content: String,
+        language: String,
     },
     JobManager {
         selected_index: usize,
@@ -323,16 +324,25 @@ impl Dialog {
 
     /// Create a help dialog
     pub fn help() -> Self {
-        let help_content = Self::generate_help_content();
+        Self::help_with_language("en")
+    }
+    
+    /// Create a help dialog with specific language
+    /// 
+    /// **Validates: Requirements 48.1, 48.2, 48.5**
+    pub fn help_with_language(lang: &str) -> Self {
+        let help_content = crate::help_content::HelpContent::load_with_fallback(lang);
         Self {
-            title: "Help - Key Bindings".to_string(),
+            title: help_content.title.clone(),
             content: DialogContent::Help {
-                content: help_content,
+                content: help_content.format(),
+                language: lang.to_string(),
             },
         }
     }
 
-    /// Generate help content with all key bindings
+    /// Generate help content with all key bindings (deprecated - kept for compatibility)
+    #[deprecated(note = "Use help_with_language instead")]
     fn generate_help_content() -> String {
         let mut content = String::new();
         

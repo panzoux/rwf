@@ -1,0 +1,75 @@
+{
+  "title": "Help - Key Bindings",
+  "sections": [
+    {
+      "name": "Navigation",
+      "bindings": [
+        { "key": "Tab", "description": "Switch pane" },
+        { "key": "Up/Down, j/k", "description": "Move cursor" },
+        { "key": "Home/End", "description": "Jump to first/last entry" },
+        { "key": "PageUp/PageDown", "description": "Page navigation" },
+        { "key": "Enter", "description": "Enter directory" },
+        { "key": "Backspace/Left", "description": "Parent directory" },
+        { "key": "Alt+Left/Right", "description": "History navigation" }
+      ]
+    },
+    {
+      "name": "File Operations",
+      "bindings": [
+        { "key": "C", "description": "Copy" },
+        { "key": "M", "description": "Move" },
+        { "key": "D", "description": "Delete" },
+        { "key": "R", "description": "Rename" },
+        { "key": "Shift+K", "description": "Create directory" }
+      ]
+    },
+    {
+      "name": "Marking",
+      "bindings": [
+        { "key": "Space", "description": "Toggle mark" },
+        { "key": "*", "description": "Mark all" },
+        { "key": "Ctrl+U", "description": "Unmark all" },
+        { "key": "@", "description": "Wildcard marking" },
+        { "key": "Ctrl+Space", "description": "Range marking" },
+        { "key": "Shift+Home", "description": "Invert marks" }
+      ]
+    },
+    {
+      "name": "Sorting",
+      "bindings": [
+        { "key": "s+n", "description": "Sort by name" },
+        { "key": "s+s", "description": "Sort by size" },
+        { "key": "s+d", "description": "Sort by date" },
+        { "key": "s+e", "description": "Sort by extension" }
+      ]
+    },
+    {
+      "name": "Search & Filter",
+      "bindings": [
+        { "key": "/, Ctrl+F", "description": "Start search" },
+        { "key": "f", "description": "File mask filter" },
+        { "key": "Ctrl+K", "description": "Clear search/filter" },
+        { "key": "Escape", "description": "Exit search mode" }
+      ]
+    },
+    {
+      "name": "Tab Management",
+      "bindings": [
+        { "key": "Ctrl+N", "description": "New tab" },
+        { "key": "Ctrl+T/Ctrl+B", "description": "Tab selector" },
+        { "key": "Ctrl+W", "description": "Close tab" },
+        { "key": "Ctrl+Right", "description": "Next tab" },
+        { "key": "Ctrl+Left", "description": "Previous tab" }
+      ]
+    },
+    {
+      "name": "Miscellaneous",
+      "bindings": [
+        { "key": "Q, Escape", "description": "Quit application" },
+        { "key": "?, F1", "description": "Show this help" },
+        { "key": "Ctrl+J", "description": "Job manager" },
+        { "key": "L", "description": "Rotate language (in help dialog)" }
+      ]
+    }
+  ]
+}

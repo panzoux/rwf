@@ -1311,32 +1311,32 @@ This implementation plan breaks down the two-pane file manager into 8 phases fol
     - Test scrolling
     - _Requirements: 47.1-47.7_
 
-- [ ] 54. Implement multi-language help system
-  - [ ] 54.1 Implement help content loading
+- [x] 54. Implement multi-language help system
+  - [x] 54.1 Implement help content loading
     - Load from language-specific JSON files
     - Support help.{lang}.json format
     - _Requirements: 48.1_
   
-  - [ ] 54.2 Implement help dialog
+  - [x] 54.2 Implement help dialog
     - Display help in configured language
     - Show all key bindings with descriptions
     - _Requirements: 48.2, 48.5_
   
-  - [ ] 54.3 Implement language rotation
+  - [x] 54.3 Implement language rotation
     - L key: rotate through available languages
     - Persist selected language
     - _Requirements: 48.3, 48.6_
   
-  - [ ] 54.4 Implement language fallback
+  - [x] 54.4 Implement language fallback
     - Fall back to English if language file not found
     - Support multiple languages (en, jp)
     - _Requirements: 48.4, 48.7_
   
-  - [ ] 54.5 Add key bindings for help
+  - [x] 54.5 Add key bindings for help
     - ? or F1: show help dialog
     - _Requirements: 48.2_
   
-  - [ ] 54.6 Write integration tests for multi-language help
+  - [x] 54.6 Write integration tests for multi-language help
     - Test help loading
     - Test language rotation
     - Test fallback to English

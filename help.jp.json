@@ -1,0 +1,75 @@
+{
+  "title": "ヘルプ - キーバインド",
+  "sections": [
+    {
+      "name": "ナビゲーション",
+      "bindings": [
+        { "key": "Tab", "description": "ペイン切り替え" },
+        { "key": "Up/Down, j/k", "description": "カーソル移動" },
+        { "key": "Home/End", "description": "最初/最後のエントリへジャンプ" },
+        { "key": "PageUp/PageDown", "description": "ページナビゲーション" },
+        { "key": "Enter", "description": "ディレクトリに入る" },
+        { "key": "Backspace/Left", "description": "親ディレクトリ" },
+        { "key": "Alt+Left/Right", "description": "履歴ナビゲーション" }
+      ]
+    },
+    {
+      "name": "ファイル操作",
+      "bindings": [
+        { "key": "C", "description": "コピー" },
+        { "key": "M", "description": "移動" },
+        { "key": "D", "description": "削除" },
+        { "key": "R", "description": "名前変更" },
+        { "key": "Shift+K", "description": "ディレクトリ作成" }
+      ]
+    },
+    {
+      "name": "マーキング",
+      "bindings": [
+        { "key": "Space", "description": "マーク切り替え" },
+        { "key": "*", "description": "すべてマーク" },
+        { "key": "Ctrl+U", "description": "すべてマーク解除" },
+        { "key": "@", "description": "ワイルドカードマーキング" },
+        { "key": "Ctrl+Space", "description": "範囲マーキング" },
+        { "key": "Shift+Home", "description": "マーク反転" }
+      ]
+    },
+    {
+      "name": "ソート",
+      "bindings": [
+        { "key": "s+n", "description": "名前でソート" },
+        { "key": "s+s", "description": "サイズでソート" },
+        { "key": "s+d", "description": "日付でソート" },
+        { "key": "s+e", "description": "拡張子でソート" }
+      ]
+    },
+    {
+      "name": "検索とフィルター",
+      "bindings": [
+        { "key": "/, Ctrl+F", "description": "検索開始" },
+        { "key": "f", "description": "ファイルマスクフィルター" },
+        { "key": "Ctrl+K", "description": "検索/フィルタークリア" },
+        { "key": "Escape", "description": "検索モード終了" }
+      ]
+    },
+    {
+      "name": "タブ管理",
+      "bindings": [
+        { "key": "Ctrl+N", "description": "新しいタブ" },
+        { "key": "Ctrl+T/Ctrl+B", "description": "タブセレクター" },
+        { "key": "Ctrl+W", "description": "タブを閉じる" },
+        { "key": "Ctrl+Right", "description": "次のタブ" },
+        { "key": "Ctrl+Left", "description": "前のタブ" }
+      ]
+    },
+    {
+      "name": "その他",
+      "bindings": [
+        { "key": "Q, Escape", "description": "アプリケーション終了" },
+        { "key": "?, F1", "description": "このヘルプを表示" },
+        { "key": "Ctrl+J", "description": "ジョブマネージャー" },
+        { "key": "L", "description": "言語切り替え（ヘルプダイアログ内）" }
+      ]
+    }
+  ]
+}

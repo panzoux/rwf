@@ -48,6 +48,9 @@ pub struct AppConfig {
     /// Editor command for launching configuration editor (default: system default editor)
     #[serde(rename = "EditorCommand")]
     pub editor_command: Option<String>,
+    /// Help language (default: "en")
+    #[serde(rename = "HelpLanguage")]
+    pub help_language: String,
 }
 
 impl Default for AppConfig {
@@ -69,6 +72,7 @@ impl Default for AppConfig {
             save_log_on_exit: true,
             log_file_progress_threshold_ms: 5000,
             editor_command: None,  // Use system default editor
+            help_language: "en".to_string(),
         }
     }
 }
@@ -755,7 +759,8 @@ mod tests {
             "SessionPersistence": false,
             "KeyRepeatDelayMs": 300,
             "KeyRepeatRateMs": 50,
-            "Ellipsis": "…"
+            "Ellipsis": "…",
+            "HelpLanguage": "en"
         }"#;
         
         std::fs::write(&config_path, config_json).unwrap();

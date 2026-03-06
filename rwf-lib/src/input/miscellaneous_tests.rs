@@ -27,7 +27,7 @@ fn test_help_action() {
         Transition::ShowDialog { dialog } => {
             assert_eq!(dialog.title, "Help - Key Bindings");
             match &dialog.content {
-                DialogContent::Help { content } => {
+                DialogContent::Help { content, language: _ } => {
                     // Verify help content contains key sections
                     assert!(content.contains("Navigation:"));
                     assert!(content.contains("File Operations:"));
@@ -136,7 +136,7 @@ fn test_help_dialog_creation() {
     
     assert_eq!(dialog.title, "Help - Key Bindings");
     match dialog.content {
-        DialogContent::Help { content } => {
+        DialogContent::Help { content, language: _ } => {
             assert!(!content.is_empty());
             assert!(content.contains("Navigation:"));
             assert!(content.contains("Miscellaneous:"));
@@ -163,7 +163,7 @@ fn test_help_content_completeness() {
     let dialog = Dialog::help();
     
     match dialog.content {
-        DialogContent::Help { content } => {
+        DialogContent::Help { content, language: _ } => {
             // Verify all major sections are present
             let sections = vec![
                 "Navigation:",

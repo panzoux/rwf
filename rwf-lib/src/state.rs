@@ -252,6 +252,7 @@ pub enum Transition {
     // Configuration
     ReloadConfig,
     UpdateConfig { config: Box<AppConfig> },
+    RotateHelpLanguage,
     
     // Registered folder operations
     RegisterCurrentFolder { name: String },
@@ -2055,6 +2056,30 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             if state.jobs.max_parallel != new_worker_pool_size {
                 state.jobs.max_parallel = new_worker_pool_size;
             }
+            
+            StateUpdateResult::with_ui_change()
+        }
+        
+        Transition::RotateHelpLanguage => {
+            // Rotate through available help languages
+            // **Validates: Requirements 48.3, 48.6**
+            let current_lang = &state.config.help_language;
+            let next_lang = crate::help_content::HelpContent::next_language(current_lang);
+            
+            // Update config with new language
+            state.config.help_language = next_lang.clone();
+            
+            // If help dialog is currently open, update it with new language
+            if let Some(dialog) = state.dialogs.current_mut() {
+                if matches!(dialog.content, crate::model::DialogContent::Help { .. }) {
+                    let new_help = crate::model::Dialog::help_with_language(&next_lang);
+                    *dialog = new_help;
+                }
+            }
+            
+            // Save config to persist language selection
+            let config_manager = crate::config::ConfigManager::new();
+            let _ = config_manager.save_config(&state.config);
             
             StateUpdateResult::with_ui_change()
         }
