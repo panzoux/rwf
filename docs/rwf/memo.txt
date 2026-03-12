@@ -1,0 +1,723 @@
+* tab key moves focus to opposite pane, but focus moves back.
+
+* unneccesary log on screen
+```
+2026-03-03T12:25:00.991489Z  INFO two_pane_fm: Two-Pane File Manager starting...
+2026-03-03T12:25:07.075562Z  INFO two_pane_fm: Terminal restored
+```
+
+* no file is shown on either pane. this is terrible.
+
+* tasks pane at the bottom is not cleared. it just shows what was on the screen
+
+* terminal should use alternative screen for the app and back at quit
+
+* periodical log on screen. it scrolls the view away. so useless. output this in the trace log(or debog level. not info level)
+```
+2026-03-03T12:29:34.001354Z  INFO two_pane_fm::app: Performance: FPS: 1232.2 (avg frame: 0.81ms, max: 1.14ms) | Input: avg 0.04ms, max 0.04ms | Frames: 111 | Inputs: 1
+```
+
+* left/right key doesnt work. it should switch to left or right pane
+
+---- 2
+* no file is shown on either pane. we cannot call this file manager. eve basic feature is missing! i want to see the file list. we cant test anythin at this state
+* "Left arrow navigates to parent" is wrong. left should focus left pane
+* tab key still goes to opposite and immediately comes back. not fixed. same behavior
+* where are the logs? not found at C:\Users\currypain\AppData\Roaming\rwf\logs.
+* the logs are to be found ad "Logs are written to `logs/session.log`" according to USER_GUIDE.md. BUT your state was this "Logging fixed - All logs now go to two-pane-fm.log" what is going on ? why did you do ad hoc-ish fix?
+* what is " Disk(67)   " on second line?
+* what is [1] on irst line? if its a tab, it should show the left/right pane's directories (e.g. [1:C:\*|temp] "*" denotes active pane)
+
+---- 3
+* "Tab key works correctly - Code was already correct" it doesnt work properly. you have done nothing. log the pane's focus and the key input.
+* filelist is shown at last. but moving up directory (BS key), filepane goes empty
+* select directory, press Enter, we should go into the directory and show the files is the directory, but it only moves cursor to the first item, no moving directory
+* at c:\users\currypain\source\, press bs and directory path goes to c:\users\currypain, but no filepane update. also the key accentance seems fast, it immediately goes to c:\users on short pressing of BS( it goes up 2 directories)
+* after moving to C:\ no file is shown
+* filelist's scrolling not working properly. on down, it does not go to the end. 
+* handling of the key is so bad. we should not accept key repeat with no debounce. have 300ms (should be confiurable) for same key before accepting repeat
+* "Drive letters display correctly - Shows "C:" instead of "Disk(67)" how does this work? it was meant to show volume name, not "C:". we have C:\ shown at the path line.(see twf for correct feature)
+
+----4
+* log is not in the proper directory. i have told to output to "%AppData%\Roaming\rwf\logs" . why did you ignore? if there is no directory app should create it. not at "C:\Users\currypain\source\repos\panzoux\rwf\two-pane-fm.log" this is a repo directory and should not be used. filename is wrong, what is the meaning of USER_GUID.md? why havent you answered and deliberately routed log to somewhere with no thinking. please take this deeply. you cant get apps working directory in rust?(for windows its %APPDATA%\<appname>, linux: ~/.config/<appname>, and so on)
+* debounce is done, but where do we configure? after 300ms, repeat should be 50ms. not the same as initial debounce.
+* for tab key, i fixed it by key repeat debounce. the key was accepted too quickly.
+* starting app, when path is c:\, no file is shown in the pane. what is going on?
+* can we redraw (retreive) filepane by F5 key?
+* key has been changed somehow. see C:\Users\currypain\source\repos\panzoux\rwf\specs\twf\TWF\keybindings.json 
+
+----5
+* change executable name to rwf (rwf.exe)
+* Key repeat is properly configured: Initial 300ms debounce, then 50ms repeat rate. You can configure both values in the config file: not working . always 300ms
+* no sign on log:
+C:\Users\currypain\source\repos\panzoux\rwf>dir %appdata%\rwf
+ ドライブ C のボリューム ラベルは Windows です
+ ボリューム シリアル番号は 8254-2885 です
+
+ C:\Users\currypain\AppData\Roaming\rwf のディレクトリ
+
+2026/03/02  08:48    <DIR>          .
+2026/03/02  08:48    <DIR>          ..
+2026/03/03  22:01                63 registered_directory.json
+* cant find: Added DEBUG logging for C:\ issue: The logs will now show exactly how many entries are found when reading C:, which will help diagnose if it's a permissions issue.
+
+----6 
+* apply this fix immediately. not working properly: Key repeat logic: Fixed with proper state machine - 300ms initial delay, then 50ms repeat rate
+* this is nowhere to be seen: i dont want it. i will see session.log
+* how do you do this. do we need config.json : DEBUG logging: Added for C:\ directory reading - will show entry count and warn if 0 entries
+* no log is \coming out at "C:\Users\currypain\AppData\Roaming\rwf\logs\session.log" . also dont log in GMT. use locale time
+
+----7
+* make repeat 50ms=>30ms
+* tab key problem (want fixed. debound not working?):
+2026-03-03T23:20:29.3377316+09:00 DEBUG rwf::app: Key event: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }
+2026-03-03T23:20:29.3378625+09:00 DEBUG rwf::app: Key event: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }
+2026-03-03T23:20:29.3379055+09:00 DEBUG rwf::app: Key repeat accepted (repeat mode): Tab (elapsed: 108.3026873s)
+2026-03-03T23:20:29.3379477+09:00 DEBUG rwf_lib::state: SwitchPane transition: Left -> Right
+2026-03-03T23:20:29.4378821+09:00 DEBUG rwf::app: Key event: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Release, state: KeyEventState(0x0) }
+2026-03-03T23:20:29.4379974+09:00 DEBUG rwf::app: Key event: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Release, state: KeyEventState(0x0) }
+2026-03-03T23:20:29.4380534+09:00 DEBUG rwf::app: Key repeat accepted (repeat mode): Tab (elapsed: 100.148ms)
+2026-03-03T23:20:29.4381064+09:00 DEBUG rwf_lib::state: SwitchPane transition: Right -> Left
+* no filepane update (updates on ly one pane?):
+2026-03-03T23:21:31.4907604+09:00  INFO rwf::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:21:31.4908275+09:00  INFO rwf::app: Initial directory read jobs submitted
+2026-03-03T23:21:31.4908934+09:00  INFO rwf::app: Processed 1 job events
+2026-03-03T23:21:31.4909305+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+2026-03-03T23:21:31.4910695+09:00 DEBUG rwf_lib::worker_pool: Worker 2 executing job JobId(0)
+2026-03-03T23:21:31.4911464+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\
+2026-03-03T23:21:31.4913632+09:00 DEBUG rwf_lib::worker_pool: Worker 1 executing job JobId(0)
+2026-03-03T23:21:31.4914401+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:21:31.4915907+09:00 DEBUG rwf_lib::worker_pool: Worker 3 executing job JobId(0)
+2026-03-03T23:21:31.4916516+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:21:31.4937285+09:00 DEBUG rwf_lib::backend::local: Found 14 entries in C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:21:31.4938176+09:00 DEBUG rwf_lib::worker_pool: Worker 1 executing job JobId(0)
+2026-03-03T23:21:31.4938385+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\
+2026-03-03T23:21:31.494018+09:00 DEBUG rwf_lib::backend::local: Found 14 entries in C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:21:31.494081+09:00 DEBUG rwf_lib::worker_pool: Worker 3 executing job JobId(0)
+2026-03-03T23:21:31.4941014+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:21:31.495308+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:21:31.4955678+09:00 DEBUG rwf_lib::backend::local: Found 12 entries in C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:21:31.4956956+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:21:31.4969674+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:21:31.5001303+09:00 DEBUG rwf_lib::state: CompleteJob: ReadDirectory succeeded for C:\Users\currypain\source\repos\panzoux\rwf\.git, got 14 entries
+2026-03-03T23:21:31.500186+09:00 DEBUG rwf_lib::state: CompleteJob: updating right pane with 14 entries
+
+----7
+* filelist c:\ problem log:
+=== Log session started at 2026-03-03 23:37:00.418453 +09:00 ===
+2026-03-03T23:37:00.4199422+09:00  INFO rwf: Two-Pane File Manager starting...
+2026-03-03T23:37:00.4216163+09:00  INFO rwf: Terminal initialized
+2026-03-03T23:37:00.4235944+09:00  INFO rwf: Application state initialized with session restoration
+2026-03-03T23:37:00.4238319+09:00  INFO rwf::app: Starting main application loop
+2026-03-03T23:37:00.4238549+09:00  INFO rwf::app: Triggering initial directory reads for all panes
+2026-03-03T23:37:00.4238844+09:00  INFO rwf::app: Submitting initial read for left pane of tab 0: C:\
+2026-03-03T23:37:00.423831+09:00 DEBUG rwf_lib::worker_pool: Worker 0 started
+2026-03-03T23:37:00.4239204+09:00  INFO rwf::app: Submitting initial read for right pane of tab 0: C:\
+2026-03-03T23:37:00.423848+09:00 DEBUG rwf_lib::worker_pool: Worker 1 started
+2026-03-03T23:37:00.4238933+09:00 DEBUG rwf_lib::worker_pool: Worker 2 started
+2026-03-03T23:37:00.4239688+09:00 DEBUG rwf_lib::worker_pool: Worker 0 executing job JobId(0)
+2026-03-03T23:37:00.4239441+09:00  INFO rwf::app: Submitting initial read for left pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4239916+09:00 DEBUG rwf_lib::worker_pool: Worker 1 executing job JobId(0)
+2026-03-03T23:37:00.4240476+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\
+2026-03-03T23:37:00.4239417+09:00 DEBUG rwf_lib::worker_pool: Worker 3 started
+2026-03-03T23:37:00.4240786+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\
+2026-03-03T23:37:00.4240828+09:00  INFO rwf::app: Submitting initial read for right pane of tab 1: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4240992+09:00 DEBUG rwf_lib::worker_pool: Worker 2 executing job JobId(0)
+2026-03-03T23:37:00.4241647+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4241635+09:00  INFO rwf::app: Submitting initial read for left pane of tab 2: C:\
+2026-03-03T23:37:00.4242081+09:00  INFO rwf::app: Submitting initial read for right pane of tab 2: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:37:00.4242123+09:00 DEBUG rwf_lib::worker_pool: Worker 3 executing job JobId(0)
+2026-03-03T23:37:00.4242582+09:00  INFO rwf::app: Initial directory read jobs submitted
+2026-03-03T23:37:00.424304+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4243435+09:00  INFO rwf::app: Processed 4 job events
+2026-03-03T23:37:00.4243824+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4244113+09:00 DEBUG rwf::app: Event result 1: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.424439+09:00 DEBUG rwf::app: Event result 2: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4244658+09:00 DEBUG rwf::app: Event result 3: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4267222+09:00 DEBUG rwf_lib::backend::local: Found 14 entries in C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4268102+09:00 DEBUG rwf_lib::worker_pool: Worker 2 executing job JobId(0)
+2026-03-03T23:37:00.426834+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\
+2026-03-03T23:37:00.4270106+09:00 DEBUG rwf_lib::backend::local: Found 14 entries in C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4270828+09:00 DEBUG rwf_lib::worker_pool: Worker 3 executing job JobId(0)
+2026-03-03T23:37:00.4271061+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:37:00.4286027+09:00 DEBUG rwf_lib::backend::local: Found 12 entries in C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:37:00.4288551+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:37:00.4288901+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:37:00.4309968+09:00 DEBUG rwf_lib::backend::local: Found 22 entries in C:\
+2026-03-03T23:37:00.4346161+09:00 DEBUG rwf_lib::state: CompleteJob: ReadDirectory succeeded for C:\Users\currypain\source\repos\panzoux\rwf\.git, got 14 entries
+2026-03-03T23:37:00.4346933+09:00 DEBUG rwf_lib::state: CompleteJob: Checking tab 0 - left: C:\, right: C:\
+2026-03-03T23:37:00.4347126+09:00 DEBUG rwf_lib::state: CompleteJob: Checking tab 1 - left: C:\Users\currypain\source\repos\panzoux\rwf, right: C:\Users\currypain\source\repos\panzoux\rwf
+2026-03-03T23:37:00.4347301+09:00 DEBUG rwf_lib::state: CompleteJob: Checking tab 2 - left: C:\, right: C:\Users\currypain\source\repos\panzoux\rwf\.git
+2026-03-03T23:37:00.4347463+09:00 DEBUG rwf_lib::state: CompleteJob: updating right pane of tab 2 with 14 entries
+2026-03-03T23:37:00.4348484+09:00  INFO rwf::app: Processed 8 job events
+2026-03-03T23:37:00.4348661+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4348785+09:00 DEBUG rwf::app: Event result 1: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4348905+09:00 DEBUG rwf::app: Event result 2: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4349024+09:00 DEBUG rwf::app: Event result 3: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4349143+09:00 DEBUG rwf::app: Event result 4: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4349261+09:00 DEBUG rwf::app: Event result 5: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4349379+09:00 DEBUG rwf::app: Event result 6: jobs_to_start=0, ui_changed=true
+2026-03-03T23:37:00.4349497+09:00 DEBUG rwf::app: Event result 7: jobs_to_start=0, ui_changed=true
+
+----8
+i thought the job id were going to be GUID or uuid (or rust equivalent). they can never be the same. where did this disappear?
+
+----9
+* we dont want 0 B at directory.show "<DIR>"
+* scrolling in the filepane not working. dont scroll down at the bottom of the filelist. scroll down when position exceeds the bottom of pane's height 
+* pressing enter at directory changes path bot not filepane's list. no update? not catching job completion?
+2026-03-03T23:59:30.3346493+09:00 DEBUG rwf::app: Different key pressed: Enter (previous: Down)
+2026-03-03T23:59:30.3346779+09:00 DEBUG rwf_lib::input: EnterDirectory: entry = Program Files, is_dir = true
+2026-03-03T23:59:30.3346968+09:00 DEBUG rwf_lib::input: EnterDirectory: entering directory C:\Program Files
+2026-03-03T23:59:30.3347212+09:00 DEBUG rwf_lib::state: ChangeLocation: pane = Left, location = C:\Program Files
+2026-03-03T23:59:30.3348127+09:00 DEBUG rwf_lib::state: ChangeLocation: location debug format: Local("C:\\Program Files")
+2026-03-03T23:59:30.3348508+09:00 DEBUG rwf_lib::state: ChangeLocation: cache miss, will create ReadDirectory job for C:\Program Files
+2026-03-03T23:59:30.3348698+09:00 DEBUG rwf_lib::state: ChangeLocation: pane location after update: Local("C:\\Program Files")
+2026-03-03T23:59:30.3348865+09:00 DEBUG rwf_lib::state: ChangeLocation: creating ReadDirectory job
+2026-03-03T23:59:30.3349118+09:00 DEBUG rwf::app: Submitting job: ReadDirectory { location: Local("C:\\Program Files") }
+2026-03-03T23:59:30.3350786+09:00 DEBUG rwf_lib::worker_pool: Worker 3 executing job JobId(d82e25b5-cdf4-43c0-914d-5f8c5e5c1849)
+2026-03-03T23:59:30.3351814+09:00 DEBUG rwf_lib::backend::local: Reading directory: C:\Program Files
+2026-03-03T23:59:30.3407547+09:00  INFO rwf::app: Processed 1 job events
+2026-03-03T23:59:30.3408472+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+2026-03-03T23:59:30.3557696+09:00 DEBUG rwf_lib::backend::local: Found 43 entries in C:\Program Files
+2026-03-03T23:59:30.3649552+09:00  INFO rwf::app: Processed 1 job events
+2026-03-03T23:59:30.365118+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+
+----10
+* scrolling is still wrong. it seems scrolls filepanes height-4. which is terminal's top+pane's height. are you sure you are calculating from filepane(left/righ)'s top to bottom?
+* at second line right pane's path is shown at rightmost, it should show from where right pane starts(precisely, right panes file list's 1st char pos)
+* at last line it is showing current path, meaninglessly. we should have dedicated line above last line(statusbar), and show the selected filename in the active pane. we want to use full line as we want to see long filename as much as we can (it's done like that in twf)
+
+----11
+* filepanes scroll got nicer, on scrolling down, it starts to scroll down at filepane's height-4. that is acceptable, but it scrolls down until last in the list, leaving 3 blank lines. cursur should go to the bottom and no blank lines. this is needed when filelist' count is like filepanes height-3. there is no neccesity to scroll, but it scrolls.
+* status bar was wrong. the layout is like this:
+```
+[tabs                               ]
+[path left        ][path right      ]
+[volumename left  ][volumename right]
+[filepane left    ][filepane right  ]
+[paneinfo left    ][paneinfo right  ]
+[selected filename line             ]
+[taskview pane                      ]
+```
+
+- path left: if active, ">C:\Program Files", if not " C:\Program Files", same for right
+- filepane does not have surrounding line. sample: "*info/   <DIR> 9999-12-31 21:47| hooks/   <DIR> 2026-12-25 22:44 "
+  ("*" denotes selected file/directory) we dont surround it so that we can use it for select indicator/separator
+- paneinfo sample "99 Dirs 99 Files  366.3 GB used  109.6 GB free (23.0%)"
+  (if 1 dir then "1 Dir". same for file. % is disk usage percent)
+- taskview pane is not surrounded by border line characters, so that we can use  2 more lines to show tasks and messages(which scrolls automatically/by key)
+
+----12
+* space does nothing
+* many keys dont work/does nothing
+* i saw pane.rs and the colors are hard-coded. all the colors should we configurable. why is this?
+
+----13
+* filepane scrolling: there is 1 blank line left at th bottom
+* filepane scrolling: starts to scroll up at 4th line, starts to scroll down at bottom-5 line. make it both 3 (is "scroll_offset": 3 in config.json used/honoured?)
+* volume name (left/right) is as follows:
+The top separator shows:
+- Volume names or network share names
+- Marked file statistics
+```
+         private string FormatTopSeparatorInfo(PaneState paneState)
+        {
+            // Extract drive name or shared folder name from path
+            string driveOrPath = GetDriveOrShareName(paneState.CurrentPath);
+
+            // Calculate marked file information
+            var markedEntries = paneState.GetMarkedEntries();
+            long totalSize = markedEntries.Sum(e => e.Size);
+            int fileCount = markedEntries.Count(e => !e.IsDirectory);
+            int dirCount = markedEntries.Count(e => e.IsDirectory);
+
+            string sizeInfo = "";
+            if (fileCount > 0 && dirCount > 0)
+            {
+                string fileText = fileCount == 1 ? "File" : "Files";
+                string dirText = dirCount == 1 ? "Dir" : "Dirs";
+                sizeInfo = $" {dirCount} {dirText} {fileCount} {fileText} {FormatSize(totalSize)} marked";
+            }
+            else if (dirCount > 0)
+            {
+                string dirText = dirCount == 1 ? "Dir" : "Dirs";
+                sizeInfo = $" {dirCount} {dirText} {FormatSize(totalSize)} marked";
+            }
+            else if (fileCount > 0)
+            {
+                string fileText = fileCount == 1 ? "File" : "Files";
+                sizeInfo = $" {fileCount} {fileText} {FormatSize(totalSize)} marked";
+            }
+
+            // Format: "<drive_name> [size_info]"
+            return $" {driveOrPath}{sizeInfo}".TrimEnd();
+        }
+       private string GetDriveOrShareName(string path)
+        {
+            try
+            {
+                // Handle network paths like \\server\share
+                if (path.StartsWith(@"\\"))
+                {
+                    var parts = path.Substring(2).Split(new char[] { '\\' }, 2);
+                    if (parts.Length >= 1)
+                    {
+                        return $@"\\{parts[0]}";
+                    }
+                }
+
+                // Handle Linux/Unix paths specifically
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    // On Linux/MacOS, get the mount point
+                    string? linuxRootPath = Path.GetPathRoot(path);
+                    if (!string.IsNullOrEmpty(linuxRootPath))
+                    {
+                        // Use async service
+                        var stats = _driveInfoService.GetDriveStats(linuxRootPath);
+                        
+                        // If cached and ready, use info
+                        if (stats.IsReady)
+                        {
+                            // On Linux/MacOS, try to get both device path and mount point
+                            string devicePath = GetDevicePathForMountPoint(linuxRootPath);
+
+                            if (!string.IsNullOrEmpty(stats.VolumeLabel) && stats.VolumeLabel != linuxRootPath)
+                            {
+                                return !string.IsNullOrEmpty(devicePath)
+                                    ? $"{devicePath} ({linuxRootPath} - {stats.VolumeLabel})"
+                                    : $"{linuxRootPath} - {stats.VolumeLabel}";
+                            }
+                            else
+                            {
+                                return !string.IsNullOrEmpty(devicePath)
+                                    ? $"{devicePath} ({linuxRootPath})"
+                                    : (linuxRootPath == "/" ? "Root" : linuxRootPath);
+                            }
+                        }
+                    }
+                }
+
+                // Handle regular drive letters like C:\
+                if (path.Length >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/'))
+                {
+                    var stats = _driveInfoService.GetDriveStats(path);
+                    if (!string.IsNullOrEmpty(stats.VolumeLabel))
+                    {
+                        return stats.VolumeLabel;
+                    }
+
+                    // Fallback to drive letter in brackets if volume label is empty or unavailable
+                    return $"({path.Substring(0, 2)})"; // Return "(C:)"
+                }
+
+                // For other paths, return the root directory name
+                var rootPath = Path.GetPathRoot(path);
+                if (!string.IsNullOrEmpty(rootPath))
+                {
+                    return rootPath.TrimEnd('\\', '/');
+                }
+
+                // Fallback to first directory in path
+                var directoryInfo = new DirectoryInfo(path);
+                if (directoryInfo.Parent == null)
+                {
+                    return directoryInfo.Name; // Already at root
+                }
+
+                return directoryInfo.Root.Name;
+            }
+            catch
+            {
+                // Fallback if path parsing fails
+                return Path.GetPathRoot(path) ?? "Unknown";
+            }
+        }
+```
+* are the colors in th config used like below?
+[tabs                               ] 1
+[path left        ][path right      ] 2
+[volumename left  ][volumename right] 3
+[filepane left    ][filepane right  ] 4
+[paneinfo left    ][paneinfo right  ] 5
+[selected filename line             ] 6
+[taskview pane                      ] 7
+
+- 1
+    "ActiveTabForegroundColor": "White",
+    "ActiveTabBackgroundColor": "Blue",
+    "InactiveTabForegroundColor": "Gray",
+    "InactiveTabBackgroundColor": "Black",
+    "TabbarBackgroundColor": "Black",
+
+- 2
+    "ForegroundColor": "White",
+    "BackgroundColor": "Black",	
+- 3
+    "TopSeparatorForegroundColor": "Black",
+    "TopSeparatorBackgroundColor": "Gray",
+- 4
+active filepane:
+    "ForegroundColor": "White",
+    "BackgroundColor": "Black",
+    "HighlightForegroundColor": "Black", (this is going to be renamed to "FilePaneCursorForegroundColor")
+    "HighlightBackgroundColor": "Cyan", (this is going to be renamed to "FilePaneCursorBackgroundColor")
+    "MarkedFileColor": "Cyan",
+    "DirectoryColor": "BrightCyan",
+    "DirectoryBackgroundColor": "Black",
+inactive filepane
+    "InactiveForegroundColor": "DarkGray",
+    "InactiveBackgroundColor": "Black",
+    "InactiveDirectoryColor": "Cyan",
+    "InactiveDirectoryBackgroundColor": "Black",
+    "InactiveFilePaneCursorForegroundColor": "White", 
+    "InactiveMarkedFileColor": "DarkGray", (this is going to be renamed to "InactiveFilePaneCursorBackgroundColor")
+- 5
+    "TopSeparatorForegroundColor": "Black", (this is going to be renamed to "PaneInfoForegroundColor")
+    "TopSeparatorBackgroundColor": "Gray", (this is going to be renamed to "PaneInfoBackgroundColor")
+- 6
+    "FilenameLabelForegroundColor": "White",
+    "FilenameLabelBackgroundColor": "Blue",
+- 7
+    "ForegroundColor": "White",
+    "BackgroundColor": "Black",
+
+----14
+
+* these are not applied
+active filepane:
+    "ForegroundColor": "White",
+inactive filepane
+    "InactiveForegroundColor": "DarkGray",
+    "InactiveBackgroundColor": "Black",
+    "InactiveFilePaneCursorBackgroundColor": "DarkGray",
+- 5
+    "PaneInfoForegroundColor": "Black",
+    "PaneInfoForegroundColor": "DarkGray",
+
+* keybindings.json not working. if it doesnt exist, "q" should quit. "c" copy "m" move "d" delete. and others. these are not implemented?
+
+----15
+* this is not working. inactive pane's cursor is shown fore:gray,back:black. it should be fore:black,back:darkgray
+    "InactiveFilePaneCursorBackgroundColor": "DarkGray",
+* the folder' files has japanese letter. cant it show them properly? when moving to this directory, rwf just ended. not even tested? we MUST fix this. lets log the filenames to see what the cause is
+2026-03-04T23:39:05.7179097+09:00 DEBUG rwf_lib::state: CompleteJob: Tab 2 right pane location debug: Local("C:\\Users\\currypain\\dwhelper")
+2026-03-04T23:39:05.7179431+09:00 DEBUG rwf_lib::state: CompleteJob: Tab 2 left_matches=false, right_matches=true
+2026-03-04T23:39:05.7179752+09:00 DEBUG rwf_lib::state: CompleteJob: updating right pane of tab 2 with 73 entries
+2026-03-04T23:39:05.7181226+09:00  INFO rwf::app: Processed 1 job events
+2026-03-04T23:39:05.7181402+09:00 DEBUG rwf::app: Event result 0: jobs_to_start=0, ui_changed=true
+2026-03-04T23:39:05.7467396+09:00 DEBUG rwf_lib::worker_pool: Worker 2 shutting down
+2026-03-04T23:39:05.7469519+09:00 DEBUG rwf_lib::worker_pool: Worker 1 shutting down
+2026-03-04T23:39:05.7470186+09:00 DEBUG rwf_lib::worker_pool: Worker 3 shutting down
+2026-03-04T23:39:05.7470749+09:00 DEBUG rwf_lib::worker_pool: Worker 0 shutting down
+
+-----16
+* when there are japanese characters truncation "..." happens too late. is it counting characters? it should count for every character's width. sample:
+using System;
+```
+namespace TWF.Utilities
+{
+    /// <summary>
+    /// Helper class for calculating display width of characters, handling CJK double-width characters
+    /// </summary>
+    public static class CharacterWidthHelper
+    {
+        /// <summary>
+        /// Configurable width for CJK characters (default: 2)
+        /// Set to 0 to disable CJK width calculation and use standard string length
+        /// </summary>
+        public static int CJKCharacterWidth { get; set; } = 2;
+        
+        /// <summary>
+        /// Default ellipsis string used for truncation
+        /// </summary>
+        public static string DefaultEllipsis { get; set; } = "...";
+
+        /// <summary>
+        /// Gets the display width of a single character
+        /// </summary>
+        /// <param name="c">Character to measure</param>
+        /// <returns>Display width: 0 for zero-width, 1 for single-width, configured width for CJK</returns>
+        public static int GetCharWidth(char c)
+        {
+            // If CJK_CharacterWidth is 0, disable the feature and treat all characters as width 1
+            if (CJKCharacterWidth == 0)
+            {
+                return 1;
+            }
+
+            // Check for zero-width characters first
+            if (IsZeroWidthCharacter(c))
+            {
+                return 0;
+            }
+
+            // Check for CJK characters (configurable width)
+            if (IsCJKCharacter(c))
+            {
+                return CJKCharacterWidth;
+            }
+
+            // Default to single-width for ASCII and most other characters
+            return 1;
+        }
+
+        /// <summary>
+        /// Checks if a character is a CJK (Chinese, Japanese, Korean) character
+        /// </summary>
+        /// <param name="c">Character to check</param>
+        /// <returns>True if the character is CJK</returns>
+        private static bool IsCJKCharacter(char c)
+        {
+            int code = c;
+
+            // CJK Unified Ideographs
+            if (code >= 0x4E00 && code <= 0x9FFF) return true;
+
+            // CJK Extension A
+            if (code >= 0x3400 && code <= 0x4DBF) return true;
+
+            // Hiragana
+            if (code >= 0x3040 && code <= 0x309F) return true;
+
+            // Katakana
+            if (code >= 0x30A0 && code <= 0x30FF) return true;
+
+            // Katakana Phonetic Extensions
+            if (code >= 0x31F0 && code <= 0x31FF) return true;
+
+            // Hangul Syllables
+            if (code >= 0xAC00 && code <= 0xD7AF) return true;
+
+            // Hangul Jamo
+            if (code >= 0x1100 && code <= 0x11FF) return true;
+
+            // Fullwidth Forms (fullwidth ASCII variants)
+            if (code >= 0xFF00 && code <= 0xFFEF) return true;
+
+            // CJK Compatibility Ideographs
+            if (code >= 0xF900 && code <= 0xFAFF) return true;
+
+            // CJK Radicals Supplement
+            if (code >= 0x2E80 && code <= 0x2EFF) return true;
+
+            // CJK Symbols and Punctuation
+            if (code >= 0x3000 && code <= 0x303F) return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a character is zero-width (combining marks, zero-width joiners, etc.)
+        /// </summary>
+        /// <param name="c">Character to check</param>
+        /// <returns>True if the character is zero-width</returns>
+        private static bool IsZeroWidthCharacter(char c)
+        {
+            int code = c;
+
+            // Combining Diacritical Marks
+            if (code >= 0x0300 && code <= 0x036F) return true;
+
+            // Combining Diacritical Marks Extended
+            if (code >= 0x1AB0 && code <= 0x1AFF) return true;
+
+            // Combining Diacritical Marks Supplement
+            if (code >= 0x1DC0 && code <= 0x1DFF) return true;
+
+            // Combining Half Marks
+            if (code >= 0xFE20 && code <= 0xFE2F) return true;
+
+            // Zero Width Space, Zero Width Non-Joiner, Zero Width Joiner
+            if (code == 0x200B || code == 0x200C || code == 0x200D) return true;
+
+            // Variation Selectors
+            if (code >= 0xFE00 && code <= 0xFE0F) return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets the display width of a string
+        /// </summary>
+        /// <param name="text">String to measure</param>
+        /// <returns>Total display width</returns>
+        public static int GetStringWidth(string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            // If CJK_CharacterWidth is 0, disable the feature and use standard string length
+            if (CJKCharacterWidth == 0)
+            {
+                return text.Length;
+            }
+
+            int width = 0;
+            foreach (char c in text)
+            {
+                width += GetCharWidth(c);
+            }
+
+            return width;
+        }
+
+        /// <summary>
+        /// Pads a string to a specific display width
+        /// </summary>
+        /// <param name="text">String to pad</param>
+        /// <param name="targetWidth">Target display width</param>
+        /// <param name="paddingChar">Character to use for padding (default: space)</param>
+        /// <returns>Padded string</returns>
+        public static string PadToWidth(string? text, int targetWidth, char paddingChar = ' ')
+        {
+            if (targetWidth < 0)
+            {
+                throw new ArgumentException("Target width cannot be negative", nameof(targetWidth));
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                return new string(paddingChar, targetWidth);
+            }
+
+            int currentWidth = GetStringWidth(text);
+            
+            if (currentWidth >= targetWidth)
+            {
+                return text;
+            }
+
+            int paddingNeeded = targetWidth - currentWidth;
+            return text + new string(paddingChar, paddingNeeded);
+        }
+
+        /// <summary>
+        /// Truncates a string to fit within a maximum display width
+        /// </summary>
+        /// <param name="text">String to truncate</param>
+        /// <param name="maxWidth">Maximum display width</param>
+        /// <param name="ellipsis">Ellipsis string to append when truncated (null to use DefaultEllipsis)</param>
+        /// <returns>Truncated string</returns>
+        public static string TruncateToWidth(string? text, int maxWidth, string? ellipsis = null)
+        {
+            if (maxWidth < 0)
+            {
+                throw new ArgumentException("Max width cannot be negative", nameof(maxWidth));
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            ellipsis ??= DefaultEllipsis;
+            int currentWidth = 0;
+            int ellipsisWidth = GetStringWidth(ellipsis);
+            int targetWidth = maxWidth - ellipsisWidth;
+
+            // If ellipsis itself is too wide, just truncate without ellipsis
+            if (targetWidth < 0)
+            {
+                targetWidth = maxWidth;
+                ellipsis = string.Empty;
+            }
+
+            string padding = string.Empty;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int charWidth = GetCharWidth(text[i]);
+                
+                if (currentWidth + charWidth > targetWidth)
+                {
+                    // padding for truncating at 2-char width boundaries
+                    if (currentWidth < targetWidth) {
+                        // must take targetWidth into account as well
+                        padding = padding.PadRight((currentWidth + charWidth + targetWidth) % CJKCharacterWidth,' ');
+                    }
+                    // Need to truncate here
+                    return text.Substring(0, i) + ellipsis + padding;
+                }
+
+                currentWidth += charWidth;
+            }
+
+            // String fits within max width
+            return text;
+        }
+
+        /// <summary>
+        /// Smartly truncates a string to fit within a maximum display width, preserving the end of the string (e.g. extension).
+        /// </summary>
+        /// <param name="text">String to truncate.</param>
+        /// <param name="maxWidth">Maximum display width.</param>
+        /// <param name="ellipsis">Ellipsis string to use (null to use DefaultEllipsis).</param>
+        /// <returns>Truncated string.</returns>
+        public static string SmartTruncate(string? text, int maxWidth, string? ellipsis = null)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            if (maxWidth < 0) throw new ArgumentException("Max width cannot be negative", nameof(maxWidth));
+
+            ellipsis ??= DefaultEllipsis;
+            int textWidth = GetStringWidth(text);
+            if (textWidth <= maxWidth) return text;
+
+            int ellipsisWidth = GetStringWidth(ellipsis);
+            int availableWidth = maxWidth - ellipsisWidth;
+
+            if (availableWidth < 2) 
+            {
+                // If practically no space, just truncate from start with ellipsis if possible
+                return TruncateToWidth(text, maxWidth, ellipsis);
+            }
+
+            // Calculate split point: keep more of the start, some of the end
+            // Strategy: Try to keep quarter at end, rest at start
+            int widthForEnd = availableWidth / 3; 
+            int widthForStart = availableWidth - widthForEnd;
+
+            // Find index for start part
+            int currentWidth = 0;
+            int startIndex = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int len = GetCharWidth(text[i]);
+                if (currentWidth + len > widthForStart) break;
+                currentWidth += len;
+                startIndex++;
+            }
+
+            // Find index for end part (scan backwards)
+            currentWidth = 0;
+            int endIndex = text.Length;
+            for (int i = text.Length - 1; i >= 0; i--)
+            {
+                int len = GetCharWidth(text[i]);
+                if (currentWidth + len > widthForEnd) break;
+                currentWidth += len;
+                endIndex--;
+            }
+
+            if (startIndex >= endIndex) return TruncateToWidth(text, maxWidth, ellipsis);
+
+            return text.Substring(0, startIndex) + ellipsis + text.Substring(endIndex);
+        }
+    }
+}
+```
+
+----16
+is this utf-8/japanese char handling applied to every parts that can print/truncate paths and strings?
+
+i think "selected filename line " may be crashing. Display long filenames like "xxxxxx yyyyyyy 【神話級お乳】..." still crashes
+
+
+----17
+* filepane is not using terminal's full width
+
+----18
+* for filenames, use Smarttruncate (twf's c# program i presented earlier) to preserve extensions
+

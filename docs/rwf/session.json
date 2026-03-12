@@ -1,0 +1,187 @@
+{
+  "tabs": [
+    {
+      "id": 0,
+      "left_location": {
+        "Local": "C:\\"
+      },
+      "right_location": {
+        "Local": "C:\\"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    },
+    {
+      "id": 1,
+      "left_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    },
+    {
+      "id": 2,
+      "left_location": {
+        "Local": "C:\\Program Files"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\dwhelper"
+      },
+      "left_cursor": 42,
+      "right_cursor": 75
+    },
+    {
+      "id": 3,
+      "left_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    },
+    {
+      "id": 4,
+      "left_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    },
+    {
+      "id": 5,
+      "left_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    },
+    {
+      "id": 6,
+      "left_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "right_location": {
+        "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf"
+      },
+      "left_cursor": 0,
+      "right_cursor": 0
+    }
+  ],
+  "active_tab_index": 2,
+  "active_pane": "Left",
+  "marked_locations": [
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b9"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ba"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c6"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\a9"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ca"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c5"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c1"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ae"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b8"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b5"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\a7"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b1"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ab"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\a6"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\bb"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\be"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\bd"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\cb"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ad"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b2"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b6"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\ac"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c9"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c3"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b4"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b0"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c4"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c8"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\c2"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\cc"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\aa"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\bf"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b7"
+    },
+    {
+      "Local": "C:\\Users\\currypain\\source\\repos\\panzoux\\rwf\\.git\\objects\\b3"
+    }
+  ]
+}
