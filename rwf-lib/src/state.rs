@@ -503,8 +503,8 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     }
                     // Scroll down if cursor too close to bottom
                     else if visible_height > scroll_margin {
-                        let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1);
-                        let max_offset = pane_model.entries.len().saturating_sub(visible_height);
+                        let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1) + 1;
+                        let max_offset = pane_model.entries.len().saturating_sub(visible_height) - 1;
                         
                         // Check if we're in the "end zone" where scroll_margin can't be maintained
                         let end_zone_start = pane_model.entries.len().saturating_sub(scroll_margin + 1);
