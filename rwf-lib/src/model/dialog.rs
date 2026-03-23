@@ -138,6 +138,25 @@ pub enum DialogContent {
         #[cfg(unix)]
         group: Option<String>,
     },
+    Compression {
+        // Data fields
+        sources: Vec<crate::model::Location>,
+        format: crate::input::ArchiveFormat,
+        archive_name: String,
+        selected_format_index: usize,
+        selected_compression_index: usize,
+        compression_level: u32,
+        // Interaction state (persists while dialog is open)
+        focused_field: usize,           // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
+        format_focus_index: usize,      // Which format has focus (0-7)
+        compression_focus_index: usize, // Which compression level has focus (0-5)
+        cursor_pos: usize,              // Cursor position in archive name
+    },
+    ExtractionConfirm {
+        archive: crate::model::Location,
+        dest: crate::model::Location,
+        file_count: usize,
+    },
     Version {
         version: String,
         build_date: String,
@@ -636,6 +655,50 @@ impl Dialog {
             content: DialogContent::SplitJoinDialog {
                 mode: SplitJoinMode::Split,
                 chunk_size_mb: 100, // Default 100MB chunks
+            },
+        }
+    }
+
+    /// Create a compression dialog
+    pub fn compression(sources: Vec<crate::model::Location>) -> Self {
+        let default_name = if sources.len() == 1 {
+            let name = sources[0].display_path();
+            // Get just the filename from the path
+            std::path::Path::new(&name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("archive")
+                .to_string()
+        } else {
+            "archive".to_string()
+        };
+
+        Self {
+            title: "Compress Files".to_string(),
+            content: DialogContent::Compression {
+                sources,
+                format: crate::input::ArchiveFormat::ZIP,
+                archive_name: default_name,
+                selected_format_index: 0,
+                selected_compression_index: 3, // Default to Normal
+                compression_level: 5, // Default to Normal
+                // Initialize interaction state
+                focused_field: 0,           // Start with format focused
+                format_focus_index: 0,      // First format has focus
+                compression_focus_index: 3, // Normal (5) has focus
+                cursor_pos: 0,
+            },
+        }
+    }
+
+    /// Create an extraction confirmation dialog
+    pub fn extraction_confirm(archive: crate::model::Location, dest: crate::model::Location, file_count: usize) -> Self {
+        Self {
+            title: "Extract Archive".to_string(),
+            content: DialogContent::ExtractionConfirm {
+                archive,
+                dest,
+                file_count,
             },
         }
     }

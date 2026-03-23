@@ -73,7 +73,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::ExtractArchive { archive, dest } => {
                 self.execute_extract_archive(archive, dest, &spec).await
             }
-            JobKind::CreateArchive { sources, dest } => {
+            JobKind::CreateArchive { sources, dest, original_size: _ } => {
                 self.execute_create_archive(sources, dest, &spec).await
             }
             JobKind::ExecuteCustomFunction { command, working_dir, pipe_to_action, shell } => {

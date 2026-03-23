@@ -313,21 +313,22 @@ mod tests {
             Location::Local(PathBuf::from("/test/file2.txt")),
         ];
         let dest_location = Location::Local(PathBuf::from("/test/archive.zip"));
-        
+
         let job_spec = crate::job::JobSpec::new(JobKind::CreateArchive {
             sources: sources.clone(),
             dest: dest_location.clone(),
+            original_size: 0,
         });
-        
+
         let _job_id = state.jobs.enqueue(job_spec);
-        
+
         // Verify job was queued
         assert_eq!(state.jobs.queue.len(), 1);
-        
+
         // Verify job kind
         let queued_job = &state.jobs.queue[0];
         match &queued_job.kind {
-            JobKind::CreateArchive { sources: job_sources, dest } => {
+            JobKind::CreateArchive { sources: job_sources, dest, original_size: _ } => {
                 assert_eq!(*job_sources, sources);
                 assert_eq!(*dest, dest_location);
             }

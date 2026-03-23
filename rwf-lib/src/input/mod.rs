@@ -13,6 +13,33 @@ use crate::AppState;
 use crate::model::Location;
 use crate::backend::ArchiveHandler;
 
+/// Archive format for compression operations
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ArchiveFormat {
+    ZIP,
+    // SevenZip, // Future: .7z, .rar, .tar, .tgz using 7z crate
+}
+
+impl Default for ArchiveFormat {
+    fn default() -> Self {
+        Self::ZIP
+    }
+}
+
+/// Check if a location is an archive file (by extension)
+fn is_archive(location: &crate::model::Location) -> bool {
+    let path_str = location.display_path();
+    let ext = std::path::Path::new(&path_str)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    
+    matches!(ext.as_str(), "zip")
+    // Future: Add more formats when 7z support is added
+    // matches!(ext.as_str(), "zip" | "7z" | "rar" | "tar" | "tgz" | "gz" | "bz2")
+}
+
 /// Configurable key bindings loaded from keybindings.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyBindings {
@@ -66,10 +93,13 @@ impl KeyBindings {
         
         // File operations
         normal_mode.insert("C".to_string(), Action::Copy);
+        normal_mode.insert("c".to_string(), Action::Copy);
         normal_mode.insert("M".to_string(), Action::Move);
+        normal_mode.insert("m".to_string(), Action::Move);
         normal_mode.insert("D".to_string(), Action::Delete);
-        normal_mode.insert("R".to_string(), Action::Rename);
-        normal_mode.insert("Shift+r".to_string(), Action::PatternRename);
+        normal_mode.insert("d".to_string(), Action::Delete);
+        normal_mode.insert("R".to_string(), Action::PatternRename);
+        normal_mode.insert("r".to_string(), Action::Rename);
         normal_mode.insert("K".to_string(), Action::CreateDirectory);
         
         // Sorting
@@ -134,7 +164,13 @@ impl KeyBindings {
         normal_mode.insert("Ctrl+Down".to_string(), Action::DecreaseTaskPanelHeight);
         normal_mode.insert("Alt+Up".to_string(), Action::ScrollTaskPanelUp);
         normal_mode.insert("Alt+Down".to_string(), Action::ScrollTaskPanelDown);
-        
+
+        // Archive operations
+        normal_mode.insert("P".to_string(), Action::Compress);
+        normal_mode.insert("p".to_string(), Action::Compress);
+        normal_mode.insert("U".to_string(), Action::Extract);
+        normal_mode.insert("u".to_string(), Action::Extract);
+
         Self {
             normal_mode,
             search_mode: HashMap::new(),
@@ -273,9 +309,18 @@ pub enum Action {
     ExitSearchMode,
     NextMatch,
     PrevMatch,
-    
+
     // View
     ChangeDisplayMode(u8),
+    DisplayModeDetailed,
+    DisplayMode1,
+    DisplayMode2,
+    DisplayMode3,
+    DisplayMode4,
+    DisplayMode5,
+    DisplayMode6,
+    DisplayMode7,
+    DisplayMode8,
     ToggleHidden,
     Refresh,
     
@@ -319,7 +364,11 @@ pub enum Action {
     DecreaseTaskPanelHeight,
     ScrollTaskPanelUp,
     ScrollTaskPanelDown,
-    
+
+    // Archive operations
+    Compress,
+    Extract,
+
     // Internal
     PendingSequence,
 }
@@ -553,6 +602,42 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 mode: next_mode,
             }]
         }
+        Action::DisplayModeDetailed => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Detailed,
+        }],
+        Action::DisplayMode1 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(1),
+        }],
+        Action::DisplayMode2 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(2),
+        }],
+        Action::DisplayMode3 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(3),
+        }],
+        Action::DisplayMode4 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(4),
+        }],
+        Action::DisplayMode5 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(5),
+        }],
+        Action::DisplayMode6 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(6),
+        }],
+        Action::DisplayMode7 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(7),
+        }],
+        Action::DisplayMode8 => vec![Transition::ChangeDisplayMode {
+            pane: state.ui.active_pane,
+            mode: crate::model::DisplayMode::Columns(8),
+        }],
         Action::NewTab => vec![Transition::CreateTab],
         Action::CloseTab => vec![Transition::CloseTab {
             index: state.tabs.active_index,
@@ -936,6 +1021,57 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::ScrollTaskPanelDown => {
             vec![Transition::ScrollTaskPanelDown]
+        }
+        Action::Compress => {
+            debug!("Action::Compress triggered");
+            // Get marked files or current cursor entry
+            let sources = if state.marking.count() > 0 {
+                state.active_pane()
+                    .entries
+                    .iter()
+                    .filter(|e| state.marking.is_marked(&e.location))
+                    .map(|e| e.location.clone())
+                    .collect()
+            } else if let Some(entry) = state.active_pane().current_entry() {
+                debug!("No marked files, using current entry from active pane: {:?}", entry.location);
+                vec![entry.location.clone()]
+            } else {
+                // Active pane is empty, try the opposite pane
+                debug!("Active pane is empty, checking opposite pane");
+                if let Some(entry) = state.opposite_pane().current_entry() {
+                    debug!("Using current entry from opposite pane: {:?}", entry.location);
+                    vec![entry.location.clone()]
+                } else {
+                    debug!("No files to compress - both panes have no current entry");
+                    return vec![];
+                }
+            };
+
+            debug!("Creating compression dialog with {} file(s)", sources.len());
+            // Show compression dialog
+            vec![Transition::ShowDialog {
+                dialog: crate::model::Dialog::compression(sources),
+            }]
+        }
+        Action::Extract => {
+            // Get current entry under cursor
+            if let Some(entry) = state.active_pane().current_entry() {
+                // Check if it's an archive (by extension)
+                if is_archive(&entry.location) {
+                    let dest = state.opposite_pane().current_location.clone();
+                    vec![Transition::ShowDialog {
+                        dialog: crate::model::Dialog::extraction_confirm(
+                            entry.location.clone(),
+                            dest,
+                            1, // file_count - will be determined when archive is opened
+                        ),
+                    }]
+                } else {
+                    vec![]  // Not an archive
+                }
+            } else {
+                vec![]
+            }
         }
         Action::PendingSequence => vec![],
         _ => vec![],

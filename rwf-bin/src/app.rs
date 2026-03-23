@@ -300,28 +300,80 @@ impl App {
             debug!("First key press: {}", key_string);
             self.last_key_press = Some((key_string.clone(), now, false));
         }
-        
-        // Special handling for help dialog language rotation
-        // **Validates: Requirements 48.3**
-        if let Some(dialog) = self.state.dialogs.current() {
-            if matches!(dialog.content, rwf_lib::DialogContent::Help { .. }) {
-                // Check if 'L' key is pressed (case-insensitive)
-                if matches!(key.code, crossterm::event::KeyCode::Char('l') | crossterm::event::KeyCode::Char('L')) 
-                    && !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(crossterm::event::KeyModifiers::ALT) {
-                    // Rotate help language
-                    let result = rwf_lib::state::update_state(&mut self.state, Transition::RotateHelpLanguage);
-                    
+
+        // Special handling for dialog input
+        if let Some(dialog) = self.state.dialogs.current_mut() {
+            debug!("Dialog is open, handling dialog input");
+            // Handle dialog input centrally
+            match crate::ui::dialog::handle_dialog_input(dialog, key) {
+                crate::ui::dialog::DialogAction::Cancel => {
+                    // Close dialog
+                    debug!("Dialog action: Cancel");
+                    self.state.dialogs.pop();
+
                     let elapsed = start.elapsed();
                     self.metrics.record_input_time(elapsed);
-                    
-                    return result.ui_changed;
+
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::Confirm => {
+                    // Process dialog confirmation
+                    debug!("Dialog action: Confirm");
+                    if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
+                        // Submit job to worker pool
+                        if let Some(ref pool) = self.worker_pool {
+                            debug!("Submitting compression/extraction job: {:?}", job_spec.kind);
+                            self.state.jobs.start_job(job_spec.clone());
+                            pool.submit_job(job_spec);
+                        }
+                        // Close dialog after successful job submission
+                        self.state.dialogs.pop();
+                        debug!("Dialog popped after confirmation");
+                    }
+
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::None => {
+                    // Input was consumed by dialog, no further action
+                    debug!("Dialog action: None (input consumed)");
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::NextField => {
+                    // Move focus to next field in dialog
+                    debug!("Dialog action: NextField");
+                    // Focus cycling is handled in dialog content
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::PrevField => {
+                    // Move focus to previous field in dialog
+                    debug!("Dialog action: PrevField");
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+                    return true;
+                }
+                _ => {
+                    // Other dialog actions (navigation, text input) are handled internally
+                    debug!("Dialog action: Other");
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+
+                    return true;
                 }
             }
         }
-        
+
+        debug!("No dialog open, mapping key to action");
         // Map key event to action using KeyBindings
         if let Some(action) = self.key_bindings.map_key(&key) {
+            debug!("Key mapped to action: {:?}", action);
             // Check if we're waiting for next key in sequence
             if action == rwf_lib::Action::PendingSequence {
                 debug!("Waiting for next key in sequence: {:?}", self.key_bindings.get_pending_sequence());

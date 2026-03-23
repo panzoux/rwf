@@ -75,6 +75,7 @@ pub enum JobKind {
     CreateArchive {
         sources: Vec<Location>,
         dest: Location,
+        original_size: u64,
     },
     ExecuteCustomFunction {
         command: String,

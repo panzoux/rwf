@@ -884,7 +884,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                             );
                             "Extract archive"
                         }
-                        crate::job::JobKind::CreateArchive { sources, dest } => {
+                        crate::job::JobKind::CreateArchive { sources, dest, original_size: _ } => {
                             tracing::error!(
                                 job_id = ?job_id,
                                 source_count = sources.len(),
@@ -1147,6 +1147,43 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                             }
                         }
                     }
+                    crate::job::JobKind::CreateArchive { dest, original_size, .. } => {
+                        // Refresh the pane that contains the destination
+                        for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
+                            if tab.left_pane.current_location == *dest {
+                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
+                                    tab_id: tab_idx,
+                                    pane: crate::model::ActivePane::Left,
+                                });
+                            }
+                            if tab.right_pane.current_location == *dest {
+                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
+                                    tab_id: tab_idx,
+                                    pane: crate::model::ActivePane::Right,
+                                });
+                            }
+                        }
+
+                        // Calculate and log compression ratio on success
+                        if let crate::job::OpResult::Success(_) = result {
+                            if let crate::model::Location::Local(path) = dest {
+                                if let Ok(meta) = std::fs::metadata(path) {
+                                    let compressed_size = meta.len();
+                                    let ratio = if *original_size > 0 {
+                                        (1.0 - compressed_size as f64 / *original_size as f64) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+                                    tracing::info!(
+                                        "Compression completed: {} -> {} bytes (ratio: {:.1}%)",
+                                        original_size,
+                                        compressed_size,
+                                        ratio
+                                    );
+                                }
+                            }
+                        }
+                    }
                     crate::job::JobKind::Move { sources, dest } => {
                         // For move operations, refresh both source and destination panes
                         // Refresh destination panes
@@ -1223,7 +1260,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                         // Check if this was a configuration editor launch
                         let config_manager = crate::config::ConfigManager::new();
                         let config_path = config_manager.config_path().to_string_lossy().to_string();
-                        
+
                         if command.contains(&config_path) {
                             // This was the config editor, show reload prompt
                             if let crate::job::OpResult::Success(_) = result {
@@ -1240,7 +1277,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     _ => {}
                 }
             }
-            
+
             result_obj
         }
         

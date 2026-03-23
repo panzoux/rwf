@@ -38,7 +38,15 @@ impl Location {
             }
         }
     }
-    
+
+    /// Get underlying PathBuf for Local locations
+    pub fn path(&self) -> Option<&std::path::Path> {
+        match self {
+            Location::Local(path) => Some(path),
+            _ => None,
+        }
+    }
+
     /// Get parent location
     pub fn parent(&self) -> Option<Location> {
         match self {

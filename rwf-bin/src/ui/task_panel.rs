@@ -1,6 +1,6 @@
 //! Task panel rendering
 //!
-//! This module renders the task panel showing active and queued jobs.
+//! This module renders the task panel showing active and completed jobs.
 
 use ratatui::{
     layout::Rect,
@@ -9,8 +9,17 @@ use ratatui::{
     widgets::{List, ListItem},
     Frame,
 };
-use rwf_lib::AppState;
+use rwf_lib::{AppState, model::Location};
 use super::parse_color;
+
+/// Format a count with proper pluralization
+fn format_count(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("1 {}", singular)
+    } else {
+        format!("{} {}", count, plural)
+    }
+}
 
 /// Render the task panel
 pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -33,22 +42,33 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
     for job in state.jobs.active.values() {
         let job_desc = format_job_kind(&job.spec.kind);
         let progress_pct = (job.progress * 100.0) as u8;
-        
+
         // Create a simple progress bar (e.g., [=====>    ] 50%)
         let bar_width = 20;
         let filled = ((job.progress * bar_width as f64) as usize).min(bar_width);
-        let progress_bar = format!(
-            "[{}{}] {}%",
-            "=".repeat(filled.saturating_sub(1)),
-            if filled > 0 { ">" } else { "" },
-            progress_pct
-        );
         
+        // Show spinner animation for 0% progress, progress bar otherwise
+        let progress_display = if job.progress <= 0.0 {
+            // Show starting message for jobs that just started
+            "[Starting...]".to_string()
+        } else if filled == 0 {
+            // Very small progress - show minimal bar
+            format!("[>{}] {}%", "=".repeat(filled), progress_pct)
+        } else {
+            // Normal progress bar
+            format!(
+                "[{}{}] {}%",
+                "=".repeat(filled.saturating_sub(1)),
+                if filled > 0 { ">" } else { "" },
+                progress_pct
+            )
+        };
+
         let line = Line::from(vec![
             Span::styled("[RUNNING] ", Style::default().fg(parse_color(&colors.directory_color))),
             Span::styled(job_desc, Style::default().fg(parse_color(&colors.foreground_color))),
             Span::raw(" "),
-            Span::styled(progress_bar, Style::default().fg(parse_color(&colors.ok_color))),
+            Span::styled(progress_display, Style::default().fg(parse_color(&colors.ok_color))),
         ]);
         items.push(ListItem::new(line));
     }
@@ -71,16 +91,50 @@ pub fn render_task_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         .collect();
 
     for result in recent_completed {
-        let job_desc = format_job_kind(&result.kind);
-        let status = match &result.result {
-            rwf_lib::job::OpResult::Success(_) => {
-                Span::styled("[DONE] ", Style::default().fg(parse_color(&colors.ok_color)))
+        let (job_desc, status) = match &result.kind {
+            rwf_lib::job::JobKind::CreateArchive { dest, original_size, .. } => {
+                // Calculate compression ratio for archive jobs
+                let ratio_str = if let Location::Local(path) = dest {
+                    if let Ok(meta) = std::fs::metadata(path) {
+                        let compressed_size = meta.len();
+                        if *original_size > 0 {
+                            let ratio = (1.0 - compressed_size as f64 / *original_size as f64) * 100.0;
+                            format!(" (ratio: {:.1}%)", ratio)
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                (format!("Creating archive {}{} ", dest.display_path(), ratio_str), 
+                 match &result.result {
+                    rwf_lib::job::OpResult::Success(_) => {
+                        Span::styled("[DONE] ", Style::default().fg(parse_color(&colors.ok_color)))
+                    }
+                    rwf_lib::job::OpResult::Failed(err) => {
+                        Span::styled(format!("[FAILED: {}] ", err), Style::default().fg(parse_color(&colors.error_color)))
+                    }
+                    rwf_lib::job::OpResult::Cancelled => {
+                        Span::styled("[CANCELLED] ", Style::default().fg(parse_color(&colors.foreground_color)))
+                    }
+                })
             }
-            rwf_lib::job::OpResult::Failed(err) => {
-                Span::styled(format!("[FAILED: {}] ", err), Style::default().fg(parse_color(&colors.error_color)))
-            }
-            rwf_lib::job::OpResult::Cancelled => {
-                Span::styled("[CANCELLED] ", Style::default().fg(parse_color(&colors.foreground_color)))
+            _ => {
+                let job_desc = format_job_kind(&result.kind);
+                (job_desc, match &result.result {
+                    rwf_lib::job::OpResult::Success(_) => {
+                        Span::styled("[DONE] ", Style::default().fg(parse_color(&colors.ok_color)))
+                    }
+                    rwf_lib::job::OpResult::Failed(err) => {
+                        Span::styled(format!("[FAILED: {}] ", err), Style::default().fg(parse_color(&colors.error_color)))
+                    }
+                    rwf_lib::job::OpResult::Cancelled => {
+                        Span::styled("[CANCELLED] ", Style::default().fg(parse_color(&colors.foreground_color)))
+                    }
+                })
             }
         };
         let line = Line::from(vec![
@@ -122,13 +176,13 @@ fn format_job_kind(kind: &rwf_lib::job::JobKind) -> String {
             format!("Reading {}", location.display_path())
         }
         JobKind::Copy { sources, dest } => {
-            format!("Copying {} file(s) to {}", sources.len(), dest.display_path())
+            format!("Copying {} to {}", format_count(sources.len(), "file", "files"), dest.display_path())
         }
         JobKind::Move { sources, dest } => {
-            format!("Moving {} file(s) to {}", sources.len(), dest.display_path())
+            format!("Moving {} to {}", format_count(sources.len(), "file", "files"), dest.display_path())
         }
         JobKind::Delete { targets } => {
-            format!("Deleting {} file(s)", targets.len())
+            format!("Deleting {}", format_count(targets.len(), "file", "files"))
         }
         JobKind::Mkdir { location } => {
             format!("Creating directory {}", location.display_path())
@@ -142,8 +196,8 @@ fn format_job_kind(kind: &rwf_lib::job::JobKind) -> String {
         JobKind::ExtractArchive { archive, dest } => {
             format!("Extracting {} to {}", archive.display_path(), dest.display_path())
         }
-        JobKind::CreateArchive { sources, dest } => {
-            format!("Creating archive {} with {} file(s)", dest.display_path(), sources.len())
+        JobKind::CreateArchive { sources, dest, original_size: _ } => {
+            format!("Creating archive {} with {}", dest.display_path(), format_count(sources.len(), "file", "files"))
         }
         JobKind::ExecuteCustomFunction { command, .. } => {
             format!("Executing: {}", command)

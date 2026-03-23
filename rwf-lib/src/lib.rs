@@ -130,7 +130,7 @@ pub use model::{Location, FileEntry, PaneModel, TabState, TabManager, DialogCont
 pub use worker_pool::{WorkerPool, JobEvent};
 pub use event_receiver::{map_job_event_to_transition, process_pending_events, process_next_event};
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
-pub use input::{KeyBindings, Action, format_key_event, action_to_transitions};
+pub use input::{KeyBindings, Action, ArchiveFormat, format_key_event, action_to_transitions};
 pub use logging::{LogLevel, init_logging, default_log_dir};
 pub use log_manager::{LogManager, LogEntry, LogEntryLevel};
 pub use session::{SessionState, SessionError, save_session, restore_tabs, restore_marked_locations};

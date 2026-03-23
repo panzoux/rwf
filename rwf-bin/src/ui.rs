@@ -11,6 +11,7 @@ mod volume_line;
 mod pane_info_line;
 mod colors;
 mod unicode_utils;
+pub mod dialog;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -27,6 +28,7 @@ pub use volume_line::render_volume_line;
 pub use pane_info_line::render_pane_info_line;
 pub use colors::parse_color;
 pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
+pub use dialog::render_dialog;
 
 /// Main UI rendering function
 pub fn render_ui(frame: &mut Frame, state: &AppState) {
@@ -86,5 +88,10 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
     // Render task panel (NO BORDER)
     if state.ui.layout.show_task_panel {
         render_task_panel(frame, chunks[chunk_idx], state);
+    }
+    
+    // Render dialog overlay if any dialogs are open
+    if let Some(dialog) = state.dialogs.current() {
+        render_dialog(frame, dialog, state);
     }
 }

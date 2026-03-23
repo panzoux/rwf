@@ -360,43 +360,64 @@ impl ZipArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         use std::fs::File;
-        
+        use std::io::Write;
+        use tracing::debug;
+
+        debug!("Creating ZIP archive at: {:?}", dest_path);
         let file = File::create(dest_path)?;
+        debug!("File created successfully");
+        
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o755);
-        
+
+        debug!("Adding {} sources to archive", sources.len());
         for source in sources {
             if cancel_token.is_cancelled() {
+                debug!("Archive creation cancelled");
                 anyhow::bail!("Operation cancelled");
             }
-            
+
             match source {
                 Location::Local(path) => {
+                    debug!("Processing source: {:?}", path);
                     if path.is_dir() {
+                        debug!("Source is a directory");
                         // Get the directory name to use as the base in the archive
                         let dir_name = path.file_name()
                             .and_then(|n| n.to_str())
                             .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
-                        
+
                         // Add the directory entry itself
                         zip.add_directory(format!("{}/", dir_name), options)?;
-                        
+                        debug!("Added directory entry: {}", dir_name);
+
                         // Add contents with the directory as base
                         self.add_dir_contents_to_zip(&mut zip, path, dir_name, &options, cancel_token).await?;
+                        debug!("Added directory contents");
                     } else {
+                        debug!("Source is a file");
                         let name = path.file_name()
                             .and_then(|n| n.to_str())
                             .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
                         self.add_file_to_zip(&mut zip, path, name, &options).await?;
+                        debug!("Added file to archive: {}", name);
                     }
                 }
                 _ => anyhow::bail!("Only local files can be added to archives"),
             }
         }
+
+        // Finish writing and get the underlying file
+        debug!("Finishing ZIP archive...");
+        let mut file = zip.finish()?;
+        debug!("ZIP finished, flushing...");
+        // Explicitly flush and sync to ensure data is written to disk
+        file.flush()?;
+        file.sync_all()?;
+        debug!("ZIP archive created and synced successfully at: {:?}", dest_path);
         
-        zip.finish()?;
         Ok(())
     }
     

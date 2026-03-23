@@ -51,6 +51,44 @@ pub struct AppConfig {
     /// Help language (default: "en")
     #[serde(rename = "HelpLanguage")]
     pub help_language: String,
+    
+    /// Archive configuration
+    #[serde(default)]
+    pub archive: ArchiveConfig,
+}
+
+/// Archive configuration for compression operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveConfig {
+    /// Default archive format (default: ZIP)
+    #[serde(default = "default_archive_format")]
+    pub default_format: crate::input::ArchiveFormat,
+    
+    /// Compression level (1-9, default: 6)
+    #[serde(default = "default_compression_level")]
+    pub compression_level: u32,
+    
+    /// Last used archive name for quick access
+    #[serde(default)]
+    pub last_archive_name: String,
+}
+
+fn default_archive_format() -> crate::input::ArchiveFormat {
+    crate::input::ArchiveFormat::ZIP
+}
+
+fn default_compression_level() -> u32 {
+    6
+}
+
+impl Default for ArchiveConfig {
+    fn default() -> Self {
+        Self {
+            default_format: crate::input::ArchiveFormat::ZIP,
+            compression_level: 6,
+            last_archive_name: String::new(),
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -73,6 +111,7 @@ impl Default for AppConfig {
             log_file_progress_threshold_ms: 5000,
             editor_command: None,  // Use system default editor
             help_language: "en".to_string(),
+            archive: ArchiveConfig::default(),
         }
     }
 }
