@@ -3,10 +3,10 @@
 //! This module defines the central AppState structure and the Transition enum
 //! for explicit state changes following the AppState pattern.
 
-use crate::job::{JobManager, JobId, JobSpec};
+use crate::job::{JobManager, JobId, JobSpec, BackgroundJobManager};
 use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState, NavigationStateCache};
 use crate::log_manager::LogManager;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// Central application state coordinating all components
 #[derive(Debug)]
@@ -15,6 +15,8 @@ pub struct AppState {
     pub tabs: TabManager,
     /// Job manager for background operations
     pub jobs: JobManager,
+    /// Background job manager for UI display
+    pub background_jobs: BackgroundJobManager,
     /// Search state
     pub search: SearchModel,
     /// File marking state
@@ -64,6 +66,10 @@ impl AppState {
         Self {
             tabs: TabManager::new(),
             jobs: JobManager::new(config.worker_pool_size),
+            background_jobs: BackgroundJobManager::new(
+                config.job_manager.max_simultaneous_jobs,
+                Duration::from_secs(config.job_manager.job_retention_period_secs)
+            ),
             search: SearchModel::new(),
             marking: MarkingModel::new(),
             ui: UIState::new(),
@@ -195,10 +201,16 @@ pub enum Transition {
     // Job operations
     EnqueueJob { spec: JobSpec },
     StartNextJob,
+    JobStarted { job_id: JobId },
     UpdateJobProgress { job_id: JobId, progress: f64 },
+    UpdateJobProgressWithDetail { job_id: JobId, progress: f64, progress_message: String, operation_detail: String },
     CompleteJob { job_id: JobId, result: crate::job::OpResult },
     CancelJob { job_id: JobId },
     AcknowledgeCancel { job_id: JobId },
+    CreateBackgroundJob { spec: JobSpec, name: String, description: String },
+    CreateAndStartCountDownJob { spec: JobSpec, name: String, description: String },
+    CreateAndStartFileJob { spec: JobSpec, name: String, description: String },
+    AddTaskPanelLog { message: String },
     
     // View operations
     ChangeSortMode { pane: crate::model::ActivePane, mode: crate::model::SortMode },
@@ -313,6 +325,16 @@ pub struct StateUpdateResult {
     pub jobs_to_start: Vec<JobSpec>,
     /// Jobs to cancel
     pub jobs_to_cancel: Vec<JobId>,
+    /// Completed job IDs (for logging)
+    pub completed_jobs: Vec<JobId>,
+    /// Failed job IDs (for logging)
+    pub failed_jobs: Vec<JobId>,
+    /// Cancelled job IDs (for logging)
+    pub cancelled_jobs: Vec<JobId>,
+    /// Started job IDs (for logging)
+    pub started_jobs: Vec<JobId>,
+    /// Log messages for task panel
+    pub task_panel_logs: Vec<String>,
     /// Panes that need refreshing
     pub panes_to_refresh: Vec<PaneRefresh>,
     /// Whether the UI needs to be redrawn
@@ -325,46 +347,71 @@ impl StateUpdateResult {
         Self {
             jobs_to_start: Vec::new(),
             jobs_to_cancel: Vec::new(),
+            completed_jobs: Vec::new(),
+            failed_jobs: Vec::new(),
+            cancelled_jobs: Vec::new(),
+            started_jobs: Vec::new(),
+            task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: false,
         }
     }
-    
+
     /// Create a result that starts a job
     pub fn with_job(job: JobSpec) -> Self {
         Self {
             jobs_to_start: vec![job],
             jobs_to_cancel: Vec::new(),
+            completed_jobs: Vec::new(),
+            failed_jobs: Vec::new(),
+            cancelled_jobs: Vec::new(),
+            started_jobs: Vec::new(),
+            task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
         }
     }
-    
+
     /// Create a result that only triggers UI update
     pub fn with_ui_change() -> Self {
         Self {
             jobs_to_start: Vec::new(),
             jobs_to_cancel: Vec::new(),
+            completed_jobs: Vec::new(),
+            failed_jobs: Vec::new(),
+            cancelled_jobs: Vec::new(),
+            started_jobs: Vec::new(),
+            task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
         }
     }
-    
+
     /// Create a result that refreshes a specific pane
     pub fn with_refresh(tab_id: usize, pane: crate::model::ActivePane) -> Self {
         Self {
             jobs_to_start: Vec::new(),
             jobs_to_cancel: Vec::new(),
+            completed_jobs: Vec::new(),
+            failed_jobs: Vec::new(),
+            cancelled_jobs: Vec::new(),
+            started_jobs: Vec::new(),
+            task_panel_logs: Vec::new(),
             panes_to_refresh: vec![PaneRefresh { tab_id, pane }],
             ui_changed: true,
         }
     }
-    
+
     /// Create a result that cancels a job
     pub fn with_cancel(job_id: JobId) -> Self {
         Self {
             jobs_to_start: Vec::new(),
             jobs_to_cancel: vec![job_id],
+            completed_jobs: Vec::new(),
+            failed_jobs: Vec::new(),
+            cancelled_jobs: Vec::new(),
+            started_jobs: Vec::new(),
+            task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
         }
@@ -399,10 +446,33 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::CloseTab { index } => {
-            if state.tabs.close_tab(index) {
+            // Check if there are active jobs in this tab
+            let active_job_ids: Vec<u32> = state.background_jobs.get_active_jobs()
+                .filter(|j| j.tab_id == index)
+                .map(|j| j.id.short_id)
+                .collect();
+
+            if !active_job_ids.is_empty() {
+                // Show confirmation dialog
+                let tab_name = format!("Tab {}", index + 1);
+                let dialog = crate::model::Dialog {
+                    title: "Confirm Close Tab".to_string(),
+                    content: crate::model::DialogContent::CloseTabWithActiveJob {
+                        tab_index: index,
+                        tab_name: tab_name.clone(),
+                        job_ids: active_job_ids,
+                        focused_field: 0,  // Start with OK button focused
+                    },
+                };
+                state.dialogs.push(dialog);
                 StateUpdateResult::with_ui_change()
             } else {
-                StateUpdateResult::none()
+                // No active jobs, close directly
+                if state.tabs.close_tab(index) {
+                    StateUpdateResult::with_ui_change()
+                } else {
+                    StateUpdateResult::none()
+                }
             }
         }
         
@@ -761,20 +831,94 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::StartNextJob => {
+            debug!("StartNextJob: Checking if can start job, active={}, queued={}", 
+                state.jobs.active.len(), state.jobs.queue.len());
             if state.jobs.can_start_job() {
                 if let Some(spec) = state.jobs.pop_next_job() {
+                    debug!("StartNextJob: Starting job spec.id={:?}", spec.id);
                     state.jobs.start_job(spec.clone());
                     StateUpdateResult::with_job(spec)
                 } else {
+                    debug!("StartNextJob: No job in queue to start");
                     StateUpdateResult::none()
                 }
             } else {
+                debug!("StartNextJob: Cannot start job, max_parallel={} active={}", 
+                    state.jobs.max_parallel, state.jobs.active.len());
                 StateUpdateResult::none()
             }
         }
-        
+
+        Transition::JobStarted { job_id } => {
+            debug!("JobStarted transition: job_id={:?}", job_id);
+            // Mark the internal job as started
+            if let Some(job) = state.jobs.active.get_mut(&job_id) {
+                job.state = crate::job::ExecutionState::Running;
+                job.started_at = Some(SystemTime::now());
+                debug!("JobStarted: Internal job marked as Running");
+            }
+            
+            // Get job info for logging BEFORE marking as running
+            let log_entry = state.background_jobs.get_job(job_id).map(|bg_job| {
+                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                format!(
+                    "{} [Job #{}] [Tab {}] {}: Started",
+                    timestamp,
+                    bg_job.id.short_id,
+                    bg_job.tab_id + 1,
+                    bg_job.name
+                )
+            });
+            
+            // Mark the background job as running
+            if log_entry.is_some() {
+                state.background_jobs.mark_job_running(job_id);
+                debug!("JobStarted: Background job marked as Running");
+                
+                return StateUpdateResult {
+                    jobs_to_start: Vec::new(),
+                    jobs_to_cancel: Vec::new(),
+                    completed_jobs: Vec::new(),
+                    failed_jobs: Vec::new(),
+                    cancelled_jobs: Vec::new(),
+                    started_jobs: vec![job_id],
+                    task_panel_logs: vec![log_entry.unwrap()],
+                    panes_to_refresh: Vec::new(),
+                    ui_changed: true,
+                };
+            } else {
+                debug!("JobStarted: Background job not found for job_id={:?}", job_id);
+            }
+            StateUpdateResult::with_ui_change()
+        }
+
         Transition::UpdateJobProgress { job_id, progress } => {
             state.jobs.update_progress(job_id, progress);
+            StateUpdateResult::with_ui_change()
+        }
+
+        Transition::UpdateJobProgressWithDetail { job_id, progress, progress_message, operation_detail } => {
+            state.jobs.update_progress(job_id, progress);
+            
+            // Check if job needs to be marked as running (before updating progress)
+            let needs_running = state.background_jobs.get_job(job_id)
+                .map(|j| j.status == crate::job::JobStatus::Pending)
+                .unwrap_or(false);
+            
+            // Also update the background job with messages
+            let job_progress = crate::job::JobProgress {
+                percent: progress,
+                message: progress_message.clone(),
+                current_operation_detail: operation_detail.clone(),
+            };
+            state.background_jobs.update_progress(job_id, job_progress);
+            
+            // If job was Pending, mark it as Running (progress means it started)
+            if needs_running {
+                state.background_jobs.mark_job_running(job_id);
+                debug!("UpdateJobProgressWithDetail: Job was Pending, now marked as Running");
+            }
+            
             StateUpdateResult::with_ui_change()
         }
         
@@ -785,11 +929,29 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 crate::job::OpResult::Failed(_) => "Failed",
                 crate::job::OpResult::Cancelled => "Cancelled",
             });
-            
+
             // Get the job spec before completing it to determine what panes need refreshing
             let job_spec = state.jobs.active.get(&job_id).map(|job| job.spec.clone());
             debug!("CompleteJob: job_spec found={}", job_spec.is_some());
-            
+
+            // Get job info for task panel log BEFORE completing
+            let log_entry = state.background_jobs.get_job(job_id).map(|bg_job| {
+                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                let status_tag = match &result {
+                    crate::job::OpResult::Success(_) => "[OK]",
+                    crate::job::OpResult::Failed(_) => "[FAIL]",
+                    crate::job::OpResult::Cancelled => "[WARN]",
+                };
+                format!(
+                    "{} [Job #{}] [Tab {}] {}: Completed {}",
+                    timestamp,
+                    bg_job.id.short_id,
+                    bg_job.tab_id + 1,
+                    bg_job.name,
+                    status_tag
+                )
+            });
+
             // Debug log the SuccessData variant
             if let crate::job::OpResult::Success(ref success_data) = result {
                 let variant_name = match success_data {
@@ -964,6 +1126,15 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                             );
                             "File join"
                         }
+                        crate::job::JobKind::CountDown { start_value, .. } => {
+                            tracing::error!(
+                                job_id = ?job_id,
+                                duration = %start_value,
+                                error = %error_message,
+                                "Countdown job failed"
+                            );
+                            "Countdown"
+                        }
                     };
                     
                     let error_dialog = crate::model::Dialog::from_job_failure(operation_name, error_message);
@@ -1023,6 +1194,19 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             // Determine which panes need refreshing based on job type
             let mut result_obj = StateUpdateResult::with_ui_change();
             
+            // Track completed/failed/cancelled jobs for task panel logging
+            match &result {
+                crate::job::OpResult::Success(_) => {
+                    result_obj.completed_jobs.push(job_id);
+                }
+                crate::job::OpResult::Failed(_) => {
+                    result_obj.failed_jobs.push(job_id);
+                }
+                crate::job::OpResult::Cancelled => {
+                    result_obj.cancelled_jobs.push(job_id);
+                }
+            }
+
             if let Some(spec) = job_spec {
                 match &spec.kind {
                     crate::job::JobKind::ReadDirectory { location } => {
@@ -1278,6 +1462,24 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 }
             }
 
+            // Add completion log if we have one
+            if let Some(log) = log_entry {
+                result_obj.task_panel_logs.push(log);
+            }
+
+            // Update background job status based on result
+            match &result {
+                crate::job::OpResult::Success(_) => {
+                    state.background_jobs.mark_job_completed(job_id);
+                }
+                crate::job::OpResult::Failed(error) => {
+                    state.background_jobs.mark_job_failed(job_id, error.clone());
+                }
+                crate::job::OpResult::Cancelled => {
+                    state.background_jobs.mark_job_cancelled(job_id);
+                }
+            }
+
             result_obj
         }
         
@@ -1293,7 +1495,127 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             state.jobs.acknowledge_cancel(job_id);
             StateUpdateResult::with_ui_change()
         }
-        
+
+        Transition::CreateBackgroundJob { spec, name, description } => {
+            // Create a background job for UI display (Job Manager dialog, task panel, tab spinners)
+            debug!("CreateBackgroundJob: Creating job '{}' spec.id={:?}", name, spec.id);
+            let tab = state.current_tab();
+            let tab_name = format!("{}|{}",
+                tab.left_pane.current_location.display_path(),
+                tab.right_pane.current_location.display_path()
+            );
+            let tab_id = state.tabs.active_index;
+
+            let job_id = state.background_jobs.start_job(
+                name,
+                description,
+                tab_id,
+                tab_name,
+                spec,
+            );
+            debug!("CreateBackgroundJob: Created background job with id={:?}", job_id);
+            StateUpdateResult::with_ui_change()
+        }
+
+        Transition::CreateAndStartCountDownJob { spec, name, description } => {
+            // Create a countdown job and start it immediately, bypassing the queue
+            // This ensures the job starts even if other jobs are queued
+            let job_id = spec.id;
+            debug!("CreateAndStartCountDownJob: Creating and starting job '{}' job_id={:?}", name, job_id);
+            let tab = state.current_tab();
+            let tab_name = format!("{}|{}",
+                tab.left_pane.current_location.display_path(),
+                tab.right_pane.current_location.display_path()
+            );
+            let tab_id = state.tabs.active_index;
+
+            // Create background job for UI
+            let bg_job_id = state.background_jobs.start_job(
+                name.clone(),
+                description.clone(),
+                tab_id,
+                tab_name,
+                spec.clone(),
+            );
+            debug!("CreateAndStartCountDownJob: Created background job bg_job_id={:?}, job_id={:?}", bg_job_id, job_id);
+
+            // Start the job immediately (don't enqueue)
+            state.jobs.start_job(spec.clone());
+            debug!("CreateAndStartCountDownJob: Job started directly, active jobs={}", state.jobs.active.len());
+
+            // Create log entry
+            let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+            let log_msg = format!(
+                "{} [Job #{}] [Tab {}] {}: Started",
+                timestamp,
+                bg_job_id.short_id,
+                tab_id + 1,
+                name
+            );
+
+            StateUpdateResult {
+                jobs_to_start: vec![spec],  // Submit to worker pool
+                jobs_to_cancel: Vec::new(),
+                completed_jobs: Vec::new(),
+                failed_jobs: Vec::new(),
+                cancelled_jobs: Vec::new(),
+                started_jobs: Vec::new(),
+                task_panel_logs: vec![log_msg],
+                panes_to_refresh: Vec::new(),
+                ui_changed: true,
+            }
+        }
+
+        Transition::CreateAndStartFileJob { spec, name, description } => {
+            // Create a file job (Copy/Move/Delete) and start it immediately
+            // No confirmation dialog - user already pressed the key intentionally
+            let job_id = spec.id;
+            debug!("CreateAndStartFileJob: Creating and starting job '{}' job_id={:?}", name, job_id);
+            let tab = state.current_tab();
+            let tab_name = format!("{}|{}",
+                tab.left_pane.current_location.display_path(),
+                tab.right_pane.current_location.display_path()
+            );
+            let tab_id = state.tabs.active_index;
+
+            // Create background job for UI
+            let bg_job_id = state.background_jobs.start_job(
+                name.clone(),
+                description.clone(),
+                tab_id,
+                tab_name,
+                spec.clone(),
+            );
+            debug!("CreateAndStartFileJob: Created background job bg_job_id={:?}, job_id={:?}", bg_job_id, job_id);
+
+            // Start the job immediately
+            state.jobs.start_job(spec.clone());
+            debug!("CreateAndStartFileJob: Job started directly, active jobs={}", state.jobs.active.len());
+
+            // Create log entry
+            let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+            let log_msg = format!(
+                "{} [Job #{}] [Tab {}] {}: Started",
+                timestamp,
+                bg_job_id.short_id,
+                tab_id + 1,
+                name
+            );
+
+            StateUpdateResult {
+                jobs_to_start: vec![spec],
+                jobs_to_cancel: Vec::new(),
+                completed_jobs: Vec::new(),
+                failed_jobs: Vec::new(),
+                cancelled_jobs: Vec::new(),
+                started_jobs: Vec::new(),
+                task_panel_logs: vec![log_msg],
+                panes_to_refresh: Vec::new(),
+                ui_changed: true,
+            }
+        }
+
+
         // View operations
         Transition::ChangeSortMode { pane, mode } => {
             let tab = state.current_tab_mut();

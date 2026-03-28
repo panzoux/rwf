@@ -15,6 +15,8 @@ pub enum JobEvent {
     Started(JobId),
     /// Job progress update (job_id, progress 0.0-1.0)
     Progress(JobId, f64),
+    /// Job progress update with detail messages (job_id, progress, progress_message, operation_detail)
+    ProgressWithDetail(JobId, f64, String, String),
     /// Job completed successfully
     Completed(JobId, crate::job::SuccessData),
     /// Job failed with error
@@ -76,8 +78,8 @@ impl WorkerPool {
                     
                     match spec {
                         Some(spec) => {
-                            tracing::debug!("Worker {} executing job {:?}", worker_id, spec.id);
-                            
+                            tracing::debug!("Worker {} executing job job_id={:?} kind={:?}", worker_id, spec.id, spec.kind);
+
                             // Execute the job using the executor
                             executor.execute(spec).await;
                         }

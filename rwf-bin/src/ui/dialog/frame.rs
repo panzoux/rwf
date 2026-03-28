@@ -85,6 +85,7 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
     match content {
         DialogContent::Compression { .. } => vec!["OK", "Cancel"],
         DialogContent::ExtractionConfirm { .. } => vec!["Extract", "Cancel"],
+        DialogContent::CloseTabWithActiveJob { .. } => vec!["OK", "Cancel"],
         _ => vec!["OK", "Cancel"],
     }
 }

@@ -10,10 +10,11 @@ use rwf_lib::backend::{LocalFilesystemBackend, ZipArchiveHandler};
 use std::io::Stdout;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::performance::PerformanceMetrics;
 use crate::ui::render_ui;
+use crate::ui::task_panel::TaskPanel;
 
 /// Target frame rate (30 FPS)
 const TARGET_FPS: u64 = 30;
@@ -32,6 +33,7 @@ pub struct App {
     last_metrics_log: Instant,
     worker_pool: Option<WorkerPool>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
+    task_panel: TaskPanel,
 }
 
 impl App {
@@ -51,6 +53,7 @@ impl App {
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
+            task_panel: TaskPanel::new(),
         }
     }
     
@@ -71,6 +74,7 @@ impl App {
             last_metrics_log: Instant::now(),
             worker_pool: Some(worker_pool),
             last_key_press: None,
+            task_panel: TaskPanel::new(),
         }
     }
 
@@ -148,8 +152,48 @@ impl App {
                 if !results.is_empty() {
                     info!("Processed {} job events", results.len());
                     for (idx, result) in results.iter().enumerate() {
-                        debug!("Event result {}: jobs_to_start={}, ui_changed={}", 
-                            idx, result.jobs_to_start.len(), result.ui_changed);
+                        debug!("Event result {}: jobs_to_start={}, ui_changed={}, completed={}, failed={}, cancelled={}, started={}, logs={}",
+                            idx, 
+                            result.jobs_to_start.len(), 
+                            result.ui_changed,
+                            result.completed_jobs.len(),
+                            result.failed_jobs.len(),
+                            result.cancelled_jobs.len(),
+                            result.started_jobs.len(),
+                            result.task_panel_logs.len()
+                        );
+                    }
+                    
+                    // Add task panel log entries from state transitions
+                    for result in &results {
+                        // Add logs from state transitions (this is the ONLY place logs should be added)
+                        for log_msg in &result.task_panel_logs {
+                            self.task_panel.add_pending_log(log_msg.clone());
+                        }
+                    }
+                    
+                    // Process pane refreshes from completed jobs (Copy/Move/Delete/etc.)
+                    for result in &results {
+                        for refresh in &result.panes_to_refresh {
+                            debug!("Refreshing pane {:?} in tab {}", refresh.pane, refresh.tab_id);
+                            
+                            // Get the location to refresh
+                            let location = {
+                                let tab = &self.state.tabs.tabs[refresh.tab_id];
+                                match refresh.pane {
+                                    rwf_lib::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                                    rwf_lib::model::ActivePane::Right => tab.right_pane.current_location.clone(),
+                                }
+                            };
+                            
+                            // Create and submit ReadDirectory job (async, non-blocking)
+                            let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ReadDirectory { location });
+                            self.state.jobs.start_job(job_spec.clone());
+                            if let Some(ref pool) = self.worker_pool {
+                                pool.submit_job(job_spec);
+                                debug!("Submitted ReadDirectory job for pane refresh");
+                            }
+                        }
                     }
                 }
                 results
@@ -159,16 +203,54 @@ impl App {
             let events_processed = !event_results.is_empty();
             
             // Submit any new jobs that were created by state transitions
+            // Note: Jobs are already started in state.rs StartNextJob handler
+            // Here we just submit them to the worker pool for execution
             if let Some(ref pool) = self.worker_pool {
                 for result in &event_results {
                     for job_spec in &result.jobs_to_start {
-                        // Add job to active jobs map before submitting to worker pool
-                        self.state.jobs.start_job(job_spec.clone());
+                        debug!("App: Submitting job to worker pool job_id={:?} kind={:?}", job_spec.id, job_spec.kind);
                         pool.submit_job(job_spec.clone());
                     }
                 }
             }
-            
+
+            // Update spinner animation (throttled to config interval for resource efficiency)
+            // File manager doesn't need frequent UI updates - conserve CPU for file operations
+            static mut SPINNER_LAST_UPDATE: Option<Instant> = None;
+            unsafe {
+                let spinner_interval = Duration::from_millis(
+                    self.state.config.job_manager.task_panel_refresh_interval_ms
+                );
+                let should_tick = match SPINNER_LAST_UPDATE {
+                    Some(last) => last.elapsed() >= spinner_interval,
+                    None => true,
+                };
+                if should_tick {
+                    self.task_panel.tick();
+                    SPINNER_LAST_UPDATE = Some(Instant::now());
+                }
+            }
+
+            // Process pending task panel logs before rendering
+            self.task_panel.process_pending_logs(self.state.config.job_manager.max_task_panel_log_lines);
+
+            // Cleanup expired jobs every 1 second (accurate timing)
+            static mut LAST_CLEANUP_CHECK: Option<Instant> = None;
+            unsafe {
+                let check_interval = Duration::from_secs(1);
+                let should_check = match LAST_CLEANUP_CHECK {
+                    Some(last) => last.elapsed() >= check_interval,
+                    None => true,
+                };
+                if should_check {
+                    let cleaned = self.state.background_jobs.cleanup_expired_jobs();
+                    if cleaned > 0 {
+                        debug!("Cleaned up {} expired jobs", cleaned);
+                    }
+                    LAST_CLEANUP_CHECK = Some(Instant::now());
+                }
+            }
+
             // Calculate time since last render
             let elapsed = last_render.elapsed();
             let time_until_next_frame = FRAME_DURATION.saturating_sub(elapsed);
@@ -188,16 +270,16 @@ impl App {
                 last_render = Instant::now();
             }
 
-            // Log performance metrics every 5 seconds at DEBUG level
+            // Log performance metrics every 5 seconds at TRACE level (not DEBUG to reduce noise)
             if self.last_metrics_log.elapsed() >= Duration::from_secs(5) {
-                debug!("Performance: {}", self.metrics.summary());
-                
-                // Check for performance warnings
+                trace!("Performance: {}", self.metrics.summary());
+
+                // Check for performance warnings (still log warnings at WARN level)
                 let warnings = self.metrics.check_warnings();
                 for warning in warnings {
                     warn!("Performance warning: {}", warning);
                 }
-                
+
                 self.last_metrics_log = Instant::now();
             }
 
@@ -207,21 +289,32 @@ impl App {
                 
                 // Log final performance metrics
                 info!("Final performance: {}", self.metrics.summary());
-                
+
                 // Save session state before quitting
                 if let Err(e) = self.state.save_session() {
                     tracing::error!("Failed to save session: {}", e);
                 } else {
                     info!("Session state saved successfully");
                 }
-                
+
+                // Cancel all active jobs before shutdown (so they don't block shutdown)
+                debug!("Cancelling all active jobs before shutdown...");
+                let active_job_ids: Vec<_> = self.state.background_jobs.get_active_jobs()
+                    .map(|j| j.id.uuid)
+                    .collect();
+                for job_id in &active_job_ids {
+                    self.state.background_jobs.cancel_job(*job_id);
+                    debug!("Cancelled job {:?}", job_id);
+                }
+                debug!("Cancelled {} active jobs", active_job_ids.len());
+
                 // Shutdown worker pool
                 if let Some(pool) = self.worker_pool.take() {
                     info!("Shutting down worker pool...");
                     pool.shutdown().await;
                     info!("Worker pool shut down");
                 }
-                
+
                 break;
             }
         }
@@ -319,16 +412,104 @@ impl App {
                 crate::ui::dialog::DialogAction::Confirm => {
                     // Process dialog confirmation
                     debug!("Dialog action: Confirm");
-                    if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
-                        // Submit job to worker pool
-                        if let Some(ref pool) = self.worker_pool {
-                            debug!("Submitting compression/extraction job: {:?}", job_spec.kind);
-                            self.state.jobs.start_job(job_spec.clone());
-                            pool.submit_job(job_spec);
+                    // Check dialog type
+                    match &dialog.content {
+                        rwf_lib::model::dialog::DialogContent::JobManager { focused_field, selected_index } => {
+                            let focused_field_copy = *focused_field;
+                            let selected_index_copy = *selected_index;
+
+                            if focused_field_copy == 2 {
+                                // Terminate Job button focused - cancel the selected job
+                                debug!("Terminate Job button activated (focused_field={})", focused_field_copy);
+                                let jobs: Vec<rwf_lib::job::BackgroundJob> = self.state.background_jobs.get_all_jobs()
+                                    .cloned()
+                                    .collect();
+                                if let Some(job) = jobs.get(selected_index_copy) {
+                                    let job_short_id = job.id.short_id;
+                                    let job_name = job.name.clone();
+                                    self.state.background_jobs.cancel_job(job.id.uuid);
+                                    debug!("Job {} cancelled", job_short_id);
+                                    
+                                    // Add task panel log for cancellation
+                                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                                    let log_msg = format!(
+                                        "{} [Job #{}] {}: Cancelled [WARN]",
+                                        timestamp,
+                                        job_short_id,
+                                        job_name
+                                    );
+                                    self.task_panel.add_pending_log(log_msg);
+                                }
+                                // Don't close dialog, let user see the cancellation
+                            } else {
+                                // Close button or other - just close dialog
+                                self.state.dialogs.pop();
+                                debug!("Dialog popped (Close button or other)");
+                            }
                         }
-                        // Close dialog after successful job submission
-                        self.state.dialogs.pop();
-                        debug!("Dialog popped after confirmation");
+                        rwf_lib::model::dialog::DialogContent::CloseTabWithActiveJob { tab_index, job_ids, .. } => {
+                            // Cancel all jobs in the tab and close it
+                            debug!("CloseTabWithActiveJob confirmed: tab_index={}, job_ids={:?}", tab_index, job_ids);
+
+                            // Extract tab_index to avoid borrow issues
+                            let tab_index_copy = *tab_index;
+
+                            // Collect job info for logging BEFORE cancelling
+                            let jobs_to_cancel_info: Vec<_> = self.state.background_jobs.get_all_jobs()
+                                .filter(|j| j.tab_id == tab_index_copy && j.is_active())
+                                .map(|j| (j.id.uuid, j.id.short_id, j.name.clone()))
+                                .collect();
+
+                            debug!("Found {} active jobs in tab {} to cancel", jobs_to_cancel_info.len(), tab_index_copy + 1);
+
+                            // Close dialog first to release borrow
+                            self.state.dialogs.pop();
+
+                            // Cancel all active jobs in this tab
+                            let mut cancelled_count = 0;
+                            for (job_id, short_id, job_name) in &jobs_to_cancel_info {
+                                self.state.background_jobs.cancel_job(*job_id);
+                                debug!("Job {} ({}) cancelled for tab close", short_id, job_name);
+
+                                // Add task panel log for cancellation
+                                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                                let log_msg = format!(
+                                    "{} [Job #{}] [Tab {}] {}: Cancelled [WARN]",
+                                    timestamp,
+                                    short_id,
+                                    tab_index_copy + 1,
+                                    job_name
+                                );
+                                debug!("Adding cancellation log: {}", log_msg);
+                                self.task_panel.add_pending_log(log_msg.clone());
+                                cancelled_count += 1;
+                            }
+
+                            debug!("Cancelled {} jobs total, added {} logs", cancelled_count, cancelled_count);
+                            debug!("Task panel: {} log entries, {} pending", 
+                                self.task_panel.log_count(), 
+                                self.task_panel.pending_log_count());
+
+                            // Close the tab
+                            let _ = rwf_lib::state::update_state(&mut self.state, rwf_lib::Transition::CloseTab { index: tab_index_copy });
+                            debug!("Tab {} closed after job cancellation", tab_index_copy + 1);
+                        }
+                        _ => {
+                            if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
+                                // Submit job to worker pool (compression/extraction)
+                                if let Some(ref pool) = self.worker_pool {
+                                    debug!("Submitting compression/extraction job: {:?}", job_spec.kind);
+                                    self.state.jobs.start_job(job_spec.clone());
+                                    pool.submit_job(job_spec);
+                                }
+                                // Close dialog after successful job submission
+                                self.state.dialogs.pop();
+                                debug!("Dialog popped after confirmation");
+                            } else {
+                                // Close dialog (other dialogs)
+                                self.state.dialogs.pop();
+                            }
+                        }
                     }
 
                     let elapsed = start.elapsed();
@@ -483,7 +664,7 @@ impl App {
         }
         
         terminal.draw(|frame| {
-            render_ui(frame, &self.state);
+            render_ui(frame, &self.state, &self.task_panel);
         })?;
         
         self.metrics.end_frame();

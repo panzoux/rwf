@@ -4,7 +4,7 @@
 
 mod panes;
 mod tab_bar;
-mod task_panel;
+pub mod task_panel;
 mod filename_line;
 mod path_line;
 mod volume_line;
@@ -21,7 +21,7 @@ use rwf_lib::AppState;
 
 pub use panes::render_panes;
 pub use tab_bar::render_tab_bar;
-pub use task_panel::render_task_panel;
+pub use task_panel::{render_task_panel, TaskPanel};
 pub use filename_line::render_filename_line;
 pub use path_line::render_path_line;
 pub use volume_line::render_volume_line;
@@ -31,7 +31,7 @@ pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
 pub use dialog::render_dialog;
 
 /// Main UI rendering function
-pub fn render_ui(frame: &mut Frame, state: &AppState) {
+pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let size = frame.area();
 
     // Create main layout matching TWF exactly:
@@ -61,7 +61,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
 
     // Render tab bar
     if state.ui.layout.show_tab_bar {
-        render_tab_bar(frame, chunks[chunk_idx], state);
+        render_tab_bar(frame, chunks[chunk_idx], state, task_panel.current_spinner());
         chunk_idx += 1;
     }
 
@@ -87,7 +87,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState) {
 
     // Render task panel (NO BORDER)
     if state.ui.layout.show_task_panel {
-        render_task_panel(frame, chunks[chunk_idx], state);
+        render_task_panel(frame, chunks[chunk_idx], task_panel, &state.config.display.colors);
     }
     
     // Render dialog overlay if any dialogs are open

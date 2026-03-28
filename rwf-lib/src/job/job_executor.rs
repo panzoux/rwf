@@ -97,6 +97,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::JoinFiles { parts, dest } => {
                 self.execute_join_files(parts, dest, &spec).await
             }
+            JobKind::CountDown { duration_secs, start_value } => {
+                self.execute_countdown(*duration_secs, *start_value, &spec).await
+            }
         };
         
         // Send completion event based on result
@@ -886,7 +889,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             },
         }
     }
-    
+
     /// Get a display string for a location
     fn location_display(&self, location: &Location) -> String {
         match location {
@@ -901,6 +904,71 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 format!("{}#{}", self.location_display(archive_path), inner_path.display())
             }
         }
+    }
+
+    /// Execute a countdown test job
+    /// 
+    /// Counts down from start_value to 0, sleeping 1 second between each count.
+    /// Sends progress updates every second.
+    /// Supports cancellation via cancel_token.
+    /// NOTE: JobEvent::Started is sent by execute() wrapper, not here
+    async fn execute_countdown(
+        &self,
+        _duration_secs: u32,
+        start_value: u32,
+        spec: &JobSpec,
+    ) -> OpResult {
+        let job_id = spec.id;
+        let total = start_value;
+
+        tracing::debug!("CountDownJob: Starting job_id={:?} start_value={}", job_id, start_value);
+
+        // Countdown loop
+        for remaining in (0..=start_value).rev() {
+            // Check for cancellation
+            if spec.cancel_token.is_cancelled() {
+                tracing::debug!("CountDownJob: Cancelled at remaining={} job_id={:?}", remaining, job_id);
+                return OpResult::Cancelled;
+            }
+            
+            // Calculate progress (0.0 to 1.0)
+            let progress = if total > 0 {
+                (total - remaining) as f64 / total as f64
+            } else {
+                1.0
+            };
+            
+            // Send progress update with message
+            let progress_msg = format!("Countdown: {}/{} seconds", remaining, total);
+            let detail_msg = format!("Countdown test job - {} of {} seconds", remaining, total);
+            
+            let _ = self.event_sender.send(JobEvent::ProgressWithDetail(
+                job_id,
+                progress,
+                progress_msg,
+                detail_msg,
+            ));
+            
+            // Sleep for 1 second (unless cancelled)
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                    // Continue to next iteration
+                }
+                _ = async {
+                    // Check cancellation during sleep
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        if spec.cancel_token.is_cancelled() {
+                            break;
+                        }
+                    }
+                } => {
+                    return OpResult::Cancelled;
+                }
+            }
+        }
+        
+        OpResult::Success(SuccessData::None)
     }
 }
 
@@ -1028,9 +1096,93 @@ mod tests {
         // Should receive a started event first
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Started(_))));
-        
+
         // Then a cancelled event
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Cancelled(_))));
+    }
+}
+
+// ============================================================================
+// Conflict Detection Helper Function
+// ============================================================================
+
+/// Detect file conflicts between source files and destination
+/// 
+/// Returns a list of file conflicts (directories are logged and skipped)
+pub async fn detect_conflicts(
+    sources: &[Location],
+    dest: &Location,
+    backend: &dyn FilesystemBackend,
+    job_id: crate::job::JobId,
+    tab_id: usize,
+) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
+    use chrono::Local;
+    
+    let mut conflicts = Vec::new();
+    
+    for source in sources {
+        // Calculate destination path
+        let dest_location = calculate_destination_path(source, dest);
+        
+        // Check if destination exists
+        match backend.get_entry(&dest_location).await {
+            Ok(dest_entry) => {
+                // Source entry for comparison
+                let source_entry = match backend.get_entry(source).await {
+                    Ok(entry) => entry,
+                    Err(e) => continue, // Skip if can't read source
+                };
+                
+                let conflict = crate::model::dialog::ConflictPair {
+                    source: source_entry,
+                    dest: dest_entry,
+                    source_path: source.clone(),
+                    dest_path: dest_location.clone(),
+                    is_directory: source_entry.is_dir,
+                };
+                
+                if conflict.is_directory {
+                    // Log directory conflict to task pane and skip
+                    let timestamp = Local::now().format("[%H:%M:%S]");
+                    let log_msg = format!(
+                        "{} [Job #{}] [Tab {}] Copy: \"{}\" conflicts. Skipping",
+                        timestamp,
+                        job_id.short_id,
+                        tab_id + 1,
+                        dest_location.display_path()
+                    );
+                    // Note: This log needs to be passed back via StateUpdateResult
+                    // For now, we just skip directories
+                } else {
+                    conflicts.push(conflict);
+                }
+            }
+            Err(_) => {
+                // No conflict - destination doesn't exist
+            }
+        }
+    }
+    
+    Ok(conflicts)
+}
+
+/// Helper function to calculate destination path for a source file
+fn calculate_destination_path(source: &Location, dest: &Location) -> Location {
+    match (source, dest) {
+        (Location::Local(src_path), Location::Local(dest_path)) => {
+            if dest_path.is_dir() {
+                // Destination is a directory, append source filename
+                if let Some(filename) = src_path.file_name() {
+                    Location::Local(dest_path.join(filename))
+                } else {
+                    dest.clone()
+                }
+            } else {
+                // Destination is a file, use as-is
+                dest.clone()
+            }
+        }
+        _ => dest.clone(), // For non-local locations, use dest as-is
     }
 }

@@ -659,3 +659,302 @@ pub struct CompressionDialogState {
 - [ ] Size estimation before compression
 - [ ] Dynamic format availability (hide unavailable formats)
 - [ ] Dialog state persistence across sessions
+
+---
+
+# Part 6: Job Manager Dialog
+
+## 6.1 Overview
+
+The Job Manager Dialog displays active and recent background jobs, allowing users to monitor progress and cancel operations.
+
+## 6.2 Dialog Specifications
+
+### Dialog Title
+```
+"Background Jobs"
+```
+
+### Dimensions
+- **Width**: 64 characters (fixed)
+- **Height**: 27 lines (fixed)
+- **Position**: Centered on screen
+
+### Layout Structure
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Background Jobs                                              │ ← Frame (border + title)
+│                                                              │
+│ ┌──────────────────────────────────────────────────────────┐ │ ← Job List (10 lines)
+│ │ [>#1] [R] Copy: file1.txt... - 45%                       │ │
+│ │ [ #2] [R] Delete: old.log... - 20%                       │ │
+│ │ [ #3] [P] Move: Waiting... -                             │ │
+│ │ [ #4] [F] Copy: failed.txt... - 0%                       │ │
+│ │ [ #5] [X] Delete: Cancelled... -                         │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│ ──────────────────────────────────────────────────────────── │ ← Separator (1 line)
+│ Selected Job Details:                                        │ ← Detail label (1 line)
+│ ┌──────────────────────────────────────────────────────────┐ │ ← Detail View (10 lines)
+│ │ Job ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890             │ │
+│ │ Started: 18:22:15                                        │ │
+│ │ Status: Running                                          │ │
+│ │ Progress: Copying file1.txt...                           │ │
+│ │ Current File: C:\temp\very_long_filename...txt           │ │
+│ │ Files: 45/100                                            │ │
+│ │ Bytes: 10.5 MB / 25.0 MB                                 │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │ ← Spacing (1 line)
+│                    [Close]  [Cancel Job]                     │ ← Buttons (1 line)
+└──────────────────────────────────────────────────────────────┘ ← Frame (bottom border)
+```
+
+### Layout Constraints
+
+| Section | Height | Content |
+|---------|--------|---------|
+| Spacing | 1 line | Empty |
+| Job List | 10 lines | 8 items + borders |
+| Separator | 1 line | Horizontal line |
+| Detail Label | 1 line | "Selected Job Details:" |
+| Detail View | 10 lines | Job details text |
+| Spacing | 1 line | Empty |
+| Buttons | 1 line | [Close] [Cancel Job] |
+| **Content Area** | **25 lines** | |
+| **Frame** | **2 lines** | Top (border+title) + Bottom (border) |
+| **Total Dialog** | **27 lines** | |
+
+## 6.3 Job List Format
+
+### Display Format
+```
+[#{short_id}] [{status_char}] {truncated_name} - {percent}%
+```
+
+### Status Characters
+| Char | Status | Color |
+|------|--------|-------|
+| R | Running | Green |
+| P | Pending | Yellow |
+| C | Completed | Gray |
+| F | Failed | Red |
+| X | Cancelled | Yellow |
+
+### Selection Indicator
+```
+> = Selected item (white background)
+  = Unselected item (gray background)
+
+Example:
+[>#1] [R] Copy: very_long_filename...txt - 45%  ← Selected (white bg)
+ [ #2] [R] Delete: old.log - 20%                ← Unselected (gray bg)
+```
+
+### Filename Truncation
+- Smart truncation preserving file extension
+- Example: `very_long_filename.txt` → `very_long_fi...ename.txt`
+
+## 6.4 Detail View Content
+
+```
+Job ID: {uuid}
+Started: {HH:mm:ss}
+Status: {status}
+Progress: {progress_message}
+Current File: {current_operation_detail}
+Files: {completed}/{total}
+Bytes: {completed_bytes} / {total_bytes}
+```
+
+## 6.5 Button Layout
+
+```
+Layout: [Close]  [Cancel Job]
+Position: Bottom of content area, centered horizontally
+Spacing: 2 spaces between buttons
+```
+
+| Button | Display | Action | Shortcut |
+|--------|---------|--------|----------|
+| Close | `[Close]` | Close dialog | Enter (when focused) |
+| Cancel Job | `[Cancel Job]` | Cancel selected job | Enter (when focused) |
+
+## 6.6 Key Bindings
+
+| Key | Action | Scope |
+|-----|--------|-------|
+| Tab | Move focus forward (Job List → Close → Cancel) | All |
+| Shift+Tab | Move focus backward | All |
+| Up | Move selection up in job list | Job list only |
+| Down | Move selection down in job list | Job list only |
+| Enter | Activate focused button | Buttons only |
+| Escape | Close dialog | All |
+| C | Cancel selected job (shortcut) | Job list only |
+
+## 6.7 Focus Fields
+
+| Field Value | Section | Navigation |
+|-------------|---------|------------|
+| 0 | Job List | Up/Down (moves selection) |
+| 1 | Close Button | N/A (single item) |
+| 2 | Cancel Job Button | N/A (single item) |
+
+**Tab Order:** 0 → 1 → 2 → 0 (wraps)
+
+## 6.8 Refresh Behavior
+
+- **Refresh Interval**: 500ms (configurable via `job_manager_refresh_interval_ms`)
+- **Auto-refresh**: List updates automatically while dialog is open
+- **Selection Preservation**: Selected index preserved across refreshes
+
+## 6.9 Cancel Confirmation
+
+When Cancel Job is activated:
+1. Show confirmation dialog: "Cancel job #{short_id} '{name}'?"
+2. Options: [Yes] [No]
+3. On Yes: Call `BackgroundJobManager::cancel_job()`
+4. Refresh list to show updated status
+
+## 6.10 Empty State
+
+When no active jobs:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Background Jobs                                              │
+│                                                              │
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ No active jobs                                           │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│ ──────────────────────────────────────────────────────────── │
+│ Selected Job Details:                                        │
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ No job selected                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ │                                                          │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│                    [Close]  [Cancel Job]                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## 6.11 Color Scheme
+
+| Element | Foreground | Background |
+|---------|------------|------------|
+| Border | Black | - |
+| Background | - | Gray |
+| Title | Black | Gray (transparent) |
+| Job List (unfocused) | White | Gray |
+| Job List (focused) | Black | White |
+| Status chars | Per status | - |
+| Detail View | White | DarkGray |
+| Buttons (unfocused) | Black | Gray |
+| Buttons (focused) | Black | White |
+
+## 6.12 Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `rwf-bin/src/ui/dialog/job_manager.rs` | JobManagerDialog implementation |
+| `rwf-lib/src/job/background_job_manager.rs` | Background job tracking |
+| `docs/DIALOG_DESIGN_SPEC.md` | This specification |
+
+---
+
+# Part 7: Task Panel Specifications
+
+## 7.1 Overview
+
+The Task Panel displays job logs and progress at the bottom of the main window. It supports collapsed (1 line) and expanded (default 10 lines) modes.
+
+## 7.2 Display Modes
+
+### Collapsed Mode (1 line)
+Shows the most recent log entry:
+```
+[18:22:15] [Job #1] [Tab 1] Copy: file1.txt [OK]
+```
+
+### Expanded Mode (10 lines default)
+Shows scrollable log history:
+```
+[18:22:10] [Job #1] [Tab 1] Copy: Starting...
+[18:22:11] [Job #1] [Tab 1] Copy: 5/100 files
+[18:22:12] [Job #1] [Tab 1] Copy: file1.txt [OK]
+[18:22:13] [Job #1] [Tab 1] Copy: file2.txt [OK]
+[18:22:14] [Job #2] [Tab 2] Delete: Starting...
+[18:22:15] [Job #2] [Tab 2] Delete: old.log [OK]
+[18:22:16] [Job #1] [Tab 1] Copy: file3.txt [OK]
+[18:22:17] [Job #1] [Tab 1] Copy: Completed [OK]
+[18:22:18] [Job #2] [Tab 2] Delete: Completed [OK]
+[18:22:19] [Job #3] [Tab 1] Move: Starting...
+```
+
+## 7.3 Log Format
+
+```
+[HH:MM:SS] [Job #N] [Tab N] JobName: Message [TAG]
+```
+
+### Log Tags
+| Tag | Color | Meaning |
+|-----|-------|---------|
+| [OK] | Green | Successful operation |
+| [FAIL] | Red | Failed operation |
+| [WARN] | Yellow | Cancelled or warning |
+| (none) | White | Info/progress |
+
+## 7.4 Key Bindings
+
+| Key | Action |
+|-----|--------|
+| Ctrl+L | Toggle expand/collapse |
+| Ctrl+Up | Resize panel up |
+| Ctrl+Down | Resize panel down |
+| Alt+Up | Scroll up |
+| Alt+Down | Scroll down |
+| Alt+T | Toggle panel (alternative) |
+| Alt+U | Resize up (alternative) |
+| Alt+D | Resize down (alternative) |
+
+## 7.5 Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `task_panel_height` | 10 | Expanded height in lines |
+| `max_task_panel_log_lines` | 1000 | Maximum log lines in memory |
+| `task_panel_refresh_interval_ms` | 500 | Refresh interval |
+
+## 7.6 Spinner Animation
+
+The spinner cycles through 4 frames at 30 FPS:
+```
+Frames: |, /, -, \
+```
+
+Used in:
+- Tab bar for busy tabs
+- Task panel for active jobs
+
+## 7.7 Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `rwf-bin/src/ui/task_panel.rs` | TaskPanel state and rendering |
+| `rwf-lib/src/job/background_job_manager.rs` | Job tracking |

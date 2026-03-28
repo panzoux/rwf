@@ -82,6 +82,13 @@ pub enum DialogContent {
     },
     JobManager {
         selected_index: usize,
+        focused_field: usize,  // 0=Job List, 1=Close, 2=Cancel
+    },
+    CloseTabWithActiveJob {
+        tab_index: usize,
+        tab_name: String,
+        job_ids: Vec<u32>,  // Short IDs of active jobs in this tab
+        focused_field: usize,  // 0=OK, 1=Cancel
     },
     CustomFunctionSelector {
         functions: Vec<CustomFunction>,
@@ -137,6 +144,16 @@ pub enum DialogContent {
         owner: Option<String>,
         #[cfg(unix)]
         group: Option<String>,
+    },
+    FileConflict {
+        conflicts: Vec<ConflictPair>,
+        current_index: usize,
+        focused_button: usize,  // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename, 4=Cancel
+        rename_text: String,
+        rename_cursor: usize,
+        rename_scroll: usize,
+        decisions: Vec<ConflictAction>,
+        error_message: Option<String>,
     },
     Compression {
         // Data fields
@@ -334,9 +351,10 @@ impl Dialog {
     /// Create a job manager dialog
     pub fn job_manager() -> Self {
         Self {
-            title: "Job Manager".to_string(),
+            title: "Background Jobs".to_string(),
             content: DialogContent::JobManager {
                 selected_index: 0,
+                focused_field: 0,  // Start with Job List focused (Part 6.7)
             },
         }
     }
@@ -735,7 +753,7 @@ impl DialogContent {
     /// Get the current selected index for selector dialogs
     pub fn selected_index(&self) -> Option<usize> {
         match self {
-            DialogContent::JobManager { selected_index }
+            DialogContent::JobManager { selected_index, .. }
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
             | DialogContent::TabSelector { selected_index, .. }
@@ -748,7 +766,7 @@ impl DialogContent {
     /// Update the selected index for selector dialogs
     pub fn set_selected_index(&mut self, new_index: usize) {
         match self {
-            DialogContent::JobManager { selected_index }
+            DialogContent::JobManager { selected_index, .. }
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
             | DialogContent::TabSelector { selected_index, .. }
@@ -1082,13 +1100,14 @@ impl DialogContent {
     pub fn job_manager_with_jobs(_jobs: Vec<JobInfo>) -> Self {
         DialogContent::JobManager {
             selected_index: 0,
+            focused_field: 0,
         }
     }
 
     /// Get job manager helper if this is a job manager dialog
     pub fn as_job_manager(&self) -> Option<usize> {
         match self {
-            DialogContent::JobManager { selected_index } => Some(*selected_index),
+            DialogContent::JobManager { selected_index, .. } => Some(*selected_index),
             _ => None,
         }
     }
@@ -1632,6 +1651,80 @@ pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunctio
         Ok(functions)
     } else {
         Ok(Vec::new())
+    }
+}
+
+// ============================================================================
+// File Conflict Dialog Types
+// ============================================================================
+
+/// A single file conflict between source and destination
+#[derive(Debug, Clone)]
+pub struct ConflictPair {
+    pub source: crate::model::FileEntry,
+    pub dest: crate::model::FileEntry,
+    pub source_path: crate::model::Location,
+    pub dest_path: crate::model::Location,
+    pub is_directory: bool,
+}
+
+/// User's decision for resolving a conflict
+#[derive(Debug, Clone)]
+pub enum ConflictAction {
+    Force,
+    OverwriteIfNewer,
+    Skip,
+    Rename { new_name: String },
+}
+
+/// Status of a file conflict for display
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConflictStatus {
+    SameSizeDate,
+    SameSizeSourceNewer,
+    SameSizeDestNewer,
+    DifferentSizeSourceNewer,
+    DifferentSizeDestNewer,
+    DirectoryMerge,
+}
+
+impl ConflictPair {
+    /// Determine the conflict status for display
+    pub fn get_status(&self) -> ConflictStatus {
+        if self.is_directory {
+            ConflictStatus::DirectoryMerge
+        } else if self.source.size == self.dest.size {
+            if self.source.modified == self.dest.modified {
+                ConflictStatus::SameSizeDate
+            } else if self.source.modified > self.dest.modified {
+                ConflictStatus::SameSizeSourceNewer
+            } else {
+                ConflictStatus::SameSizeDestNewer
+            }
+        } else {
+            // Different sizes
+            if self.source.modified > self.dest.modified {
+                ConflictStatus::DifferentSizeSourceNewer
+            } else {
+                ConflictStatus::DifferentSizeDestNewer
+            }
+        }
+    }
+
+    /// Get display indicator and message for the conflict status
+    pub fn get_status_message(&self) -> (&'static str, String) {
+        match self.get_status() {
+            ConflictStatus::SameSizeDate => ("✓", "Same size and date".to_string()),
+            ConflictStatus::SameSizeSourceNewer => ("✓", "Same size, Source is newer".to_string()),
+            ConflictStatus::SameSizeDestNewer => ("⚠", "Same size, Destination is newer".to_string()),
+            ConflictStatus::DifferentSizeSourceNewer => ("⚠", format!("Different size (Source: {}, Dest: {})", 
+                crate::model::file_entry::format_size(self.source.size), 
+                crate::model::file_entry::format_size(self.dest.size))),
+            ConflictStatus::DifferentSizeDestNewer => ("⚠", format!("Different size (Source: {}, Dest: {})", 
+                crate::model::file_entry::format_size(self.source.size), 
+                crate::model::file_entry::format_size(self.dest.size))),
+            ConflictStatus::DirectoryMerge => ("⚠", "Will merge directories".to_string()),
+        }
     }
 }
 

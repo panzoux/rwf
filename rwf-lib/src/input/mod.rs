@@ -144,9 +144,13 @@ impl KeyBindings {
         normal_mode.insert("?".to_string(), Action::Help);
         normal_mode.insert("Shift+/".to_string(), Action::Help);
         normal_mode.insert("F1".to_string(), Action::Help);
+        // Job management (Alt+j instead of Ctrl+j to avoid terminal conflicts)
         normal_mode.insert("Alt+j".to_string(), Action::JobManager);
-        normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
-        normal_mode.insert("Ctrl+Shift+Right".to_string(), Action::JobManager);
+        normal_mode.insert("Alt+J".to_string(), Action::JobManager);
+        
+        // Test jobs
+        normal_mode.insert("9".to_string(), Action::CountDownJob(0));  // 0 = default 180 seconds
+        
         normal_mode.insert("H".to_string(), Action::CalculateDirectorySize);
         
         // Pane operations
@@ -368,6 +372,9 @@ pub enum Action {
     // Archive operations
     Compress,
     Extract,
+
+    // Test jobs
+    CountDownJob(u32),  // Countdown test job (parameter: duration in seconds, 0 = default 180)
 
     // Internal
     PendingSequence,
@@ -673,46 +680,25 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             };
-            
+
             if sources.is_empty() {
                 return vec![];
             }
-            
+
             let dest = state.opposite_pane().current_location.clone();
-            
-            // Calculate total size of files to be copied
-            let total_size: u64 = state.active_pane()
-                .entries
-                .iter()
-                .filter(|e| sources.contains(&e.location))
-                .map(|e| e.size)
-                .sum();
-            
-            // Format size for display
-            let size_str = crate::model::format_size(total_size);
-            
-            // Show confirmation dialog with source files, destination, and total size
-            let message = if sources.len() == 1 {
-                format!(
-                    "Copy {} ({}) to {}?",
-                    sources[0].display_path(),
-                    size_str,
-                    dest.display_path()
-                )
-            } else {
-                format!(
-                    "Copy {} files ({}) to {}?",
-                    sources.len(),
-                    size_str,
-                    dest.display_path()
-                )
-            };
-            
-            vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog {
-                    title: "Copy".to_string(),
-                    content: crate::model::DialogContent::Confirmation { message },
-                },
+
+            // Check for conflicts first (async - needs backend)
+            // For now, create job spec and let executor handle conflicts
+            // TODO: Implement async conflict detection before job creation
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Copy {
+                sources: sources.clone(),
+                dest,
+            });
+
+            vec![Transition::CreateAndStartFileJob {
+                spec: job_spec,
+                name: format!("Copy ({} files)", sources.len()),
+                description: format!("Copy {} files", sources.len()),
             }]
         }
         Action::Move => {
@@ -729,25 +715,24 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             };
-            
+
             if sources.is_empty() {
                 return vec![];
             }
-            
+
             let dest = state.opposite_pane().current_location.clone();
-            
-            // Show confirmation dialog
-            let message = if sources.len() == 1 {
-                format!("Move {} to {}?", sources[0].display_path(), dest.display_path())
-            } else {
-                format!("Move {} files to {}?", sources.len(), dest.display_path())
-            };
-            
-            vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog {
-                    title: "Move".to_string(),
-                    content: crate::model::DialogContent::Confirmation { message },
-                },
+
+            // Create job spec and start immediately - NO confirmation dialog
+            // User already pressed 'M' intentionally, progress shown in task pane
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move {
+                sources: sources.clone(),
+                dest,
+            });
+
+            vec![Transition::CreateAndStartFileJob {
+                spec: job_spec,
+                name: format!("Move ({} files)", sources.len()),
+                description: format!("Move {} files", sources.len()),
             }]
         }
         Action::Delete => {
@@ -764,23 +749,21 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             };
-            
+
             if targets.is_empty() {
                 return vec![];
             }
-            
-            // Show confirmation dialog
-            let message = if targets.len() == 1 {
-                format!("Delete {}?", targets[0].display_path())
-            } else {
-                format!("Delete {} files?", targets.len())
-            };
-            
-            vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog {
-                    title: "Delete".to_string(),
-                    content: crate::model::DialogContent::Confirmation { message },
-                },
+
+            // Create job spec and start immediately - NO confirmation dialog
+            // User already pressed 'Delete' intentionally, progress shown in task pane
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete {
+                targets: targets.clone(),
+            });
+
+            vec![Transition::CreateAndStartFileJob {
+                spec: job_spec,
+                name: format!("Delete ({} files)", targets.len()),
+                description: format!("Delete {} files", targets.len()),
             }]
         }
         Action::Rename => {
@@ -936,7 +919,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CalculateSize {
                         location: entry.location.clone(),
                     });
-                    
+
                     vec![Transition::EnqueueJob { spec: job_spec }]
                 } else {
                     // Not a directory, do nothing
@@ -945,6 +928,24 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![]
             }
+        }
+        Action::CountDownJob(duration) => {
+            // Create a countdown test job that starts immediately
+            // We bypass the queue and start the job directly
+            let duration_secs = if *duration > 0 { *duration } else { 180 };
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CountDown {
+                duration_secs,
+                start_value: duration_secs,
+            });
+            // Create BackgroundJob for UI, enqueue, AND start immediately
+            // All in one transition to ensure atomicity
+            vec![
+                Transition::CreateAndStartCountDownJob {
+                    spec: job_spec,
+                    name: format!("CountDownJob {}", duration_secs),
+                    description: "Countdown test job".to_string(),
+                },
+            ]
         }
         Action::Refresh => {
             // Refresh the current pane by clearing cache and reloading directory

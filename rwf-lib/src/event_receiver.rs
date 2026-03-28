@@ -8,6 +8,7 @@
 use crate::state::{Transition, AppState, StateUpdateResult, update_state};
 use crate::worker_pool::JobEvent;
 use crate::job::OpResult;
+use tracing::debug;
 
 /// Process a JobEvent and convert it to a Transition
 ///
@@ -24,29 +25,38 @@ use crate::job::OpResult;
 pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
     match event {
         JobEvent::Started(job_id) => {
-            // Job has started - no state change needed, just UI update
-            // The job is already in the active jobs map
-            Transition::UpdateJobProgress { job_id, progress: 0.0 }
+            debug!("JobEvent::Started received for job_id={:?}", job_id);
+            // Job has started - mark as running and update UI
+            Transition::JobStarted { job_id }
         }
-        
+
         JobEvent::Progress(job_id, progress) => {
             Transition::UpdateJobProgress { job_id, progress }
         }
-        
+
+        JobEvent::ProgressWithDetail(job_id, progress, progress_message, operation_detail) => {
+            Transition::UpdateJobProgressWithDetail {
+                job_id,
+                progress,
+                progress_message,
+                operation_detail,
+            }
+        }
+
         JobEvent::Completed(job_id, success_data) => {
-            Transition::CompleteJob { 
-                job_id, 
-                result: OpResult::Success(success_data) 
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(success_data)
             }
         }
-        
+
         JobEvent::Failed(job_id, error) => {
-            Transition::CompleteJob { 
-                job_id, 
-                result: OpResult::Failed(error) 
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed(error)
             }
         }
-        
+
         JobEvent::Cancelled(job_id) => {
             Transition::AcknowledgeCancel { job_id }
         }
@@ -71,14 +81,24 @@ pub fn process_pending_events(
     state: &mut AppState,
 ) -> Vec<StateUpdateResult> {
     let mut results = Vec::new();
-    
+
     // Process all available events without blocking
     while let Some(event) = pool.try_recv_event() {
+        debug!("process_pending_events: Received event {:?}", 
+            match &event {
+                JobEvent::Started(_) => "Started",
+                JobEvent::Progress(_, _) => "Progress",
+                JobEvent::ProgressWithDetail(_, _, _, _) => "ProgressWithDetail",
+                JobEvent::Completed(_, _) => "Completed",
+                JobEvent::Failed(_, _) => "Failed",
+                JobEvent::Cancelled(_) => "Cancelled",
+            }
+        );
         let transition = map_job_event_to_transition(event);
         let result = update_state(state, transition);
         results.push(result);
     }
-    
+
     results
 }
 

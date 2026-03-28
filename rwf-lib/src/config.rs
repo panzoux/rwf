@@ -51,10 +51,14 @@ pub struct AppConfig {
     /// Help language (default: "en")
     #[serde(rename = "HelpLanguage")]
     pub help_language: String,
-    
+
     /// Archive configuration
     #[serde(default)]
     pub archive: ArchiveConfig,
+
+    /// Job manager configuration
+    #[serde(default)]
+    pub job_manager: JobManagerConfig,
 }
 
 /// Archive configuration for compression operations
@@ -91,6 +95,67 @@ impl Default for ArchiveConfig {
     }
 }
 
+/// Job manager configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct JobManagerConfig {
+    /// Maximum number of simultaneous jobs (default: 4)
+    #[serde(default = "default_max_simultaneous_jobs")]
+    pub max_simultaneous_jobs: usize,
+
+    /// Update interval for job progress in milliseconds (default: 300, min: 100)
+    #[serde(default = "default_update_interval_ms")]
+    pub update_interval_ms: u64,
+
+    /// Default task panel height in lines (default: 10)
+    #[serde(default = "default_task_panel_height")]
+    pub task_panel_height: usize,
+
+    /// Refresh interval for task panel in milliseconds (default: 500)
+    #[serde(default = "default_task_panel_refresh_interval_ms")]
+    pub task_panel_refresh_interval_ms: u64,
+
+    /// Maximum log lines to keep in memory for task panel (default: 1000)
+    #[serde(default = "default_max_task_panel_log_lines")]
+    pub max_task_panel_log_lines: usize,
+
+    /// Maximum number of log files to keep (default: 5)
+    #[serde(default = "default_max_log_files")]
+    pub max_log_files: usize,
+
+    /// Refresh interval for job manager dialog in milliseconds (default: 500)
+    #[serde(default = "default_job_manager_refresh_interval_ms")]
+    pub job_manager_refresh_interval_ms: u64,
+
+    /// How long to keep completed/cancelled jobs in seconds (default: 5)
+    #[serde(default = "default_job_retention_period_secs")]
+    pub job_retention_period_secs: u64,
+}
+
+fn default_max_simultaneous_jobs() -> usize { 4 }
+fn default_update_interval_ms() -> u64 { 300 }
+fn default_task_panel_height() -> usize { 10 }
+fn default_task_panel_refresh_interval_ms() -> u64 { 500 }
+fn default_max_task_panel_log_lines() -> usize { 1000 }
+fn default_max_log_files() -> usize { 5 }
+fn default_job_manager_refresh_interval_ms() -> u64 { 500 }
+fn default_job_retention_period_secs() -> u64 { 5 }
+
+impl Default for JobManagerConfig {
+    fn default() -> Self {
+        Self {
+            max_simultaneous_jobs: default_max_simultaneous_jobs(),
+            update_interval_ms: default_update_interval_ms(),
+            task_panel_height: default_task_panel_height(),
+            task_panel_refresh_interval_ms: default_task_panel_refresh_interval_ms(),
+            max_task_panel_log_lines: default_max_task_panel_log_lines(),
+            max_log_files: default_max_log_files(),
+            job_manager_refresh_interval_ms: default_job_manager_refresh_interval_ms(),
+            job_retention_period_secs: default_job_retention_period_secs(),
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -112,6 +177,7 @@ impl Default for AppConfig {
             editor_command: None,  // Use system default editor
             help_language: "en".to_string(),
             archive: ArchiveConfig::default(),
+            job_manager: JobManagerConfig::default(),
         }
     }
 }

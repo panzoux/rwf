@@ -108,6 +108,11 @@ pub enum JobKind {
         parts: Vec<Location>,
         dest: Location,
     },
+    /// Countdown test job for testing job management features
+    CountDown {
+        duration_secs: u32,
+        start_value: u32,
+    },
 }
 
 /// Action to perform with custom function output
@@ -188,6 +193,69 @@ pub enum DiffType {
     Modified,
     Added,
     Deleted,
+}
+
+// ============================================================================
+// Background Job Types (for UI display)
+// ============================================================================
+
+/// Unique identifier for a background job with display-friendly short ID
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BackgroundJobId {
+    pub uuid: JobId,
+    pub short_id: u32,
+}
+
+/// Job status for UI display
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Background job with user-visible metadata
+#[derive(Debug, Clone)]
+pub struct BackgroundJob {
+    pub id: BackgroundJobId,
+    pub name: String,
+    pub description: String,
+    pub status: JobStatus,
+    pub progress_percent: f64,
+    pub progress_message: String,
+    pub current_operation_detail: String,
+    pub start_time: SystemTime,
+    pub end_time: Option<SystemTime>,
+    pub cancel_token: CancellationToken,
+    pub tab_id: usize,
+    pub tab_name: String,
+}
+
+impl BackgroundJob {
+    pub fn is_active(&self) -> bool {
+        matches!(self.status, JobStatus::Pending | JobStatus::Running)
+    }
+    
+    /// Get status character for display
+    pub fn status_char(&self) -> char {
+        match self.status {
+            JobStatus::Pending => 'P',
+            JobStatus::Running => 'R',
+            JobStatus::Completed => 'C',
+            JobStatus::Failed => 'F',
+            JobStatus::Cancelled => 'X',
+        }
+    }
+}
+
+/// Progress update for jobs
+#[derive(Debug, Clone)]
+pub struct JobProgress {
+    pub percent: f64,
+    pub message: String,
+    pub current_operation_detail: String,
 }
 
 /// Manages background job queue and execution
@@ -404,8 +472,11 @@ pub struct JobManagerStats {
 }
 
 pub mod job_executor;
+pub mod background_job_manager;
 
 #[cfg(test)]
 mod job_properties;
 
 pub use job_executor::JobExecutor;
+pub use job_executor::detect_conflicts;
+pub use background_job_manager::{BackgroundJobManager, BackgroundJobEvent, BackgroundJobStats};

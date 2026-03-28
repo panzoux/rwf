@@ -12,20 +12,20 @@ use ratatui::{
 use rwf_lib::AppState;
 use super::{parse_color, shorten_path};
 
-/// Render the tab bar
-pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+/// Render the tab bar with spinner animation for busy tabs
+pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState, spinner: &str) {
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
     let mut spans = Vec::new();
-    
+
     // Calculate how many tabs can fit in the available width
     // Each tab takes approximately 6-8 characters: " [~1~] " or "  1  "
     let avg_tab_width = 8;
     let max_visible_tabs = (area.width as usize / avg_tab_width).max(1);
-    
+
     let total_tabs = state.tabs.tabs.len();
     let active_idx = state.tabs.active_index;
-    
+
     // Calculate scroll window to keep active tab visible
     let (start_idx, end_idx) = if total_tabs <= max_visible_tabs {
         // All tabs fit, show them all
@@ -35,17 +35,17 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         let half_window = max_visible_tabs / 2;
         let start = active_idx.saturating_sub(half_window);
         let end = (start + max_visible_tabs).min(total_tabs);
-        
+
         // Adjust start if we're at the end
         let start = if end == total_tabs {
             total_tabs.saturating_sub(max_visible_tabs)
         } else {
             start
         };
-        
+
         (start, end)
     };
-    
+
     // Add left scroll indicator if needed
     if start_idx > 0 {
         spans.push(Span::styled(
@@ -59,16 +59,14 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         let tab = &state.tabs.tabs[idx];
         let is_active = idx == state.tabs.active_index;
 
-        // Check if tab has active jobs
-        let has_jobs = state.jobs.active.values().any(|job| {
-            matches_tab_location(job, &tab.left_pane.current_location)
-                || matches_tab_location(job, &tab.right_pane.current_location)
-        });
+        // Check if tab has active jobs using BackgroundJobManager
+        let job_count = state.background_jobs.get_active_job_count(idx);
+        let has_jobs = job_count > 0;
 
         // Get shortened paths for left and right panes
         let left_path = shorten_path(&tab.left_pane.current_location.display_path(), 15, ellipsis);
         let right_path = shorten_path(&tab.right_pane.current_location.display_path(), 15, ellipsis);
-        
+
         // Determine which pane is active (only for the active tab)
         let active_marker = if is_active {
             match state.ui.active_pane {
@@ -79,9 +77,16 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
             format!("{}|{}", left_path, right_path)
         };
 
-        // Format tab label with pane paths
+        // Format tab label with spinner for busy tabs (TWF style)
+        // Multiple spinners for multiple jobs: /, //, ///, etc.
+        let spinner_display = if has_jobs {
+            spinner.repeat(job_count.min(3))  // Max 3 spinners
+        } else {
+            String::new()
+        };
+
         let label = if has_jobs {
-            format!(" [~{}:{}~] ", idx + 1, active_marker)
+            format!(" [{}{}:{}] ", spinner_display, idx + 1, active_marker)
         } else if is_active {
             format!(" [{}:{}] ", idx + 1, active_marker)
         } else {
@@ -102,7 +107,7 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
 
         spans.push(Span::styled(label, style));
     }
-    
+
     // Add right scroll indicator if needed
     if end_idx < total_tabs {
         spans.push(Span::styled(
@@ -116,27 +121,4 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(parse_color(&colors.tabbar_background_color)));
 
     frame.render_widget(paragraph, area);
-}
-
-/// Check if a job matches a tab location
-fn matches_tab_location(
-    job: &rwf_lib::job::Job,
-    location: &rwf_lib::model::Location,
-) -> bool {
-    use rwf_lib::job::JobKind;
-
-    match &job.spec.kind {
-        JobKind::ReadDirectory { location: loc } => loc == location,
-        JobKind::Copy { sources, dest } => {
-            sources.iter().any(|s| s == location) || dest == location
-        }
-        JobKind::Move { sources, dest } => {
-            sources.iter().any(|s| s == location) || dest == location
-        }
-        JobKind::Delete { targets } => targets.iter().any(|t| t == location),
-        JobKind::Mkdir { location: loc } => loc == location,
-        JobKind::Rename { from, .. } => from == location,
-        JobKind::CalculateSize { location: loc } => loc == location,
-        _ => false,
-    }
 }

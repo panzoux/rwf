@@ -189,7 +189,7 @@ public class JobManager
 │                                                              │
 │ ┌──────────────────────────────────────────────────────────┐ │
 │ │ [>#1] [R] Copy: file1.txt... - 45%                       │ │ ← Job List (8 lines)
-│ │ [ #2] [R] Delete: old.log... - 20%                       │ │
+│ │ [ #2] [R] Delete: old.log... - 20%                       │ │  no borders!
 │ │ [ #3] [P] Move: Waiting... -                             │ │
 │ │ [ #4] [F] Copy: failed.txt... - 0%                       │ │
 │ │ [ #5] [X] Delete: Cancelled... -                         │ │
@@ -197,12 +197,11 @@ public class JobManager
 │ │                                                          │ │
 │ │                                                          │ │
 │ └──────────────────────────────────────────────────────────┘ │
-│ ──────────────────────────────────────────────────────────── │ ← Separator
 │ Selected Job Details:                                        │
 │ ┌──────────────────────────────────────────────────────────┐ │
 │ │ Job ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890             │ │
-│ │ Started: 18:22:15                                        │ │ ← Detail View (10 lines)
-│ │ Status: Running                                          │ │
+│ │ Started: 18:22:15                                        │ │ ← Detail View (8 lines)
+│ │ Status: Running                                          │ │   width 64 (at least)
 │ │ Progress: Copying file1.txt...                           │ │
 │ │ Current File: C:\temp\very_long_filename...txt           │ │
 │ │ Files: 45/100                                            │ │
