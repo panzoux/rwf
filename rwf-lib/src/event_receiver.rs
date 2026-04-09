@@ -76,8 +76,8 @@ pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
 /// # Returns
 ///
 /// A vector of StateUpdateResults from processing all available events
-pub fn process_pending_events(
-    pool: &mut crate::worker_pool::WorkerPool,
+pub fn process_pending_events<B: crate::backend::FilesystemBackend + 'static, A: crate::backend::ArchiveHandler + 'static>(
+    pool: &mut crate::worker_pool::WorkerPool<B, A>,
     state: &mut AppState,
 ) -> Vec<StateUpdateResult> {
     let mut results = Vec::new();
@@ -115,8 +115,8 @@ pub fn process_pending_events(
 /// # Returns
 ///
 /// An Option containing the StateUpdateResult if an event was received, None if the channel closed
-pub async fn process_next_event(
-    pool: &mut crate::worker_pool::WorkerPool,
+pub async fn process_next_event<B: crate::backend::FilesystemBackend + 'static, A: crate::backend::ArchiveHandler + 'static>(
+    pool: &mut crate::worker_pool::WorkerPool<B, A>,
     state: &mut AppState,
 ) -> Option<StateUpdateResult> {
     let event = pool.recv_event().await?;
@@ -139,11 +139,10 @@ mod tests {
         let transition = map_job_event_to_transition(event);
         
         match transition {
-            Transition::UpdateJobProgress { job_id: id, progress } => {
+            Transition::JobStarted { job_id: id } => {
                 assert_eq!(id, job_id);
-                assert_eq!(progress, 0.0);
             }
-            _ => panic!("Expected UpdateJobProgress transition"),
+            _ => panic!("Expected JobStarted transition"),
         }
     }
 

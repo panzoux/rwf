@@ -103,6 +103,59 @@ impl PaneModel {
             self.apply_filter(mask);
         }
     }
+
+    /// Update scroll offset based on cursor position and visible height
+    pub fn update_scroll(&mut self, visible_height: usize, scroll_margin: usize) {
+        if self.entries.is_empty() {
+            self.scroll_offset = 0;
+            return;
+        }
+
+        // Clamp cursor to entry bounds
+        self.cursor = self.cursor.min(self.entries.len().saturating_sub(1));
+
+        // If all entries fit in visible area, no scrolling needed
+        if self.entries.len() <= visible_height {
+            self.scroll_offset = 0;
+            return;
+        }
+
+        // 1. Ensure cursor is at least visible (handle large jumps)
+        if self.cursor < self.scroll_offset {
+            // Cursor is above visible area
+            self.scroll_offset = self.cursor.saturating_sub(scroll_margin);
+        } else if self.cursor >= self.scroll_offset + visible_height {
+            // Cursor is below visible area
+            let max_offset = self.entries.len().saturating_sub(visible_height);
+            let desired_offset = self.cursor + scroll_margin + 1 - visible_height;
+            self.scroll_offset = desired_offset.min(max_offset);
+        }
+
+        // 2. Apply smooth scrolling logic (maintain margin)
+        let cursor_in_view = self.cursor.saturating_sub(self.scroll_offset);
+        
+        // Scroll UP if cursor too close to top
+        if cursor_in_view < scroll_margin && self.cursor > 0 {
+            self.scroll_offset = self.cursor.saturating_sub(scroll_margin);
+        }
+        // Scroll DOWN if cursor too close to bottom
+        else if visible_height > scroll_margin {
+            let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1);
+            let max_offset = self.entries.len().saturating_sub(visible_height);
+            
+            // Check if we're in the "end zone" where scroll_margin can't be maintained
+            let end_zone_start = self.entries.len().saturating_sub(scroll_margin + 1);
+            
+            if self.cursor >= end_zone_start {
+                // Near the end - just set scroll to max_offset to avoid blank lines
+                self.scroll_offset = max_offset;
+            } else if cursor_in_view > bottom_trigger {
+                // Normal scrolling - maintain scroll_margin
+                let desired_offset = self.cursor.saturating_sub(bottom_trigger);
+                self.scroll_offset = desired_offset.min(max_offset);
+            }
+        }
+    }
 }
 
 /// Convert wildcard pattern to regex pattern

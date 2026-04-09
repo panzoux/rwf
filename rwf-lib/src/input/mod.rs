@@ -144,9 +144,11 @@ impl KeyBindings {
         normal_mode.insert("?".to_string(), Action::Help);
         normal_mode.insert("Shift+/".to_string(), Action::Help);
         normal_mode.insert("F1".to_string(), Action::Help);
-        // Job management (Alt+j instead of Ctrl+j to avoid terminal conflicts)
+        // Job management
         normal_mode.insert("Alt+j".to_string(), Action::JobManager);
         normal_mode.insert("Alt+J".to_string(), Action::JobManager);
+        normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
+        normal_mode.insert("Ctrl+J".to_string(), Action::JobManager);
         
         // Test jobs
         normal_mode.insert("9".to_string(), Action::CountDownJob(0));  // 0 = default 180 seconds
@@ -687,15 +689,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
 
             let dest = state.opposite_pane().current_location.clone();
 
-            // Check for conflicts first (async - needs backend)
-            // For now, create job spec and let executor handle conflicts
-            // TODO: Implement async conflict detection before job creation
+            // Create job spec with pending transition - will start after conflict check
+            // User already pressed 'C' intentionally, progress shown in task pane
             let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Copy {
                 sources: sources.clone(),
                 dest,
             });
 
-            vec![Transition::CreateAndStartFileJob {
+            vec![Transition::CreatePendingFileJob {
                 spec: job_spec,
                 name: format!("Copy ({} files)", sources.len()),
                 description: format!("Copy {} files", sources.len()),
@@ -722,14 +723,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
 
             let dest = state.opposite_pane().current_location.clone();
 
-            // Create job spec and start immediately - NO confirmation dialog
+            // Create job spec with pending transition - will start after conflict check
             // User already pressed 'M' intentionally, progress shown in task pane
             let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move {
                 sources: sources.clone(),
                 dest,
             });
 
-            vec![Transition::CreateAndStartFileJob {
+            vec![Transition::CreatePendingFileJob {
                 spec: job_spec,
                 name: format!("Move ({} files)", sources.len()),
                 description: format!("Move {} files", sources.len()),
@@ -754,8 +755,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 return vec![];
             }
 
-            // Create job spec and start immediately - NO confirmation dialog
-            // User already pressed 'Delete' intentionally, progress shown in task pane
+            // Create job spec directly - NO confirmation dialog
+            // User already pressed 'D' intentionally, progress shown in task pane
             let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete {
                 targets: targets.clone(),
             });
@@ -1051,7 +1052,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             debug!("Creating compression dialog with {} file(s)", sources.len());
             // Show compression dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::compression(sources),
+                dialog: crate::model::Dialog::compression(sources, state.config.text_input.edit_mode),
             }]
         }
         Action::Extract => {

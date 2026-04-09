@@ -26,13 +26,16 @@ pub enum JobEvent {
 }
 
 /// Worker pool managing background job execution
-pub struct WorkerPool {
+pub struct WorkerPool<B: FilesystemBackend, A: ArchiveHandler> {
     workers: Vec<tokio::task::JoinHandle<()>>,
     job_sender: mpsc::UnboundedSender<JobSpec>,
     event_receiver: mpsc::UnboundedReceiver<JobEvent>,
+    backend: Arc<B>,
+    #[allow(dead_code)]
+    archive_handler: Arc<A>,
 }
 
-impl WorkerPool {
+impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, A> {
     /// Create a new worker pool with the specified number of workers
     ///
     /// # Arguments
@@ -44,7 +47,7 @@ impl WorkerPool {
     /// # Returns
     ///
     /// A new WorkerPool instance ready to accept jobs
-    pub fn new<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static>(
+    pub fn new(
         worker_count: usize,
         backend: Arc<B>,
         archive_handler: Arc<A>,
@@ -98,9 +101,22 @@ impl WorkerPool {
             workers,
             job_sender,
             event_receiver,
+            backend,
+            archive_handler,
         }
     }
-    
+
+    /// Detect file conflicts for a copy/move operation
+    ///
+    /// Returns a list of conflicts (source/dest pairs that exist)
+    pub async fn detect_conflicts(
+        &self,
+        sources: &[crate::model::Location],
+        dest: &crate::model::Location,
+    ) -> Vec<crate::model::dialog::ConflictPair> {
+        crate::job::detect_conflicts(sources, dest, self.backend.as_ref(), crate::job::JobId::new(), 0).await.unwrap_or_default()
+    }
+
     /// Submit a job to the worker pool
     ///
     /// Jobs are executed in FIFO order by available workers.

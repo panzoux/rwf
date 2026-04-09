@@ -68,7 +68,7 @@ fn test_job_manager_action() {
         Transition::ShowDialog { dialog } => {
             assert_eq!(dialog.title, "Job Manager");
             match &dialog.content {
-                DialogContent::JobManager { selected_index } => {
+                DialogContent::JobManager { selected_index, .. } => {
                     assert_eq!(*selected_index, 0);
                 }
                 _ => panic!("Expected JobManager dialog content"),
@@ -151,7 +151,7 @@ fn test_job_manager_dialog_creation() {
     
     assert_eq!(dialog.title, "Job Manager");
     match dialog.content {
-        DialogContent::JobManager { selected_index } => {
+        DialogContent::JobManager { selected_index, .. } => {
             assert_eq!(selected_index, 0);
         }
         _ => panic!("Expected JobManager dialog content"),

@@ -6,7 +6,8 @@
 use crate::job::{JobManager, JobId, JobSpec, BackgroundJobManager};
 use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState, NavigationStateCache};
 use crate::log_manager::LogManager;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+use tracing::debug;
 
 /// Central application state coordinating all components
 #[derive(Debug)]
@@ -175,9 +176,1335 @@ impl AppState {
         
         state
     }
+
+    // --- Transition Handlers ---
+
+    fn handle_navigation_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::SwitchPane => {
+                let old_pane = self.ui.active_pane;
+                self.ui.active_pane = self.ui.active_pane.opposite();
+                debug!("SwitchPane transition: {:?} -> {:?}", old_pane, self.ui.active_pane);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CursorMove { pane, delta } => {
+                let visible_height = self.ui.layout.pane_height;
+                let scroll_margin = self.config.ui.scroll_offset;
+                
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                
+                if !pane_model.entries.is_empty() {
+                    let new_cursor = (pane_model.cursor as isize + *delta)
+                        .max(0)
+                        .min(pane_model.entries.len() as isize - 1) as usize;
+                    pane_model.cursor = new_cursor;
+                    pane_model.update_scroll(visible_height, scroll_margin);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CursorJump { pane, position } => {
+                let visible_height = self.ui.layout.pane_height;
+                let scroll_margin = self.config.ui.scroll_offset;
+                
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                
+                if !pane_model.entries.is_empty() {
+                    pane_model.cursor = (*position).min(pane_model.entries.len().saturating_sub(1));
+                    pane_model.update_scroll(visible_height, scroll_margin);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ChangeLocation { pane, location } => {
+                debug!("ChangeLocation: pane = {:?}, location = {}", pane, location.display_path());
+                
+                let cached_entries = self.cache.get(location);
+                
+                let tab = self.current_tab();
+                let (current_loc, current_cursor, current_scroll) = match pane {
+                    crate::model::ActivePane::Left => (
+                        tab.left_pane.current_location.clone(),
+                        tab.left_pane.cursor,
+                        tab.left_pane.scroll_offset,
+                    ),
+                    crate::model::ActivePane::Right => (
+                        tab.right_pane.current_location.clone(),
+                        tab.right_pane.cursor,
+                        tab.right_pane.scroll_offset,
+                    ),
+                };
+                
+                self.navigation_cache.save(current_loc.clone(), current_cursor, current_scroll);
+                let restored_position = self.navigation_cache.restore(location);
+                
+                let tab_mut = self.current_tab_mut();
+                tab_mut.history.push(*pane, current_loc);
+                
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab_mut.left_pane,
+                    crate::model::ActivePane::Right => &mut tab_mut.right_pane,
+                };
+                pane_model.current_location = location.clone();
+                
+                if let Some((cached_cursor, cached_scroll)) = restored_position {
+                    pane_model.cursor = cached_cursor;
+                    pane_model.scroll_offset = cached_scroll;
+                } else {
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+                }
+                
+                if let Some(entries) = cached_entries {
+                    pane_model.entries = entries;
+                    pane_model.apply_sort();
+                    if !pane_model.entries.is_empty() {
+                        pane_model.cursor = pane_model.cursor.min(pane_model.entries.len() - 1);
+                    } else {
+                        pane_model.cursor = 0;
+                        pane_model.scroll_offset = 0;
+                    }
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location: location.clone() });
+                    Some(StateUpdateResult::with_job(job_spec))
+                }
+            }
+            Transition::NavigateUp { pane } => {
+                let tab = self.current_tab();
+                let current_location = match pane {
+                    crate::model::ActivePane::Left => &tab.left_pane.current_location,
+                    crate::model::ActivePane::Right => &tab.right_pane.current_location,
+                };
+                
+                if let Some(parent) = current_location.parent() {
+                    self.handle_navigation_transition(&Transition::ChangeLocation { 
+                        pane: *pane, 
+                        location: parent 
+                    })
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::NavigateHistory { pane, direction } => {
+                let location = {
+                    let tab = self.current_tab_mut();
+                    match direction {
+                        HistoryDirection::Back => tab.history.go_back(*pane),
+                        HistoryDirection::Forward => tab.history.go_forward(*pane),
+                    }
+                };
+                
+                if let Some(location) = location {
+                    let cached_entries = self.cache.get(&location);
+                    let tab = self.current_tab_mut();
+                    let pane_model = match pane {
+                        crate::model::ActivePane::Left => &mut tab.left_pane,
+                        crate::model::ActivePane::Right => &mut tab.right_pane,
+                    };
+                    pane_model.current_location = location.clone();
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+                    
+                    if let Some(entries) = cached_entries {
+                        pane_model.entries = entries;
+                        pane_model.apply_sort();
+                        Some(StateUpdateResult::with_ui_change())
+                    } else {
+                        let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+                        Some(StateUpdateResult::with_job(job_spec))
+                    }
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_tab_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::CreateTab => {
+                let new_index = self.tabs.create_tab();
+                self.tabs.active_index = new_index;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CloseTab { index } => {
+                let active_job_ids: Vec<u32> = self.background_jobs.get_active_jobs()
+                    .filter(|j| j.tab_id == *index)
+                    .map(|j| j.id.short_id)
+                    .collect();
+
+                if !active_job_ids.is_empty() {
+                    let tab_name = format!("Tab {}", index + 1);
+                    let dialog = crate::model::Dialog {
+                        title: "Confirm Close Tab".to_string(),
+                        content: crate::model::DialogContent::CloseTabWithActiveJob {
+                            tab_index: *index,
+                            tab_name,
+                            job_ids: active_job_ids,
+                            focused_field: 0,
+                        },
+                    };
+                    self.dialogs.push(dialog);
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    if self.tabs.close_tab(*index) {
+                        Some(StateUpdateResult::with_ui_change())
+                    } else {
+                        Some(StateUpdateResult::none())
+                    }
+                }
+            }
+            Transition::NextTab => {
+                self.tabs.switch_to_next();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::PrevTab => {
+                self.tabs.switch_to_prev();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::SwitchTab { index } => {
+                if *index < self.tabs.tabs.len() {
+                    self.tabs.active_index = *index;
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_marking_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::ToggleMark { location } => {
+                self.marking.toggle(location.clone());
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::MarkAll => {
+                let entries = self.active_pane().entries.clone();
+                self.marking.mark_all(&entries);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UnmarkAll => {
+                self.marking.unmark_all();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::MarkPattern { pattern } => {
+                let entries = self.active_pane().entries.clone();
+                self.marking.mark_pattern(&entries, pattern);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::MarkRange { start, end } => {
+                let entries = self.active_pane().entries.clone();
+                self.marking.mark_range(&entries, *start, *end);
+                self.ui.range_marking_start = None;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::InvertMarks => {
+                let entries = self.active_pane().entries.clone();
+                self.marking.invert_marks(&entries);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::EnterRangeMarkingMode => {
+                let cursor = self.active_pane().cursor;
+                self.ui.range_marking_start = Some(cursor);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_job_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        use std::time::SystemTime;
+
+        match transition {
+            Transition::EnqueueJob { spec } => {
+                self.jobs.enqueue(spec.clone());
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::StartNextJob => {
+                if self.jobs.can_start_job() {
+                    if let Some(spec) = self.jobs.pop_next_job() {
+                        self.jobs.start_job(spec.clone());
+                        Some(StateUpdateResult::with_job(spec))
+                    } else {
+                        Some(StateUpdateResult::none())
+                    }
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::JobStarted { job_id } => {
+                if let Some(job) = self.jobs.active.get_mut(job_id) {
+                    job.state = crate::job::ExecutionState::Running;
+                    job.started_at = Some(SystemTime::now());
+                }
+                
+                let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
+                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                    format!("{} [Job {}] [Tab {}] {}: Started", 
+                        timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name)
+                });
+                
+                if let Some(log) = log_entry {
+                    self.background_jobs.mark_job_running(*job_id);
+                    Some(StateUpdateResult {
+                        jobs_to_start: Vec::new(),
+                        jobs_to_cancel: Vec::new(),
+                        completed_jobs: Vec::new(),
+                        failed_jobs: Vec::new(),
+                        cancelled_jobs: Vec::new(),
+                        started_jobs: vec![*job_id],
+                        task_panel_logs: vec![log],
+                        panes_to_refresh: Vec::new(),
+                        ui_changed: true,
+                    })
+                } else {
+                    Some(StateUpdateResult::with_ui_change())
+                }
+            }
+            Transition::UpdateJobProgress { job_id, progress } => {
+                self.jobs.update_progress(*job_id, *progress);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UpdateJobProgressWithDetail { job_id, progress, progress_message, operation_detail } => {
+                self.jobs.update_progress(*job_id, *progress);
+                let needs_running = self.background_jobs.get_job(*job_id)
+                    .map(|j| j.status == crate::job::JobStatus::Pending)
+                    .unwrap_or(false);
+                
+                let job_progress = crate::job::JobProgress {
+                    percent: *progress,
+                    message: progress_message.clone(),
+                    current_operation_detail: operation_detail.clone(),
+                };
+                self.background_jobs.update_progress(*job_id, job_progress);
+                
+                if needs_running {
+                    self.background_jobs.mark_job_running(*job_id);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CompleteJob { job_id, result } => {
+                let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
+                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                    let status_tag = match result {
+                        crate::job::OpResult::Success(_) => "[OK]",
+                        crate::job::OpResult::Failed(_) => "[FAIL]",
+                        crate::job::OpResult::Cancelled => "[WARN]",
+                    };
+                    format!("{} [Job {}] [Tab {}] {}: Completed {}",
+                        timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name, status_tag)
+                });
+
+                if let crate::job::OpResult::Failed(ref error_message) = result {
+                    if let Some(ref spec) = job_spec {
+                        let op_name = match &spec.kind {
+                            crate::job::JobKind::ReadDirectory { .. } => "Read directory",
+                            crate::job::JobKind::Copy { .. } => "Copy",
+                            crate::job::JobKind::Move { .. } => "Move",
+                            crate::job::JobKind::Delete { .. } => "Delete",
+                            crate::job::JobKind::Mkdir { .. } => "Create directory",
+                            crate::job::JobKind::Rename { .. } => "Rename",
+                            crate::job::JobKind::CalculateSize { .. } => "Calculate size",
+                            crate::job::JobKind::ExtractArchive { .. } => "Extract archive",
+                            crate::job::JobKind::CreateArchive { .. } => "Create archive",
+                            crate::job::JobKind::ExecuteCustomFunction { .. } => "Execute custom function",
+                            crate::job::JobKind::Search { .. } => "Search",
+                            crate::job::JobKind::LoadFileForViewer { .. } => "Load file for viewer",
+                            crate::job::JobKind::PatternRename { .. } => "Pattern rename",
+                            crate::job::JobKind::CompareFiles { .. } => "File comparison",
+                            crate::job::JobKind::SplitFile { .. } => "File split",
+                            crate::job::JobKind::JoinFiles { .. } => "File join",
+                            crate::job::JobKind::CountDown { .. } => "Countdown",
+                        };
+                        let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
+                        self.dialogs.push(error_dialog);
+                    }
+                }
+
+                self.jobs.complete_job(*job_id, result.clone());
+
+                if let Some(ref spec) = job_spec {
+                    match &spec.kind {
+                        crate::job::JobKind::ReadDirectory { location } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = result {
+                                self.cache.insert(location.clone(), entries.clone());
+                            }
+                        }
+                        crate::job::JobKind::Copy { dest, .. } |
+                        crate::job::JobKind::Move { dest, .. } |
+                        crate::job::JobKind::ExtractArchive { dest, .. } => {
+                            self.cache.invalidate(dest);
+                        }
+                        crate::job::JobKind::Delete { targets } => {
+                            for target in targets {
+                                if let Some(parent) = target.parent() {
+                                    self.cache.invalidate(&parent);
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Rename { from, .. } => {
+                            if let Some(parent) = from.parent() {
+                                self.cache.invalidate(&parent);
+                            }
+                        }
+                        crate::job::JobKind::PatternRename { targets, .. } => {
+                            for target in targets {
+                                if let Some(parent) = target.parent() {
+                                    self.cache.invalidate(&parent);
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Mkdir { location } => {
+                            if let Some(parent) = location.parent() {
+                                self.cache.invalidate(&parent);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                let mut result_obj = StateUpdateResult::with_ui_change();
+                match result {
+                    crate::job::OpResult::Success(_) => result_obj.completed_jobs.push(*job_id),
+                    crate::job::OpResult::Failed(_) => result_obj.failed_jobs.push(*job_id),
+                    crate::job::OpResult::Cancelled => result_obj.cancelled_jobs.push(*job_id),
+                }
+
+                if let Some(spec) = job_spec {
+                    match &spec.kind {
+                        crate::job::JobKind::ReadDirectory { location } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = result {
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    if tab.left_pane.current_location == *location {
+                                        tab.left_pane.entries = entries.clone();
+                                        tab.left_pane.apply_sort();
+                                        tab.left_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                    }
+                                    if tab.right_pane.current_location == *location {
+                                        tab.right_pane.entries = entries.clone();
+                                        tab.right_pane.apply_sort();
+                                        tab.right_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::LoadFileForViewer { .. } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::FileContents(contents)) = result {
+                                let viewer_res = update_state(self, Transition::ViewerLoadComplete { contents: contents.clone() });
+                                result_obj.ui_changed = viewer_res.ui_changed;
+                            }
+                        }
+                        crate::job::JobKind::CompareFiles { .. } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::ComparisonResult(diff)) = result {
+                                let comp_res = update_state(self, Transition::ShowComparisonView { diff: diff.clone() });
+                                result_obj.ui_changed = comp_res.ui_changed;
+                            }
+                        }
+                        crate::job::JobKind::Copy { dest, .. } |
+                        crate::job::JobKind::ExtractArchive { dest, .. } |
+                        crate::job::JobKind::CreateArchive { dest, .. } |
+                        crate::job::JobKind::SplitFile { dest_dir: dest, .. } => {
+                            for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                if tab.left_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Left });
+                                }
+                                if tab.right_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Right });
+                                }
+                            }
+                        }
+                        crate::job::JobKind::JoinFiles { dest, .. } => {
+                            if let Some(parent) = dest.parent() {
+                                for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                    if tab.left_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Left });
+                                    }
+                                    if tab.right_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Right });
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Move { sources, dest } => {
+                            for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                if tab.left_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Left });
+                                }
+                                if tab.right_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Right });
+                                }
+                            }
+                            for source in sources {
+                                if let Some(parent) = source.parent() {
+                                    for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                        if tab.left_pane.current_location == parent {
+                                            result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Left });
+                                        }
+                                        if tab.right_pane.current_location == parent {
+                                            result_obj.panes_to_refresh.push(PaneRefresh { tab_id: tab_idx, pane: crate::model::ActivePane::Right });
+                                        }
+                                    }
+                                }
+                            }
+                            self.marking.unmark_all();
+                        }
+                        crate::job::JobKind::Delete { .. } |
+                        crate::job::JobKind::Rename { .. } |
+                        crate::job::JobKind::PatternRename { .. } |
+                        crate::job::JobKind::Mkdir { .. } => {
+                            result_obj.panes_to_refresh.push(PaneRefresh { tab_id: self.tabs.active_index, pane: self.ui.active_pane });
+                            if let crate::job::JobKind::Delete { .. } = spec.kind {
+                                self.marking.unmark_all();
+                            }
+                        }
+                        crate::job::JobKind::CalculateSize { location } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::SizeCalculated(size)) = result {
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    if let Some(entry) = tab.left_pane.entries.iter_mut().find(|e| e.location == *location) {
+                                        entry.calculated_size = Some(*size);
+                                    }
+                                    if let Some(entry) = tab.right_pane.entries.iter_mut().find(|e| e.location == *location) {
+                                        entry.calculated_size = Some(*size);
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::ExecuteCustomFunction { command, .. } => {
+                            let config_manager = crate::config::ConfigManager::new();
+                            let config_path = config_manager.config_path().to_string_lossy().to_string();
+                            
+                            if command.contains(&config_path) {
+                                if let crate::job::OpResult::Success(_) = result {
+                                    let dialog = crate::model::Dialog::confirmation(
+                                        "Configuration Editor Closed",
+                                        "Reload configuration?"
+                                    );
+                                    self.dialogs.push(dialog);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(log) = log_entry {
+                    result_obj.task_panel_logs.push(log);
+                }
+
+                match result {
+                    crate::job::OpResult::Success(_) => self.background_jobs.mark_job_completed(*job_id),
+                    crate::job::OpResult::Failed(e) => self.background_jobs.mark_job_failed(*job_id, e.clone()),
+                    crate::job::OpResult::Cancelled => self.background_jobs.mark_job_cancelled(*job_id),
+                }
+
+                Some(result_obj)
+            }
+            Transition::CancelJob { job_id } => {
+                if self.jobs.request_cancel(*job_id) {
+                    Some(StateUpdateResult::with_cancel(*job_id))
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::AcknowledgeCancel { job_id } => {
+                self.jobs.acknowledge_cancel(*job_id);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_ui_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::ChangeUIMode { mode } => {
+                self.ui.mode = *mode;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UpdatePaneHeight { height } => {
+                self.ui.layout.pane_height = *height;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowDialog { dialog } => {
+                self.dialogs.push(dialog.clone());
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CloseDialog => {
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ToggleTaskPanel => {
+                self.ui.layout.show_task_panel = !self.ui.layout.show_task_panel;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::IncreaseTaskPanelHeight => {
+                if self.ui.layout.task_panel_height < 20 {
+                    self.ui.layout.task_panel_height += 1;
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::DecreaseTaskPanelHeight => {
+                if self.ui.layout.task_panel_height > 3 {
+                    self.ui.layout.task_panel_height -= 1;
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ScrollTaskPanelUp => {
+                if self.ui.layout.task_panel_scroll_offset > 0 {
+                    self.ui.layout.task_panel_scroll_offset -= 1;
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ScrollTaskPanelDown => {
+                let total_items = self.jobs.queue.len() 
+                    + self.jobs.active.len() 
+                    + self.jobs.completed.len();
+                
+                if total_items > self.ui.layout.task_panel_height {
+                    let max_scroll = total_items.saturating_sub(self.ui.layout.task_panel_height);
+                    if self.ui.layout.task_panel_scroll_offset < max_scroll {
+                        self.ui.layout.task_panel_scroll_offset += 1;
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ConfirmDialog => {
+                if let Some(dialog) = self.dialogs.current() {
+                    match &dialog.content {
+                        crate::model::DialogContent::Confirmation { .. } => {
+                            let title = dialog.title.as_str();
+                            if title == "Copy" {
+                                let sources = if self.marking.count() > 0 {
+                                    self.active_pane().entries.iter()
+                                        .filter(|e| self.marking.is_marked(&e.location))
+                                        .map(|e| e.location.clone())
+                                        .collect()
+                                } else if let Some(entry) = self.active_pane().current_entry() {
+                                    vec![entry.location.clone()]
+                                } else {
+                                    vec![]
+                                };
+                                
+                                if !sources.is_empty() {
+                                    let dest = self.opposite_pane().current_location.clone();
+                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Copy { sources, dest });
+                                    self.dialogs.pop();
+                                    return Some(StateUpdateResult::with_job(job_spec));
+                                }
+                            } else if title == "Move" {
+                                let sources = if self.marking.count() > 0 {
+                                    self.active_pane().entries.iter()
+                                        .filter(|e| self.marking.is_marked(&e.location))
+                                        .map(|e| e.location.clone())
+                                        .collect()
+                                } else if let Some(entry) = self.active_pane().current_entry() {
+                                    vec![entry.location.clone()]
+                                } else {
+                                    vec![]
+                                };
+                                
+                                if !sources.is_empty() {
+                                    let dest = self.opposite_pane().current_location.clone();
+                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move { sources, dest });
+                                    self.dialogs.pop();
+                                    return Some(StateUpdateResult::with_job(job_spec));
+                                }
+                            } else if title == "Delete" {
+                                let targets = if self.marking.count() > 0 {
+                                    self.active_pane().entries.iter()
+                                        .filter(|e| self.marking.is_marked(&e.location))
+                                        .map(|e| e.location.clone())
+                                        .collect()
+                                } else if let Some(entry) = self.active_pane().current_entry() {
+                                    vec![entry.location.clone()]
+                                } else {
+                                    vec![]
+                                };
+                                
+                                if !targets.is_empty() {
+                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete { targets });
+                                    self.dialogs.pop();
+                                    return Some(StateUpdateResult::with_job(job_spec));
+                                }
+                            } else if title == "Configuration Editor Closed" {
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::ReloadConfig));
+                            }
+                        }
+                        crate::model::DialogContent::Input { .. } => {
+                            let title = dialog.title.as_str();
+                            let input = self.dialogs.input_buffer.clone();
+                            
+                            if title == "Search" {
+                                if !input.is_empty() {
+                                    self.search.add_to_history(input.clone());
+                                    if let Some(first_result) = self.search.current_result() {
+                                        if let Some(index) = self.active_pane().entries.iter()
+                                            .position(|e| e.location == first_result.location) {
+                                            self.dialogs.pop();
+                                            return Some(update_state(self, Transition::CursorJump {
+                                                pane: self.ui.active_pane,
+                                                position: index,
+                                            }));
+                                        }
+                                    }
+                                }
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::ChangeUIMode { mode: crate::model::UIMode::Normal }));
+                            } else if title == "Rename" {
+                                if let Some(entry) = self.active_pane().current_entry() {
+                                    let from = entry.location.clone();
+                                    let to = from.parent()
+                                        .map(|parent| parent.join(&input))
+                                        .unwrap_or_else(|| from.clone());
+                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Rename { from, to });
+                                    self.dialogs.pop();
+                                    return Some(StateUpdateResult::with_job(job_spec));
+                                }
+                            } else if title == "Create Directory" {
+                                let current_location = self.active_pane().current_location.clone();
+                                let new_dir_location = current_location.join(&input);
+                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Mkdir { location: new_dir_location });
+                                self.dialogs.pop();
+                                return Some(StateUpdateResult::with_job(job_spec));
+                            } else if title == "Wildcard Marking" {
+                                if !input.is_empty() {
+                                    self.dialogs.pop();
+                                    return Some(update_state(self, Transition::MarkPattern { pattern: input }));
+                                }
+                            } else if title == "Register Folder" {
+                                if !input.is_empty() {
+                                    self.dialogs.pop();
+                                    return Some(update_state(self, Transition::RegisterCurrentFolder { name: input }));
+                                }
+                            } else if title == "File Mask Filter" {
+                                self.dialogs.pop();
+                                let mask = if input.is_empty() { None } else { Some(input) };
+                                return Some(update_state(self, Transition::SetFileMask { pane: self.ui.active_pane, mask }));
+                            }
+                        }
+                        crate::model::DialogContent::DriveSelection { drives, selected_index } => {
+                            if let Some(drive) = drives.get(*selected_index) {
+                                let location = crate::model::Location::Local(std::path::PathBuf::from(&drive.path));
+                                let pane = self.ui.active_pane;
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::ChangeLocation { pane, location }));
+                            }
+                        }
+                        crate::model::DialogContent::RegisteredFolderSelector { selected_index, .. } => {
+                            let folder_index = *selected_index;
+                            if self.marking.count() > 0 {
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::MoveToRegisteredFolder { folder_index }));
+                            } else {
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::NavigateToRegisteredFolder { folder_index }));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CancelDialog => {
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowContextMenu => {
+                let dialog = crate::model::Dialog::context_menu();
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowDriveChangeDialog => {
+                let drives = crate::volume_info::get_all_drives();
+                let dialog = crate::model::Dialog::drive_selection(drives);
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowFileInfo => {
+                if let Some(entry) = self.active_pane().current_entry() {
+                    let dialog = crate::model::Dialog::file_info(entry);
+                    self.dialogs.push(dialog);
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::ShowVersion => {
+                let dialog = crate::model::Dialog::version();
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::SaveLog => {
+                let _ = self.log_manager.save_to_file();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::RotateHelpLanguage => {
+                let current_lang = &self.config.help_language;
+                let next_lang = crate::help_content::HelpContent::next_language(current_lang);
+                self.config.help_language = next_lang.clone();
+                
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    if matches!(dialog.content, crate::model::DialogContent::Help { .. }) {
+                        *dialog = crate::model::Dialog::help_with_language(&next_lang);
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowRegisteredFolderDialog => {
+                let folders = self.registered_folders.folders.clone();
+                let dialog = crate::model::Dialog::registered_folder_selector(folders);
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::RegisterCurrentFolder { name } => {
+                let current_location = self.active_pane().current_location.clone();
+                let path = current_location.display_path();
+                let folder = crate::model::RegisteredFolder::new(name.clone(), path);
+                self.registered_folders.add(folder);
+                
+                let save_path = crate::model::RegisteredFolderManager::default_path();
+                let _ = self.registered_folders.save_to_file(&save_path);
+                
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::NavigateToRegisteredFolder { folder_index } => {
+                if let Some(folder) = self.registered_folders.folders.get(*folder_index) {
+                    let expanded_path = self.registered_folders.expand_path(folder);
+                    let location = crate::model::Location::Local(expanded_path);
+                    
+                    self.dialogs.pop();
+                    return Some(update_state(self, Transition::ChangeLocation {
+                        pane: self.ui.active_pane,
+                        location,
+                    }));
+                }
+                Some(StateUpdateResult::none())
+            }
+            Transition::MoveToRegisteredFolder { folder_index } => {
+                if let Some(folder) = self.registered_folders.folders.get(*folder_index) {
+                    let expanded_path = self.registered_folders.expand_path(folder);
+                    let dest = crate::model::Location::Local(expanded_path);
+                    
+                    let sources = if self.marking.count() > 0 {
+                        self.active_pane().entries.iter()
+                            .filter(|e| self.marking.is_marked(&e.location))
+                            .map(|e| e.location.clone())
+                            .collect()
+                    } else {
+                        vec![]
+                    };
+                    
+                    if !sources.is_empty() {
+                        let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move { sources, dest });
+                        self.dialogs.pop();
+                        return Some(StateUpdateResult::with_job(job_spec));
+                    }
+                }
+                Some(StateUpdateResult::none())
+            }
+            Transition::LaunchConfigurationProgram => {
+                let editor_command = self.config.editor_command.clone()
+                    .unwrap_or_else(|| {
+                        #[cfg(target_os = "windows")]
+                        { "notepad".to_string() }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            std::env::var("EDITOR")
+                                .or_else(|_| std::env::var("VISUAL"))
+                                .unwrap_or_else(|_| "vi".to_string())
+                        }
+                    });
+                
+                let config_manager = crate::config::ConfigManager::new();
+                let config_path = config_manager.config_path().to_string_lossy().to_string();
+                let command = format!("{} \"{}\"", editor_command, config_path);
+                
+                let working_dir = std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                
+                let job_spec = JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                    command,
+                    working_dir: crate::model::Location::Local(working_dir),
+                    pipe_to_action: None,
+                    shell: None,
+                });
+                
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_view_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::ChangeSortMode { pane, mode } => {
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                pane_model.sort_mode = *mode;
+                pane_model.apply_sort();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ChangeDisplayMode { pane, mode } => {
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                pane_model.display_mode = *mode;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::SetFileMask { pane, mask } => {
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                pane_model.file_mask = mask.clone();
+                Some(StateUpdateResult::with_refresh(self.tabs.active_index, *pane))
+            }
+            Transition::ToggleHidden => {
+                self.ui.show_hidden = !self.ui.show_hidden;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::Refresh { pane } | 
+            Transition::RefreshAndClearMarks { pane } |
+            Transition::RefreshNoClearMarks { pane } => {
+                if let Transition::RefreshAndClearMarks { .. } = transition {
+                    self.marking.unmark_all();
+                }
+                let tab = self.current_tab();
+                let location = match pane {
+                    crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                    crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
+                };
+                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_search_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::StartSearch { query } => {
+                self.search.start_search(query.clone());
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UpdateSearchQuery { query } => {
+                self.search.query = query.clone();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UpdateSearchResults { results } => {
+                self.search.results = results.clone();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::NextSearchResult => {
+                self.search.next_result();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::PrevSearchResult => {
+                self.search.prev_result();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ClearSearch => {
+                self.search.clear();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_viewer_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::OpenTextViewer { location } => {
+                self.ui.mode = crate::model::UIMode::Viewer;
+                let mut viewer = crate::model::ViewerState::new(location.clone());
+                viewer.mode = crate::model::ViewerMode::Text;
+                self.viewer = Some(viewer);
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer { location: location.clone() });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::OpenHexViewer { location } => {
+                self.ui.mode = crate::model::UIMode::Viewer;
+                let mut viewer = crate::model::ViewerState::new(location.clone());
+                viewer.mode = crate::model::ViewerMode::Hex;
+                self.viewer = Some(viewer);
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer { location: location.clone() });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::CloseViewer => {
+                self.ui.mode = crate::model::UIMode::Normal;
+                self.viewer = None;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerLoadComplete { contents } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.set_contents(contents.clone());
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerCycleEncoding => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.cycle_encoding();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerScrollDown { viewport_height } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.scroll_down(*viewport_height);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerScrollUp => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.scroll_up();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerPageDown { viewport_height } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.page_down(*viewport_height);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerPageUp { viewport_height } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.page_up(*viewport_height);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerJumpToTop => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.jump_to_top();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerJumpToBottom => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.jump_to_bottom(20); // TODO: Get viewport height
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerMoveToLineStart => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.move_to_line_start();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerMoveToLineEnd { viewport_width } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.move_to_line_end(*viewport_width);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerStartSearch { query } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.start_search(query.to_string());
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerFindNext => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.find_next();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerFindPrev => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.find_prev();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerClearSearch => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.clear_search();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_advanced_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::SyncPanes => {
+                let active_location = self.active_pane().current_location.clone();
+                let opposite_pane = self.ui.active_pane.opposite();
+                
+                let cached_entries = self.cache.get(&active_location);
+                
+                let tab = self.current_tab_mut();
+                let opposite_pane_model = match opposite_pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                
+                tab.history.push(opposite_pane, opposite_pane_model.current_location.clone());
+                
+                opposite_pane_model.current_location = active_location.clone();
+                opposite_pane_model.cursor = 0;
+                opposite_pane_model.scroll_offset = 0;
+                
+                if let Some(entries) = cached_entries {
+                    opposite_pane_model.entries = entries;
+                    opposite_pane_model.apply_sort();
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location: active_location });
+                    Some(StateUpdateResult::with_job(job_spec))
+                }
+            }
+            Transition::SwapPanes => {
+                let tab = self.current_tab_mut();
+                
+                // Swap locations only (Requirement 41.5: cursors stay with panes)
+                std::mem::swap(&mut tab.left_pane.current_location, &mut tab.right_pane.current_location);
+                
+                tab.history.swap_panes();
+                
+                let left_location = tab.left_pane.current_location.clone();
+                let right_location = tab.right_pane.current_location.clone();
+                
+                let left_cached = self.cache.get(&left_location);
+                let right_cached = self.cache.get(&right_location);
+                
+                let tab = self.current_tab_mut();
+                
+                let left_needs_job = if let Some(entries) = left_cached {
+                    tab.left_pane.entries = entries;
+                    tab.left_pane.apply_sort();
+                    false
+                } else {
+                    true
+                };
+                
+                let right_needs_job = if let Some(entries) = right_cached {
+                    tab.right_pane.entries = entries;
+                    tab.right_pane.apply_sort();
+                    false
+                } else {
+                    true
+                };
+                
+                let mut result = StateUpdateResult::with_ui_change();
+                
+                if left_needs_job {
+                    result.jobs_to_start.push(JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                        location: left_location 
+                    }));
+                }
+                
+                if right_needs_job {
+                    result.jobs_to_start.push(JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                        location: right_location 
+                    }));
+                }
+                
+                Some(result)
+            }
+            Transition::CompareFiles { left, right } => {
+                let job_spec = JobSpec::new(crate::job::JobKind::CompareFiles { 
+                    left: left.clone(), 
+                    right: right.clone() 
+                });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::ShowComparisonView { diff } => {
+                let dialog = crate::model::Dialog {
+                    title: "File Comparison".to_string(),
+                    content: crate::model::DialogContent::ComparisonView { 
+                        diff: diff.clone(),
+                        scroll_offset: 0,
+                    },
+                };
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CloseComparisonView => {
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowSplitJoinDialog => {
+                let dialog = crate::model::Dialog::split_join_dialog();
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ExecuteFileSplit { source, dest_dir, chunk_size } => {
+                let job_spec = JobSpec::new(crate::job::JobKind::SplitFile { 
+                    source: source.clone(), 
+                    dest_dir: dest_dir.clone(), 
+                    chunk_size: *chunk_size 
+                });
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::ExecuteFileJoin { parts, dest } => {
+                let job_spec = JobSpec::new(crate::job::JobKind::JoinFiles { 
+                    parts: parts.clone(), 
+                    dest: dest.clone() 
+                });
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::ShowPatternRenameDialog => {
+                let filenames = if self.marking.count() > 0 {
+                    self.active_pane().entries.iter()
+                        .filter(|e| self.marking.is_marked(&e.location))
+                        .map(|e| e.name.clone())
+                        .collect()
+                } else if let Some(entry) = self.active_pane().current_entry() {
+                    vec![entry.name.clone()]
+                } else {
+                    vec![]
+                };
+                
+                if !filenames.is_empty() {
+                    let dialog = crate::model::Dialog::pattern_rename(String::new(), vec![]);
+                    self.dialogs.push(dialog);
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::UpdatePatternRenamePattern { pattern } => {
+                let filenames = if self.marking.count() > 0 {
+                    self.active_pane().entries.iter()
+                        .filter(|e| self.marking.is_marked(&e.location))
+                        .map(|e| e.name.clone())
+                        .collect()
+                } else if let Some(entry) = self.active_pane().current_entry() {
+                    vec![entry.name.clone()]
+                } else {
+                    vec![]
+                };
+                
+                let preview = crate::pattern_rename::generate_preview(&filenames, pattern);
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    match &mut dialog.content {
+                        crate::model::DialogContent::PatternRename { pattern: p, preview: pr, .. } => {
+                            *p = pattern.clone();
+                            *pr = preview;
+                        }
+                        _ => {}
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ExecutePatternRename { pattern, targets } => {
+                let job_spec = JobSpec::new(crate::job::JobKind::PatternRename {
+                    targets: targets.clone(),
+                    pattern: pattern.clone(),
+                });
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_job_management_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
+        match transition {
+            Transition::CreateBackgroundJob { spec, name, description } => {
+                let tab = self.current_tab();
+                let tab_name = format!("{}|{}",
+                    tab.left_pane.current_location.display_path(),
+                    tab.right_pane.current_location.display_path()
+                );
+                let tab_id = self.tabs.active_index;
+
+                self.background_jobs.start_job(
+                    name.clone(),
+                    description.clone(),
+                    tab_id,
+                    tab_name,
+                    spec.clone(),
+                );
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CreateAndStartCountDownJob { spec, name, description } |
+            Transition::CreateAndStartFileJob { spec, name, description } => {
+                let tab = self.current_tab();
+                let tab_name = format!("{}|{}",
+                    tab.left_pane.current_location.display_path(),
+                    tab.right_pane.current_location.display_path()
+                );
+                let tab_id = self.tabs.active_index;
+
+                let bg_job_id = self.background_jobs.start_job(
+                    name.clone(),
+                    description.clone(),
+                    tab_id,
+                    tab_name,
+                    spec.clone(),
+                );
+
+                self.jobs.start_job(spec.clone());
+
+                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                let log_msg = format!(
+                    "{} [Job {}] [Tab {}] {}: Started",
+                    timestamp,
+                    bg_job_id.short_id,
+                    tab_id + 1,
+                    name
+                );
+
+                Some(StateUpdateResult {
+                    jobs_to_start: vec![spec.clone()],
+                    jobs_to_cancel: Vec::new(),
+                    completed_jobs: Vec::new(),
+                    failed_jobs: Vec::new(),
+                    cancelled_jobs: Vec::new(),
+                    started_jobs: Vec::new(),
+                    task_panel_logs: vec![log_msg],
+                    panes_to_refresh: Vec::new(),
+                    ui_changed: true,
+                })
+            }
+            Transition::CreatePendingFileJob { spec, name, description: _ } => {
+                // Create job spec WITHOUT starting it yet
+                // Job will be started after conflict detection (or after dialog confirmation)
+                debug!("CreatePendingFileJob: {:?} (will start after conflict check)", spec.kind);
+                
+                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                let log_msg = format!(
+                    "{} [Pending] {}: Waiting for conflict check",
+                    timestamp,
+                    name
+                );
+
+                Some(StateUpdateResult {
+                    jobs_to_start: vec![spec.clone()],
+                    jobs_to_cancel: Vec::new(),
+                    completed_jobs: Vec::new(),
+                    failed_jobs: Vec::new(),
+                    cancelled_jobs: Vec::new(),
+                    started_jobs: Vec::new(),
+                    task_panel_logs: vec![log_msg],
+                    panes_to_refresh: Vec::new(),
+                    ui_changed: true,
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
-/// Application configuration
 pub use crate::config::AppConfig;
 
 /// Explicit state change operations
@@ -190,42 +1517,17 @@ pub enum Transition {
     NavigateUp { pane: crate::model::ActivePane },
     NavigateHistory { pane: crate::model::ActivePane, direction: HistoryDirection },
     SwitchPane,
+    SyncPanes,
+    SwapPanes,
     
     // Tab management
     CreateTab,
     CloseTab { index: usize },
-    SwitchTab { index: usize },
     NextTab,
     PrevTab,
+    SwitchTab { index: usize },
     
-    // Job operations
-    EnqueueJob { spec: JobSpec },
-    StartNextJob,
-    JobStarted { job_id: JobId },
-    UpdateJobProgress { job_id: JobId, progress: f64 },
-    UpdateJobProgressWithDetail { job_id: JobId, progress: f64, progress_message: String, operation_detail: String },
-    CompleteJob { job_id: JobId, result: crate::job::OpResult },
-    CancelJob { job_id: JobId },
-    AcknowledgeCancel { job_id: JobId },
-    CreateBackgroundJob { spec: JobSpec, name: String, description: String },
-    CreateAndStartCountDownJob { spec: JobSpec, name: String, description: String },
-    CreateAndStartFileJob { spec: JobSpec, name: String, description: String },
-    AddTaskPanelLog { message: String },
-    
-    // View operations
-    ChangeSortMode { pane: crate::model::ActivePane, mode: crate::model::SortMode },
-    ChangeDisplayMode { pane: crate::model::ActivePane, mode: crate::model::DisplayMode },
-    SetFileMask { pane: crate::model::ActivePane, mask: Option<String> },
-    ToggleHidden,
-    Refresh { pane: crate::model::ActivePane },
-    RefreshAndClearMarks { pane: crate::model::ActivePane },
-    RefreshNoClearMarks { pane: crate::model::ActivePane },
-    
-    // Pane operations
-    SyncPanes,
-    SwapPanes,
-    
-    // Marking operations
+    // File marking
     ToggleMark { location: crate::model::Location },
     MarkAll,
     UnmarkAll,
@@ -234,15 +1536,36 @@ pub enum Transition {
     InvertMarks,
     EnterRangeMarkingMode,
     
-    // Search operations
-    StartSearch { query: String },
-    UpdateSearchQuery { query: String },
-    UpdateSearchResults { results: Vec<crate::model::FileEntry> },
-    NextSearchResult,
-    PrevSearchResult,
-    ClearSearch,
+    // Background jobs
+    EnqueueJob { spec: JobSpec },
+    StartNextJob,
+    JobStarted { job_id: JobId },
+    UpdateJobProgress { job_id: JobId, progress: f64 },
+    UpdateJobProgressWithDetail { 
+        job_id: JobId, 
+        progress: f64, 
+        progress_message: String, 
+        operation_detail: String 
+    },
+    CompleteJob { job_id: JobId, result: crate::job::OpResult },
+    CancelJob { job_id: JobId },
+    AcknowledgeCancel { job_id: JobId },
+    CreateBackgroundJob { spec: JobSpec, name: String, description: String },
+    CreateAndStartFileJob { spec: JobSpec, name: String, description: String },
+    CreatePendingFileJob { spec: JobSpec, name: String, description: String },
+    CreateAndStartCountDownJob { spec: JobSpec, name: String, description: String },
+    AddTaskPanelLog { message: String },
     
-    // UI operations
+    // View settings
+    ChangeSortMode { pane: crate::model::ActivePane, mode: crate::model::SortMode },
+    ChangeDisplayMode { pane: crate::model::ActivePane, mode: crate::model::DisplayMode },
+    SetFileMask { pane: crate::model::ActivePane, mask: Option<String> },
+    ToggleHidden,
+    Refresh { pane: crate::model::ActivePane },
+    RefreshAndClearMarks { pane: crate::model::ActivePane },
+    RefreshNoClearMarks { pane: crate::model::ActivePane },
+    
+    // UI state
     ChangeUIMode { mode: crate::model::UIMode },
     UpdatePaneHeight { height: usize },
     ShowDialog { dialog: crate::model::Dialog },
@@ -250,41 +1573,45 @@ pub enum Transition {
     UpdateDialogInput { input: String },
     ConfirmDialog,
     CancelDialog,
-    ShowContextMenu,
-    ShowDriveChangeDialog,
-    ShowFileInfo,
-    ShowVersion,
-    SaveLog,
-    LaunchConfigurationProgram,
-    
-    // Task panel operations
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,
     DecreaseTaskPanelHeight,
     ScrollTaskPanelUp,
     ScrollTaskPanelDown,
+    ShowContextMenu,
+    ShowDriveChangeDialog,
+    ShowFileInfo,
+    ShowVersion,
+    SaveLog,
+    RotateHelpLanguage,
+    LaunchConfigurationProgram,
+    ShowRegisteredFolderDialog,
+    RegisterCurrentFolder { name: String },
+    NavigateToRegisteredFolder { folder_index: usize },
+    MoveToRegisteredFolder { folder_index: usize },
     
     // Configuration
     ReloadConfig,
     UpdateConfig { config: Box<AppConfig> },
-    RotateHelpLanguage,
     
-    // Registered folder operations
-    RegisterCurrentFolder { name: String },
-    ShowRegisteredFolderDialog,
-    NavigateToRegisteredFolder { folder_index: usize },
-    MoveToRegisteredFolder { folder_index: usize },
+    // Search
+    StartSearch { query: String },
+    UpdateSearchQuery { query: String },
+    UpdateSearchResults { results: Vec<crate::model::FileEntry> },
+    NextSearchResult,
+    PrevSearchResult,
+    ClearSearch,
     
-    // Viewer operations
+    // Viewer
     OpenTextViewer { location: crate::model::Location },
     OpenHexViewer { location: crate::model::Location },
     CloseViewer,
     ViewerLoadComplete { contents: Vec<u8> },
     ViewerCycleEncoding,
-    ViewerScrollDown,
+    ViewerScrollDown { viewport_height: usize },
     ViewerScrollUp,
-    ViewerPageDown,
-    ViewerPageUp,
+    ViewerPageDown { viewport_height: usize },
+    ViewerPageUp { viewport_height: usize },
     ViewerJumpToTop,
     ViewerJumpToBottom,
     ViewerMoveToLineStart,
@@ -427,1397 +1754,47 @@ pub struct PaneRefresh {
 
 /// Pure function to update state based on transition
 pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdateResult {
-    use tracing::debug;
+    if let Some(result) = state.handle_navigation_transition(&transition) {
+        return result;
+    }
     
+    if let Some(result) = state.handle_tab_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_marking_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_job_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_job_management_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_ui_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_view_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_search_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_viewer_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_advanced_transition(&transition) {
+        return result;
+    }
+
     match transition {
-        // Pane switching
-        Transition::SwitchPane => {
-            let old_pane = state.ui.active_pane;
-            state.ui.active_pane = state.ui.active_pane.opposite();
-            debug!("SwitchPane transition: {:?} -> {:?}", old_pane, state.ui.active_pane);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // Tab management
-        Transition::CreateTab => {
-            let new_index = state.tabs.create_tab();
-            state.tabs.active_index = new_index;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CloseTab { index } => {
-            // Check if there are active jobs in this tab
-            let active_job_ids: Vec<u32> = state.background_jobs.get_active_jobs()
-                .filter(|j| j.tab_id == index)
-                .map(|j| j.id.short_id)
-                .collect();
-
-            if !active_job_ids.is_empty() {
-                // Show confirmation dialog
-                let tab_name = format!("Tab {}", index + 1);
-                let dialog = crate::model::Dialog {
-                    title: "Confirm Close Tab".to_string(),
-                    content: crate::model::DialogContent::CloseTabWithActiveJob {
-                        tab_index: index,
-                        tab_name: tab_name.clone(),
-                        job_ids: active_job_ids,
-                        focused_field: 0,  // Start with OK button focused
-                    },
-                };
-                state.dialogs.push(dialog);
-                StateUpdateResult::with_ui_change()
-            } else {
-                // No active jobs, close directly
-                if state.tabs.close_tab(index) {
-                    StateUpdateResult::with_ui_change()
-                } else {
-                    StateUpdateResult::none()
-                }
-            }
-        }
-        
-        Transition::NextTab => {
-            state.tabs.switch_to_next();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::PrevTab => {
-            state.tabs.switch_to_prev();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::SwitchTab { index } => {
-            if index < state.tabs.tabs.len() {
-                state.tabs.active_index = index;
-                StateUpdateResult::with_ui_change()
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        // Marking operations
-        Transition::ToggleMark { location } => {
-            state.marking.toggle(location);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::MarkAll => {
-            let entries = state.active_pane().entries.clone();
-            state.marking.mark_all(&entries);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::UnmarkAll => {
-            state.marking.unmark_all();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::MarkPattern { pattern } => {
-            let entries = state.active_pane().entries.clone();
-            state.marking.mark_pattern(&entries, &pattern);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::MarkRange { start, end } => {
-            let entries = state.active_pane().entries.clone();
-            state.marking.mark_range(&entries, start, end);
-            // Exit range marking mode after marking
-            state.ui.range_marking_start = None;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::InvertMarks => {
-            let entries = state.active_pane().entries.clone();
-            state.marking.invert_marks(&entries);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::EnterRangeMarkingMode => {
-            // Store the current cursor position as the start of the range
-            let cursor = state.active_pane().cursor;
-            state.ui.range_marking_start = Some(cursor);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // Cursor movement
-        Transition::CursorMove { pane, delta } => {
-            // Get visible height and scroll offset config before mutable borrow
-            let visible_height = state.ui.layout.pane_height;
-            let scroll_margin = state.config.ui.scroll_offset; // Use configured scroll offset
-            
-            let tab = state.current_tab_mut();
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            
-            if !pane_model.entries.is_empty() {
-                let new_cursor = (pane_model.cursor as isize + delta)
-                    .max(0)
-                    .min(pane_model.entries.len() as isize - 1) as usize;
-                pane_model.cursor = new_cursor;
-                
-                // Only scroll if we have more entries than visible height
-                if pane_model.entries.len() > visible_height {
-                    // Calculate cursor position within visible area (design document algorithm)
-                    let cursor_in_view = pane_model.cursor.saturating_sub(pane_model.scroll_offset);
-                    let old_scroll = pane_model.scroll_offset;
-                    
-                    debug!("CursorMove scroll calc: cursor={}, old_scroll={}, cursor_in_view={}, scroll_margin={}, visible_height={}, entries={}",
-                           pane_model.cursor, old_scroll, cursor_in_view, scroll_margin, visible_height, pane_model.entries.len());
-                    
-                    // Scroll up if cursor too close to top
-                    if cursor_in_view < scroll_margin && pane_model.cursor > 0 {
-                        pane_model.scroll_offset = pane_model.cursor.saturating_sub(scroll_margin);
-                        debug!("  -> Scroll UP triggered: new_scroll={}", pane_model.scroll_offset);
-                    }
-                    // Scroll down if cursor too close to bottom
-                    else if visible_height > scroll_margin {
-                        let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1) + 1;
-                        let max_offset = pane_model.entries.len().saturating_sub(visible_height) - 1;
-                        
-                        // Check if we're in the "end zone" where scroll_margin can't be maintained
-                        let end_zone_start = pane_model.entries.len().saturating_sub(scroll_margin + 1);
-                        
-                        debug!("  ->> End zone: cursor={}, end_zone_start={}, scroll_offset={}, max_offset={}", 
-                                   pane_model.cursor, end_zone_start, pane_model.scroll_offset, max_offset);
-                        if pane_model.cursor >= end_zone_start {
-                            // Near the end - just set scroll to max_offset to avoid blank lines
-                            pane_model.scroll_offset = max_offset;
-                            debug!("  -> End zone: cursor={}, end_zone_start={}, scroll_offset={}", 
-                                   pane_model.cursor, end_zone_start, pane_model.scroll_offset);
-                        } else if cursor_in_view > bottom_trigger {
-                            // Normal scrolling - maintain scroll_margin
-                            let desired_offset = pane_model.cursor.saturating_sub(bottom_trigger);
-                            pane_model.scroll_offset = desired_offset.min(max_offset);
-                            debug!("  -> Scroll DOWN triggered: new_scroll={}, max={}", pane_model.scroll_offset, max_offset);
-                        }
-                    }
-                } else {
-                    // If all entries fit, no scrolling needed
-                    pane_model.scroll_offset = 0;
-                }
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CursorJump { pane, position } => {
-            // Get visible height and scroll offset config before mutable borrow
-            let visible_height = state.ui.layout.pane_height;
-            let scroll_margin = state.config.ui.scroll_offset; // Use configured scroll offset
-            
-            let tab = state.current_tab_mut();
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            
-            if !pane_model.entries.is_empty() {
-                pane_model.cursor = position.min(pane_model.entries.len() - 1);
-                
-                // Only scroll if we have more entries than visible height
-                if pane_model.entries.len() > visible_height {
-                    // Calculate cursor position within visible area (design document algorithm)
-                    let cursor_in_view = pane_model.cursor.saturating_sub(pane_model.scroll_offset);
-                    let old_scroll = pane_model.scroll_offset;
-                    
-                    debug!("CursorJump scroll calc: cursor={}, old_scroll={}, cursor_in_view={}, scroll_margin={}, visible_height={}, entries={}",
-                           pane_model.cursor, old_scroll, cursor_in_view, scroll_margin, visible_height, pane_model.entries.len());
-                    
-                    // First, ensure cursor is visible (handle large jumps)
-                    if pane_model.cursor < pane_model.scroll_offset {
-                        // Cursor jumped above visible area
-                        pane_model.scroll_offset = pane_model.cursor.saturating_sub(scroll_margin);
-                        debug!("  -> Cursor above viewport: new_scroll={}", pane_model.scroll_offset);
-                    } else if pane_model.cursor >= pane_model.scroll_offset + visible_height {
-                        // Cursor jumped below visible area
-                        let desired_offset = pane_model.cursor + scroll_margin + 1 - visible_height;
-                        let max_offset = pane_model.entries.len().saturating_sub(visible_height);
-                        pane_model.scroll_offset = desired_offset.min(max_offset);
-                        debug!("  -> Cursor below viewport: new_scroll={}", pane_model.scroll_offset);
-                    } else {
-                        // Cursor is visible, apply smooth scrolling logic
-                        let cursor_in_view = pane_model.cursor.saturating_sub(pane_model.scroll_offset);
-                        
-                        // Scroll up if cursor too close to top
-                        if cursor_in_view < scroll_margin && pane_model.cursor > 0 {
-                            pane_model.scroll_offset = pane_model.cursor.saturating_sub(scroll_margin);
-                            debug!("  -> Scroll UP triggered: new_scroll={}", pane_model.scroll_offset);
-                        }
-                        // Scroll down if cursor too close to bottom
-                        else if visible_height > scroll_margin {
-                            let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1);
-                            let max_offset = pane_model.entries.len().saturating_sub(visible_height);
-                            
-                            // Check if we're in the "end zone" where scroll_margin can't be maintained
-                            let end_zone_start = pane_model.entries.len().saturating_sub(scroll_margin + 1);
-                            
-                            if pane_model.cursor >= end_zone_start {
-                                // Near the end - just set scroll to max_offset to avoid blank lines
-                                pane_model.scroll_offset = max_offset;
-                                debug!("  -> End zone: cursor={}, end_zone_start={}, scroll_offset={}", 
-                                       pane_model.cursor, end_zone_start, pane_model.scroll_offset);
-                            } else if cursor_in_view > bottom_trigger {
-                                // Normal scrolling - maintain scroll_margin
-                                let desired_offset = pane_model.cursor.saturating_sub(bottom_trigger);
-                                pane_model.scroll_offset = desired_offset.min(max_offset);
-                                debug!("  -> Scroll DOWN triggered: new_scroll={}, max={}", pane_model.scroll_offset, max_offset);
-                            }
-                        }
-                    }
-                } else {
-                    // If all entries fit, no scrolling needed
-                    pane_model.scroll_offset = 0;
-                }
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // Navigation
-        Transition::ChangeLocation { pane, location } => {
-            debug!("ChangeLocation: pane = {:?}, location = {}", pane, location.display_path());
-            debug!("ChangeLocation: location debug format: {:?}", location);
-            
-            // Check cache first (before any mutable borrows)
-            let cached_entries = state.cache.get(&location);
-            
-            if cached_entries.is_some() {
-                debug!("ChangeLocation: using cached entries for {}", location.display_path());
-            } else {
-                debug!("ChangeLocation: cache miss, will create ReadDirectory job for {}", location.display_path());
-            }
-            
-            // Get current pane state before changing location (no mutable borrow yet)
-            let tab = state.current_tab();
-            let (current_location, current_cursor, current_scroll) = match pane {
-                crate::model::ActivePane::Left => (
-                    tab.left_pane.current_location.clone(),
-                    tab.left_pane.cursor,
-                    tab.left_pane.scroll_offset,
-                ),
-                crate::model::ActivePane::Right => (
-                    tab.right_pane.current_location.clone(),
-                    tab.right_pane.cursor,
-                    tab.right_pane.scroll_offset,
-                ),
-            };
-            
-            // Save current cursor and scroll position to navigation cache
-            state.navigation_cache.save(current_location.clone(), current_cursor, current_scroll);
-            debug!("ChangeLocation: saved position for {} (cursor={}, scroll={})", 
-                   current_location.display_path(), current_cursor, current_scroll);
-            
-            // Try to restore cursor and scroll position from navigation cache
-            let restored_position = state.navigation_cache.restore(&location);
-            if let Some((cached_cursor, cached_scroll)) = restored_position {
-                debug!("ChangeLocation: restored position from cache (cursor={}, scroll={})", 
-                       cached_cursor, cached_scroll);
-            } else {
-                debug!("ChangeLocation: first visit to location, starting at cursor=0, scroll=0");
-            }
-            
-            // Now do mutable operations on the tab
-            let tab = state.current_tab_mut();
-            
-            // Add current location to history
-            tab.history.push(pane, current_location);
-            
-            // Update location
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            pane_model.current_location = location.clone();
-            debug!("ChangeLocation: pane location after update: {:?}", pane_model.current_location);
-            
-            // Apply restored position or default to 0,0
-            if let Some((cached_cursor, cached_scroll)) = restored_position {
-                // Will be clamped after entries are loaded
-                pane_model.cursor = cached_cursor;
-                pane_model.scroll_offset = cached_scroll;
-            } else {
-                // First visit to this directory - start at top
-                pane_model.cursor = 0;
-                pane_model.scroll_offset = 0;
-            }
-            
-            // Use cached entries if available
-            if let Some(entries) = cached_entries {
-                debug!("ChangeLocation: loaded {} cached entries", entries.len());
-                pane_model.entries = entries;
-                pane_model.apply_sort();
-                
-                // Clamp cursor and scroll to valid ranges
-                if !pane_model.entries.is_empty() {
-                    pane_model.cursor = pane_model.cursor.min(pane_model.entries.len() - 1);
-                    debug!("ChangeLocation: clamped cursor to {}", pane_model.cursor);
-                } else {
-                    pane_model.cursor = 0;
-                    pane_model.scroll_offset = 0;
-                }
-                
-                StateUpdateResult::with_ui_change()
-            } else {
-                // Create job to read directory
-                debug!("ChangeLocation: creating ReadDirectory job");
-                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
-                StateUpdateResult::with_job(job_spec)
-            }
-        }
-        
-        Transition::NavigateUp { pane } => {
-            let tab = state.current_tab();
-            let current_location = match pane {
-                crate::model::ActivePane::Left => &tab.left_pane.current_location,
-                crate::model::ActivePane::Right => &tab.right_pane.current_location,
-            };
-            
-            debug!("NavigateUp: current_location = {}", current_location.display_path());
-            
-            if let Some(parent) = current_location.parent() {
-                debug!("NavigateUp: parent = {}", parent.display_path());
-                update_state(state, Transition::ChangeLocation { pane, location: parent })
-            } else {
-                debug!("NavigateUp: no parent (at root)");
-                StateUpdateResult::none()
-            }
-        }
-        
-        Transition::NavigateHistory { pane, direction } => {
-            // Get location from history first
-            let location = {
-                let tab = state.current_tab_mut();
-                match direction {
-                    HistoryDirection::Back => tab.history.go_back(pane),
-                    HistoryDirection::Forward => tab.history.go_forward(pane),
-                }
-            };
-            
-            if let Some(location) = location {
-                // Check cache (before any mutable borrows)
-                let cached_entries = state.cache.get(&location);
-                
-                // Now update the pane
-                let tab = state.current_tab_mut();
-                let pane_model = match pane {
-                    crate::model::ActivePane::Left => &mut tab.left_pane,
-                    crate::model::ActivePane::Right => &mut tab.right_pane,
-                };
-                pane_model.current_location = location.clone();
-                pane_model.cursor = 0;
-                pane_model.scroll_offset = 0;
-                
-                // Use cached entries if available
-                if let Some(entries) = cached_entries {
-                    pane_model.entries = entries;
-                    pane_model.apply_sort();
-                    StateUpdateResult::with_ui_change()
-                } else {
-                    // Create job to read directory
-                    let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
-                    StateUpdateResult::with_job(job_spec)
-                }
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        // Job operations
-        Transition::EnqueueJob { spec } => {
-            state.jobs.enqueue(spec);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::StartNextJob => {
-            debug!("StartNextJob: Checking if can start job, active={}, queued={}", 
-                state.jobs.active.len(), state.jobs.queue.len());
-            if state.jobs.can_start_job() {
-                if let Some(spec) = state.jobs.pop_next_job() {
-                    debug!("StartNextJob: Starting job spec.id={:?}", spec.id);
-                    state.jobs.start_job(spec.clone());
-                    StateUpdateResult::with_job(spec)
-                } else {
-                    debug!("StartNextJob: No job in queue to start");
-                    StateUpdateResult::none()
-                }
-            } else {
-                debug!("StartNextJob: Cannot start job, max_parallel={} active={}", 
-                    state.jobs.max_parallel, state.jobs.active.len());
-                StateUpdateResult::none()
-            }
-        }
-
-        Transition::JobStarted { job_id } => {
-            debug!("JobStarted transition: job_id={:?}", job_id);
-            // Mark the internal job as started
-            if let Some(job) = state.jobs.active.get_mut(&job_id) {
-                job.state = crate::job::ExecutionState::Running;
-                job.started_at = Some(SystemTime::now());
-                debug!("JobStarted: Internal job marked as Running");
-            }
-            
-            // Get job info for logging BEFORE marking as running
-            let log_entry = state.background_jobs.get_job(job_id).map(|bg_job| {
-                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-                format!(
-                    "{} [Job #{}] [Tab {}] {}: Started",
-                    timestamp,
-                    bg_job.id.short_id,
-                    bg_job.tab_id + 1,
-                    bg_job.name
-                )
-            });
-            
-            // Mark the background job as running
-            if log_entry.is_some() {
-                state.background_jobs.mark_job_running(job_id);
-                debug!("JobStarted: Background job marked as Running");
-                
-                return StateUpdateResult {
-                    jobs_to_start: Vec::new(),
-                    jobs_to_cancel: Vec::new(),
-                    completed_jobs: Vec::new(),
-                    failed_jobs: Vec::new(),
-                    cancelled_jobs: Vec::new(),
-                    started_jobs: vec![job_id],
-                    task_panel_logs: vec![log_entry.unwrap()],
-                    panes_to_refresh: Vec::new(),
-                    ui_changed: true,
-                };
-            } else {
-                debug!("JobStarted: Background job not found for job_id={:?}", job_id);
-            }
-            StateUpdateResult::with_ui_change()
-        }
-
-        Transition::UpdateJobProgress { job_id, progress } => {
-            state.jobs.update_progress(job_id, progress);
-            StateUpdateResult::with_ui_change()
-        }
-
-        Transition::UpdateJobProgressWithDetail { job_id, progress, progress_message, operation_detail } => {
-            state.jobs.update_progress(job_id, progress);
-            
-            // Check if job needs to be marked as running (before updating progress)
-            let needs_running = state.background_jobs.get_job(job_id)
-                .map(|j| j.status == crate::job::JobStatus::Pending)
-                .unwrap_or(false);
-            
-            // Also update the background job with messages
-            let job_progress = crate::job::JobProgress {
-                percent: progress,
-                message: progress_message.clone(),
-                current_operation_detail: operation_detail.clone(),
-            };
-            state.background_jobs.update_progress(job_id, job_progress);
-            
-            // If job was Pending, mark it as Running (progress means it started)
-            if needs_running {
-                state.background_jobs.mark_job_running(job_id);
-                debug!("UpdateJobProgressWithDetail: Job was Pending, now marked as Running");
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CompleteJob { job_id, result } => {
-            // Debug logging before job_spec check
-            debug!("CompleteJob: job_id={:?}, result type={}", job_id, match &result {
-                crate::job::OpResult::Success(_) => "Success",
-                crate::job::OpResult::Failed(_) => "Failed",
-                crate::job::OpResult::Cancelled => "Cancelled",
-            });
-
-            // Get the job spec before completing it to determine what panes need refreshing
-            let job_spec = state.jobs.active.get(&job_id).map(|job| job.spec.clone());
-            debug!("CompleteJob: job_spec found={}", job_spec.is_some());
-
-            // Get job info for task panel log BEFORE completing
-            let log_entry = state.background_jobs.get_job(job_id).map(|bg_job| {
-                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-                let status_tag = match &result {
-                    crate::job::OpResult::Success(_) => "[OK]",
-                    crate::job::OpResult::Failed(_) => "[FAIL]",
-                    crate::job::OpResult::Cancelled => "[WARN]",
-                };
-                format!(
-                    "{} [Job #{}] [Tab {}] {}: Completed {}",
-                    timestamp,
-                    bg_job.id.short_id,
-                    bg_job.tab_id + 1,
-                    bg_job.name,
-                    status_tag
-                )
-            });
-
-            // Debug log the SuccessData variant
-            if let crate::job::OpResult::Success(ref success_data) = result {
-                let variant_name = match success_data {
-                    crate::job::SuccessData::DirectoryRead(entries) => format!("DirectoryRead({} entries)", entries.len()),
-                    crate::job::SuccessData::None => "None".to_string(),
-                    crate::job::SuccessData::SizeCalculated(size) => format!("SizeCalculated({})", size),
-                    crate::job::SuccessData::CustomFunctionOutput(output) => format!("CustomFunctionOutput({} bytes)", output.len()),
-                    crate::job::SuccessData::SearchResults(results) => format!("SearchResults({} results)", results.len()),
-                    crate::job::SuccessData::FileContents(contents) => format!("FileContents({} bytes)", contents.len()),
-                    crate::job::SuccessData::ComparisonResult(_) => "ComparisonResult".to_string(),
-                };
-                debug!("CompleteJob: SuccessData variant={}", variant_name);
-            }
-            
-            // Show error dialog and log error if job failed
-            if let crate::job::OpResult::Failed(ref error_message) = result {
-                if let Some(ref spec) = job_spec {
-                    let operation_name = match &spec.kind {
-                        crate::job::JobKind::ReadDirectory { location } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                location = %location.display_path(),
-                                error = %error_message,
-                                "Read directory operation failed"
-                            );
-                            "Read directory"
-                        }
-                        crate::job::JobKind::Copy { sources, dest } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                source_count = sources.len(),
-                                dest = %dest.display_path(),
-                                error = %error_message,
-                                "Copy operation failed"
-                            );
-                            "Copy"
-                        }
-                        crate::job::JobKind::Move { sources, dest } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                source_count = sources.len(),
-                                dest = %dest.display_path(),
-                                error = %error_message,
-                                "Move operation failed"
-                            );
-                            "Move"
-                        }
-                        crate::job::JobKind::Delete { targets } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                target_count = targets.len(),
-                                error = %error_message,
-                                "Delete operation failed"
-                            );
-                            "Delete"
-                        }
-                        crate::job::JobKind::Mkdir { location } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                location = %location.display_path(),
-                                error = %error_message,
-                                "Create directory operation failed"
-                            );
-                            "Create directory"
-                        }
-                        crate::job::JobKind::Rename { from, to } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                from = %from.display_path(),
-                                to = %to.display_path(),
-                                error = %error_message,
-                                "Rename operation failed"
-                            );
-                            "Rename"
-                        }
-                        crate::job::JobKind::CalculateSize { location } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                location = %location.display_path(),
-                                error = %error_message,
-                                "Calculate size operation failed"
-                            );
-                            "Calculate size"
-                        }
-                        crate::job::JobKind::ExtractArchive { archive, dest } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                archive = %archive.display_path(),
-                                dest = %dest.display_path(),
-                                error = %error_message,
-                                "Extract archive operation failed"
-                            );
-                            "Extract archive"
-                        }
-                        crate::job::JobKind::CreateArchive { sources, dest, original_size: _ } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                source_count = sources.len(),
-                                dest = %dest.display_path(),
-                                error = %error_message,
-                                "Create archive operation failed"
-                            );
-                            "Create archive"
-                        }
-                        crate::job::JobKind::ExecuteCustomFunction { command, working_dir, .. } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                command = %command,
-                                working_dir = %working_dir.display_path(),
-                                error = %error_message,
-                                "Execute custom function operation failed"
-                            );
-                            "Execute custom function"
-                        }
-                        crate::job::JobKind::Search { location, pattern, .. } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                location = %location.display_path(),
-                                pattern = %pattern,
-                                error = %error_message,
-                                "Search operation failed"
-                            );
-                            "Search"
-                        }
-                        crate::job::JobKind::LoadFileForViewer { location } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                location = %location.display_path(),
-                                error = %error_message,
-                                "Load file for viewer operation failed"
-                            );
-                            "Load file for viewer"
-                        }
-                        crate::job::JobKind::PatternRename { targets, pattern } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                target_count = targets.len(),
-                                pattern = %pattern,
-                                error = %error_message,
-                                "Pattern rename operation failed"
-                            );
-                            "Pattern rename"
-                        }
-                        crate::job::JobKind::CompareFiles { left, right } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                left = %left.display_path(),
-                                right = %right.display_path(),
-                                error = %error_message,
-                                "File comparison operation failed"
-                            );
-                            "File comparison"
-                        }
-                        crate::job::JobKind::SplitFile { source, dest_dir, chunk_size } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                source = %source.display_path(),
-                                dest_dir = %dest_dir.display_path(),
-                                chunk_size = %chunk_size,
-                                error = %error_message,
-                                "File split operation failed"
-                            );
-                            "File split"
-                        }
-                        crate::job::JobKind::JoinFiles { parts, dest } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                part_count = parts.len(),
-                                dest = %dest.display_path(),
-                                error = %error_message,
-                                "File join operation failed"
-                            );
-                            "File join"
-                        }
-                        crate::job::JobKind::CountDown { start_value, .. } => {
-                            tracing::error!(
-                                job_id = ?job_id,
-                                duration = %start_value,
-                                error = %error_message,
-                                "Countdown job failed"
-                            );
-                            "Countdown"
-                        }
-                    };
-                    
-                    let error_dialog = crate::model::Dialog::from_job_failure(operation_name, error_message);
-                    state.dialogs.push(error_dialog);
-                }
-            }
-            
-            state.jobs.complete_job(job_id, result.clone());
-            
-            // Handle cache updates based on job type and result
-            if let Some(ref spec) = job_spec {
-                match &spec.kind {
-                    crate::job::JobKind::ReadDirectory { location } => {
-                        // If successful, insert into cache
-                        if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = &result {
-                            state.cache.insert(location.clone(), entries.clone());
-                        }
-                    }
-                    crate::job::JobKind::Copy { dest, .. } |
-                    crate::job::JobKind::Move { dest, .. } |
-                    crate::job::JobKind::ExtractArchive { dest, .. } => {
-                        // Invalidate cache for destination directory
-                        state.cache.invalidate(dest);
-                    }
-                    crate::job::JobKind::Delete { targets } => {
-                        // Invalidate cache for parent directories of affected files
-                        for target in targets {
-                            if let Some(parent) = target.parent() {
-                                state.cache.invalidate(&parent);
-                            }
-                        }
-                    }
-                    crate::job::JobKind::Rename { from, .. } => {
-                        // Invalidate cache for parent directory
-                        if let Some(parent) = from.parent() {
-                            state.cache.invalidate(&parent);
-                        }
-                    }
-                    crate::job::JobKind::PatternRename { targets, .. } => {
-                        // Invalidate cache for parent directories of all renamed files
-                        for target in targets {
-                            if let Some(parent) = target.parent() {
-                                state.cache.invalidate(&parent);
-                            }
-                        }
-                    }
-                    crate::job::JobKind::Mkdir { location } => {
-                        // Invalidate cache for parent directory
-                        if let Some(parent) = location.parent() {
-                            state.cache.invalidate(&parent);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            
-            // Determine which panes need refreshing based on job type
-            let mut result_obj = StateUpdateResult::with_ui_change();
-            
-            // Track completed/failed/cancelled jobs for task panel logging
-            match &result {
-                crate::job::OpResult::Success(_) => {
-                    result_obj.completed_jobs.push(job_id);
-                }
-                crate::job::OpResult::Failed(_) => {
-                    result_obj.failed_jobs.push(job_id);
-                }
-                crate::job::OpResult::Cancelled => {
-                    result_obj.cancelled_jobs.push(job_id);
-                }
-            }
-
-            if let Some(spec) = job_spec {
-                match &spec.kind {
-                    crate::job::JobKind::ReadDirectory { location } => {
-                        // Update panes that are viewing this location
-                        if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = &result {
-                            debug!("CompleteJob: ReadDirectory succeeded for {}, got {} entries", 
-                                   location.display_path(), entries.len());
-                            debug!("CompleteJob: Job location debug format: {:?}", location);
-                            
-                            for (tab_idx, tab) in state.tabs.tabs.iter_mut().enumerate() {
-                                debug!("CompleteJob: Checking tab {} - left: {}, right: {}", 
-                                       tab_idx, 
-                                       tab.left_pane.current_location.display_path(),
-                                       tab.right_pane.current_location.display_path());
-                                debug!("CompleteJob: Tab {} left pane location debug: {:?}", tab_idx, tab.left_pane.current_location);
-                                debug!("CompleteJob: Tab {} right pane location debug: {:?}", tab_idx, tab.right_pane.current_location);
-                                
-                                let left_matches = tab.left_pane.current_location == *location;
-                                let right_matches = tab.right_pane.current_location == *location;
-                                
-                                debug!("CompleteJob: Tab {} left_matches={}, right_matches={}", tab_idx, left_matches, right_matches);
-                                
-                                if left_matches {
-                                    debug!("CompleteJob: updating left pane of tab {} with {} entries", tab_idx, entries.len());
-                                    tab.left_pane.entries = entries.clone();
-                                    tab.left_pane.apply_sort();
-                                    
-                                    // Ensure cursor is visible by adjusting scroll if needed
-                                    if tab.left_pane.cursor >= tab.left_pane.entries.len() {
-                                        tab.left_pane.cursor = tab.left_pane.entries.len().saturating_sub(1);
-                                    }
-                                    let visible_height = state.ui.layout.pane_height;
-                                    if tab.left_pane.cursor >= visible_height {
-                                        // Position cursor at bottom of visible area
-                                        tab.left_pane.scroll_offset = tab.left_pane.cursor + 1 - visible_height;
-                                    }
-                                }
-                                if right_matches {
-                                    debug!("CompleteJob: updating right pane of tab {} with {} entries", tab_idx, entries.len());
-                                    tab.right_pane.entries = entries.clone();
-                                    tab.right_pane.apply_sort();
-                                    
-                                    // Ensure cursor is visible by adjusting scroll if needed
-                                    if tab.right_pane.cursor >= tab.right_pane.entries.len() {
-                                        tab.right_pane.cursor = tab.right_pane.entries.len().saturating_sub(1);
-                                    }
-                                    let visible_height = state.ui.layout.pane_height;
-                                    if tab.right_pane.cursor >= visible_height {
-                                        // Position cursor at bottom of visible area
-                                        tab.right_pane.scroll_offset = tab.right_pane.cursor + 1 - visible_height;
-                                    }
-                                }
-                            }
-                        } else {
-                            debug!("CompleteJob: ReadDirectory failed for {}", location.display_path());
-                        }
-                    }
-                    crate::job::JobKind::LoadFileForViewer { .. } => {
-                        // Load file contents into viewer
-                        if let crate::job::OpResult::Success(crate::job::SuccessData::FileContents(contents)) = result {
-                            return update_state(state, Transition::ViewerLoadComplete { contents });
-                        }
-                    }
-                    crate::job::JobKind::CompareFiles { .. } => {
-                        // Show comparison view
-                        if let crate::job::OpResult::Success(crate::job::SuccessData::ComparisonResult(diff)) = result {
-                            return update_state(state, Transition::ShowComparisonView { diff });
-                        }
-                    }
-                    crate::job::JobKind::SplitFile { dest_dir, .. } => {
-                        // Refresh the destination directory
-                        for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                            if tab.left_pane.current_location == *dest_dir {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Left,
-                                });
-                            }
-                            if tab.right_pane.current_location == *dest_dir {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Right,
-                                });
-                            }
-                        }
-                    }
-                    crate::job::JobKind::JoinFiles { dest, .. } => {
-                        // Refresh the directory containing the joined file
-                        if let Some(parent) = dest.parent() {
-                            for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                                if tab.left_pane.current_location == parent {
-                                    result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                        tab_id: tab_idx,
-                                        pane: crate::model::ActivePane::Left,
-                                    });
-                                }
-                                if tab.right_pane.current_location == parent {
-                                    result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                        tab_id: tab_idx,
-                                        pane: crate::model::ActivePane::Right,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    crate::job::JobKind::Copy { dest, .. } |
-                    crate::job::JobKind::ExtractArchive { dest, .. } => {
-                        // Refresh the pane that contains the destination
-                        // Find which tab and pane contains this location
-                        for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                            if tab.left_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Left,
-                                });
-                            }
-                            if tab.right_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Right,
-                                });
-                            }
-                        }
-                    }
-                    crate::job::JobKind::CreateArchive { dest, original_size, .. } => {
-                        // Refresh the pane that contains the destination
-                        for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                            if tab.left_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Left,
-                                });
-                            }
-                            if tab.right_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Right,
-                                });
-                            }
-                        }
-
-                        // Calculate and log compression ratio on success
-                        if let crate::job::OpResult::Success(_) = result {
-                            if let crate::model::Location::Local(path) = dest {
-                                if let Ok(meta) = std::fs::metadata(path) {
-                                    let compressed_size = meta.len();
-                                    let ratio = if *original_size > 0 {
-                                        (1.0 - compressed_size as f64 / *original_size as f64) * 100.0
-                                    } else {
-                                        0.0
-                                    };
-                                    tracing::info!(
-                                        "Compression completed: {} -> {} bytes (ratio: {:.1}%)",
-                                        original_size,
-                                        compressed_size,
-                                        ratio
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    crate::job::JobKind::Move { sources, dest } => {
-                        // For move operations, refresh both source and destination panes
-                        // Refresh destination panes
-                        for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                            if tab.left_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Left,
-                                });
-                            }
-                            if tab.right_pane.current_location == *dest {
-                                result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                    tab_id: tab_idx,
-                                    pane: crate::model::ActivePane::Right,
-                                });
-                            }
-                        }
-                        
-                        // Refresh source panes (where files were moved from)
-                        for source in sources {
-                            if let Some(source_parent) = source.parent() {
-                                for (tab_idx, tab) in state.tabs.tabs.iter().enumerate() {
-                                    if tab.left_pane.current_location == source_parent {
-                                        result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                            tab_id: tab_idx,
-                                            pane: crate::model::ActivePane::Left,
-                                        });
-                                    }
-                                    if tab.right_pane.current_location == source_parent {
-                                        result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                                            tab_id: tab_idx,
-                                            pane: crate::model::ActivePane::Right,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Unmark all moved files
-                        state.marking.unmark_all();
-                    }
-                    crate::job::JobKind::Delete { .. } |
-                    crate::job::JobKind::Rename { .. } |
-                    crate::job::JobKind::PatternRename { .. } |
-                    crate::job::JobKind::Mkdir { .. } => {
-                        // Refresh the active pane
-                        result_obj.panes_to_refresh.push(crate::state::PaneRefresh {
-                            tab_id: state.tabs.active_index,
-                            pane: state.ui.active_pane,
-                        });
-                        
-                        // For delete operations, also unmark all deleted files
-                        if matches!(spec.kind, crate::job::JobKind::Delete { .. }) {
-                            state.marking.unmark_all();
-                        }
-                    }
-                    crate::job::JobKind::CalculateSize { location } => {
-                        // Update the FileEntry with the calculated size
-                        if let crate::job::OpResult::Success(crate::job::SuccessData::SizeCalculated(size)) = result {
-                            // Find and update the entry in all panes
-                            for tab in state.tabs.tabs.iter_mut() {
-                                // Update in left pane
-                                if let Some(entry) = tab.left_pane.entries.iter_mut().find(|e| e.location == *location) {
-                                    entry.calculated_size = Some(size);
-                                }
-                                // Update in right pane
-                                if let Some(entry) = tab.right_pane.entries.iter_mut().find(|e| e.location == *location) {
-                                    entry.calculated_size = Some(size);
-                                }
-                            }
-                        }
-                    }
-                    crate::job::JobKind::ExecuteCustomFunction { command, .. } => {
-                        // Check if this was a configuration editor launch
-                        let config_manager = crate::config::ConfigManager::new();
-                        let config_path = config_manager.config_path().to_string_lossy().to_string();
-
-                        if command.contains(&config_path) {
-                            // This was the config editor, show reload prompt
-                            if let crate::job::OpResult::Success(_) = result {
-                                let dialog = crate::model::Dialog {
-                                    title: "Configuration Editor Closed".to_string(),
-                                    content: crate::model::DialogContent::Confirmation {
-                                        message: "Reload configuration?".to_string(),
-                                    },
-                                };
-                                state.dialogs.push(dialog);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            // Add completion log if we have one
-            if let Some(log) = log_entry {
-                result_obj.task_panel_logs.push(log);
-            }
-
-            // Update background job status based on result
-            match &result {
-                crate::job::OpResult::Success(_) => {
-                    state.background_jobs.mark_job_completed(job_id);
-                }
-                crate::job::OpResult::Failed(error) => {
-                    state.background_jobs.mark_job_failed(job_id, error.clone());
-                }
-                crate::job::OpResult::Cancelled => {
-                    state.background_jobs.mark_job_cancelled(job_id);
-                }
-            }
-
-            result_obj
-        }
-        
-        Transition::CancelJob { job_id } => {
-            if state.jobs.request_cancel(job_id) {
-                StateUpdateResult::with_cancel(job_id)
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        Transition::AcknowledgeCancel { job_id } => {
-            state.jobs.acknowledge_cancel(job_id);
-            StateUpdateResult::with_ui_change()
-        }
-
-        Transition::CreateBackgroundJob { spec, name, description } => {
-            // Create a background job for UI display (Job Manager dialog, task panel, tab spinners)
-            debug!("CreateBackgroundJob: Creating job '{}' spec.id={:?}", name, spec.id);
-            let tab = state.current_tab();
-            let tab_name = format!("{}|{}",
-                tab.left_pane.current_location.display_path(),
-                tab.right_pane.current_location.display_path()
-            );
-            let tab_id = state.tabs.active_index;
-
-            let job_id = state.background_jobs.start_job(
-                name,
-                description,
-                tab_id,
-                tab_name,
-                spec,
-            );
-            debug!("CreateBackgroundJob: Created background job with id={:?}", job_id);
-            StateUpdateResult::with_ui_change()
-        }
-
-        Transition::CreateAndStartCountDownJob { spec, name, description } => {
-            // Create a countdown job and start it immediately, bypassing the queue
-            // This ensures the job starts even if other jobs are queued
-            let job_id = spec.id;
-            debug!("CreateAndStartCountDownJob: Creating and starting job '{}' job_id={:?}", name, job_id);
-            let tab = state.current_tab();
-            let tab_name = format!("{}|{}",
-                tab.left_pane.current_location.display_path(),
-                tab.right_pane.current_location.display_path()
-            );
-            let tab_id = state.tabs.active_index;
-
-            // Create background job for UI
-            let bg_job_id = state.background_jobs.start_job(
-                name.clone(),
-                description.clone(),
-                tab_id,
-                tab_name,
-                spec.clone(),
-            );
-            debug!("CreateAndStartCountDownJob: Created background job bg_job_id={:?}, job_id={:?}", bg_job_id, job_id);
-
-            // Start the job immediately (don't enqueue)
-            state.jobs.start_job(spec.clone());
-            debug!("CreateAndStartCountDownJob: Job started directly, active jobs={}", state.jobs.active.len());
-
-            // Create log entry
-            let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-            let log_msg = format!(
-                "{} [Job #{}] [Tab {}] {}: Started",
-                timestamp,
-                bg_job_id.short_id,
-                tab_id + 1,
-                name
-            );
-
-            StateUpdateResult {
-                jobs_to_start: vec![spec],  // Submit to worker pool
-                jobs_to_cancel: Vec::new(),
-                completed_jobs: Vec::new(),
-                failed_jobs: Vec::new(),
-                cancelled_jobs: Vec::new(),
-                started_jobs: Vec::new(),
-                task_panel_logs: vec![log_msg],
-                panes_to_refresh: Vec::new(),
-                ui_changed: true,
-            }
-        }
-
-        Transition::CreateAndStartFileJob { spec, name, description } => {
-            // Create a file job (Copy/Move/Delete) and start it immediately
-            // No confirmation dialog - user already pressed the key intentionally
-            let job_id = spec.id;
-            debug!("CreateAndStartFileJob: Creating and starting job '{}' job_id={:?}", name, job_id);
-            let tab = state.current_tab();
-            let tab_name = format!("{}|{}",
-                tab.left_pane.current_location.display_path(),
-                tab.right_pane.current_location.display_path()
-            );
-            let tab_id = state.tabs.active_index;
-
-            // Create background job for UI
-            let bg_job_id = state.background_jobs.start_job(
-                name.clone(),
-                description.clone(),
-                tab_id,
-                tab_name,
-                spec.clone(),
-            );
-            debug!("CreateAndStartFileJob: Created background job bg_job_id={:?}, job_id={:?}", bg_job_id, job_id);
-
-            // Start the job immediately
-            state.jobs.start_job(spec.clone());
-            debug!("CreateAndStartFileJob: Job started directly, active jobs={}", state.jobs.active.len());
-
-            // Create log entry
-            let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-            let log_msg = format!(
-                "{} [Job #{}] [Tab {}] {}: Started",
-                timestamp,
-                bg_job_id.short_id,
-                tab_id + 1,
-                name
-            );
-
-            StateUpdateResult {
-                jobs_to_start: vec![spec],
-                jobs_to_cancel: Vec::new(),
-                completed_jobs: Vec::new(),
-                failed_jobs: Vec::new(),
-                cancelled_jobs: Vec::new(),
-                started_jobs: Vec::new(),
-                task_panel_logs: vec![log_msg],
-                panes_to_refresh: Vec::new(),
-                ui_changed: true,
-            }
-        }
-
-
-        // View operations
-        Transition::ChangeSortMode { pane, mode } => {
-            let tab = state.current_tab_mut();
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            pane_model.sort_mode = mode;
-            pane_model.apply_sort();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ChangeDisplayMode { pane, mode } => {
-            let tab = state.current_tab_mut();
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            pane_model.display_mode = mode;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::SetFileMask { pane, mask } => {
-            let tab = state.current_tab_mut();
-            let pane_model = match pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            pane_model.file_mask = mask;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::Refresh { pane } => {
-            // Clear cache for the current location and reload directory
-            let tab = state.current_tab();
-            let location = match pane {
-                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
-                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
-            };
-            
-            // Invalidate cache for this location
-            state.cache.invalidate(&location);
-            
-            // Create job to read directory
-            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        Transition::RefreshAndClearMarks { pane } => {
-            // Clear marks first
-            state.marking.unmark_all();
-            
-            // Then refresh
-            let tab = state.current_tab();
-            let location = match pane {
-                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
-                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
-            };
-            
-            state.cache.invalidate(&location);
-            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        Transition::RefreshNoClearMarks { pane } => {
-            // Just refresh without clearing marks
-            let tab = state.current_tab();
-            let location = match pane {
-                crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
-                crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
-            };
-            
-            state.cache.invalidate(&location);
-            let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        // Pane operations
-        Transition::SyncPanes => {
-            // Navigate opposite pane to active pane's location
-            let active_location = state.active_pane().current_location.clone();
-            let opposite_pane = state.ui.active_pane.opposite();
-            
-            debug!("SyncPanes: syncing {} pane to {}", 
-                   match opposite_pane {
-                       crate::model::ActivePane::Left => "left",
-                       crate::model::ActivePane::Right => "right",
-                   },
-                   active_location.display_path());
-            
-            // Check cache first
-            let cached_entries = state.cache.get(&active_location);
-            
-            // Update opposite pane location
-            let tab = state.current_tab_mut();
-            let opposite_pane_model = match opposite_pane {
-                crate::model::ActivePane::Left => &mut tab.left_pane,
-                crate::model::ActivePane::Right => &mut tab.right_pane,
-            };
-            
-            // Add current location to history
-            tab.history.push(opposite_pane, opposite_pane_model.current_location.clone());
-            
-            // Update location
-            opposite_pane_model.current_location = active_location.clone();
-            opposite_pane_model.cursor = 0;
-            opposite_pane_model.scroll_offset = 0;
-            
-            // Use cached entries if available
-            if let Some(entries) = cached_entries {
-                debug!("SyncPanes: using cached entries ({} entries)", entries.len());
-                opposite_pane_model.entries = entries;
-                opposite_pane_model.apply_sort();
-                StateUpdateResult::with_ui_change()
-            } else {
-                // Create job to read directory
-                debug!("SyncPanes: creating ReadDirectory job");
-                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
-                    location: active_location 
-                });
-                StateUpdateResult::with_job(job_spec)
-            }
-        }
-        
-        Transition::SwapPanes => {
-            // Exchange current_location of both panes
-            let tab = state.current_tab_mut();
-            
-            debug!("SwapPanes: swapping left ({}) and right ({})", 
-                   tab.left_pane.current_location.display_path(),
-                   tab.right_pane.current_location.display_path());
-            
-            // Swap locations
-            std::mem::swap(&mut tab.left_pane.current_location, &mut tab.right_pane.current_location);
-            
-            // Maintain cursor positions and marked files (they stay with their panes)
-            // No need to swap cursor or marked files - they remain with their respective panes
-            
-            // Get locations for both panes
-            let left_location = tab.left_pane.current_location.clone();
-            let right_location = tab.right_pane.current_location.clone();
-            
-            // Check cache for both locations (before mutable borrow)
-            let left_cached = state.cache.get(&left_location);
-            let right_cached = state.cache.get(&right_location);
-            
-            // Now update the panes with cached data if available
-            let tab = state.current_tab_mut();
-            
-            // Update left pane
-            let left_needs_job = if let Some(entries) = left_cached {
-                debug!("SwapPanes: using cached entries for left pane ({} entries)", entries.len());
-                tab.left_pane.entries = entries;
-                tab.left_pane.apply_sort();
-                false
-            } else {
-                true
-            };
-            
-            // Update right pane
-            let right_needs_job = if let Some(entries) = right_cached {
-                debug!("SwapPanes: using cached entries for right pane ({} entries)", entries.len());
-                tab.right_pane.entries = entries;
-                tab.right_pane.apply_sort();
-                false
-            } else {
-                true
-            };
-            
-            // Create jobs for any panes that weren't cached
-            let mut result = StateUpdateResult::with_ui_change();
-            
-            if left_needs_job {
-                debug!("SwapPanes: creating ReadDirectory job for left pane");
-                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
-                    location: left_location 
-                });
-                result.jobs_to_start.push(job_spec);
-            }
-            
-            if right_needs_job {
-                debug!("SwapPanes: creating ReadDirectory job for right pane");
-                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { 
-                    location: right_location 
-                });
-                result.jobs_to_start.push(job_spec);
-            }
-            
-            result
-        }
-        
-        // Dialog operations
-        Transition::ShowDialog { dialog } => {
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CloseDialog => {
-            state.dialogs.pop();
-            StateUpdateResult::with_ui_change()
-        }
-        
         Transition::UpdateDialogInput { input } => {
             state.dialogs.input_buffer = input.clone();
             
@@ -1833,1020 +1810,28 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             StateUpdateResult::with_ui_change()
         }
         
-        Transition::ConfirmDialog => {
-            // Handle dialog confirmation based on dialog type
-            if let Some(dialog) = state.dialogs.current() {
-                match &dialog.content {
-                    crate::model::DialogContent::Confirmation { message: _ } => {
-                        // Determine what operation to perform based on dialog title
-                        let title = dialog.title.as_str();
-                        
-                        if title == "Copy" {
-                            // Extract sources and destination from the confirmation message
-                            // Get marked files or current cursor entry
-                            let sources = if state.marking.count() > 0 {
-                                state.active_pane()
-                                    .entries
-                                    .iter()
-                                    .filter(|e| state.marking.is_marked(&e.location))
-                                    .map(|e| e.location.clone())
-                                    .collect()
-                            } else if let Some(entry) = state.active_pane().current_entry() {
-                                vec![entry.location.clone()]
-                            } else {
-                                vec![]
-                            };
-                            
-                            if !sources.is_empty() {
-                                let dest = state.opposite_pane().current_location.clone();
-                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Copy {
-                                    sources,
-                                    dest,
-                                });
-                                
-                                state.dialogs.pop();
-                                return StateUpdateResult::with_job(job_spec);
-                            }
-                        } else if title == "Move" {
-                            // Get marked files or current cursor entry
-                            let sources = if state.marking.count() > 0 {
-                                state.active_pane()
-                                    .entries
-                                    .iter()
-                                    .filter(|e| state.marking.is_marked(&e.location))
-                                    .map(|e| e.location.clone())
-                                    .collect()
-                            } else if let Some(entry) = state.active_pane().current_entry() {
-                                vec![entry.location.clone()]
-                            } else {
-                                vec![]
-                            };
-                            
-                            if !sources.is_empty() {
-                                let dest = state.opposite_pane().current_location.clone();
-                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move {
-                                    sources,
-                                    dest,
-                                });
-                                
-                                state.dialogs.pop();
-                                return StateUpdateResult::with_job(job_spec);
-                            }
-                        } else if title == "Delete" {
-                            // Get marked files or current cursor entry
-                            let targets = if state.marking.count() > 0 {
-                                state.active_pane()
-                                    .entries
-                                    .iter()
-                                    .filter(|e| state.marking.is_marked(&e.location))
-                                    .map(|e| e.location.clone())
-                                    .collect()
-                            } else if let Some(entry) = state.active_pane().current_entry() {
-                                vec![entry.location.clone()]
-                            } else {
-                                vec![]
-                            };
-                            
-                            if !targets.is_empty() {
-                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete {
-                                    targets,
-                                });
-                                
-                                state.dialogs.pop();
-                                return StateUpdateResult::with_job(job_spec);
-                            }
-                        } else if title == "Configuration Editor Closed" {
-                            // User confirmed reload, trigger config reload
-                            state.dialogs.pop();
-                            return update_state(state, Transition::ReloadConfig);
-                        }
-                    }
-                    crate::model::DialogContent::Input { prompt: _, default_value: _ } => {
-                        let title = dialog.title.as_str();
-                        let input = state.dialogs.input_buffer.clone();
-                        
-                        if title == "Search" {
-                            // Add to search history and move to first match
-                            if !input.is_empty() {
-                                state.search.add_to_history(input.clone());
-                                
-                                // Move cursor to first match if any
-                                if let Some(first_result) = state.search.current_result() {
-                                    // Find the index of the first result in the pane entries
-                                    if let Some(index) = state.active_pane().entries.iter()
-                                        .position(|e| e.location == first_result.location) {
-                                        state.dialogs.pop();
-                                        return update_state(state, Transition::CursorJump {
-                                            pane: state.ui.active_pane,
-                                            position: index,
-                                        });
-                                    }
-                                }
-                            }
-                            
-                            // Close dialog and exit search mode
-                            state.dialogs.pop();
-                            return update_state(state, Transition::ChangeUIMode {
-                                mode: crate::model::UIMode::Normal,
-                            });
-                        } else if title == "Rename" {
-                            // Rename the current cursor entry
-                            if let Some(entry) = state.active_pane().current_entry() {
-                                let from = entry.location.clone();
-                                let to = from.parent()
-                                    .map(|parent| parent.join(&input))
-                                    .unwrap_or_else(|| from.clone());
-                                
-                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Rename {
-                                    from,
-                                    to,
-                                });
-                                
-                                state.dialogs.pop();
-                                return StateUpdateResult::with_job(job_spec);
-                            }
-                        } else if title == "Create Directory" {
-                            // Create directory in current location
-                            let current_location = state.active_pane().current_location.clone();
-                            let new_dir_location = current_location.join(&input);
-                            
-                            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Mkdir {
-                                location: new_dir_location,
-                            });
-                            
-                            state.dialogs.pop();
-                            return StateUpdateResult::with_job(job_spec);
-                        } else if title == "Wildcard Marking" {
-                            // Mark files matching the wildcard pattern
-                            if !input.is_empty() {
-                                state.dialogs.pop();
-                                return update_state(state, Transition::MarkPattern { pattern: input });
-                            }
-                        } else if title == "Register Folder" {
-                            // Register the current folder with the given name
-                            if !input.is_empty() {
-                                state.dialogs.pop();
-                                return update_state(state, Transition::RegisterCurrentFolder { name: input });
-                            }
-                        } else if title == "File Mask Filter" {
-                            // Set file mask for the active pane
-                            state.dialogs.pop();
-                            let mask = if input.is_empty() { None } else { Some(input) };
-                            return update_state(state, Transition::SetFileMask {
-                                pane: state.ui.active_pane,
-                                mask,
-                            });
-                        }
-                    }
-                    crate::model::DialogContent::RegisteredFolderSelector { folders: _, filter: _, selected_index } => {
-                        // Clone the selected index to avoid borrow checker issues
-                        let folder_index = *selected_index;
-                        
-                        // Determine if this is for navigation or moving files
-                        if state.marking.count() > 0 {
-                            // Move marked files to the selected folder
-                            state.dialogs.pop();
-                            return update_state(state, Transition::MoveToRegisteredFolder { folder_index });
-                        } else {
-                            // Navigate to the selected folder
-                            state.dialogs.pop();
-                            return update_state(state, Transition::NavigateToRegisteredFolder { folder_index });
-                        }
-                    }
-                    crate::model::DialogContent::PatternRename { pattern, preview: _ } => {
-                        // Execute pattern rename with the current pattern
-                        let pattern_clone = pattern.clone();
-                        
-                        // Get target locations (marked files or cursor file)
-                        let targets = if state.marking.count() > 0 {
-                            state.active_pane()
-                                .entries
-                                .iter()
-                                .filter(|e| state.marking.is_marked(&e.location))
-                                .map(|e| e.location.clone())
-                                .collect()
-                        } else if let Some(entry) = state.active_pane().current_entry() {
-                            vec![entry.location.clone()]
-                        } else {
-                            vec![]
-                        };
-                        
-                        if !targets.is_empty() && !pattern_clone.is_empty() {
-                            state.dialogs.pop();
-                            return update_state(state, Transition::ExecutePatternRename {
-                                pattern: pattern_clone,
-                                targets,
-                            });
-                        }
-                    }
-                    crate::model::DialogContent::SplitJoinDialog { mode, chunk_size_mb } => {
-                        // Execute split or join based on mode
-                        let mode_clone = *mode;
-                        let chunk_size = *chunk_size_mb * 1024 * 1024; // Convert MB to bytes
-                        
-                        match mode_clone {
-                            crate::model::SplitJoinMode::Split => {
-                                // Get the cursor file to split
-                                if let Some(entry) = state.active_pane().current_entry() {
-                                    let source = entry.location.clone();
-                                    let dest_dir = state.opposite_pane().current_location.clone();
-                                    
-                                    state.dialogs.pop();
-                                    return update_state(state, Transition::ExecuteFileSplit {
-                                        source,
-                                        dest_dir,
-                                        chunk_size,
-                                    });
-                                }
-                            }
-                            crate::model::SplitJoinMode::Join => {
-                                // Get marked files to join (or all files matching .part pattern)
-                                let parts: Vec<crate::model::Location> = if state.marking.count() > 0 {
-                                    state.active_pane()
-                                        .entries
-                                        .iter()
-                                        .filter(|e| state.marking.is_marked(&e.location))
-                                        .map(|e| e.location.clone())
-                                        .collect()
-                                } else {
-                                    // Auto-detect .part files
-                                    state.active_pane()
-                                        .entries
-                                        .iter()
-                                        .filter(|e| e.name.contains(".part"))
-                                        .map(|e| e.location.clone())
-                                        .collect()
-                                };
-                                
-                                if !parts.is_empty() {
-                                    // Determine destination filename (remove .part000 suffix)
-                                    let dest_name = if let Some(first_entry) = state.active_pane().entries.iter().find(|e| parts.contains(&e.location)) {
-                                        // Remove .partXXX suffix
-                                        first_entry.name.split(".part").next().unwrap_or(&first_entry.name).to_string()
-                                    } else {
-                                        "joined_file".to_string()
-                                    };
-                                    
-                                    let dest = state.opposite_pane().current_location.join(&dest_name);
-                                    
-                                    state.dialogs.pop();
-                                    return update_state(state, Transition::ExecuteFileJoin {
-                                        parts,
-                                        dest,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    crate::model::DialogContent::ContextMenu { options, selected_index } => {
-                        // Clone the selected option to avoid borrow checker issues
-                        let selected_option = options.get(*selected_index).cloned();
-                        
-                        state.dialogs.pop();
-                        
-                        if let Some(option) = selected_option {
-                            match &option.action {
-                                crate::model::ContextMenuAction::Copy => {
-                                    // Show copy confirmation dialog
-                                    let sources = if state.marking.count() > 0 {
-                                        state.active_pane()
-                                            .entries
-                                            .iter()
-                                            .filter(|e| state.marking.is_marked(&e.location))
-                                            .map(|e| e.location.clone())
-                                            .collect()
-                                    } else if let Some(entry) = state.active_pane().current_entry() {
-                                        vec![entry.location.clone()]
-                                    } else {
-                                        vec![]
-                                    };
-                                    
-                                    if !sources.is_empty() {
-                                        let dest = state.opposite_pane().current_location.clone();
-                                        let total_size: u64 = state.active_pane()
-                                            .entries
-                                            .iter()
-                                            .filter(|e| sources.contains(&e.location))
-                                            .map(|e| e.size)
-                                            .sum();
-                                        let size_str = crate::model::format_size(total_size);
-                                        let message = if sources.len() == 1 {
-                                            format!("Copy {} ({}) to {}?", sources[0].display_path(), size_str, dest.display_path())
-                                        } else {
-                                            format!("Copy {} files ({}) to {}?", sources.len(), size_str, dest.display_path())
-                                        };
-                                        let dialog = crate::model::Dialog::confirmation("Copy", message);
-                                        state.dialogs.push(dialog);
-                                    }
-                                }
-                                crate::model::ContextMenuAction::Move => {
-                                    // Show move confirmation dialog
-                                    let sources = if state.marking.count() > 0 {
-                                        state.active_pane()
-                                            .entries
-                                            .iter()
-                                            .filter(|e| state.marking.is_marked(&e.location))
-                                            .map(|e| e.location.clone())
-                                            .collect()
-                                    } else if let Some(entry) = state.active_pane().current_entry() {
-                                        vec![entry.location.clone()]
-                                    } else {
-                                        vec![]
-                                    };
-                                    
-                                    if !sources.is_empty() {
-                                        let dest = state.opposite_pane().current_location.clone();
-                                        let message = if sources.len() == 1 {
-                                            format!("Move {} to {}?", sources[0].display_path(), dest.display_path())
-                                        } else {
-                                            format!("Move {} files to {}?", sources.len(), dest.display_path())
-                                        };
-                                        let dialog = crate::model::Dialog::confirmation("Move", message);
-                                        state.dialogs.push(dialog);
-                                    }
-                                }
-                                crate::model::ContextMenuAction::Delete => {
-                                    // Show delete confirmation dialog
-                                    let targets = if state.marking.count() > 0 {
-                                        state.active_pane()
-                                            .entries
-                                            .iter()
-                                            .filter(|e| state.marking.is_marked(&e.location))
-                                            .map(|e| e.location.clone())
-                                            .collect()
-                                    } else if let Some(entry) = state.active_pane().current_entry() {
-                                        vec![entry.location.clone()]
-                                    } else {
-                                        vec![]
-                                    };
-                                    
-                                    if !targets.is_empty() {
-                                        let message = if targets.len() == 1 {
-                                            format!("Delete {}?", targets[0].display_path())
-                                        } else {
-                                            format!("Delete {} files?", targets.len())
-                                        };
-                                        let dialog = crate::model::Dialog::confirmation("Delete", message);
-                                        state.dialogs.push(dialog);
-                                    }
-                                }
-                                crate::model::ContextMenuAction::Rename => {
-                                    // Show rename input dialog
-                                    if let Some(entry) = state.active_pane().current_entry() {
-                                        let dialog = crate::model::Dialog::input("Rename", "New name:", &entry.name);
-                                        state.dialogs.push(dialog);
-                                    }
-                                }
-                                crate::model::ContextMenuAction::View => {
-                                    // Open text viewer
-                                    if let Some(entry) = state.active_pane().current_entry() {
-                                        let location = entry.location.clone();
-                                        return update_state(state, Transition::OpenTextViewer { location });
-                                    }
-                                }
-                                crate::model::ContextMenuAction::CustomFunction(name) => {
-                                    // Trigger custom function
-                                    // TODO: Load and execute custom function by name
-                                    let _ = name; // Suppress unused warning for now
-                                }
-                            }
-                        }
-                    }
-                    crate::model::DialogContent::DriveSelection { drives, selected_index } => {
-                        // Navigate to the selected drive
-                        if let Some(drive) = drives.get(*selected_index) {
-                            let location = crate::model::Location::Local(std::path::PathBuf::from(&drive.path));
-                            let pane = state.ui.active_pane;
-                            
-                            state.dialogs.pop();
-                            return update_state(state, Transition::ChangeLocation { pane, location });
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            
-            // If we didn't handle the dialog, just close it
-            state.dialogs.pop();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CancelDialog => {
-            state.dialogs.pop();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // UI mode changes
-        Transition::ChangeUIMode { mode } => {
-            state.ui.mode = mode;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::UpdatePaneHeight { height } => {
-            state.ui.layout.pane_height = height;
-            StateUpdateResult::none()
-        }
-        
-        // Search operations
-        Transition::StartSearch { query } => {
-            state.search.query = query;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::UpdateSearchQuery { query } => {
-            state.search.query = query.clone();
-            
-            // Filter entries in real-time
-            let entries = state.active_pane().entries.clone();
-            state.search.filter_entries(&entries);
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ClearSearch => {
-            state.search.query.clear();
-            state.search.results.clear();
-            state.search.current_index = None;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::NextSearchResult => {
-            if !state.search.results.is_empty() {
-                let current = state.search.current_index.unwrap_or(0);
-                state.search.current_index = Some((current + 1) % state.search.results.len());
-                StateUpdateResult::with_ui_change()
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        Transition::PrevSearchResult => {
-            if !state.search.results.is_empty() {
-                let current = state.search.current_index.unwrap_or(0);
-                let new_index = if current == 0 {
-                    state.search.results.len() - 1
-                } else {
-                    current - 1
-                };
-                state.search.current_index = Some(new_index);
-                StateUpdateResult::with_ui_change()
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        // Registered folder operations
-        Transition::RegisterCurrentFolder { name } => {
-            let current_location = state.active_pane().current_location.clone();
-            let path = current_location.display_path();
-            
-            let folder = crate::model::RegisteredFolder::new(name, path);
-            state.registered_folders.add(folder);
-            
-            // Save to file
-            let save_path = crate::model::RegisteredFolderManager::default_path();
-            if let Err(e) = state.registered_folders.save_to_file(&save_path) {
-                tracing::error!("Failed to save registered folders: {}", e);
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ShowRegisteredFolderDialog => {
-            let folders = state.registered_folders.folders.clone();
-            let dialog = crate::model::Dialog::registered_folder_selector(folders);
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::NavigateToRegisteredFolder { folder_index } => {
-            if let Some(folder) = state.registered_folders.folders.get(folder_index) {
-                let expanded_path = state.registered_folders.expand_path(folder);
-                let location = crate::model::Location::Local(expanded_path);
-                
-                // Close the dialog
-                state.dialogs.pop();
-                
-                // Navigate to the folder
-                return update_state(state, Transition::ChangeLocation {
-                    pane: state.ui.active_pane,
-                    location,
-                });
-            }
-            StateUpdateResult::none()
-        }
-        
-        Transition::MoveToRegisteredFolder { folder_index } => {
-            if let Some(folder) = state.registered_folders.folders.get(folder_index) {
-                let expanded_path = state.registered_folders.expand_path(folder);
-                let dest = crate::model::Location::Local(expanded_path);
-                
-                // Get marked files
-                let sources = if state.marking.count() > 0 {
-                    state.active_pane()
-                        .entries
-                        .iter()
-                        .filter(|e| state.marking.is_marked(&e.location))
-                        .map(|e| e.location.clone())
-                        .collect()
-                } else {
-                    vec![]
-                };
-                
-                if !sources.is_empty() {
-                    // Create move job
-                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move {
-                        sources,
-                        dest,
-                    });
-                    
-                    return StateUpdateResult::with_job(job_spec);
-                }
-            }
-            StateUpdateResult::none()
-        }
-        
-        // Configuration operations
-        Transition::LaunchConfigurationProgram => {
-            // Get the editor command from config, or use system default
-            let editor_command = state.config.editor_command.clone()
-                .unwrap_or_else(|| {
-                    // Use system default editor
-                    #[cfg(target_os = "windows")]
-                    { "notepad".to_string() }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        std::env::var("EDITOR")
-                            .or_else(|_| std::env::var("VISUAL"))
-                            .unwrap_or_else(|_| "vi".to_string())
-                    }
-                });
-            
-            // Get the config file path
-            let config_manager = crate::config::ConfigManager::new();
-            let config_path = config_manager.config_path().to_string_lossy().to_string();
-            
-            // Build the command to launch the editor
-            let command = format!("{} \"{}\"", editor_command, config_path);
-            
-            // Get current working directory
-            let working_dir = std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            
-            // Create a job to execute the editor
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                command,
-                working_dir: crate::model::Location::Local(working_dir),
-                pipe_to_action: None,
-                shell: None,  // Use default shell
-            });
-            
-            StateUpdateResult::with_job(job_spec)
-        }
-        
         Transition::ReloadConfig => {
-            // Store the current config as backup
-            let previous_config = state.config.clone();
-            
-            // Try to load the new configuration
             let config_manager = crate::config::ConfigManager::new();
-            match config_manager.load_config() {
-                Ok(new_config) => {
-                    // Validate the new configuration
-                    match config_manager.validate_config(&new_config) {
-                        Ok(_) => {
-                            // Configuration is valid, apply it
-                            return update_state(state, Transition::UpdateConfig {
-                                config: Box::new(new_config),
-                            });
-                        }
-                        Err(e) => {
-                            // Validation failed, show error and keep previous config
-                            let error_dialog = crate::model::Dialog {
-                                title: "Configuration Validation Error".to_string(),
-                                content: crate::model::DialogContent::Confirmation {
-                                    message: format!("Configuration validation failed: {}\n\nKeeping previous configuration.", e),
-                                },
-                            };
-                            state.dialogs.push(error_dialog);
-                            
-                            // Keep the previous config
-                            state.config = previous_config;
-                            StateUpdateResult::with_ui_change()
-                        }
-                    }
-                }
-                Err(e) => {
-                    // Failed to load config, show error and keep previous config
-                    let error_dialog = crate::model::Dialog {
-                        title: "Configuration Load Error".to_string(),
-                        content: crate::model::DialogContent::Confirmation {
-                            message: format!("Failed to load configuration: {}\n\nKeeping previous configuration.", e),
-                        },
-                    };
-                    state.dialogs.push(error_dialog);
-                    
-                    // Keep the previous config
-                    state.config = previous_config;
-                    StateUpdateResult::with_ui_change()
-                }
+            if let Ok(new_config) = config_manager.load_config() {
+                state.config = new_config;
             }
+            StateUpdateResult::with_ui_change()
         }
         
         Transition::UpdateConfig { config } => {
-            // Update worker pool size if changed
-            let new_worker_pool_size = config.worker_pool_size;
-            
-            // Update the configuration
+            state.jobs.max_parallel = config.worker_pool_size;
             state.config = *config;
-            
-            if state.jobs.max_parallel != new_worker_pool_size {
-                state.jobs.max_parallel = new_worker_pool_size;
-            }
-            
             StateUpdateResult::with_ui_change()
         }
         
-        Transition::RotateHelpLanguage => {
-            // Rotate through available help languages
-            // **Validates: Requirements 48.3, 48.6**
-            let current_lang = &state.config.help_language;
-            let next_lang = crate::help_content::HelpContent::next_language(current_lang);
-            
-            // Update config with new language
-            state.config.help_language = next_lang.clone();
-            
-            // If help dialog is currently open, update it with new language
-            if let Some(dialog) = state.dialogs.current_mut() {
-                if matches!(dialog.content, crate::model::DialogContent::Help { .. }) {
-                    let new_help = crate::model::Dialog::help_with_language(&next_lang);
-                    *dialog = new_help;
-                }
-            }
-            
-            // Save config to persist language selection
-            let config_manager = crate::config::ConfigManager::new();
-            let _ = config_manager.save_config(&state.config);
-            
-            StateUpdateResult::with_ui_change()
+        Transition::Quit => {
+            StateUpdateResult::none()
         }
         
-        // Viewer operations
-        Transition::OpenTextViewer { location } => {
-            // Create viewer state
-            let mut viewer = crate::model::ViewerState::new(location.clone());
-            viewer.mode = crate::model::ViewerMode::Text;
-            state.viewer = Some(viewer);
-            
-            // Change UI mode to viewer
-            state.ui.mode = crate::model::UIMode::Viewer;
-            
-            // Create job to load file contents
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::LoadFileForViewer {
-                location,
-            });
-            
-            StateUpdateResult::with_job(job_spec)
+        Transition::ExitAndChangeDirectory => {
+            StateUpdateResult::none()
         }
-        
-        Transition::OpenHexViewer { location } => {
-            // Create viewer state
-            let mut viewer = crate::model::ViewerState::new(location.clone());
-            viewer.mode = crate::model::ViewerMode::Hex;
-            state.viewer = Some(viewer);
-            
-            // Change UI mode to viewer
-            state.ui.mode = crate::model::UIMode::Viewer;
-            
-            // Create job to load file contents
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::LoadFileForViewer {
-                location,
-            });
-            
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        Transition::CloseViewer => {
-            state.viewer = None;
-            state.ui.mode = crate::model::UIMode::Normal;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerLoadComplete { contents } => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.set_contents(contents);
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerCycleEncoding => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.cycle_encoding();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerScrollDown => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.scroll_down(20); // TODO: Get viewport height from UI
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerScrollUp => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.scroll_up();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerPageDown => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.page_down(20); // TODO: Get viewport height from UI
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerPageUp => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.page_up(20); // TODO: Get viewport height from UI
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerJumpToTop => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.jump_to_top();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerJumpToBottom => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.jump_to_bottom(20); // TODO: Get viewport height from UI
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerMoveToLineStart => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.move_to_line_start();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerMoveToLineEnd { viewport_width } => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.move_to_line_end(viewport_width);
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerStartSearch { query } => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.start_search(query);
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerFindNext => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.find_next();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerFindPrev => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.find_prev();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ViewerClearSearch => {
-            if let Some(viewer) = &mut state.viewer {
-                viewer.clear_search();
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // Pattern rename operations
-        Transition::ShowPatternRenameDialog => {
-            // Get files to rename (marked files or cursor file)
-            let targets = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.name.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
-                vec![entry.name.clone()]
-            } else {
-                vec![]
-            };
-            
-            if !targets.is_empty() {
-                let dialog = crate::model::Dialog::pattern_rename(String::new(), vec![]);
-                state.dialogs.push(dialog);
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::UpdatePatternRenamePattern { pattern } => {
-            // Get filenames to preview first (before borrowing dialog mutably)
-            let filenames = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.name.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
-                vec![entry.name.clone()]
-            } else {
-                vec![]
-            };
-            
-            // Generate preview
-            let preview = crate::pattern_rename::generate_preview(&filenames, &pattern);
-            
-            // Update the pattern and preview in the dialog
-            if let Some(dialog) = state.dialogs.current_mut() {
-                if let Some((pattern_ref, preview_ref)) = dialog.content.as_pattern_rename_mut() {
-                    *pattern_ref = pattern.clone();
-                    *preview_ref = preview;
-                }
-            }
-            
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ExecutePatternRename { pattern, targets } => {
-            // Create pattern rename job
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::PatternRename {
-                targets,
-                pattern,
-            });
-            
-            state.dialogs.pop();
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        // File comparison and split/join operations
-        Transition::CompareFiles { left, right } => {
-            // Create comparison job
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CompareFiles {
-                left,
-                right,
-            });
-            
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        Transition::ShowComparisonView { diff } => {
-            // Show comparison view dialog
-            let dialog = crate::model::Dialog::comparison_view(diff);
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::CloseComparisonView => {
-            // Close the comparison view dialog
-            state.dialogs.pop();
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ShowSplitJoinDialog => {
-            // Show split/join dialog
-            let dialog = crate::model::Dialog::split_join_dialog();
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ExecuteFileSplit { source, dest_dir, chunk_size } => {
-            // Create split job
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::SplitFile {
-                source,
-                dest_dir,
-                chunk_size,
-            });
-            
-            state.dialogs.pop();
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        Transition::ExecuteFileJoin { parts, dest } => {
-            // Create join job
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::JoinFiles {
-                parts,
-                dest,
-            });
-            
-            state.dialogs.pop();
-            StateUpdateResult::with_job(job_spec)
-        }
-        
-        // Context menu and drive selection
-        Transition::ShowContextMenu => {
-            // Show context menu dialog
-            let dialog = crate::model::Dialog::context_menu();
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ShowDriveChangeDialog => {
-            // Get all available drives
-            let drives = crate::volume_info::get_all_drives();
-            
-            // Show drive selection dialog
-            let dialog = crate::model::Dialog::drive_selection(drives);
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ShowFileInfo => {
-            // Show file information dialog for current cursor entry
-            if let Some(entry) = state.active_pane().current_entry() {
-                let dialog = crate::model::Dialog::file_info(entry);
-                state.dialogs.push(dialog);
-                StateUpdateResult::with_ui_change()
-            } else {
-                StateUpdateResult::none()
-            }
-        }
-        
-        Transition::ShowVersion => {
-            // Show version information dialog
-            let dialog = crate::model::Dialog::version();
-            state.dialogs.push(dialog);
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::SaveLog => {
-            // Save the current session log to file
-            match state.log_manager.save_to_file() {
-                Ok(()) => {
-                    state.log_manager.info("Session log saved successfully".to_string());
-                    StateUpdateResult::with_ui_change()
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to save log: {}", e);
-                    state.log_manager.error(error_msg.clone());
-                    tracing::error!("Failed to save session log: {}", e);
-                    StateUpdateResult::with_ui_change()
-                }
-            }
-        }
-        
-        // Task panel operations
-        Transition::ToggleTaskPanel => {
-            state.ui.layout.show_task_panel = !state.ui.layout.show_task_panel;
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::IncreaseTaskPanelHeight => {
-            // Increase height by 1, max 20 lines
-            if state.ui.layout.task_panel_height < 20 {
-                state.ui.layout.task_panel_height += 1;
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::DecreaseTaskPanelHeight => {
-            // Decrease height by 1, min 3 lines
-            if state.ui.layout.task_panel_height > 3 {
-                state.ui.layout.task_panel_height -= 1;
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ScrollTaskPanelUp => {
-            // Scroll up by 1 line
-            if state.ui.layout.task_panel_scroll_offset > 0 {
-                state.ui.layout.task_panel_scroll_offset -= 1;
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        Transition::ScrollTaskPanelDown => {
-            // Calculate total number of task items
-            let total_items = state.jobs.queue.len() 
-                + state.jobs.active.len() 
-                + state.jobs.completed.len();
-            
-            // Only scroll if there are more items than visible height
-            if total_items > state.ui.layout.task_panel_height {
-                let max_scroll = total_items.saturating_sub(state.ui.layout.task_panel_height);
-                if state.ui.layout.task_panel_scroll_offset < max_scroll {
-                    state.ui.layout.task_panel_scroll_offset += 1;
-                }
-            }
-            StateUpdateResult::with_ui_change()
-        }
-        
-        // Placeholder implementations for other transitions
+
         _ => StateUpdateResult::none(),
     }
 }
@@ -3105,10 +2090,7 @@ mod tests {
                 calculated_size: None,
             },
         ];
-        
-        state.current_tab_mut().left_pane.entries = entries;
-        
-        assert_eq!(state.marking.count(), 0);
+        state.active_pane_mut().entries = entries;
         
         let result = update_state(&mut state, Transition::MarkAll);
         assert!(result.ui_changed);
@@ -3123,9 +2105,8 @@ mod tests {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Mark some locations
-        state.marking.mark(Location::Local(PathBuf::from("/test/file1.txt")));
-        state.marking.mark(Location::Local(PathBuf::from("/test/file2.txt")));
+        state.marking.toggle(Location::Local(PathBuf::from("/test/file1.txt")));
+        state.marking.toggle(Location::Local(PathBuf::from("/test/file2.txt")));
         assert_eq!(state.marking.count(), 2);
         
         let result = update_state(&mut state, Transition::UnmarkAll);
@@ -3134,7 +2115,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cursor_move_transition() {
+    fn test_mark_pattern_transition() {
         use crate::model::{Location, FileEntry};
         use std::path::PathBuf;
         use std::time::SystemTime;
@@ -3142,121 +2123,233 @@ mod tests {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Add some entries
-        let entries: Vec<FileEntry> = (0..10).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect();
+        let entries = vec![
+            FileEntry {
+                name: "test.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/test.txt")),
+                size: 100,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+            FileEntry {
+                name: "other.doc".to_string(),
+                location: Location::Local(PathBuf::from("/test/other.doc")),
+                size: 200,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+        ];
+        state.active_pane_mut().entries = entries;
         
-        state.current_tab_mut().left_pane.entries = entries;
-        assert_eq!(state.current_tab().left_pane.cursor, 0);
-        
-        // Move down
-        let result = update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: 3 
-        });
+        let result = update_state(&mut state, Transition::MarkPattern { pattern: "*.txt".to_string() });
         assert!(result.ui_changed);
-        assert_eq!(state.current_tab().left_pane.cursor, 3);
+        assert_eq!(state.marking.count(), 1);
+        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/test.txt"))));
+    }
+
+    #[test]
+    fn test_mark_range_transition() {
+        use crate::model::{Location, FileEntry};
+        use std::path::PathBuf;
+        use std::time::SystemTime;
         
-        // Move up
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: -1 
-        });
-        assert_eq!(state.current_tab().left_pane.cursor, 2);
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
         
-        // Try to move beyond bounds (should clamp)
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: 100 
-        });
-        assert_eq!(state.current_tab().left_pane.cursor, 9);
+        let entries = vec![
+            FileEntry {
+                name: "f1.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/f1.txt")),
+                size: 10,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+            FileEntry {
+                name: "f2.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/f2.txt")),
+                size: 10,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+            FileEntry {
+                name: "f3.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/f3.txt")),
+                size: 10,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+        ];
+        state.active_pane_mut().entries = entries;
         
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: -100 
-        });
-        assert_eq!(state.current_tab().left_pane.cursor, 0);
+        let result = update_state(&mut state, Transition::MarkRange { start: 0, end: 1 });
+        assert!(result.ui_changed);
+        assert_eq!(state.marking.count(), 2);
+    }
+
+    #[test]
+    fn test_invert_marks_transition() {
+        use crate::model::{Location, FileEntry};
+        use std::path::PathBuf;
+        use std::time::SystemTime;
+        
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        let entries = vec![
+            FileEntry {
+                name: "f1.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/f1.txt")),
+                size: 10,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+            FileEntry {
+                name: "f2.txt".to_string(),
+                location: Location::Local(PathBuf::from("/test/f2.txt")),
+                size: 10,
+                is_dir: false,
+                is_hidden: false,
+                modified: SystemTime::now(),
+                marked: false,
+                calculated_size: None,
+            },
+        ];
+        state.active_pane_mut().entries = entries;
+        
+        state.marking.toggle(Location::Local(PathBuf::from("/test/f1.txt")));
+        assert_eq!(state.marking.count(), 1);
+        
+        let result = update_state(&mut state, Transition::InvertMarks);
+        assert!(result.ui_changed);
+        assert_eq!(state.marking.count(), 1);
+        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/f2.txt"))));
+    }
+
+    #[test]
+    fn test_enter_range_marking_mode_transition() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        state.active_pane_mut().cursor = 5;
+        
+        let result = update_state(&mut state, Transition::EnterRangeMarkingMode);
+        assert!(result.ui_changed);
+        assert_eq!(state.ui.range_marking_start, Some(5));
+    }
+
+    #[test]
+    fn test_cursor_move_transition() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        // Add some dummy entries so cursor has somewhere to move
+        state.active_pane_mut().entries = vec![
+            crate::model::FileEntry::dummy("f1"),
+            crate::model::FileEntry::dummy("f2"),
+            crate::model::FileEntry::dummy("f3"),
+        ];
+        
+        assert_eq!(state.active_pane().cursor, 0);
+        
+        let result = update_state(&mut state, Transition::CursorMove { pane: ActivePane::Left, delta: 1 });
+        assert!(result.ui_changed);
+        assert_eq!(state.active_pane().cursor, 1);
+        
+        update_state(&mut state, Transition::CursorMove { pane: ActivePane::Left, delta: 1 });
+        assert_eq!(state.active_pane().cursor, 2);
+        
+        // Should clamp to last entry
+        update_state(&mut state, Transition::CursorMove { pane: ActivePane::Left, delta: 1 });
+        assert_eq!(state.active_pane().cursor, 2);
+        
+        // Should clamp to 0
+        update_state(&mut state, Transition::CursorMove { pane: ActivePane::Left, delta: -10 });
+        assert_eq!(state.active_pane().cursor, 0);
     }
 
     #[test]
     fn test_cursor_jump_transition() {
-        use crate::model::{Location, FileEntry};
-        use std::path::PathBuf;
-        use std::time::SystemTime;
-        
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Add some entries
-        let entries: Vec<FileEntry> = (0..10).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect();
+        state.active_pane_mut().entries = vec![
+            crate::model::FileEntry::dummy("f1"),
+            crate::model::FileEntry::dummy("f2"),
+            crate::model::FileEntry::dummy("f3"),
+        ];
         
-        state.current_tab_mut().left_pane.entries = entries;
-        
-        let result = update_state(&mut state, Transition::CursorJump { 
-            pane: ActivePane::Left, 
-            position: 5 
-        });
+        let result = update_state(&mut state, Transition::CursorJump { pane: ActivePane::Left, position: 2 });
         assert!(result.ui_changed);
-        assert_eq!(state.current_tab().left_pane.cursor, 5);
+        assert_eq!(state.active_pane().cursor, 2);
         
-        // Jump beyond bounds (should clamp)
-        update_state(&mut state, Transition::CursorJump { 
-            pane: ActivePane::Left, 
-            position: 100 
-        });
-        assert_eq!(state.current_tab().left_pane.cursor, 9);
+        // Should clamp
+        update_state(&mut state, Transition::CursorJump { pane: ActivePane::Left, position: 100 });
+        assert_eq!(state.active_pane().cursor, 2);
     }
 
     #[test]
-    fn test_change_location_creates_job() {
+    fn test_change_location_with_cache_hit() {
         use crate::model::Location;
         use std::path::PathBuf;
         
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        let new_location = Location::Local(PathBuf::from("/new/path"));
+        let loc = Location::Local(PathBuf::from("/test"));
+        let entries = vec![crate::model::FileEntry::dummy("file")];
+        state.cache.insert(loc.clone(), entries);
         
-        let result = update_state(&mut state, Transition::ChangeLocation { 
-            pane: ActivePane::Left, 
-            location: new_location.clone() 
-        });
+        let result = update_state(&mut state, Transition::ChangeLocation { pane: ActivePane::Left, location: loc.clone() });
+        
+        assert!(result.ui_changed);
+        assert_eq!(result.jobs_to_start.len(), 0);
+        assert_eq!(state.active_pane().current_location, loc);
+        assert_eq!(state.active_pane().entries.len(), 1);
+    }
+
+    #[test]
+    fn test_change_location_with_cache_miss() {
+        use crate::model::Location;
+        use std::path::PathBuf;
+        
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        let loc = Location::Local(PathBuf::from("/new_place"));
+        
+        let result = update_state(&mut state, Transition::ChangeLocation { pane: ActivePane::Left, location: loc.clone() });
         
         assert!(result.ui_changed);
         assert_eq!(result.jobs_to_start.len(), 1);
-        assert_eq!(state.current_tab().left_pane.cursor, 0);
-        assert_eq!(state.current_tab().left_pane.scroll_offset, 0);
+        assert!(matches!(result.jobs_to_start[0].kind, crate::job::JobKind::ReadDirectory { .. }));
+        assert_eq!(state.active_pane().current_location, loc);
     }
 
     #[test]
     fn test_enqueue_job_transition() {
         use crate::job::{JobSpec, JobKind};
-        use crate::model::Location;
-        use std::path::PathBuf;
-        
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        let job_spec = JobSpec::new(JobKind::ReadDirectory { 
-            location: Location::Local(PathBuf::from("/test")) 
-        });
+        let job_spec = JobSpec::new(JobKind::CountDown { duration_secs: 1, start_value: 1 });
         
         assert_eq!(state.jobs.queue.len(), 0);
         
@@ -3266,546 +2359,157 @@ mod tests {
     }
 
     #[test]
-    fn test_change_sort_mode_transition() {
-        use crate::model::SortMode;
-        
+    fn test_start_next_job_transition() {
+        use crate::job::{JobSpec, JobKind};
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        assert_eq!(state.current_tab().left_pane.sort_mode, SortMode::Name);
+        let job_spec = JobSpec::new(JobKind::CountDown { duration_secs: 1, start_value: 1 });
+        state.jobs.enqueue(job_spec);
         
-        let result = update_state(&mut state, Transition::ChangeSortMode { 
-            pane: ActivePane::Left, 
-            mode: SortMode::Size 
-        });
+        assert_eq!(state.jobs.queue.len(), 1);
+        assert_eq!(state.jobs.active.len(), 0);
+        
+        let result = update_state(&mut state, Transition::StartNextJob);
         assert!(result.ui_changed);
-        assert_eq!(state.current_tab().left_pane.sort_mode, SortMode::Size);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        assert_eq!(state.jobs.queue.len(), 0);
+        assert_eq!(state.jobs.active.len(), 1);
     }
 
     #[test]
-    fn test_save_and_restore_session() {
+    fn test_job_started_transition() {
+        use crate::job::{JobSpec, JobKind, ExecutionState};
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        let spec = JobSpec::new(JobKind::CountDown { duration_secs: 1, start_value: 1 });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+        
+        assert!(matches!(state.jobs.active.get(&job_id).unwrap().state, ExecutionState::Pending));
+        
+        let result = update_state(&mut state, Transition::JobStarted { job_id });
+        assert!(result.ui_changed);
+        assert!(matches!(state.jobs.active.get(&job_id).unwrap().state, ExecutionState::Running));
+    }
+
+    #[test]
+    fn test_complete_job_transition() {
+        use crate::job::{JobSpec, JobKind, OpResult, SuccessData};
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        let spec = JobSpec::new(JobKind::CountDown { duration_secs: 1, start_value: 1 });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+        
+        let result = update_state(&mut state, Transition::CompleteJob { 
+            job_id, 
+            result: OpResult::Success(SuccessData::None) 
+        });
+        
+        assert!(result.ui_changed);
+        assert_eq!(state.jobs.active.len(), 0);
+        assert_eq!(state.jobs.completed.len(), 1);
+    }
+
+    #[test]
+    fn test_cancel_job_transition() {
+        use crate::job::{JobSpec, JobKind};
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+        
+        let spec = JobSpec::new(JobKind::CountDown { duration_secs: 5, start_value: 5 });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+        
+        let result = update_state(&mut state, Transition::CancelJob { job_id });
+        assert!(result.ui_changed);
+        assert_eq!(result.jobs_to_cancel.len(), 1);
+        assert_eq!(result.jobs_to_cancel[0], job_id);
+        assert!(state.jobs.active.get(&job_id).unwrap().cancel_requested);
+    }
+
+    #[test]
+    fn test_sync_panes_transition() {
+        use crate::model::Location;
         use std::path::PathBuf;
         
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Create additional tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        let loc = Location::Local(PathBuf::from("/source"));
+        state.current_tab_mut().left_pane.current_location = loc.clone();
+        state.ui.active_pane = ActivePane::Left;
         
-        // After creating 2 tabs, we're on tab 2 (index 2)
-        // Switch back to first tab, then to second tab
-        update_state(&mut state, Transition::SwitchTab { index: 0 });
-        update_state(&mut state, Transition::NextTab);
+        let result = update_state(&mut state, Transition::SyncPanes);
         
-        // Verify we're on the second tab (index 1)
-        assert_eq!(state.tabs.active_index, 1, "Should be on second tab after NextTab");
-        
-        // Mark some files (we'll use dummy locations for testing)
-        let loc1 = crate::model::Location::Local(PathBuf::from("/test1"));
-        let loc2 = crate::model::Location::Local(PathBuf::from("/test2"));
-        state.marking.mark(loc1.clone());
-        state.marking.mark(loc2.clone());
-        
-        // Save session
-        let session_path = std::env::temp_dir().join("test_rwf_session.json");
-        let session = crate::session::save_session(
-            &state.tabs.tabs,
-            state.tabs.active_index,
-            state.ui.active_pane,
-            &state.marking.marked_locations,
-            state.ui.layout.show_task_panel,
-            state.ui.layout.task_panel_height,
-        );
-        session.save_to_file(&session_path).unwrap();
-        
-        // Create a new state and restore
-        let config2 = AppConfig::default();
-        let mut state2 = AppState::new(config2);
-        
-        let loaded_session = crate::session::SessionState::load_from_file(&session_path).unwrap();
-        state2.tabs.tabs = crate::session::restore_tabs(&loaded_session);
-        state2.tabs.active_index = loaded_session.active_tab_index;
-        state2.marking.marked_locations = crate::session::restore_marked_locations(&loaded_session);
-        
-        // Verify restoration
-        assert_eq!(state2.tabs.tabs.len(), 3);
-        assert_eq!(state2.tabs.active_index, 1);
-        assert_eq!(state2.marking.count(), 2);
-        assert!(state2.marking.is_marked(&loc1));
-        assert!(state2.marking.is_marked(&loc2));
-        
-        // Cleanup
-        let _ = std::fs::remove_file(session_path);
+        assert!(result.ui_changed);
+        assert_eq!(state.current_tab().right_pane.current_location, loc);
+        // Should trigger directory read for right pane (if not cached)
+        assert_eq!(result.jobs_to_start.len(), 1);
     }
 
     #[test]
-    fn test_new_with_session_handles_missing_file() {
-        // This should not panic even if session file doesn't exist
+    fn test_swap_panes_transition() {
+        use crate::model::Location;
+        use std::path::PathBuf;
+        
         let config = AppConfig::default();
-        let state = AppState::new_with_session(config);
+        let mut state = AppState::new(config);
         
-        // Should have at least one tab (either default or from session)
-        assert!(state.tabs.tabs.len() >= 1);
-        assert!(state.tabs.active_index < state.tabs.tabs.len());
+        let loc1 = Location::Local(PathBuf::from("/loc1"));
+        let loc2 = Location::Local(PathBuf::from("/loc2"));
+        
+        state.current_tab_mut().left_pane.current_location = loc1.clone();
+        state.current_tab_mut().right_pane.current_location = loc2.clone();
+        
+        let result = update_state(&mut state, Transition::SwapPanes);
+        assert!(result.ui_changed);
+        
+        assert_eq!(state.current_tab().left_pane.current_location, loc2);
+        assert_eq!(state.current_tab().right_pane.current_location, loc1);
     }
 
-    // Bug Condition Exploration Tests
-    // These tests demonstrate the scrolling bugs on the UNFIXED code
-    // They are EXPECTED TO FAIL on the current implementation
-    //
-    // COUNTEREXAMPLES FOUND (documented from test failures):
-    //
-    // Test 1: test_bug_premature_scrolling_with_blank_lines
-    //   Input: cursor=66→67, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70
-    //   Expected: scroll_offset=51 (max_offset, to avoid blank lines)
-    //   Actual (unfixed): scroll_offset=51 but with cursor_in_view=16 instead of triggering earlier
-    //   Bug: Scrolling triggers too late (at cursor_in_view=17 instead of 16), causing issues
-    //   The fix ensures scrolling triggers at cursor_in_view >= 15 and positions correctly
-    //
-    // Test 2: test_bug_scroll_margin_violation_at_last_entry
-    //   Input: cursor=73 (last entry), scroll_offset=55, visible_height=19, scroll_margin=3, total_entries=74
-    //   Expected: scroll_offset=55 (max_offset, cursor on last line is acceptable per requirement 2.4)
-    //   Actual (unfixed): scroll_offset=55 (same, but this test verifies no blank lines)
-    //   Note: When at max_offset with cursor at last entry, cursor_in_view=18 (last line) is correct
-    //
-    // Test 3: test_bug_correct_trigger_position
-    //   Input: cursor=65→66, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70
-    //   Expected: scroll_offset=51 (scrolling should trigger at cursor_in_view >= 15)
-    //   Actual: scroll_offset=50 (no scrolling triggered)
-    //   Bug: Scrolling doesn't trigger at cursor_in_view=16 when it should (>= bottom_trigger=15)
-    //   The condition uses > instead of >=, causing it to trigger one position too late
-    //
-    // ROOT CAUSE CONFIRMED:
-    // 1. Trigger condition uses > instead of >= (triggers at cursor_in_view=17 instead of 16)
-    // 2. Naive increment by 1 doesn't position cursor at desired line
-    // 3. No special handling for last entry to maintain scroll_margin
-    
     #[test]
-    fn test_bug_premature_scrolling_with_blank_lines() {
-        // Test Case 1: Premature scroll trigger with blank lines
-        // cursor=66→67, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70
-        use crate::model::{Location, FileEntry};
-        use std::path::PathBuf;
-        use std::time::SystemTime;
-        
-        let mut config = AppConfig::default();
-        config.ui.scroll_offset = 3; // scroll_margin
+    fn test_change_ui_mode_transition() {
+        use crate::model::UIMode;
+        let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Set visible height to 19
-        state.ui.layout.pane_height = 19;
+        assert_eq!(state.ui.mode, UIMode::Normal);
         
-        // Create 70 entries
-        let entries: Vec<FileEntry> = (0..70).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect();
-        
-        state.current_tab_mut().left_pane.entries = entries;
-        state.current_tab_mut().left_pane.cursor = 66;
-        state.current_tab_mut().left_pane.scroll_offset = 50;
-        
-        // Move cursor from 66 to 67
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: 1 
-        });
-        
-        let pane = &state.current_tab().left_pane;
-        let cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
-        let visible_height = state.ui.layout.pane_height;
-        let scroll_margin = state.config.ui.scroll_offset;
-        let _bottom_trigger = visible_height - scroll_margin - 1; // Should be 15 (0-indexed)
-        let max_offset = pane.entries.len().saturating_sub(visible_height); // 70 - 19 = 51
-        
-        // Expected behavior: scroll_offset should be at max_offset (51) to avoid blank lines
-        // desired_offset would be 67 - 15 = 52, but we clamp to max_offset = 51
-        // This gives cursor_in_view = 67 - 51 = 16, which is acceptable when at max_offset
-        assert_eq!(pane.scroll_offset, max_offset, 
-            "scroll_offset should be at max_offset to avoid blank lines. Expected {}, got {}. cursor={}, cursor_in_view={}", 
-            max_offset, pane.scroll_offset, pane.cursor, cursor_in_view);
-        
-        // Verify no blank lines: viewport should show exactly visible_height entries
-        let visible_entries = pane.entries.len().saturating_sub(pane.scroll_offset).min(visible_height);
-        assert_eq!(visible_entries, visible_height,
-            "Viewport should show exactly {} entries with no blank lines. Got {} visible entries. scroll_offset={}, total_entries={}",
-            visible_height, visible_entries, pane.scroll_offset, pane.entries.len());
+        let result = update_state(&mut state, Transition::ChangeUIMode { mode: UIMode::Dialog });
+        assert!(result.ui_changed);
+        assert_eq!(state.ui.mode, UIMode::Dialog);
     }
-    
+
     #[test]
-    fn test_bug_scroll_margin_violation_at_last_entry() {
-        // Test Case 2: Scroll margin violation at last entry
-        // cursor=73, scroll_offset=55, visible_height=19, scroll_margin=3, total_entries=74
-        use crate::model::{Location, FileEntry};
-        use std::path::PathBuf;
-        use std::time::SystemTime;
-        
-        let mut config = AppConfig::default();
-        config.ui.scroll_offset = 3; // scroll_margin
+    fn test_show_dialog_transition() {
+        use crate::model::Dialog;
+        let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Set visible height to 19
-        state.ui.layout.pane_height = 19;
+        let dialog = Dialog::confirmation("Title", "Message");
         
-        // Create 74 entries
-        let entries: Vec<FileEntry> = (0..74).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect();
-        
-        state.current_tab_mut().left_pane.entries = entries;
-        state.current_tab_mut().left_pane.cursor = 73; // Last entry
-        state.current_tab_mut().left_pane.scroll_offset = 55;
-        
-        // Trigger a cursor move to force scroll calculation
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: 0 
-        });
-        
-        let pane = &state.current_tab().left_pane;
-        let cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
-        let visible_height = state.ui.layout.pane_height;
-        let _scroll_margin = state.config.ui.scroll_offset;
-        let max_offset = pane.entries.len().saturating_sub(visible_height); // 74 - 19 = 55
-        
-        // Expected behavior: when at last entry and max_offset, cursor can be on last line
-        // This is acceptable per requirement 2.4: "cursor on the last line, with no blank lines"
-        // scroll_offset should be at max_offset (55)
-        assert_eq!(pane.scroll_offset, max_offset,
-            "scroll_offset should be at max_offset when cursor is at last entry. Expected {}, got {}. cursor={}, cursor_in_view={}",
-            max_offset, pane.scroll_offset, pane.cursor, cursor_in_view);
-        
-        // Verify no blank lines: viewport should show exactly visible_height entries
-        let visible_entries = pane.entries.len().saturating_sub(pane.scroll_offset).min(visible_height);
-        assert_eq!(visible_entries, visible_height,
-            "Viewport should show exactly {} entries with no blank lines. Got {} visible entries.",
-            visible_height, visible_entries);
+        let result = update_state(&mut state, Transition::ShowDialog { dialog });
+        assert!(result.ui_changed);
+        assert!(state.dialogs.current().is_some());
+        assert_eq!(state.dialogs.current().unwrap().title, "Title");
     }
-    
+
     #[test]
-    fn test_bug_correct_trigger_position() {
-        // Test Case 3: Correct trigger position test
-        // cursor=65→66, scroll_offset=50, visible_height=19, scroll_margin=3, total_entries=70
-        // Should trigger at cursor_in_view=16 (>= bottom_trigger where bottom_trigger=15)
-        use crate::model::{Location, FileEntry};
-        use std::path::PathBuf;
-        use std::time::SystemTime;
-        
-        let mut config = AppConfig::default();
-        config.ui.scroll_offset = 3; // scroll_margin
+    fn test_close_dialog_transition() {
+        use crate::model::Dialog;
+        let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Set visible height to 19
-        state.ui.layout.pane_height = 19;
+        state.dialogs.push(Dialog::confirmation("Title", "Message"));
+        assert!(state.dialogs.current().is_some());
         
-        // Create 70 entries
-        let entries: Vec<FileEntry> = (0..70).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect();
-        
-        state.current_tab_mut().left_pane.entries = entries;
-        state.current_tab_mut().left_pane.cursor = 65;
-        state.current_tab_mut().left_pane.scroll_offset = 50;
-        
-        // Move cursor from 65 to 66 (cursor_in_view will be 16)
-        update_state(&mut state, Transition::CursorMove { 
-            pane: ActivePane::Left, 
-            delta: 1 
-        });
-        
-        let pane = &state.current_tab().left_pane;
-        let cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
-        let visible_height = state.ui.layout.pane_height;
-        let scroll_margin = state.config.ui.scroll_offset;
-        let bottom_trigger = visible_height - scroll_margin - 1; // Should be 15
-        
-        // Expected behavior: scrolling should trigger when cursor_in_view >= bottom_trigger (15)
-        // At cursor=66, cursor_in_view=16, which is >= 15, so scrolling should trigger
-        // scroll_offset should be adjusted to keep cursor at bottom_trigger position
-        // Expected scroll_offset = cursor - bottom_trigger = 66 - 15 = 51
-        assert_eq!(pane.scroll_offset, 51,
-            "Scrolling should trigger at cursor_in_view >= {} (bottom_trigger). Expected scroll_offset=51, got {}. cursor={}, cursor_in_view={}",
-            bottom_trigger, pane.scroll_offset, pane.cursor, cursor_in_view);
-        
-        // Verify cursor is positioned at bottom_trigger line
-        let new_cursor_in_view = pane.cursor.saturating_sub(pane.scroll_offset);
-        assert_eq!(new_cursor_in_view, bottom_trigger,
-            "After scrolling, cursor should be at bottom_trigger position ({}), but got cursor_in_view={}",
-            bottom_trigger, new_cursor_in_view);
-    }
-
-    // ============================================================================
-    // PRESERVATION PROPERTY TESTS
-    // These tests capture baseline behavior for non-buggy inputs that must be preserved
-    // Expected to PASS on unfixed code
-    // ============================================================================
-
-    use proptest::prelude::*;
-
-    // Helper function to create test entries
-    fn create_test_entries(count: usize) -> Vec<crate::model::FileEntry> {
-        use crate::model::{Location, FileEntry};
-        use std::path::PathBuf;
-        use std::time::SystemTime;
-        
-        (0..count).map(|i| FileEntry {
-            name: format!("file{}.txt", i),
-            location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        }).collect()
-    }
-
-    // Helper function to setup state with given parameters
-    fn setup_test_state(
-        total_entries: usize,
-        cursor: usize,
-        scroll_offset: usize,
-        visible_height: usize,
-        scroll_margin: usize,
-    ) -> AppState {
-        let mut config = AppConfig::default();
-        config.ui.scroll_offset = scroll_margin;
-        let mut state = AppState::new(config);
-        
-        state.ui.layout.pane_height = visible_height;
-        state.current_tab_mut().left_pane.entries = create_test_entries(total_entries);
-        state.current_tab_mut().left_pane.cursor = cursor;
-        state.current_tab_mut().left_pane.scroll_offset = scroll_offset;
-        
-        state
-    }
-
-    proptest! {
-        #[test]
-        fn prop_preservation_scroll_up_behavior(
-            // Generate scroll states where cursor_in_view < scroll_margin
-            total_entries in 20usize..100,
-            scroll_margin in 1usize..5,
-            visible_height in 10usize..25,
-        ) {
-            // Ensure we have enough entries to scroll
-            prop_assume!(total_entries > visible_height);
-            
-            // Generate a scroll state where cursor is near the top
-            // cursor_in_view should be < scroll_margin to trigger scroll up
-            let scroll_offset = scroll_margin + 5; // Start with some scroll
-            let cursor_in_view = scroll_margin.saturating_sub(1); // One less than margin
-            let cursor = scroll_offset + cursor_in_view;
-            
-            // Ensure cursor is valid
-            prop_assume!(cursor > 0 && cursor < total_entries);
-            
-            let mut state = setup_test_state(
-                total_entries,
-                cursor,
-                scroll_offset,
-                visible_height,
-                scroll_margin,
-            );
-            
-            let _old_scroll_offset = state.current_tab().left_pane.scroll_offset;
-            
-            // Move cursor up by 1
-            update_state(&mut state, Transition::CursorMove { 
-                pane: crate::model::ActivePane::Left, 
-                delta: -1 
-            });
-            
-            let pane = &state.current_tab().left_pane;
-            let new_cursor = pane.cursor;
-            let new_scroll_offset = pane.scroll_offset;
-            
-            // **Validates: Requirements 3.2**
-            // Property: When scrolling up (cursor_in_view < scroll_margin),
-            // scroll_offset should be cursor - scroll_margin
-            let expected_scroll_offset = new_cursor.saturating_sub(scroll_margin);
-            prop_assert_eq!(
-                new_scroll_offset,
-                expected_scroll_offset,
-                "Scroll up behavior: scroll_offset should be cursor - scroll_margin. \
-                 cursor={}, scroll_margin={}, expected={}, got={}",
-                new_cursor, scroll_margin, expected_scroll_offset, new_scroll_offset
-            );
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn prop_preservation_small_list_behavior(
-            // Generate scroll states where total_entries <= visible_height
-            total_entries in 1usize..20,
-            visible_height in 20usize..30,
-            scroll_margin in 1usize..5,
-        ) {
-            // Ensure small list condition
-            prop_assume!(total_entries <= visible_height);
-            
-            let cursor = total_entries / 2; // Middle of list
-            
-            let mut state = setup_test_state(
-                total_entries,
-                cursor,
-                0, // scroll_offset should be 0 for small lists
-                visible_height,
-                scroll_margin,
-            );
-            
-            // Move cursor down
-            update_state(&mut state, Transition::CursorMove { 
-                pane: crate::model::ActivePane::Left, 
-                delta: 1 
-            });
-            
-            let pane = &state.current_tab().left_pane;
-            
-            // **Validates: Requirements 3.1, 3.4**
-            // Property: When total_entries <= visible_height, scroll_offset should remain 0
-            prop_assert_eq!(
-                pane.scroll_offset,
-                0,
-                "Small list behavior: scroll_offset should be 0 when total_entries <= visible_height. \
-                 total_entries={}, visible_height={}, scroll_offset={}",
-                total_entries, visible_height, pane.scroll_offset
-            );
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn prop_preservation_cursor_jump_above_viewport(
-            // Generate scroll states for cursor jumps above viewport
-            total_entries in 30usize..100,
-            visible_height in 10usize..25,
-            scroll_margin in 1usize..5,
-        ) {
-            // Ensure we have enough entries to scroll
-            prop_assume!(total_entries > visible_height);
-            
-            // Start with cursor in middle, scroll offset in middle
-            let initial_scroll_offset = total_entries / 2;
-            let initial_cursor = initial_scroll_offset + visible_height / 2;
-            
-            // Jump to a position above the viewport
-            let jump_target = initial_scroll_offset.saturating_sub(10);
-            
-            // Ensure valid state
-            prop_assume!(jump_target < initial_scroll_offset);
-            prop_assume!(initial_cursor < total_entries);
-            
-            let mut state = setup_test_state(
-                total_entries,
-                initial_cursor,
-                initial_scroll_offset,
-                visible_height,
-                scroll_margin,
-            );
-            
-            // Jump cursor above viewport
-            update_state(&mut state, Transition::CursorJump { 
-                pane: crate::model::ActivePane::Left, 
-                position: jump_target 
-            });
-            
-            let pane = &state.current_tab().left_pane;
-            
-            // **Validates: Requirements 3.3**
-            // Property: When cursor jumps above viewport, scroll_offset should be cursor - scroll_margin
-            let expected_scroll_offset = pane.cursor.saturating_sub(scroll_margin);
-            prop_assert_eq!(
-                pane.scroll_offset,
-                expected_scroll_offset,
-                "Cursor jump above viewport: scroll_offset should be cursor - scroll_margin. \
-                 cursor={}, scroll_margin={}, expected={}, got={}",
-                pane.cursor, scroll_margin, expected_scroll_offset, pane.scroll_offset
-            );
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn prop_preservation_cursor_jump_below_viewport(
-            // Generate scroll states for cursor jumps below viewport
-            total_entries in 30usize..100,
-            visible_height in 10usize..25,
-            scroll_margin in 1usize..5,
-        ) {
-            // Ensure we have enough entries to scroll
-            prop_assume!(total_entries > visible_height);
-            
-            // Start with cursor near top
-            let initial_scroll_offset = 5;
-            let initial_cursor = initial_scroll_offset + 2;
-            
-            // Jump to a position below the viewport
-            let jump_target = initial_scroll_offset + visible_height + 10;
-            
-            // Ensure valid state
-            prop_assume!(jump_target < total_entries);
-            prop_assume!(jump_target >= initial_scroll_offset + visible_height);
-            
-            let mut state = setup_test_state(
-                total_entries,
-                initial_cursor,
-                initial_scroll_offset,
-                visible_height,
-                scroll_margin,
-            );
-            
-            // Jump cursor below viewport
-            update_state(&mut state, Transition::CursorJump { 
-                pane: crate::model::ActivePane::Left, 
-                position: jump_target 
-            });
-            
-            let pane = &state.current_tab().left_pane;
-            
-            // **Validates: Requirements 3.3**
-            // Property: When cursor jumps below viewport, scroll_offset should position cursor
-            // with scroll_margin spacing from bottom
-            let expected_scroll_offset = {
-                let desired_offset = pane.cursor + scroll_margin + 1 - visible_height;
-                let max_offset = total_entries.saturating_sub(visible_height);
-                desired_offset.min(max_offset)
-            };
-            
-            prop_assert_eq!(
-                pane.scroll_offset,
-                expected_scroll_offset,
-                "Cursor jump below viewport: scroll_offset calculation should match original logic. \
-                 cursor={}, scroll_margin={}, visible_height={}, total_entries={}, expected={}, got={}",
-                pane.cursor, scroll_margin, visible_height, total_entries, expected_scroll_offset, pane.scroll_offset
-            );
-        }
+        let result = update_state(&mut state, Transition::CloseDialog);
+        assert!(result.ui_changed);
+        assert!(state.dialogs.current().is_none());
     }
 }
-
-// Property-based tests
-#[cfg(test)]
-#[path = "state_properties.rs"]
-mod state_properties;

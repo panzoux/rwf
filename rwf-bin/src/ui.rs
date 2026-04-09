@@ -12,6 +12,7 @@ mod pane_info_line;
 mod colors;
 mod unicode_utils;
 pub mod dialog;
+pub mod text_input;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},

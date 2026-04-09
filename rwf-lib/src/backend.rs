@@ -77,14 +77,12 @@ pub trait FilesystemBackend: Send + Sync {
     /// Calculate directory size recursively with progress callback
     /// 
     /// The progress callback receives (items_processed, current_size) periodically
-    async fn calculate_directory_size_with_progress<F>(
+    async fn calculate_directory_size_with_progress(
         &self,
         location: &Location,
         cancel_token: &CancellationToken,
-        progress_callback: F,
-    ) -> Result<u64>
-    where
-        F: Fn(u64, u64) + Send + Sync;
+        progress_callback: Box<dyn Fn(u64, u64) + Send + Sync>,
+    ) -> Result<u64>;
     
     /// Read file content as bytes
     async fn read_file_content(
@@ -92,4 +90,7 @@ pub trait FilesystemBackend: Send + Sync {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<u8>>;
+
+    /// Get a single file entry
+    async fn get_entry(&self, location: &Location) -> Result<FileEntry>;
 }

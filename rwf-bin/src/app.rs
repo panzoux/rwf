@@ -7,6 +7,8 @@ use crossterm::event::{self, Event};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rwf_lib::{AppState, Transition, KeyBindings, action_to_transitions, WorkerPool, process_pending_events};
 use rwf_lib::backend::{LocalFilesystemBackend, ZipArchiveHandler};
+use rwf_lib::job::{JobSpec, JobKind};
+use rwf_lib::model::dialog::ConflictPair;
 use std::io::Stdout;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -31,9 +33,16 @@ pub struct App {
     should_exit_and_cd: bool,
     metrics: PerformanceMetrics,
     last_metrics_log: Instant,
-    worker_pool: Option<WorkerPool>,
+    worker_pool: Option<WorkerPool<LocalFilesystemBackend, ZipArchiveHandler>>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
     task_panel: TaskPanel,
+    last_spinner_update: Option<Instant>,
+    last_cleanup_check: Option<Instant>,
+    // Pending job with conflicts waiting for user resolution
+    // (JobSpec, conflicts, job name, job description)
+    pending_conflict_job: Option<(JobSpec, Vec<ConflictPair>, String, String)>,
+    // Jobs queued for conflict detection before submission
+    pending_job_submission: Vec<JobSpec>,
 }
 
 impl App {
@@ -54,6 +63,10 @@ impl App {
             worker_pool: Some(worker_pool),
             last_key_press: None,
             task_panel: TaskPanel::new(),
+            last_spinner_update: None,
+            last_cleanup_check: None,
+            pending_conflict_job: None,
+            pending_job_submission: Vec::new(),
         }
     }
     
@@ -75,6 +88,10 @@ impl App {
             worker_pool: Some(worker_pool),
             last_key_press: None,
             task_panel: TaskPanel::new(),
+            last_spinner_update: None,
+            last_cleanup_check: None,
+            pending_conflict_job: None,
+            pending_job_submission: Vec::new(),
         }
     }
 
@@ -212,43 +229,124 @@ impl App {
                         pool.submit_job(job_spec.clone());
                     }
                 }
+
+                // Process pending job submissions (from key events) with conflict detection
+                let pending_jobs: Vec<JobSpec> = self.pending_job_submission.drain(..).collect();
+                for job_spec in pending_jobs {
+                    debug!("App: Processing queued job for conflict detection: {:?}", job_spec.kind);
+
+                    // Check for conflicts in Copy/Move jobs
+                    match &job_spec.kind {
+                        JobKind::Copy { sources, dest } | JobKind::Move { sources, dest } => {
+                            debug!("App: Detecting conflicts for job {:?}", job_spec.id);
+                            // Detect conflicts async
+                            let conflicts = pool.detect_conflicts(sources, dest).await;
+                            debug!("App: Found {} conflicts for job {:?}", conflicts.len(), job_spec.id);
+
+                            if conflicts.is_empty() {
+                                // No conflicts - start the job now and submit
+                                debug!("App: No conflicts, starting job and submitting to worker pool");
+                                
+                                // Get job metadata from state (we need to extract it from the transition)
+                                // For now, use generic names - the actual name was logged in state.rs
+                                let job_name = match &job_spec.kind {
+                                    JobKind::Copy { sources, .. } => format!("Copy ({} files)", sources.len()),
+                                    JobKind::Move { sources, .. } => format!("Move ({} files)", sources.len()),
+                                    _ => "File Operation".to_string(),
+                                };
+                                
+                                // Start the job in background_jobs and jobs manager
+                                let tab = self.state.current_tab();
+                                let tab_name = format!("{}|{}",
+                                    tab.left_pane.current_location.display_path(),
+                                    tab.right_pane.current_location.display_path()
+                                );
+                                let tab_id = self.state.tabs.active_index;
+                                
+                                let bg_job_id = self.state.background_jobs.start_job(
+                                    job_name.clone(),
+                                    job_name.clone(),
+                                    tab_id,
+                                    tab_name,
+                                    job_spec.clone(),
+                                );
+                                
+                                self.state.jobs.start_job(job_spec.clone());
+                                
+                                // Add log entry
+                                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                                let log_msg = format!(
+                                    "{} [Job {}] {}: Started",
+                                    timestamp,
+                                    bg_job_id.short_id,
+                                    job_name
+                                );
+                                self.task_panel.add_pending_log(log_msg);
+                                
+                                // Submit to worker pool
+                                pool.submit_job(job_spec);
+                            } else {
+                                // Has conflicts - store job (NOT started yet) and show dialog
+                                debug!("App: Found {} conflicts for job {:?}, storing for dialog resolution", conflicts.len(), job_spec.id);
+                                
+                                // Store job with metadata for later start
+                                let job_name = match &job_spec.kind {
+                                    JobKind::Copy { sources, .. } => format!("Copy ({} files)", sources.len()),
+                                    JobKind::Move { sources, .. } => format!("Move ({} files)", sources.len()),
+                                    _ => "File Operation".to_string(),
+                                };
+                                self.pending_conflict_job = Some((
+                                    job_spec,
+                                    conflicts.clone(),
+                                    job_name.clone(),
+                                    job_name.clone()
+                                ));
+
+                                // Create and show conflict dialog with edit mode from config
+                                let edit_mode = self.state.config.text_input.edit_mode;
+                                let dialog = rwf_lib::model::Dialog::file_conflict(conflicts, 0, edit_mode);
+                                debug!("App: Pushing conflict dialog to stack");
+                                self.state.dialogs.push(dialog);
+                            }
+                        }
+                        _ => {
+                            // Other job types - submit directly
+                            debug!("App: Submitting job directly: {:?}", job_spec.kind);
+                            pool.submit_job(job_spec);
+                        }
+                    }
+                }
             }
 
             // Update spinner animation (throttled to config interval for resource efficiency)
             // File manager doesn't need frequent UI updates - conserve CPU for file operations
-            static mut SPINNER_LAST_UPDATE: Option<Instant> = None;
-            unsafe {
-                let spinner_interval = Duration::from_millis(
-                    self.state.config.job_manager.task_panel_refresh_interval_ms
-                );
-                let should_tick = match SPINNER_LAST_UPDATE {
-                    Some(last) => last.elapsed() >= spinner_interval,
-                    None => true,
-                };
-                if should_tick {
-                    self.task_panel.tick();
-                    SPINNER_LAST_UPDATE = Some(Instant::now());
-                }
+            let spinner_interval = Duration::from_millis(
+                self.state.config.job_manager.task_panel_refresh_interval_ms
+            );
+            let should_tick = match self.last_spinner_update {
+                Some(last) => last.elapsed() >= spinner_interval,
+                None => true,
+            };
+            if should_tick {
+                self.task_panel.tick();
+                self.last_spinner_update = Some(Instant::now());
             }
 
             // Process pending task panel logs before rendering
             self.task_panel.process_pending_logs(self.state.config.job_manager.max_task_panel_log_lines);
 
             // Cleanup expired jobs every 1 second (accurate timing)
-            static mut LAST_CLEANUP_CHECK: Option<Instant> = None;
-            unsafe {
-                let check_interval = Duration::from_secs(1);
-                let should_check = match LAST_CLEANUP_CHECK {
-                    Some(last) => last.elapsed() >= check_interval,
-                    None => true,
-                };
-                if should_check {
-                    let cleaned = self.state.background_jobs.cleanup_expired_jobs();
-                    if cleaned > 0 {
-                        debug!("Cleaned up {} expired jobs", cleaned);
-                    }
-                    LAST_CLEANUP_CHECK = Some(Instant::now());
+            let check_interval = Duration::from_secs(1);
+            let should_check = match self.last_cleanup_check {
+                Some(last) => last.elapsed() >= check_interval,
+                None => true,
+            };
+            if should_check {
+                let cleaned = self.state.background_jobs.cleanup_expired_jobs();
+                if cleaned > 0 {
+                    debug!("Cleaned up {} expired jobs", cleaned);
                 }
+                self.last_cleanup_check = Some(Instant::now());
             }
 
             // Calculate time since last render
@@ -402,6 +500,13 @@ impl App {
                 crate::ui::dialog::DialogAction::Cancel => {
                     // Close dialog
                     debug!("Dialog action: Cancel");
+                    
+                    // Check if this is a FileConflict dialog - clear pending job if so
+                    if let rwf_lib::model::dialog::DialogContent::FileConflict { .. } = &dialog.content {
+                        debug!("FileConflict dialog cancelled, clearing pending job");
+                        self.pending_conflict_job = None;
+                    }
+                    
                     self.state.dialogs.pop();
 
                     let elapsed = start.elapsed();
@@ -429,7 +534,7 @@ impl App {
                                     let job_name = job.name.clone();
                                     self.state.background_jobs.cancel_job(job.id.uuid);
                                     debug!("Job {} cancelled", job_short_id);
-                                    
+
                                     // Add task panel log for cancellation
                                     let timestamp = chrono::Local::now().format("[%H:%M:%S]");
                                     let log_msg = format!(
@@ -486,13 +591,89 @@ impl App {
                             }
 
                             debug!("Cancelled {} jobs total, added {} logs", cancelled_count, cancelled_count);
-                            debug!("Task panel: {} log entries, {} pending", 
-                                self.task_panel.log_count(), 
+                            debug!("Task panel: {} log entries, {} pending",
+                                self.task_panel.log_count(),
                                 self.task_panel.pending_log_count());
 
                             // Close the tab
                             let _ = rwf_lib::state::update_state(&mut self.state, rwf_lib::Transition::CloseTab { index: tab_index_copy });
                             debug!("Tab {} closed after job cancellation", tab_index_copy + 1);
+                        }
+                        rwf_lib::model::dialog::DialogContent::FileConflict { conflicts, current_index, decisions, .. } => {
+                            // File conflict confirmed for current file
+                            debug!("FileConflict confirmed: current_index={}, decisions count={}", current_index, decisions.len());
+
+                            // Move to next conflict or finish
+                            if *current_index + 1 >= conflicts.len() {
+                                // All conflicts resolved - start and execute job with decisions
+                                debug!("All conflicts resolved, starting and executing job with {} decisions", decisions.len());
+
+                                // Get the pending job spec with metadata
+                                if let Some((job_spec, conflicts_list, job_name, job_desc)) = self.pending_conflict_job.take() {
+                                    // Convert actions to decisions
+                                    let conflict_decisions: Vec<rwf_lib::job::ConflictDecision> = conflicts_list.iter()
+                                        .zip(decisions.iter())
+                                        .map(|(conflict, action)| rwf_lib::job::ConflictDecision {
+                                            source: conflict.source_path.clone(),
+                                            dest: conflict.dest_path.clone(),
+                                            action: match action {
+                                                rwf_lib::model::dialog::ConflictAction::Force => rwf_lib::job::ConflictAction::Force,
+                                                rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer => rwf_lib::job::ConflictAction::OverwriteIfNewer,
+                                                rwf_lib::model::dialog::ConflictAction::Skip => rwf_lib::job::ConflictAction::Skip,
+                                                rwf_lib::model::dialog::ConflictAction::Rename { new_name } => rwf_lib::job::ConflictAction::Rename { new_name: new_name.clone() },
+                                            },
+                                        })
+                                        .collect();
+
+                                    // Create new job spec with decisions
+                                    let mut job_with_decisions = job_spec.clone();
+                                    job_with_decisions.conflict_decisions = Some(conflict_decisions);
+
+                                    // NOW start the job in background_jobs and jobs manager
+                                    let tab = self.state.current_tab();
+                                    let tab_name = format!("{}|{}",
+                                        tab.left_pane.current_location.display_path(),
+                                        tab.right_pane.current_location.display_path()
+                                    );
+                                    let tab_id = self.state.tabs.active_index;
+                                    
+                                    let bg_job_id = self.state.background_jobs.start_job(
+                                        job_name.clone(),
+                                        job_desc.clone(),
+                                        tab_id,
+                                        tab_name,
+                                        job_with_decisions.clone(),
+                                    );
+                                    
+                                    self.state.jobs.start_job(job_with_decisions.clone());
+                                    
+                                    // Add log entry
+                                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                                    let log_msg = format!(
+                                        "{} [Job {}] {}: Started",
+                                        timestamp,
+                                        bg_job_id.short_id,
+                                        job_name
+                                    );
+                                    self.task_panel.add_pending_log(log_msg);
+
+                                    // Submit job with decisions to worker pool
+                                    if let Some(ref pool) = self.worker_pool {
+                                        pool.submit_job(job_with_decisions);
+                                        debug!("Started and submitted job with conflict decisions");
+                                    }
+                                }
+
+                                self.state.dialogs.pop();
+                            } else {
+                                // Move to next conflict - need to get mutable access
+                                if let rwf_lib::model::dialog::DialogContent::FileConflict { current_index, .. } = &mut dialog.content {
+                                    *current_index += 1;  // FIX: Increment current_index
+                                    debug!("Moving to next conflict");
+                                }
+                                // Update dialog title with new progress
+                                dialog.update_file_conflict_title();
+                            }
                         }
                         _ => {
                             if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
@@ -510,6 +691,76 @@ impl App {
                                 self.state.dialogs.pop();
                             }
                         }
+                    }
+
+                    let elapsed = start.elapsed();
+                    self.metrics.record_input_time(elapsed);
+
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::ConfirmAll => {
+                    // Shift+Enter: Apply to ALL remaining conflicts
+                    debug!("Dialog action: ConfirmAll (apply to all remaining)");
+                    if let rwf_lib::model::dialog::DialogContent::FileConflict { conflicts: _, decisions, .. } = &dialog.content {
+                        debug!("All remaining conflicts resolved with {} total decisions", decisions.len());
+
+                        // Get the pending job spec with metadata
+                        if let Some((job_spec, conflicts_list, job_name, job_desc)) = self.pending_conflict_job.take() {
+                            // Convert actions to decisions
+                            let conflict_decisions: Vec<rwf_lib::job::ConflictDecision> = conflicts_list.iter()
+                                .zip(decisions.iter())
+                                .map(|(conflict, action)| rwf_lib::job::ConflictDecision {
+                                    source: conflict.source_path.clone(),
+                                    dest: conflict.dest_path.clone(),
+                                    action: match action {
+                                        rwf_lib::model::dialog::ConflictAction::Force => rwf_lib::job::ConflictAction::Force,
+                                        rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer => rwf_lib::job::ConflictAction::OverwriteIfNewer,
+                                        rwf_lib::model::dialog::ConflictAction::Skip => rwf_lib::job::ConflictAction::Skip,
+                                        rwf_lib::model::dialog::ConflictAction::Rename { new_name } => rwf_lib::job::ConflictAction::Rename { new_name: new_name.clone() },
+                                    },
+                                })
+                                .collect();
+
+                            // Create new job spec with decisions
+                            let mut job_with_decisions = job_spec.clone();
+                            job_with_decisions.conflict_decisions = Some(conflict_decisions);
+
+                            // NOW start the job in background_jobs and jobs manager
+                            let tab = self.state.current_tab();
+                            let tab_name = format!("{}|{}",
+                                tab.left_pane.current_location.display_path(),
+                                tab.right_pane.current_location.display_path()
+                            );
+                            let tab_id = self.state.tabs.active_index;
+                            
+                            let bg_job_id = self.state.background_jobs.start_job(
+                                job_name.clone(),
+                                job_desc.clone(),
+                                tab_id,
+                                tab_name,
+                                job_with_decisions.clone(),
+                            );
+                            
+                            self.state.jobs.start_job(job_with_decisions.clone());
+                            
+                            // Add log entry
+                            let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                            let log_msg = format!(
+                                "{} [Job {}] {}: Started",
+                                timestamp,
+                                bg_job_id.short_id,
+                                job_name
+                            );
+                            self.task_panel.add_pending_log(log_msg);
+
+                            // Submit job with decisions to worker pool
+                            if let Some(ref pool) = self.worker_pool {
+                                pool.submit_job(job_with_decisions);
+                                debug!("Started and submitted job with all conflict decisions");
+                            }
+                        }
+
+                        self.state.dialogs.pop();
                     }
 
                     let elapsed = start.elapsed();
@@ -593,17 +844,14 @@ impl App {
                 }
                 
                 let result = rwf_lib::state::update_state(&mut self.state, transition);
-                
-                // Submit any jobs that were created
-                if let Some(ref pool) = self.worker_pool {
-                    for job_spec in result.jobs_to_start {
-                        debug!("Submitting job: {:?}", job_spec.kind);
-                        // Add job to active jobs map before submitting to worker pool
-                        self.state.jobs.start_job(job_spec.clone());
-                        pool.submit_job(job_spec);
-                    }
+
+                // Store any jobs that were created for conflict detection in main loop
+                // The main loop will detect conflicts before submitting to worker pool
+                for job_spec in result.jobs_to_start {
+                    debug!("Queuing job for conflict detection: {:?}", job_spec.kind);
+                    self.pending_job_submission.push(job_spec);
                 }
-                
+
                 state_changed = state_changed || result.ui_changed;
             }
             

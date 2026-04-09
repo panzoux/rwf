@@ -87,4 +87,10 @@ impl NavigationHistory {
             }
         }
     }
+
+    /// Swap left and right pane history
+    pub fn swap_panes(&mut self) {
+        std::mem::swap(&mut self.left_stack, &mut self.right_stack);
+        std::mem::swap(&mut self.left_pos, &mut self.right_pos);
+    }
 }

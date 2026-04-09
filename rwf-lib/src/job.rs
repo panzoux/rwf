@@ -28,6 +28,24 @@ pub struct JobSpec {
     pub kind: JobKind,
     pub created_at: SystemTime,
     pub cancel_token: CancellationToken,
+    pub conflict_decisions: Option<Vec<ConflictDecision>>,
+}
+
+/// Decision for resolving a file conflict
+#[derive(Debug, Clone)]
+pub struct ConflictDecision {
+    pub source: Location,
+    pub dest: Location,
+    pub action: ConflictAction,
+}
+
+/// Action to take for a file conflict
+#[derive(Debug, Clone)]
+pub enum ConflictAction {
+    Force,
+    OverwriteIfNewer,
+    Skip,
+    Rename { new_name: String },
 }
 
 impl JobSpec {
@@ -37,6 +55,7 @@ impl JobSpec {
             kind,
             created_at: SystemTime::now(),
             cancel_token: CancellationToken::new(),
+            conflict_decisions: None,
         }
     }
 }
@@ -130,13 +149,16 @@ pub struct Job {
     pub state: ExecutionState,
     pub progress: f64,
     pub started_at: Option<SystemTime>,
+    pub cancel_requested: bool,
 }
 
 /// Job execution state
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExecutionState {
+    Pending,
     Running,
     Cancelling,
+    Completed,
 }
 
 /// Result of a completed job
@@ -335,9 +357,10 @@ impl JobManager {
     pub fn start_job(&mut self, spec: JobSpec) {
         let job = Job {
             spec: spec.clone(),
-            state: ExecutionState::Running,
+            state: ExecutionState::Pending,
             progress: 0.0,
-            started_at: Some(SystemTime::now()),
+            started_at: None,
+            cancel_requested: false,
         };
         self.active.insert(spec.id, job);
     }
@@ -347,9 +370,10 @@ impl JobManager {
         for spec in specs {
             let job = Job {
                 spec: spec.clone(),
-                state: ExecutionState::Running,
+                state: ExecutionState::Pending,
                 progress: 0.0,
-                started_at: Some(SystemTime::now()),
+                started_at: None,
+                cancel_requested: false,
             };
             self.active.insert(spec.id, job);
         }
@@ -393,6 +417,7 @@ impl JobManager {
         if let Some(job) = self.active.get_mut(&job_id) {
             job.spec.cancel_token.cancel();
             job.state = ExecutionState::Cancelling;
+            job.cancel_requested = true;
             return true;
         }
         

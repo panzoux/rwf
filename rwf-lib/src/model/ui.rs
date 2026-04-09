@@ -8,6 +8,8 @@ pub struct UIState {
     pub layout: LayoutState,
     /// Range marking mode state: stores the initial cursor position when entering range marking mode
     pub range_marking_start: Option<usize>,
+    /// Whether to show hidden files
+    pub show_hidden: bool,
 }
 
 impl Default for UIState {
@@ -23,6 +25,7 @@ impl UIState {
             mode: UIMode::Normal,
             layout: LayoutState::default(),
             range_marking_start: None,
+            show_hidden: false,
         }
     }
 }

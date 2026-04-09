@@ -148,12 +148,18 @@ pub enum DialogContent {
     FileConflict {
         conflicts: Vec<ConflictPair>,
         current_index: usize,
-        focused_button: usize,  // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename, 4=Cancel
+        focused_button: usize,  // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename, 4=Textbox, 5=Cancel
         rename_text: String,
         rename_cursor: usize,
         rename_scroll: usize,
+        edit_mode: crate::config::EditMode,  // Emacs or Vi mode for textbox
+        vi_mode: Option<crate::config::ViMode>,  // None = Emacs, Some = Vi mode state
         decisions: Vec<ConflictAction>,
         error_message: Option<String>,
+        // Vi pending states (persisted between key presses)
+        vi_pending_find_backward: Option<bool>,
+        vi_pending_operator: Option<u8>,  // 0=none, 1=change, 2=delete
+        vi_pending_ctrl_x: bool,
     },
     Compression {
         // Data fields
@@ -168,6 +174,9 @@ pub enum DialogContent {
         format_focus_index: usize,      // Which format has focus (0-7)
         compression_focus_index: usize, // Which compression level has focus (0-5)
         cursor_pos: usize,              // Cursor position in archive name
+        // Vi mode support
+        edit_mode: crate::config::EditMode,
+        vi_mode: Option<crate::config::ViMode>,
     },
     ExtractionConfirm {
         archive: crate::model::Location,
@@ -351,11 +360,59 @@ impl Dialog {
     /// Create a job manager dialog
     pub fn job_manager() -> Self {
         Self {
-            title: "Background Jobs".to_string(),
+            title: "Job Manager".to_string(),
             content: DialogContent::JobManager {
                 selected_index: 0,
                 focused_field: 0,  // Start with Job List focused (Part 6.7)
             },
+        }
+    }
+
+    /// Create a file conflict dialog
+    pub fn file_conflict(conflicts: Vec<crate::model::dialog::ConflictPair>, current_index: usize, edit_mode: crate::config::EditMode) -> Self {
+        let total = conflicts.len();
+        let title = format!("Copy - File Conflict ({}/{})", current_index + 1, total);
+        let rename_text = if !conflicts.is_empty() {
+            conflicts[current_index].source.name.clone()
+        } else {
+            String::new()
+        };
+        let rename_cursor = if !conflicts.is_empty() {
+            conflicts[current_index].source.name.len()
+        } else {
+            0
+        };
+        // Initialize vi_mode based on edit_mode
+        let vi_mode = if edit_mode == crate::config::EditMode::Vi {
+            Some(crate::config::ViMode::Normal)
+        } else {
+            None
+        };
+        Self {
+            title,
+            content: DialogContent::FileConflict {
+                conflicts,
+                current_index,
+                focused_button: 3,  // Rename button focused by default
+                rename_text,
+                rename_cursor,
+                rename_scroll: 0,
+                edit_mode,
+                vi_mode,
+                decisions: Vec::new(),
+                error_message: None,
+                vi_pending_find_backward: None,
+                vi_pending_operator: None,
+                vi_pending_ctrl_x: false,
+            },
+        }
+    }
+
+    /// Update the dialog title with current progress
+    pub fn update_file_conflict_title(&mut self) {
+        if let DialogContent::FileConflict { conflicts, current_index, .. } = &self.content {
+            let total = conflicts.len();
+            self.title = format!("Copy - File Conflict ({}/{})", current_index + 1, total);
         }
     }
 
@@ -678,7 +735,7 @@ impl Dialog {
     }
 
     /// Create a compression dialog
-    pub fn compression(sources: Vec<crate::model::Location>) -> Self {
+    pub fn compression(sources: Vec<crate::model::Location>, edit_mode: crate::config::EditMode) -> Self {
         let default_name = if sources.len() == 1 {
             let name = sources[0].display_path();
             // Get just the filename from the path
@@ -689,6 +746,13 @@ impl Dialog {
                 .to_string()
         } else {
             "archive".to_string()
+        };
+
+        // Initialize vi_mode based on edit_mode
+        let vi_mode = if edit_mode == crate::config::EditMode::Vi {
+            Some(crate::config::ViMode::Normal)
+        } else {
+            None
         };
 
         Self {
@@ -705,6 +769,8 @@ impl Dialog {
                 format_focus_index: 0,      // First format has focus
                 compression_focus_index: 3, // Normal (5) has focus
                 cursor_pos: 0,
+                edit_mode,
+                vi_mode,
             },
         }
     }

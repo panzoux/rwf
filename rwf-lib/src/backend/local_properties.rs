@@ -302,9 +302,9 @@ mod integration_tests {
         let progress_updates_clone = progress_updates.clone();
         
         let calculated_size = backend
-            .calculate_directory_size_with_progress(&location, &cancel_token, move |items, size| {
+            .calculate_directory_size_with_progress(&location, &cancel_token, Box::new(move |items, size| {
                 progress_updates_clone.lock().unwrap().push((items, size));
-            })
+            }))
             .await
             .unwrap();
         

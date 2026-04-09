@@ -59,6 +59,10 @@ pub struct AppConfig {
     /// Job manager configuration
     #[serde(default)]
     pub job_manager: JobManagerConfig,
+
+    /// Text input configuration
+    #[serde(default)]
+    pub text_input: TextInputConfig,
 }
 
 /// Archive configuration for compression operations
@@ -156,6 +160,40 @@ impl Default for JobManagerConfig {
     }
 }
 
+/// Text input edit mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EditMode {
+    Emacs,
+    Vi,
+}
+
+/// Vi sub-mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViMode {
+    Normal,
+    Insert,
+}
+
+fn default_edit_mode() -> EditMode {
+    EditMode::Emacs
+}
+
+/// Text input configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextInputConfig {
+    /// Edit mode (default: Emacs)
+    #[serde(default = "default_edit_mode")]
+    pub edit_mode: EditMode,
+}
+
+impl Default for TextInputConfig {
+    fn default() -> Self {
+        Self {
+            edit_mode: EditMode::Emacs,
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -178,6 +216,7 @@ impl Default for AppConfig {
             help_language: "en".to_string(),
             archive: ArchiveConfig::default(),
             job_manager: JobManagerConfig::default(),
+            text_input: TextInputConfig::default(),
         }
     }
 }

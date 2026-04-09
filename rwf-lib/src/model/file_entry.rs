@@ -32,7 +32,22 @@ impl FileEntry {
             .and_then(|s| s.to_str())
             .unwrap_or(&self.name)
     }
-    
+
+    /// Create a dummy file entry for testing
+    #[cfg(test)]
+    pub fn dummy(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            location: Location::Local(std::path::PathBuf::from(name)),
+            size: 0,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+        }
+    }
+
     /// Get formatted size string
     pub fn formatted_size(&self) -> String {
         format_size(self.calculated_size.unwrap_or(self.size))

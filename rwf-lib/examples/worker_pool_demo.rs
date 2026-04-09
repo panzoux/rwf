@@ -41,6 +41,9 @@ async fn main() {
                 JobEvent::Progress(job_id, progress) => {
                     println!("Job {:?} progress: {:.1}%", job_id, progress * 100.0);
                 }
+                JobEvent::ProgressWithDetail(job_id, progress, msg, detail) => {
+                    println!("Job {:?} progress: {:.1}% - {} ({})", job_id, progress * 100.0, msg, detail);
+                }
                 JobEvent::Completed(job_id, _) => {
                     println!("Job {:?} completed successfully", job_id);
                     completed_count += 1;

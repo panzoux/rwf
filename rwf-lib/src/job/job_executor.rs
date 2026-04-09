@@ -10,6 +10,7 @@ use crate::worker_pool::JobEvent;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
+use tracing::debug;
 
 /// Executor for processing job specifications
 pub struct JobExecutor<B: FilesystemBackend, A: ArchiveHandler> {
@@ -149,40 +150,91 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         spec: &JobSpec,
     ) -> OpResult {
         let total_files = sources.len();
-        
+        let decisions = spec.conflict_decisions.as_ref();
+
         for (i, source) in sources.iter().enumerate() {
             // Check cancellation before each file
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
+
+            // Check if there's a conflict decision for this file
+            let decision = decisions.and_then(|d| d.iter().find(|d| d.source == *source));
             
+            // Handle decision
+            if let Some(dec) = decision {
+                match &dec.action {
+                    crate::job::ConflictAction::Skip => {
+                        debug!("Skipping file due to conflict decision: {:?}", source);
+                        continue;
+                    }
+                    crate::job::ConflictAction::OverwriteIfNewer => {
+                        // Check if source is newer
+                        let dest_location = if let Some(filename) = self.get_filename(source) {
+                            self.join_location(dest, &filename)
+                        } else {
+                            dest.clone()
+                        };
+                        
+                        if let (Ok(src_meta), Ok(dst_meta)) = (
+                            self.backend.get_entry(source).await,
+                            self.backend.get_entry(&dest_location).await,
+                        ) {
+                            if src_meta.modified <= dst_meta.modified {
+                                debug!("Skipping file (not newer): {:?}", source);
+                                continue;
+                            }
+                        }
+                    }
+                    crate::job::ConflictAction::Rename { new_name } => {
+                        // Copy with new name
+                        if let Some(dest_path) = dest.path() {
+                            let new_dest = Location::Local(dest_path.join(new_name));
+                            if let Err(e) = self.backend.copy_file(source, &new_dest, &spec.cancel_token).await {
+                                return OpResult::Failed(format!("Failed to copy {} as {}: {}",
+                                    self.location_display(source), new_name, e));
+                            }
+                            debug!("Renamed and copied file: {} -> {}", self.location_display(source), new_name);
+                            
+                            // Progress update
+                            let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
+                            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                            continue;
+                        }
+                    }
+                    crate::job::ConflictAction::Force => {
+                        // Proceed with normal copy (overwrite)
+                    }
+                }
+            }
+
             // Calculate progress
             let progress = if total_files > 0 {
                 (i as f64) / (total_files as f64)
             } else {
                 0.0
             };
-            
+
             // Send progress update
             let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
-            
+
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
                 self.join_location(dest, &filename)
             } else {
                 dest.clone()
             };
-            
+
             // Copy the file
             if let Err(e) = self.backend.copy_file(source, &dest_location, &spec.cancel_token).await {
-                return OpResult::Failed(format!("Failed to copy {}: {}", 
+                return OpResult::Failed(format!("Failed to copy {}: {}",
                     self.location_display(source), e));
             }
         }
-        
+
         // Send final progress
         let _ = self.event_sender.send(JobEvent::Progress(spec.id, 1.0));
-        
+
         OpResult::Success(SuccessData::None)
     }
     
@@ -194,40 +246,91 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         spec: &JobSpec,
     ) -> OpResult {
         let total_files = sources.len();
-        
+        let decisions = spec.conflict_decisions.as_ref();
+
         for (i, source) in sources.iter().enumerate() {
             // Check cancellation before each file
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
+
+            // Check if there's a conflict decision for this file
+            let decision = decisions.and_then(|d| d.iter().find(|d| d.source == *source));
             
+            // Handle decision
+            if let Some(dec) = decision {
+                match &dec.action {
+                    crate::job::ConflictAction::Skip => {
+                        debug!("Skipping file due to conflict decision: {:?}", source);
+                        continue;
+                    }
+                    crate::job::ConflictAction::OverwriteIfNewer => {
+                        // Check if source is newer
+                        let dest_location = if let Some(filename) = self.get_filename(source) {
+                            self.join_location(dest, &filename)
+                        } else {
+                            dest.clone()
+                        };
+                        
+                        if let (Ok(src_meta), Ok(dst_meta)) = (
+                            self.backend.get_entry(source).await,
+                            self.backend.get_entry(&dest_location).await,
+                        ) {
+                            if src_meta.modified <= dst_meta.modified {
+                                debug!("Skipping file (not newer): {:?}", source);
+                                continue;
+                            }
+                        }
+                    }
+                    crate::job::ConflictAction::Rename { new_name } => {
+                        // Move with new name
+                        if let Some(dest_path) = dest.path() {
+                            let new_dest = Location::Local(dest_path.join(new_name));
+                            if let Err(e) = self.backend.move_file(source, &new_dest, &spec.cancel_token).await {
+                                return OpResult::Failed(format!("Failed to move {} as {}: {}",
+                                    self.location_display(source), new_name, e));
+                            }
+                            debug!("Renamed and moved file: {} -> {}", self.location_display(source), new_name);
+                            
+                            // Progress update
+                            let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
+                            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                            continue;
+                        }
+                    }
+                    crate::job::ConflictAction::Force => {
+                        // Proceed with normal move (overwrite)
+                    }
+                }
+            }
+
             // Calculate progress
             let progress = if total_files > 0 {
                 (i as f64) / (total_files as f64)
             } else {
                 0.0
             };
-            
+
             // Send progress update
             let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
-            
+
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
                 self.join_location(dest, &filename)
             } else {
                 dest.clone()
             };
-            
+
             // Move the file
             if let Err(e) = self.backend.move_file(source, &dest_location, &spec.cancel_token).await {
-                return OpResult::Failed(format!("Failed to move {}: {}", 
+                return OpResult::Failed(format!("Failed to move {}: {}",
                     self.location_display(source), e));
             }
         }
-        
+
         // Send final progress
         let _ = self.event_sender.send(JobEvent::Progress(spec.id, 1.0));
-        
+
         OpResult::Success(SuccessData::None)
     }
     
@@ -317,7 +420,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let result = self.backend.calculate_directory_size_with_progress(
             location,
             &spec.cancel_token,
-            move |items_processed, _current_size| {
+            Box::new(move |items_processed, _current_size| {
                 // Send progress updates every 100ms to avoid flooding
                 let mut last = last_update.lock().unwrap();
                 if last.elapsed() > std::time::Duration::from_millis(100) {
@@ -327,7 +430,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     let _ = event_sender.send(JobEvent::Progress(job_id, progress));
                     *last = std::time::Instant::now();
                 }
-            }
+            })
         ).await;
         
         match result {
@@ -1108,7 +1211,7 @@ mod tests {
 // ============================================================================
 
 /// Detect file conflicts between source files and destination
-/// 
+///
 /// Returns a list of file conflicts (directories are logged and skipped)
 pub async fn detect_conflicts(
     sources: &[Location],
@@ -1118,52 +1221,61 @@ pub async fn detect_conflicts(
     tab_id: usize,
 ) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
     use chrono::Local;
-    
+
+    debug!("detect_conflicts: Checking {} sources against dest {:?}", sources.len(), dest);
     let mut conflicts = Vec::new();
-    
+
     for source in sources {
         // Calculate destination path
         let dest_location = calculate_destination_path(source, dest);
-        
+        debug!("detect_conflicts: Source {:?} -> Dest {:?}", source, dest_location);
+
         // Check if destination exists
         match backend.get_entry(&dest_location).await {
             Ok(dest_entry) => {
+                debug!("detect_conflicts: Destination exists: {:?}", dest_location);
                 // Source entry for comparison
                 let source_entry = match backend.get_entry(source).await {
                     Ok(entry) => entry,
-                    Err(e) => continue, // Skip if can't read source
+                    Err(e) => {
+                        debug!("detect_conflicts: Failed to read source {:?}: {}", source, e);
+                        continue; // Skip if can't read source
+                    }
                 };
-                
+
                 let conflict = crate::model::dialog::ConflictPair {
-                    source: source_entry,
+                    source: source_entry.clone(),
                     dest: dest_entry,
                     source_path: source.clone(),
                     dest_path: dest_location.clone(),
                     is_directory: source_entry.is_dir,
                 };
-                
+
                 if conflict.is_directory {
                     // Log directory conflict to task pane and skip
                     let timestamp = Local::now().format("[%H:%M:%S]");
-                    let log_msg = format!(
-                        "{} [Job #{}] [Tab {}] Copy: \"{}\" conflicts. Skipping",
+                    let _log_msg = format!(
+                        "{} [Job {}] [Tab {}] Copy: \"{}\" conflicts. Skipping",
                         timestamp,
-                        job_id.short_id,
+                        &job_id.0.to_string()[..8],
                         tab_id + 1,
                         dest_location.display_path()
                     );
                     // Note: This log needs to be passed back via StateUpdateResult
                     // For now, we just skip directories
                 } else {
+                    debug!("detect_conflicts: Adding file conflict for {:?}", dest_location);
                     conflicts.push(conflict);
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                debug!("detect_conflicts: Destination does not exist: {:?} ({})", dest_location, e);
                 // No conflict - destination doesn't exist
             }
         }
     }
-    
+
+    debug!("detect_conflicts: Found {} conflicts", conflicts.len());
     Ok(conflicts)
 }
 

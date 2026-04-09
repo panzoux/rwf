@@ -290,15 +290,12 @@ impl FilesystemBackend for LocalFilesystemBackend {
         self.calculate_dir_size_recursive(path, cancel_token).await
     }
     
-    async fn calculate_directory_size_with_progress<F>(
+    async fn calculate_directory_size_with_progress(
         &self,
         location: &Location,
         cancel_token: &CancellationToken,
-        progress_callback: F,
-    ) -> Result<u64>
-    where
-        F: Fn(u64, u64) + Send + Sync,
-    {
+        progress_callback: Box<dyn Fn(u64, u64) + Send + Sync>,
+    ) -> Result<u64> {
         let path = match location {
             Location::Local(path) => path,
             _ => bail!("LocalFilesystemBackend only supports Local locations"),
@@ -317,7 +314,7 @@ impl FilesystemBackend for LocalFilesystemBackend {
             cancel_token,
             items_processed.clone(),
             current_size.clone(),
-            &progress_callback,
+            &*progress_callback,
         )
         .await
     }
@@ -359,6 +356,32 @@ impl FilesystemBackend for LocalFilesystemBackend {
         }
         
         Ok(contents)
+    }
+
+    async fn get_entry(&self, location: &Location) -> Result<FileEntry> {
+        let path = match location {
+            Location::Local(path) => path,
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .context("Failed to read metadata")?;
+        
+        let name = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        Ok(FileEntry {
+            name,
+            location: location.clone(),
+            size: metadata.len(),
+            is_dir: metadata.is_dir(),
+            is_hidden: is_hidden(path),
+            modified: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+            marked: false,
+            calculated_size: None,
+        })
     }
 }
 
@@ -473,17 +496,14 @@ impl LocalFilesystemBackend {
     }
     
     /// Calculate directory size recursively with progress reporting
-    fn calculate_dir_size_recursive_with_progress<'a, F>(
+    fn calculate_dir_size_recursive_with_progress<'a>(
         &'a self,
         path: &'a Path,
         cancel_token: &'a CancellationToken,
         items_processed: std::sync::Arc<std::sync::atomic::AtomicU64>,
         current_size: std::sync::Arc<std::sync::atomic::AtomicU64>,
-        progress_callback: &'a F,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64>> + Send + 'a>>
-    where
-        F: Fn(u64, u64) + Send + Sync,
-    {
+        progress_callback: &'a (dyn Fn(u64, u64) + Send + Sync),
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64>> + Send + 'a>> {
         Box::pin(async move {
             let mut total = 0u64;
             
@@ -754,9 +774,9 @@ mod tests {
         let progress_updates_clone = progress_updates.clone();
         
         let size = backend
-            .calculate_directory_size_with_progress(&location, &cancel_token, move |items, size| {
+            .calculate_directory_size_with_progress(&location, &cancel_token, Box::new(move |items, size| {
                 progress_updates_clone.lock().unwrap().push((items, size));
-            })
+            }))
             .await
             .unwrap();
         

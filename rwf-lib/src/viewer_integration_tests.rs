@@ -190,10 +190,10 @@ fn test_viewer_scrolling() {
     });
     
     // Test scroll down
-    update_state(&mut state, Transition::ViewerScrollDown);
+    update_state(&mut state, Transition::ViewerScrollDown { viewport_height: 20 });
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 1);
     
-    update_state(&mut state, Transition::ViewerScrollDown);
+    update_state(&mut state, Transition::ViewerScrollDown { viewport_height: 20 });
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 2);
     
     // Test scroll up
@@ -201,13 +201,13 @@ fn test_viewer_scrolling() {
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 1);
     
     // Test page down
-    update_state(&mut state, Transition::ViewerPageDown);
+    update_state(&mut state, Transition::ViewerPageDown { viewport_height: 20 });
     assert!(state.viewer.as_ref().unwrap().line_offset > 1);
     
     let offset_after_page_down = state.viewer.as_ref().unwrap().line_offset;
     
     // Test page up
-    update_state(&mut state, Transition::ViewerPageUp);
+    update_state(&mut state, Transition::ViewerPageUp { viewport_height: 20 });
     assert!(state.viewer.as_ref().unwrap().line_offset < offset_after_page_down);
 }
 
@@ -267,7 +267,7 @@ fn test_viewer_hex_mode_navigation() {
     assert_eq!(viewer.hex_line_count(), 7);
     
     // Test scrolling in hex mode
-    update_state(&mut state, Transition::ViewerScrollDown);
+    update_state(&mut state, Transition::ViewerScrollDown { viewport_height: 20 });
     // With 7 lines and viewport height of 20, we can't scroll
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 0);
     

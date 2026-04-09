@@ -94,6 +94,43 @@ impl SearchModel {
         Err("Migemo dictionary not found in common paths".to_string())
     }
     
+    /// Start a new search with the given query
+    pub fn start_search(&mut self, query: String) {
+        self.query = query.clone();
+        self.add_to_history(query);
+        self.results.clear();
+        self.current_index = None;
+    }
+
+    /// Select the next search result
+    pub fn next_result(&mut self) {
+        if self.results.is_empty() {
+            return;
+        }
+        self.current_index = Some(match self.current_index {
+            Some(idx) => (idx + 1) % self.results.len(),
+            None => 0,
+        });
+    }
+
+    /// Select the previous search result
+    pub fn prev_result(&mut self) {
+        if self.results.is_empty() {
+            return;
+        }
+        self.current_index = Some(match self.current_index {
+            Some(idx) => if idx == 0 { self.results.len() - 1 } else { idx - 1 },
+            None => self.results.len() - 1,
+        });
+    }
+
+    /// Clear current search state
+    pub fn clear(&mut self) {
+        self.query.clear();
+        self.results.clear();
+        self.current_index = None;
+    }
+
     /// Add query to history
     pub fn add_to_history(&mut self, query: String) {
         if !query.is_empty() && !self.history.contains(&query) {
