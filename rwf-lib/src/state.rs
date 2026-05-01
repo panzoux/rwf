@@ -64,6 +64,17 @@ impl AppState {
             config.log_file_progress_threshold_ms,
         );
         
+        let mut search = SearchModel::new();
+        let dict_path = config.search.dict_path.as_deref();
+        match search.load_migemo_dict_auto(dict_path) {
+            Ok(_) => {
+                tracing::info!("Migemo dictionary loaded successfully");
+            }
+            Err(e) => {
+                tracing::warn!("Migemo dictionary load failed (Dictionary search feature will fallback to substring matching): {}", e);
+            }
+        }
+
         Self {
             tabs: TabManager::new(),
             jobs: JobManager::new(config.worker_pool_size),
@@ -71,7 +82,7 @@ impl AppState {
                 config.job_manager.max_simultaneous_jobs,
                 Duration::from_secs(config.job_manager.job_retention_period_secs)
             ),
-            search: SearchModel::new(),
+            search,
             marking: MarkingModel::new(),
             ui: UIState::new(),
             dialogs: DialogStack::new(),

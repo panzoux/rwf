@@ -801,18 +801,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::StartSearch => {
-            // Enter search mode and show search input dialog
+            // Enter search mode (integrated in pane info area)
             vec![
                 Transition::ChangeUIMode {
                     mode: crate::model::UIMode::Search,
                 },
-                Transition::ShowDialog {
-                    dialog: crate::model::Dialog::input(
-                        "Search",
-                        "Enter search pattern (* and ? wildcards, /regex/, /regex/i):",
-                        "",
-                    ),
-                },
+                Transition::ClearSearch,
             ]
         }
         Action::FileMaskFilter => {

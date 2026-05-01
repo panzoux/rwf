@@ -28,9 +28,10 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::config::ViMode;
 use tracing::debug;
 
-use super::smart_truncate;
+use super::{smart_truncate, SmartText, TruncateMode};
 
 /// Result of dialog input handling
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -238,57 +239,64 @@ fn render_file_conflict_dialog(
 ) {
     let current = &conflicts[current_index];
     let (indicator, message) = current.get_status_message();
+    let content_width = area.width.saturating_sub(4) as usize; // 2 chars margin on each side
     let textbox_width = area.width.saturating_sub(20) as usize;  // Leave space for button
 
     // Line 0: Filename
-    let filename_line = format!("Filename: {}", smart_truncate(&current.source.name, textbox_width, "..."));
+    let filename_line = format!("Filename: {}", smart_truncate(&current.source.name, content_width.saturating_sub(10), "..."));
     let filename_para = Paragraph::new(filename_line)
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(filename_para, Rect::new(area.x, area.y, area.width, 1));
+    frame.render_widget(filename_para, Rect::new(area.x + 2, area.y, content_width as u16, 1));
 
+    // --- FROM SECTION (Lines 1-4) ---
     // Line 1: "From:" label
     let from_label = Paragraph::new("From:")
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(from_label, Rect::new(area.x, area.y + 1, area.width, 1));
+    frame.render_widget(from_label, Rect::new(area.x + 2, area.y + 1, content_width as u16, 1));
 
-    // Line 2: From path (smart truncate to show beginning and end, no "Path:" prefix)
-    let from_path = format!("  {}", smart_truncate_path(&current.source_path.display_path(), textbox_width - 2));
-    let from_path_para = Paragraph::new(from_path)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(from_path_para, Rect::new(area.x, area.y + 2, area.width, 1));
+    // Line 2-3: From path (2 lines) using SmartText
+    let from_full_path = current.source_path.display_path();
+    let from_path_widget = SmartText::new(&from_full_path)
+        .style(Style::default().fg(Color::Black).bg(Color::Gray))
+        .max_lines(2)
+        .mode(TruncateMode::Path);
+    from_path_widget.render(frame, Rect::new(area.x + 4, area.y + 2, content_width.saturating_sub(2) as u16, 2));
 
-    // Line 3: From size,date
+    // Line 4: From size,date
     let from_info = format!("  Size,Date: {} Bytes, {}",
         current.source.size,
         chrono::DateTime::<chrono::Local>::from(current.source.modified).format("%Y-%m-%d %H:%M:%S"));
     let from_info_para = Paragraph::new(from_info)
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(from_info_para, Rect::new(area.x, area.y + 3, area.width, 1));
+    frame.render_widget(from_info_para, Rect::new(area.x + 2, area.y + 4, content_width as u16, 1));
 
-    // Line 4: Blank
+    // Line 5: Blank
 
-    // Line 5: "To:" label
+    // --- TO SECTION (Lines 6-9) ---
+    // Line 6: "To:" label
     let to_label = Paragraph::new("To:")
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(to_label, Rect::new(area.x, area.y + 5, area.width, 1));
+    frame.render_widget(to_label, Rect::new(area.x + 2, area.y + 6, content_width as u16, 1));
 
-    // Line 6: To path (smart truncate to show beginning and end, no "Path:" prefix)
-    let to_path = format!("  {}", smart_truncate_path(&current.dest_path.display_path(), textbox_width - 2));
-    let to_path_para = Paragraph::new(to_path)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(to_path_para, Rect::new(area.x, area.y + 6, area.width, 1));
+    // Line 7-8: To path (2 lines) using SmartText
+    let to_full_path = current.dest_path.display_path();
+    let to_path_widget = SmartText::new(&to_full_path)
+        .style(Style::default().fg(Color::Black).bg(Color::Gray))
+        .max_lines(2)
+        .mode(TruncateMode::Path);
+    to_path_widget.render(frame, Rect::new(area.x + 4, area.y + 7, content_width.saturating_sub(2) as u16, 2));
 
-    // Line 7: To size,date
+    // Line 9: To size,date
     let to_info = format!("  Size,Date: {} Bytes, {}",
         current.dest.size,
         chrono::DateTime::<chrono::Local>::from(current.dest.modified).format("%Y-%m-%d %H:%M:%S"));
     let to_info_para = Paragraph::new(to_info)
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(to_info_para, Rect::new(area.x, area.y + 7, area.width, 1));
+    frame.render_widget(to_info_para, Rect::new(area.x + 2, area.y + 9, content_width as u16, 1));
 
-    // Line 8: Blank
+    // Line 10: Blank
 
-    // Line 9: Status indicator
+    // Line 11: Status indicator
     let status_line = format!("{} {}", indicator, message);
     let status_style = if indicator == "✓" {
         Style::default().fg(Color::Green).bg(Color::Gray)
@@ -297,21 +305,21 @@ fn render_file_conflict_dialog(
     };
     let status_para = Paragraph::new(status_line)
         .style(status_style);
-    frame.render_widget(status_para, Rect::new(area.x, area.y + 9, area.width, 1));
+    frame.render_widget(status_para, Rect::new(area.x + 2, area.y + 11, content_width as u16, 1));
 
-    // Line 10: Blank
+    // Line 12: Blank
 
-    // Lines 11-15: Buttons (vertical layout)
-    // Focus fields: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename button, 4=Textbox, 5=Cancel
+    // Lines 13-16: Buttons (vertical layout)
+    // Focus fields: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename (Textbox), 4=Cancel
     let button_texts = [
         ("Force Overwrite", false),
         ("Overwrite if New", false),
         ("Skip", false),
-        ("Rename", false),
+        ("Rename:", false), // Label for textbox
         ("Cancel", false),
     ];
 
-    let mut button_y = area.y + 11;
+    let mut button_y = area.y + 13;
     for (i, (label, is_default)) in button_texts.iter().enumerate() {
         let button_text = if *is_default {
             format!("[*{}*]", label)
@@ -319,28 +327,23 @@ fn render_file_conflict_dialog(
             format!("[{}]", label)
         };
 
-        // Map array index to focus field:
-        // Array: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename, 4=Cancel
-        // Focus: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename, 4=Textbox, 5=Cancel
-        let button_focus_field = if i >= 4 { i + 1 } else { i };
-        let button_is_focused = focused_button == button_focus_field;
+        let button_is_focused = focused_button == i;
 
-        // For Rename button (field 3), add textbox on the right (field 4)
         if i == 3 {
-            let button_style = if button_is_focused {
-                Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)
+            // Rename label + Textbox
+            let label_style = if button_is_focused {
+                Style::default().fg(Color::Yellow).bg(Color::Gray).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Black).bg(Color::Gray)
             };
 
-            // Left-align button
-            let button_para = Paragraph::new(button_text.clone()).style(button_style);
-            frame.render_widget(button_para, Rect::new(area.x + 2, button_y, button_text.len() as u16, 1));
+            // Render "Rename:" label
+            let label_para = Paragraph::new(label.to_string()).style(label_style);
+            frame.render_widget(label_para, Rect::new(area.x + 2, button_y, label.len() as u16, 1));
 
-            // Render textbox using TextInput widget (dedicated focus field 4)
-            let textbox_x = area.x + 2 + button_text.len() as u16 + 2;
-            let textbox_is_focused = focused_button == 4;
-            let textbox_width_u16 = textbox_width as u16;
+            // Render textbox using TextInput widget (dedicated focus field 3)
+            let textbox_x = area.x + 2 + label.len() as u16 + 1;
+            let textbox_width_u16 = textbox_width.saturating_sub(label.len()) as u16;
 
             // Create TextInput widget for rendering
             let mut text_input = crate::ui::text_input::TextInput::new(Some(rename_text.to_string()), edit_mode);
@@ -350,7 +353,8 @@ fn render_file_conflict_dialog(
             }
             text_input.set_width(textbox_width_u16);
             text_input.set_cursor(rename_cursor);
-            text_input.render(frame, Rect::new(textbox_x, button_y, textbox_width_u16, 1), textbox_is_focused);
+            text_input.set_scroll(rename_scroll);
+            text_input.render(frame, Rect::new(textbox_x, button_y, textbox_width_u16, 1), button_is_focused);
         } else {
             let button_style = if button_is_focused {
                 Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)
@@ -364,147 +368,36 @@ fn render_file_conflict_dialog(
         button_y += 1;
     }
 
-    // Line after buttons: Hint text (shown when Force, Overwrite if New, or Skip focused)
-    let hint_y = button_y;
+    // Hint text (shown when Force, Overwrite if New, or Skip focused)
     if focused_button == 0 || focused_button == 1 || focused_button == 2 {
         let hint = Paragraph::new("(Shift+Enter for the rest)")
             .style(Style::default().fg(Color::DarkGray).bg(Color::Gray));
-        frame.render_widget(hint, Rect::new(area.x, hint_y, area.width, 1));
+        frame.render_widget(hint, Rect::new(area.x + 2, button_y, content_width as u16, 1));
     }
 
-    // Error message line
-    let error_y = hint_y + 1;
+    // Error message line - ALWAYS AT BOTTOM OF DIALOG AREA
     if let Some(error) = error_message {
-        let error_para = Paragraph::new(error.as_str())
-            .style(Style::default().fg(Color::Red).bg(Color::Gray));
-        frame.render_widget(error_para, Rect::new(area.x, error_y, area.width, 1));
+        let error_para = Paragraph::new(format!("Error: {}", error))
+            .style(Style::default().fg(Color::Red).bg(Color::Gray).add_modifier(Modifier::BOLD));
+        // Place at the last line of the provided area
+        frame.render_widget(error_para, Rect::new(area.x + 2, area.y + area.height - 1, content_width as u16, 1));
     }
-}
-
-/// Render textbox with visible cursor and horizontal scrolling
-fn render_textbox_with_cursor(
-    frame: &mut Frame,
-    text: &str,
-    cursor_pos: usize,
-    scroll: usize,
-    width: usize,
-    x: u16,
-    y: u16,
-    style: Style,
-    is_focused: bool,
-) {
-    // Get visible portion of text
-    let visible_end = (scroll + width).min(text.len());
-    let visible_text = if scroll < text.len() {
-        &text[scroll..visible_end]
-    } else {
-        ""
-    };
-
-    // Calculate cursor position within visible text
-    let visible_cursor = cursor_pos.saturating_sub(scroll);
-
-    // Build the textbox content with cursor
-    let mut spans = Vec::new();
-
-    // Add visible text with cursor position
-    if visible_cursor < visible_text.len() {
-        // Cursor in middle of visible text
-        let before_cursor = &visible_text[..visible_cursor];
-        let cursor_char = visible_text.chars().nth(visible_cursor).unwrap_or(' ');
-        let after_cursor = if visible_cursor + 1 < visible_text.len() {
-            &visible_text[visible_cursor + 1..]
-        } else {
-            ""
-        };
-
-        spans.push(Span::raw(before_cursor));
-        if is_focused {
-            // Show cursor as underscore block with cyan background for visibility
-            spans.push(Span::styled(
-                cursor_char.to_string(),
-                Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            ));
-        } else {
-            spans.push(Span::raw(cursor_char.to_string()));
-        }
-        spans.push(Span::raw(after_cursor));
-    } else {
-        // Cursor at end
-        spans.push(Span::raw(visible_text));
-        if is_focused {
-            // Show cursor block at end
-            spans.push(Span::styled("█", Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD)));
-        }
-    }
-
-    // Pad to fill width
-    let current_len = spans.iter().map(|s| s.content.len()).sum::<usize>();
-    if current_len < width {
-        spans.push(Span::raw(" ".repeat(width - current_len)));
-    }
-
-    let textbox = Paragraph::new(Line::from(spans)).style(style);
-    frame.render_widget(textbox, Rect::new(x, y, width as u16, 1));
-}
-
-/// Smart truncate path to show beginning and end of both directory path and filename
-/// e.g. "C:\Users\user\source\repos\panzoux\rwf\BUGFIX_COLOR_SPACE_SUMMARY.md"
-///   => "C:\Users\us...\panzoux\BUGFIX...CE_SUMMARY.md"
-fn smart_truncate_path(path: &str, max_width: usize) -> String {
-    if path.len() <= max_width {
-        return path.to_string();
-    }
-
-    // Split into directory path and filename
-    let path_obj = std::path::Path::new(path);
-    let filename = path_obj.file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let dir_path = path_obj.parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    // Calculate available space for truncation
-    // Need space for: "dir.../filename..." with "..." separators
-    let separator = "...";
-    let min_dir = 10;  // Minimum chars to show from directory
-    let min_file_start = 5;  // Minimum chars from filename start
-    let min_file_end = 10;  // Minimum chars from filename end
-
-    if max_width < min_dir + min_file_start + min_file_end + separator.len() * 2 {
-        // Too small, just truncate normally
-        return smart_truncate(path, max_width, "...");
-    }
-
-    // Truncate directory path
-    let dir_truncated = if dir_path.len() > min_dir + separator.len() {
-        format!("{}{}", &dir_path[..min_dir], separator)
-    } else {
-        dir_path.clone()
-    };
-
-    // Truncate filename
-    let file_truncated = if filename.len() > min_file_start + min_file_end + separator.len() {
-        format!("{}{}{}", &filename[..min_file_start], separator, &filename[filename.len() - min_file_end..])
-    } else {
-        filename.clone()
-    };
-
-    format!("{}{}", dir_truncated, file_truncated)
 }
 
 /// Render dialog content based on type
 fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect, focused: bool) {
     match content {
-        DialogContent::Compression { 
-            archive_name, 
+        DialogContent::Compression {
+            archive_name,
             selected_format_index,
             selected_compression_index,
             focused_field,
             format_focus_index,
             compression_focus_index,
             cursor_pos,
+            scroll_pos,
+            edit_mode,
+            vi_mode,
             ..
         } => {
             // Create state from embedded dialog state
@@ -516,9 +409,13 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
                 format_focus_index: *format_focus_index,
                 compression_focus_index: *compression_focus_index,
                 cursor_pos: *cursor_pos,
+                scroll_pos: *scroll_pos,
+                edit_mode: *edit_mode,
+                vi_mode: *vi_mode,
             };
             render_compression_dialog(frame, area, &state, focused);
         }
+
         DialogContent::ExtractionConfirm { archive, dest, file_count } => {
             let dialog = ExtractionConfirmDialog {
                 archive_name: archive.display_path(),
@@ -583,7 +480,7 @@ fn handle_file_conflict_input(
     focused_button: &mut usize,
     rename_text: &mut String,
     rename_cursor: &mut usize,
-    _rename_scroll: &mut usize,
+    rename_scroll: &mut usize,
     edit_mode: &mut rwf_lib::config::EditMode,
     vi_mode: &mut Option<rwf_lib::config::ViMode>,
     error_message: &mut Option<String>,
@@ -591,13 +488,15 @@ fn handle_file_conflict_input(
     pending_find_backward: &mut Option<bool>,
     pending_operator: &mut Option<u8>,
     pending_ctrl_x: &mut bool,
+    history: &mut Vec<String>,
+    history_index: &mut usize,
     key: KeyEvent,
 ) -> DialogAction {
     use crossterm::event::KeyCode;
     use crate::ui::text_input::{TextInput, TextInputAction};
     use rwf_lib::config::ViMode;
 
-    let is_textbox_focused = *focused_button == 4;
+    let is_textbox_focused = *focused_button == 3;
 
     // Clear error on focus change
     if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
@@ -608,6 +507,7 @@ fn handle_file_conflict_input(
     if is_textbox_focused {
         let mut text_input = TextInput::new(Some(rename_text.clone()), *edit_mode);
         text_input.set_cursor(*rename_cursor);
+        text_input.set_scroll(*rename_scroll);
         // Set original text for Vi U command
         text_input.set_original_text(rename_text.clone());
         // Restore Vi mode state
@@ -622,12 +522,15 @@ fn handle_file_conflict_input(
             _ => None,
         });
         text_input.set_pending_ctrl_x(*pending_ctrl_x);
+        text_input.set_history(history.clone());
+        text_input.set_history_index(*history_index);
 
         let action = text_input.handle_input(&key);
 
         // Always sync state from TextInput (DRY - widget owns all state)
         *rename_text = text_input.text().to_string();
         *rename_cursor = text_input.cursor();
+        *rename_scroll = text_input.scroll();
         *edit_mode = text_input.mode();
         // Sync Vi mode state
         *vi_mode = text_input.vi_mode();
@@ -639,6 +542,8 @@ fn handle_file_conflict_input(
             None => None,
         };
         *pending_ctrl_x = text_input.pending_ctrl_x();
+        *history = text_input.history().clone();
+        *history_index = text_input.history_index();
 
         match action {
             TextInputAction::TextChanged => {
@@ -747,19 +652,19 @@ fn handle_file_conflict_input(
             } else {
                 DialogAction::Cancel
             }
-        }
+            }
 
-        KeyCode::Tab => {
-            *focused_button = (*focused_button + 1) % 6;  // 6 fields now
+            KeyCode::Tab => {
+            *focused_button = (*focused_button + 1) % 5;  // 5 fields now
             DialogAction::None
-        }
+            }
 
-        KeyCode::BackTab => {
-            *focused_button = if *focused_button == 0 { 5 } else { *focused_button - 1 };
+            KeyCode::BackTab => {
+            *focused_button = if *focused_button == 0 { 4 } else { *focused_button - 1 }; 
             DialogAction::None
-        }
+            }
 
-        KeyCode::Enter => {
+            KeyCode::Enter => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
                 // Shift+Enter: Apply to ALL remaining
                 let action = button_index_to_action(*focused_button);
@@ -770,26 +675,20 @@ fn handle_file_conflict_input(
             } else {
                 // Enter: Apply to current only
                 match *focused_button {
-                    0 | 1 | 2 | 5 => {
+                    0 | 1 | 2 | 4 => {
                         // Force, OverwriteIfNew, Skip, Cancel buttons
                         let action = button_index_to_action(*focused_button);
                         decisions.push(action);
                         DialogAction::Confirm
                     }
                     3 => {
-                        // Rename button: move focus to textbox
-                        *focused_button = 4;
-                        DialogAction::None
-                    }
-                    4 => {
-                        // Textbox: handled above
+                        // Textbox: handled above in the is_textbox_focused block
                         DialogAction::None
                     }
                     _ => DialogAction::None,
                 }
             }
-        }
-
+            }
         _ => DialogAction::None,
     }
 }
@@ -800,12 +699,12 @@ fn button_index_to_action(index: usize) -> rwf_lib::model::dialog::ConflictActio
         0 => rwf_lib::model::dialog::ConflictAction::Force,
         1 => rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer,
         2 => rwf_lib::model::dialog::ConflictAction::Skip,
-        3 => rwf_lib::model::dialog::ConflictAction::Rename { new_name: String::new() },
-        4 => rwf_lib::model::dialog::ConflictAction::Rename { new_name: String::new() },  // Textbox
-        5 => rwf_lib::model::dialog::ConflictAction::Skip,  // Cancel = skip this file
+        3 => rwf_lib::model::dialog::ConflictAction::Rename { new_name: String::new() },  // Placeholder, name synced from textbox
+        4 => rwf_lib::model::dialog::ConflictAction::Skip,  // Cancel = skip this file
         _ => rwf_lib::model::dialog::ConflictAction::Skip,
     }
 }
+
 
 /// Handle dialog input centrally
 pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent) -> DialogAction {
@@ -853,14 +752,14 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent) -> DialogAction {
     }
 
     // FileConflict dialog - custom input handling with textbox
-    if let DialogContent::FileConflict { conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, .. } = &mut dialog.content {
-        return handle_file_conflict_input(conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, key);
+    if let DialogContent::FileConflict { conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, history, history_index, .. } = &mut dialog.content {
+        return handle_file_conflict_input(conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, history, history_index, key);
     }
 
-    // Compression dialog - Vi mode support for Esc
-    if let DialogContent::Compression { edit_mode, vi_mode, .. } = &mut dialog.content {
-        if key.code == crossterm::event::KeyCode::Esc {
-            debug!("Esc pressed in Compression dialog, edit_mode={:?}, current vi_mode={:?}", edit_mode, vi_mode);
+    // Compression dialog - Vi mode support for Esc (when textbox not focused)
+    if let DialogContent::Compression { edit_mode, vi_mode, focused_field, .. } = &mut dialog.content {
+        if key.code == crossterm::event::KeyCode::Esc && *focused_field != 2 {
+            debug!("Esc pressed in Compression dialog (non-textbox), edit_mode={:?}, current vi_mode={:?}", edit_mode, vi_mode);
             if *edit_mode == rwf_lib::config::EditMode::Vi {
                 debug!("Switching to Normal mode in Compression dialog");
                 *vi_mode = Some(rwf_lib::config::ViMode::Normal);
@@ -965,20 +864,75 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
             selected_compression_index,
             archive_name,
             cursor_pos,
+            scroll_pos,
             edit_mode,
             vi_mode,
+            vi_pending_find_backward,
+            vi_pending_operator,
+            vi_pending_ctrl_x,
+            history,
+            history_index,
             ..
         } => {
-            // Handle Esc for Vi mode first
-            if key.code == crossterm::event::KeyCode::Esc {
-                if *edit_mode == rwf_lib::config::EditMode::Vi {
-                    *vi_mode = Some(rwf_lib::config::ViMode::Normal);
-                    return DialogAction::None;
-                } else {
-                    return DialogAction::Cancel;
+            // If archive name is focused, delegate to TextInput
+            if *focused_field == 2 {
+                use crate::ui::text_input::{TextInput, TextInputAction};
+                let mut text_input = TextInput::new(Some(archive_name.clone()), *edit_mode);
+                text_input.set_cursor(*cursor_pos);
+                text_input.set_scroll(*scroll_pos);
+                // Set original text for Vi U command (could be stored but archive_name is usually fine)
+                text_input.set_original_text(archive_name.clone());
+                // Restore all state
+                if let Some(vm) = vi_mode {
+                    text_input.set_vi_mode(*vm);
+                }
+                text_input.set_pending_find_backward(*vi_pending_find_backward);
+                text_input.set_pending_operator(match vi_pending_operator {
+                    Some(1) => Some(crate::ui::text_input::ViOperator::Change),
+                    Some(2) => Some(crate::ui::text_input::ViOperator::Delete),
+                    _ => None,
+                });
+                text_input.set_pending_ctrl_x(*vi_pending_ctrl_x);
+                text_input.set_history(history.clone());
+                text_input.set_history_index(*history_index);
+
+                let action = text_input.handle_input(&key);
+
+                // Sync state back
+                *archive_name = text_input.text().to_string();
+                *cursor_pos = text_input.cursor();
+                *scroll_pos = text_input.scroll();
+                *edit_mode = text_input.mode();
+                *vi_mode = text_input.vi_mode();
+                *vi_pending_find_backward = text_input.pending_find_backward();
+                *vi_pending_operator = match text_input.pending_operator() {
+                    Some(crate::ui::text_input::ViOperator::Change) => Some(1),
+                    Some(crate::ui::text_input::ViOperator::Delete) => Some(2),
+                    None => None,
+                };
+                *vi_pending_ctrl_x = text_input.pending_ctrl_x();
+                *history = text_input.history().clone();
+                *history_index = text_input.history_index();
+
+                match action {
+                    TextInputAction::Cancel => {
+                        if *edit_mode == rwf_lib::config::EditMode::Vi {
+                            match vi_mode {
+                                Some(ViMode::Normal) => return DialogAction::Cancel,
+                                Some(ViMode::Insert) | None => {
+                                    *vi_mode = Some(ViMode::Normal);
+                                    return DialogAction::None;
+                                }
+                            }
+                        } else {
+                            return DialogAction::Cancel;
+                        }
+                    }
+                    TextInputAction::Confirm => return DialogAction::Confirm,
+                    _ => return DialogAction::None,
                 }
             }
-            
+
             match *focused_field {
                 0 => {
                     // Format list has focus - Up/Down moves focus, Space sets selection
@@ -1020,42 +974,11 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
                         _ => {}
                     }
                 }
-                2 => {
-                    // Name input has focus - character input and cursor movement
-                    match key.code {
-                        crossterm::event::KeyCode::Char(c) => {
-                            archive_name.insert(*cursor_pos, c);
-                            *cursor_pos += 1;
-                        }
-                        crossterm::event::KeyCode::Backspace => {
-                            if *cursor_pos > 0 {
-                                *cursor_pos -= 1;
-                                archive_name.remove(*cursor_pos);
-                            }
-                        }
-                        crossterm::event::KeyCode::Left => {
-                            if *cursor_pos > 0 {
-                                *cursor_pos -= 1;
-                            }
-                        }
-                        crossterm::event::KeyCode::Right => {
-                            if *cursor_pos < archive_name.len() {
-                                *cursor_pos += 1;
-                            }
-                        }
-                        crossterm::event::KeyCode::Home => {
-                            *cursor_pos = 0;
-                        }
-                        crossterm::event::KeyCode::End => {
-                            *cursor_pos = archive_name.len();
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {} // Buttons don't handle input here
+                _ => {} // Buttons and Name handled above
             }
             DialogAction::None
         }
+
         DialogContent::ExtractionConfirm { .. } => {
             // Simple confirmation - only global shortcuts apply
             DialogAction::None

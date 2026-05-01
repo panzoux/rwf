@@ -461,3 +461,1016 @@
 2026-03-03T14:16:04.260186Z  INFO rwf_lib::worker_pool: Worker pool shut down
 2026-03-03T14:16:04.260204Z  INFO two_pane_fm::app: Worker pool shut down
 2026-03-03T14:16:04.260599Z  INFO two_pane_fm: Terminal restored
+2026-05-01T14:15:43.923934Z  INFO ThreadId(01) rwf_lib::logging: 168: Logging initialized at level: Information
+2026-05-01T14:15:43.924433Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T14:15:43.925828Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T14:15:43.941482Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T14:15:43.941634Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T14:15:44.173377Z  INFO ThreadId(01) rwf_lib::model::search: 111: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T14:15:44.173550Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T14:15:44.181842Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T14:15:44.182193Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T14:15:44.182179Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T14:15:44.182210Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T14:15:44.182370Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T14:15:44.182606Z DEBUG ThreadId(02) rwf_lib::worker_pool: 84: Worker 3 executing job job_id=JobId(c26dda64-370e-4889-bf6e-7d724c4ca6bf) kind=ReadDirectory { location: Local("C:\\Users\\user\\temp_2") }
+2026-05-01T14:15:44.182719Z DEBUG ThreadId(02) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\temp_2
+2026-05-01T14:15:44.182943Z DEBUG ThreadId(02) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(1cfa71af-3fef-4247-b247-ae1d8983f7ca) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T14:15:44.182996Z DEBUG ThreadId(02) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:15:44.183276Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:15:44.183344Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(c26dda64-370e-4889-bf6e-7d724c4ca6bf)
+2026-05-01T14:15:44.183406Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:15:44.183429Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(1cfa71af-3fef-4247-b247-ae1d8983f7ca)
+2026-05-01T14:15:44.183748Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T14:15:44.184465Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:15:44.184713Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T14:15:44.184904Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:15:44.185490Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T14:15:44.185490Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:15:44.185717Z DEBUG ThreadId(02) rwf_lib::backend::local: 90: Found 3 entries in C:\Users\user\temp_2
+2026-05-01T14:15:44.185903Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:15:44.186304Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:15:44.186695Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:15:44.187078Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T14:15:44.187251Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T14:15:44.187370Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T14:15:44.187483Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T14:15:44.187622Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T14:15:44.187778Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T14:15:44.187944Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T14:15:44.188296Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T14:15:44.188668Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T14:15:44.188800Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T14:15:44.189014Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T14:15:44.189457Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T14:15:44.189884Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T14:15:44.190265Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T14:15:44.190650Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T14:15:44.191027Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T14:15:44.191173Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T14:15:44.191286Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T14:15:44.191409Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T14:15:44.191528Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T14:15:44.191662Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T14:15:44.191825Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T14:15:44.192187Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T14:15:44.192643Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T14:15:44.193103Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T14:15:44.193458Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:15:44.199481Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:15:44.199684Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:16:12.549587Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 2 shutting down
+2026-05-01T14:16:12.549665Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 1 shutting down
+2026-05-01T14:16:12.549696Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 3 shutting down
+2026-05-01T14:16:12.549722Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 0 shutting down
+2026-05-01T14:16:12.549795Z  INFO ThreadId(01) rwf_lib::worker_pool: 162: Worker pool shut down
+2026-05-01T14:16:12.550120Z  INFO ThreadId(01) rwf: 59: Terminal restored
+
+=== Log session started at 2026-05-01 23:20:55.655822100 +09:00 ===
+2026-05-01T14:20:55.658105Z  INFO ThreadId(01) rwf_lib::logging: 174: Logging initialized at level: Information
+2026-05-01T14:20:55.658311Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T14:20:55.659580Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T14:20:55.665205Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T14:20:55.665423Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T14:20:55.900094Z  INFO ThreadId(01) rwf_lib::model::search: 111: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T14:20:55.900245Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T14:20:55.901010Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T14:20:55.901280Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T14:20:55.901280Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T14:20:55.901285Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T14:20:55.901330Z DEBUG ThreadId(03) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T14:20:55.901569Z DEBUG ThreadId(03) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(dc50bad1-5503-4307-8f31-eabc8627e37b) kind=ReadDirectory { location: Local("C:\\Users\\user\\temp_2") }
+2026-05-01T14:20:55.901719Z DEBUG ThreadId(03) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\temp_2
+2026-05-01T14:20:55.901978Z DEBUG ThreadId(03) rwf_lib::worker_pool: 84: Worker 2 executing job job_id=JobId(747a3b18-05cf-42a8-a63a-f3580484fa5a) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T14:20:55.902048Z DEBUG ThreadId(03) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:20:55.902102Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:20:55.902159Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(dc50bad1-5503-4307-8f31-eabc8627e37b)
+2026-05-01T14:20:55.902248Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:20:55.902282Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(747a3b18-05cf-42a8-a63a-f3580484fa5a)
+2026-05-01T14:20:55.902528Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:20:55.902623Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T14:20:55.902704Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:20:55.902821Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T14:20:55.902884Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:20:55.902981Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T14:20:55.903020Z DEBUG ThreadId(03) rwf_lib::backend::local: 90: Found 3 entries in C:\Users\user\temp_2
+2026-05-01T14:20:55.903141Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:20:55.903360Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:20:55.903521Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:20:55.903680Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T14:20:55.903835Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T14:20:55.904008Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T14:20:55.904168Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T14:20:55.904312Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T14:20:55.904460Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T14:20:55.904599Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T14:20:55.904731Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T14:20:55.904865Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T14:20:55.905016Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T14:20:55.905182Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T14:20:55.905331Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T14:20:55.905468Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T14:20:55.905608Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T14:20:55.905810Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T14:20:55.905961Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T14:20:55.906096Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T14:20:55.906228Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T14:20:55.906361Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T14:20:55.906496Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T14:20:55.906622Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T14:20:55.906761Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T14:20:55.906895Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T14:20:55.907032Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T14:20:55.907168Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T14:20:55.907267Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:20:55.921209Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:20:55.921520Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:21:07.845191Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.849496Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.853784Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.857919Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.862235Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.866527Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.870683Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.875080Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.879206Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.883381Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.887609Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.891906Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.896259Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.900465Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.904674Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.909206Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.913867Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.917261Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.921450Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.925934Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.930142Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.934655Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.938797Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.943474Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.947774Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.952061Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.956354Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.960519Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.965176Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.969337Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.973611Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.977786Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.982246Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.986579Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.990720Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.994970Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:07.999129Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.003651Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.007824Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.011986Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.016372Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.020538Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.025181Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.029421Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.033674Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.037930Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.042250Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.046462Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.050573Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.054776Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.058991Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.063499Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.067690Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.071849Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.076099Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.080254Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.084822Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.088999Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.093268Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.097495Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.102238Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.106484Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.110696Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.114900Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.119428Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.123773Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.127993Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.132486Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.136878Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.141221Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.145587Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.149758Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.154195Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.158417Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.162611Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.166909Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.171069Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.175489Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.179760Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.184156Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.188517Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.192883Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.197030Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.201159Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.205453Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.209627Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.214078Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.218411Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.222646Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.226889Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.231031Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.235387Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.239708Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.243892Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.248076Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.252388Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.256678Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.260788Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.265234Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.269506Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.274101Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.278322Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.282471Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.286920Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.291153Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.295502Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.299611Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.303866Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.308076Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.312585Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.316902Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.321027Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.325422Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.329696Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.334315Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.338556Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.342762Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.347029Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.351611Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.355992Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.360155Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.364470Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.368602Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.373122Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.377377Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.381453Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.385835Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.390290Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.394919Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.399041Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.403302Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.407527Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.412045Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.416311Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.420502Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.424734Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.428914Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.433456Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.437810Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.442083Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.446296Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.450571Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.455143Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.459310Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.463629Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.468257Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.472676Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.476979Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.481216Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.485810Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.490060Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.494311Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.498577Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.503069Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.507290Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.511556Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.515842Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.520229Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.524389Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.528571Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.532817Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.537088Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.541372Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.545550Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.549793Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.553991Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.558250Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.562735Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.566987Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.571130Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.575354Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.579505Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.583911Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.588229Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.592507Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.596712Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.600881Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.605423Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.609638Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.613828Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.618421Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.622719Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.626904Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.631038Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.635316Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.639435Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.644238Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.648364Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.652594Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.656805Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.660892Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.665442Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.669691Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.673905Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.678069Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.682328Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.686615Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.690745Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.695076Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.699246Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.703682Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.707879Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.712113Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.716383Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.720701Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.724990Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.729134Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.733627Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.737959Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.742075Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.746540Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.750719Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.755145Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.759376Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.763555Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.767893Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.772237Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.776690Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.780872Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.785145Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.789269Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.793780Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.798056Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.802319Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.806569Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.810718Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.815137Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.819282Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.823528Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.827692Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.831926Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.836352Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.840547Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.844814Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.849048Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.853732Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.858005Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.862265Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.866598Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.870811Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.875332Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.879539Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.883698Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.887975Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.892279Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.896561Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.900664Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.904937Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.909074Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.913727Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.918001Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.922265Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.926558Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.931059Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.935543Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.939771Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.944417Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.948706Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.952904Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.957100Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.961678Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.966042Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.970171Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.974427Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.978642Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.983285Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.987594Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.991752Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:08.996226Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.000655Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.005048Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.009216Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.013458Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.017606Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.021926Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.026346Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.030642Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.034924Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.039099Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.043718Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.048080Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.052344Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.056774Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.060968Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.065551Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.069951Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.074499Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.078745Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.083365Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.087639Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.091894Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.096152Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.100493Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.105254Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.109529Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.113837Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.118148Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.122477Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.126747Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.130982Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.135272Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.139593Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.144028Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.148272Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.152572Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.156857Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.161074Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.165594Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.170064Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.174383Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.178666Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.183720Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.188193Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.192497Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.196979Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.201348Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.205796Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.210077Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.214315Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.218701Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.223014Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.227313Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.231582Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.235928Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.240339Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.245029Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.249378Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.253672Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.258012Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.262586Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.267105Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.271524Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.275736Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.280095Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.284648Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.288973Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.293416Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.297802Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.302372Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.307021Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.311317Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.315672Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:21:09.316697Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "c", dirty=true
+2026-05-01T14:21:09.320325Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "c"
+2026-05-01T14:21:09.320423Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "c"
+2026-05-01T14:21:09.332167Z DEBUG ThreadId(01) rwf::app: 435: No match found for "c"
+2026-05-01T14:21:09.646647Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "ca", dirty=true
+2026-05-01T14:21:09.796771Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:21:09.796837Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "ca"
+2026-05-01T14:21:09.796861Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "ca"
+2026-05-01T14:21:09.809494Z DEBUG ThreadId(01) rwf::app: 435: No match found for "ca"
+2026-05-01T14:21:09.931569Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "car", dirty=true
+2026-05-01T14:21:10.082537Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:21:10.082623Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "car"
+2026-05-01T14:21:10.082646Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "car"
+2026-05-01T14:21:10.097041Z DEBUG ThreadId(01) rwf::app: 435: No match found for "car"
+2026-05-01T14:21:10.916472Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "carg", dirty=true
+2026-05-01T14:21:11.067123Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:21:11.067206Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "carg"
+2026-05-01T14:21:11.067228Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "carg"
+2026-05-01T14:21:11.085273Z DEBUG ThreadId(01) rwf::app: 435: No match found for "carg"
+2026-05-01T14:21:11.236492Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "cargo", dirty=true
+2026-05-01T14:21:11.386808Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:21:11.386877Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "cargo"
+2026-05-01T14:21:11.386902Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "cargo"
+2026-05-01T14:21:11.407541Z DEBUG ThreadId(01) rwf::app: 435: No match found for "cargo"
+2026-05-01T14:22:25.869250Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:25.869328Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "carg"
+2026-05-01T14:22:25.869352Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "carg"
+2026-05-01T14:22:25.888111Z DEBUG ThreadId(01) rwf::app: 435: No match found for "carg"
+2026-05-01T14:22:26.247920Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:26.247990Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "car"
+2026-05-01T14:22:26.248016Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "car"
+2026-05-01T14:22:26.263859Z DEBUG ThreadId(01) rwf::app: 435: No match found for "car"
+2026-05-01T14:22:26.583254Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:26.583332Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "c"
+2026-05-01T14:22:26.583356Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "c"
+2026-05-01T14:22:26.594799Z DEBUG ThreadId(01) rwf::app: 435: No match found for "c"
+2026-05-01T14:22:26.948122Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:26.948193Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:22:27.447584Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "C", dirty=true
+2026-05-01T14:22:27.598469Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:27.598541Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "C"
+2026-05-01T14:22:27.598567Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "C"
+2026-05-01T14:22:27.609155Z DEBUG ThreadId(01) rwf::app: 435: No match found for "C"
+2026-05-01T14:22:28.142737Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "Ca", dirty=true
+2026-05-01T14:22:28.292779Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:28.292856Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "Ca"
+2026-05-01T14:22:28.292880Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "Ca"
+2026-05-01T14:22:28.305774Z DEBUG ThreadId(01) rwf::app: 435: No match found for "Ca"
+2026-05-01T14:22:28.507708Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "Car", dirty=true
+2026-05-01T14:22:28.657832Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:28.657901Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "Car"
+2026-05-01T14:22:28.657927Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "Car"
+2026-05-01T14:22:28.672825Z DEBUG ThreadId(01) rwf::app: 435: No match found for "Car"
+2026-05-01T14:22:28.953398Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "Carg", dirty=true
+2026-05-01T14:22:29.104074Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:29.104149Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "Carg"
+2026-05-01T14:22:29.104172Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "Carg"
+2026-05-01T14:22:29.123142Z DEBUG ThreadId(01) rwf::app: 435: No match found for "Carg"
+2026-05-01T14:22:29.693078Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "Cargo", dirty=true
+2026-05-01T14:22:29.843849Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:22:29.843931Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "Cargo"
+2026-05-01T14:22:29.843954Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "Cargo"
+2026-05-01T14:22:29.866000Z DEBUG ThreadId(01) rwf::app: 435: No match found for "Cargo"
+2026-05-01T14:28:17.244513Z DEBUG ThreadId(01) rwf::app: 356: Search query updated: "Cargoq", dirty=true
+2026-05-01T14:28:17.395650Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:28:17.395738Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "Cargoq"
+2026-05-01T14:28:17.395762Z DEBUG ThreadId(01) rwf::app: 428: Scanning 31 entries for "Cargoq"
+2026-05-01T14:28:17.421202Z DEBUG ThreadId(01) rwf::app: 435: No match found for "Cargoq"
+2026-05-01T14:28:18.575483Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 1 shutting down
+2026-05-01T14:28:18.575608Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 3 shutting down
+2026-05-01T14:28:18.575672Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 0 shutting down
+2026-05-01T14:28:18.575740Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 2 shutting down
+2026-05-01T14:28:18.575850Z  INFO ThreadId(01) rwf_lib::worker_pool: 162: Worker pool shut down
+2026-05-01T14:28:18.576231Z  INFO ThreadId(01) rwf: 59: Terminal restored
+
+=== Log session started at 2026-05-01 23:58:23.379158400 +09:00 ===
+2026-05-01T14:58:23.382264Z  INFO ThreadId(01) rwf_lib::logging: 174: Logging initialized at level: Information
+2026-05-01T14:58:23.382520Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T14:58:23.383689Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T14:58:23.389004Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T14:58:23.389158Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T14:58:23.636746Z  INFO ThreadId(01) rwf_lib::model::search: 111: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T14:58:23.636861Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T14:58:23.637494Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T14:58:23.637817Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T14:58:23.637817Z DEBUG ThreadId(03) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T14:58:23.637817Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T14:58:23.637912Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T14:58:23.638164Z DEBUG ThreadId(05) rwf_lib::worker_pool: 84: Worker 3 executing job job_id=JobId(59064805-1ece-4271-a2c3-f291f1526bf0) kind=ReadDirectory { location: Local("C:\\Users\\user\\temp_2") }
+2026-05-01T14:58:23.638311Z DEBUG ThreadId(05) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\temp_2
+2026-05-01T14:58:23.638566Z DEBUG ThreadId(05) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(928a84ce-51f3-41a8-abd2-eff79ee43e07) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T14:58:23.638644Z DEBUG ThreadId(05) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:58:23.638769Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:58:23.638829Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(59064805-1ece-4271-a2c3-f291f1526bf0)
+2026-05-01T14:58:23.638944Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T14:58:23.639031Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(928a84ce-51f3-41a8-abd2-eff79ee43e07)
+2026-05-01T14:58:23.639159Z DEBUG ThreadId(05) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:58:23.639210Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T14:58:23.639364Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T14:58:23.639365Z DEBUG ThreadId(05) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:58:23.639544Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T14:58:23.639564Z DEBUG ThreadId(05) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:58:23.639697Z DEBUG ThreadId(05) rwf_lib::backend::local: 90: Found 3 entries in C:\Users\user\temp_2
+2026-05-01T14:58:23.639715Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T14:58:23.639875Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T14:58:23.640001Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T14:58:23.640117Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T14:58:23.640246Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T14:58:23.640368Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T14:58:23.640539Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T14:58:23.640661Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T14:58:23.640774Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T14:58:23.640888Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T14:58:23.640997Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T14:58:23.641138Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T14:58:23.641284Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T14:58:23.641437Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T14:58:23.641562Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T14:58:23.641672Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T14:58:23.641793Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T14:58:23.641900Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T14:58:23.642007Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T14:58:23.642114Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T14:58:23.642221Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T14:58:23.642327Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T14:58:23.642446Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T14:58:23.642552Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T14:58:23.642660Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T14:58:23.642767Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T14:58:23.642874Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T14:58:23.643031Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T14:58:23.643105Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T14:58:23.654289Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:58:23.654574Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T14:58:26.347916Z  INFO ThreadId(01) rwf::app: 180: Executing search for: ""
+2026-05-01T14:58:27.678025Z DEBUG ThreadId(01) rwf::app: 358: Char: "c", query="c", dirty=true
+2026-05-01T14:58:27.828662Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:58:27.828732Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "c"
+2026-05-01T14:58:27.828759Z  INFO ThreadId(01) rwf::app: 429: Scanning 31 entries for "c"
+2026-05-01T14:58:27.828817Z  INFO ThreadId(01) rwf::app: 431: Match found at index 12 (file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md)
+2026-05-01T14:58:30.895871Z DEBUG ThreadId(01) rwf::app: 358: Char: "a", query="ca", dirty=true
+2026-05-01T14:58:31.046619Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:58:31.046692Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "ca"
+2026-05-01T14:58:31.046716Z  INFO ThreadId(01) rwf::app: 429: Scanning 31 entries for "ca"
+2026-05-01T14:58:31.046745Z  INFO ThreadId(01) rwf::app: 431: Match found at index 16 (file: Cargo.lock)
+2026-05-01T14:58:39.699042Z DEBUG ThreadId(01) rwf::app: 358: Char: "r", query="car", dirty=true
+2026-05-01T14:58:39.849049Z DEBUG ThreadId(01) rwf::app: 173: Search trigger: Debounce timer passed (150ms)
+2026-05-01T14:58:39.849120Z  INFO ThreadId(01) rwf::app: 180: Executing search for: "car"
+2026-05-01T14:58:39.849145Z  INFO ThreadId(01) rwf::app: 429: Scanning 31 entries for "car"
+2026-05-01T14:58:39.849171Z  INFO ThreadId(01) rwf::app: 431: Match found at index 16 (file: Cargo.lock)
+2026-05-01T15:02:36.213688Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 2 shutting down
+2026-05-01T15:02:36.213966Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 1 shutting down
+2026-05-01T15:02:36.214050Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 3 shutting down
+2026-05-01T15:02:36.214104Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 0 shutting down
+2026-05-01T15:02:36.214274Z  INFO ThreadId(01) rwf_lib::worker_pool: 162: Worker pool shut down
+2026-05-01T15:02:36.214687Z  INFO ThreadId(01) rwf: 59: Terminal restored
+
+=== Log session started at 2026-05-02 00:23:17.364796600 +09:00 ===
+2026-05-01T15:23:17.367472Z  INFO ThreadId(01) rwf_lib::logging: 174: Logging initialized at level: Information
+2026-05-01T15:23:17.367638Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T15:23:17.369166Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T15:23:17.374055Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T15:23:17.374198Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T15:23:17.590908Z  INFO ThreadId(01) rwf_lib::model::search: 113: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T15:23:17.591056Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T15:23:17.591617Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T15:23:17.591923Z DEBUG ThreadId(03) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T15:23:17.591924Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T15:23:17.591926Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T15:23:17.592005Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T15:23:17.592172Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 2 executing job job_id=JobId(a0f57581-a953-4cdf-9742-fa1ecdab408f) kind=ReadDirectory { location: Local("C:\\Users\\user\\temp_2") }
+2026-05-01T15:23:17.592301Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\temp_2
+2026-05-01T15:23:17.592501Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(a1f7e218-e7aa-4ee7-b7b9-21e731a81acf) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T15:23:17.592566Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T15:23:17.592756Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T15:23:17.592815Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(a0f57581-a953-4cdf-9742-fa1ecdab408f)
+2026-05-01T15:23:17.592894Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T15:23:17.592934Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(a1f7e218-e7aa-4ee7-b7b9-21e731a81acf)
+2026-05-01T15:23:17.593013Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T15:23:17.593014Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T15:23:17.593165Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T15:23:17.593239Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T15:23:17.593289Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T15:23:17.593365Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T15:23:17.593369Z DEBUG ThreadId(02) rwf_lib::backend::local: 90: Found 3 entries in C:\Users\user\temp_2
+2026-05-01T15:23:17.593484Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T15:23:17.593682Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T15:23:17.593884Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T15:23:17.594087Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T15:23:17.594285Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T15:23:17.594486Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T15:23:17.594689Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T15:23:17.594880Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T15:23:17.595007Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T15:23:17.595121Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T15:23:17.595229Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T15:23:17.595340Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T15:23:17.595446Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T15:23:17.595573Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T15:23:17.595688Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T15:23:17.595796Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T15:23:17.595904Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T15:23:17.596009Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T15:23:17.596118Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T15:23:17.596237Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T15:23:17.596341Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T15:23:17.596450Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T15:23:17.596554Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T15:23:17.596659Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T15:23:17.596939Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T15:23:17.597289Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T15:23:17.597468Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T15:23:17.597621Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T15:23:17.597729Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T15:23:17.653103Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T15:23:17.653485Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T15:23:22.869393Z DEBUG ThreadId(01) rwf::app: 409: Scanning 31 entries for "c"
+2026-05-01T15:23:22.869683Z DEBUG ThreadId(01) rwf::app: 411: Match found at index 16 (file: Cargo.lock)
+2026-05-01T15:23:23.849462Z DEBUG ThreadId(01) rwf::app: 409: Scanning 31 entries for "ca"
+2026-05-01T15:23:23.849563Z DEBUG ThreadId(01) rwf::app: 411: Match found at index 16 (file: Cargo.lock)
+2026-05-01T15:23:26.289406Z DEBUG ThreadId(01) rwf::app: 409: Scanning 31 entries for "c"
+2026-05-01T15:23:26.289513Z DEBUG ThreadId(01) rwf::app: 411: Match found at index 16 (file: Cargo.lock)
+2026-05-01T15:23:27.368334Z DEBUG ThreadId(01) rwf::app: 409: Scanning 31 entries for "bu"
+2026-05-01T15:23:27.368550Z DEBUG ThreadId(01) rwf::app: 411: Match found at index 11 (file: BUGFIX_COLOR_SPACE_SUMMARY.md)
+2026-05-01T15:23:27.569727Z DEBUG ThreadId(01) rwf::app: 409: Scanning 31 entries for "bug"
+2026-05-01T15:23:27.569824Z DEBUG ThreadId(01) rwf::app: 411: Match found at index 11 (file: BUGFIX_COLOR_SPACE_SUMMARY.md)
+2026-05-01T15:24:18.299655Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 3 shutting down
+2026-05-01T15:24:18.300047Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 1 shutting down
+2026-05-01T15:24:18.300109Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 2 shutting down
+2026-05-01T15:24:18.300149Z DEBUG ThreadId(04) rwf_lib::worker_pool: 90: Worker 0 shutting down
+2026-05-01T15:24:18.300263Z  INFO ThreadId(01) rwf_lib::worker_pool: 162: Worker pool shut down
+2026-05-01T15:24:18.301186Z  INFO ThreadId(01) rwf: 59: Terminal restored
+
+=== Log session started at 2026-05-02 01:25:40.117031300 +09:00 ===
+2026-05-01T16:25:40.122186Z  INFO ThreadId(01) rwf_lib::logging: 174: Logging initialized at level: Information
+2026-05-01T16:25:40.122433Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T16:25:40.123959Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T16:25:40.129623Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T16:25:40.129768Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T16:25:40.340736Z  INFO ThreadId(01) rwf_lib::model::search: 113: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T16:25:40.340898Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T16:25:40.342006Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T16:25:40.342406Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T16:25:40.342406Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T16:25:40.342406Z DEBUG ThreadId(03) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T16:25:40.342501Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T16:25:40.343629Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 3 executing job job_id=JobId(07a957a0-998d-47cd-86d3-f9db54922e13) kind=ReadDirectory { location: Local("C:\\Users\\user\\temp_2") }
+2026-05-01T16:25:40.343818Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\temp_2
+2026-05-01T16:25:40.344045Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(fb2ebae5-6974-42a0-9321-aefa09fcc0b8) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T16:25:40.344111Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T16:25:40.344592Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T16:25:40.344615Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T16:25:40.344789Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T16:25:40.344821Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T16:25:40.344929Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T16:25:40.344957Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T16:25:40.345035Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 3 entries in C:\Users\user\temp_2
+2026-05-01T16:25:40.345119Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T16:25:40.345232Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T16:25:40.345343Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T16:25:40.345478Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T16:25:40.345589Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T16:25:40.345696Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T16:25:40.345805Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T16:25:40.345911Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T16:25:40.346015Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T16:25:40.346121Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T16:25:40.346225Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T16:25:40.346330Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T16:25:40.346438Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T16:25:40.346544Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T16:25:40.346653Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T16:25:40.346759Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T16:25:40.346874Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T16:25:40.347167Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T16:25:40.347369Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T16:25:40.347651Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T16:25:40.347934Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T16:25:40.348134Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T16:25:40.348272Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T16:25:40.348392Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T16:25:40.348590Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T16:25:40.349292Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T16:25:40.349455Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T16:25:40.349619Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T16:25:40.349731Z DEBUG ThreadId(03) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T16:25:40.360096Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T16:25:40.360291Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(07a957a0-998d-47cd-86d3-f9db54922e13)
+2026-05-01T16:25:40.360353Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T16:25:40.360385Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(fb2ebae5-6974-42a0-9321-aefa09fcc0b8)
+2026-05-01T16:25:40.360417Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T16:25:40.360582Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T16:25:46.993593Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:25:52.795723Z DEBUG ThreadId(01) rwf_lib::state: 237: ChangeLocation: pane = Left, location = C:\Users\user
+2026-05-01T16:25:52.796035Z DEBUG ThreadId(03) rwf_lib::worker_pool: 84: Worker 2 executing job job_id=JobId(c3c9aa05-0349-4c6f-8fcc-af5f296540a0) kind=ReadDirectory { location: Local("C:\\Users\\user") }
+2026-05-01T16:25:52.796112Z DEBUG ThreadId(03) rwf_lib::backend::local: 57: Reading directory: C:\Users\user
+2026-05-01T16:25:52.796563Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .bash_history
+2026-05-01T16:25:52.796745Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .cache
+2026-05-01T16:25:52.796928Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .cargo
+2026-05-01T16:25:52.797045Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .config
+2026-05-01T16:25:52.797196Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .copilot
+2026-05-01T16:25:52.797331Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .dotnet
+2026-05-01T16:25:52.797439Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .gemini
+2026-05-01T16:25:52.797543Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .gitconfig
+2026-05-01T16:25:52.797651Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .keynavrc
+2026-05-01T16:25:52.799231Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .lesshst
+2026-05-01T16:25:52.799734Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .matplotlib
+2026-05-01T16:25:52.799993Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .minttyrc
+2026-05-01T16:25:52.800502Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .nuget
+2026-05-01T16:25:52.801068Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .qwen
+2026-05-01T16:25:52.801278Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .templateengine
+2026-05-01T16:25:52.801573Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .viminfo
+2026-05-01T16:25:52.802063Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .vscode
+2026-05-01T16:25:52.802270Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .win-vind
+2026-05-01T16:25:52.802734Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: 3D Objects
+2026-05-01T16:25:52.802937Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: AppData
+2026-05-01T16:25:52.803057Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Apple
+2026-05-01T16:25:52.803189Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Application Data
+2026-05-01T16:25:52.803590Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: battery-report.html
+2026-05-01T16:25:52.803743Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: bin
+2026-05-01T16:25:52.803854Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Contacts
+2026-05-01T16:25:52.803986Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cookies
+2026-05-01T16:25:52.804377Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Desktop
+2026-05-01T16:25:52.804496Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Documents
+2026-05-01T16:25:52.804667Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: dotfiles
+2026-05-01T16:25:52.804822Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Downloads
+2026-05-01T16:25:52.804931Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: dwhelper
+2026-05-01T16:25:52.805106Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: FastCopy
+2026-05-01T16:25:52.805454Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Favorites
+2026-05-01T16:25:52.805589Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: HackGenConsole-Regular.ttf
+2026-05-01T16:25:52.805983Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: IntelGraphicsProfiles
+2026-05-01T16:25:52.806343Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Links
+2026-05-01T16:25:52.806471Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Local Settings
+2026-05-01T16:25:52.806639Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Music
+2026-05-01T16:25:52.806774Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: My Documents
+2026-05-01T16:25:52.807161Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: NetHood
+2026-05-01T16:25:52.807433Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT
+2026-05-01T16:25:52.807591Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: ntuser.dat.LOG1
+2026-05-01T16:25:52.807774Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: ntuser.dat.LOG2
+2026-05-01T16:25:52.807915Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TM.blf
+2026-05-01T16:25:52.808377Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TMContainer00000000000000000001.regtrans-ms
+2026-05-01T16:25:52.808513Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TMContainer00000000000000000002.regtrans-ms
+2026-05-01T16:25:52.808627Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: ntuser.ini
+2026-05-01T16:25:52.808782Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: output.txt
+2026-05-01T16:25:52.809121Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Pictures
+2026-05-01T16:25:52.809240Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: PrintHood
+2026-05-01T16:25:52.809838Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: raphnetupdatelog.txt
+2026-05-01T16:25:52.810194Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Recent
+2026-05-01T16:25:52.810374Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Saved Games
+2026-05-01T16:25:52.810616Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Searches
+2026-05-01T16:25:52.810729Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: SendTo
+2026-05-01T16:25:52.811089Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: source
+2026-05-01T16:25:52.811210Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: temp
+2026-05-01T16:25:52.811317Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Templates
+2026-05-01T16:25:52.811506Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: temp_2
+2026-05-01T16:25:52.811612Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Videos
+2026-05-01T16:25:52.811714Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: vimfiles
+2026-05-01T16:25:52.811867Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: _viminfo
+2026-05-01T16:25:52.811998Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: _vimrc
+2026-05-01T16:25:52.812346Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: スタート メニュー
+2026-05-01T16:25:52.812603Z DEBUG ThreadId(03) rwf_lib::backend::local: 90: Found 64 entries in C:\Users\user
+2026-05-01T16:25:52.941253Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T16:25:52.941364Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(c3c9aa05-0349-4c6f-8fcc-af5f296540a0)
+2026-05-01T16:25:52.941395Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T16:25:57.181910Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:25:57.516405Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:26:05.200430Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:26:05.604006Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:26:05.968848Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:26:08.356762Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:26:09.110902Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:26:09.836496Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:26:10.256095Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:26:10.794514Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:26:11.369179Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:26:18.398776Z DEBUG ThreadId(03) rwf_lib::worker_pool: 90: Worker 1 shutting down
+2026-05-01T16:26:18.398864Z DEBUG ThreadId(03) rwf_lib::worker_pool: 90: Worker 3 shutting down
+2026-05-01T16:26:18.398907Z DEBUG ThreadId(03) rwf_lib::worker_pool: 90: Worker 0 shutting down
+2026-05-01T16:26:18.398979Z DEBUG ThreadId(03) rwf_lib::worker_pool: 90: Worker 2 shutting down
+2026-05-01T16:26:18.399078Z  INFO ThreadId(01) rwf_lib::worker_pool: 162: Worker pool shut down
+2026-05-01T16:26:18.399464Z  INFO ThreadId(01) rwf: 59: Terminal restored
+
+=== Log session started at 2026-05-02 01:30:15.608051800 +09:00 ===
+2026-05-01T16:30:15.610635Z  INFO ThreadId(01) rwf_lib::logging: 174: Logging initialized at level: Information
+2026-05-01T16:30:15.610870Z  INFO ThreadId(01) rwf: 35: Two-Pane File Manager starting...
+2026-05-01T16:30:15.612343Z  INFO ThreadId(01) rwf: 39: Terminal initialized
+2026-05-01T16:30:15.618818Z  WARN ThreadId(01) rwf: 45: Failed to load config: ParseError("Invalid config.json: missing field `SearchDebounceMs` at line 96 column 3"), using defaults
+2026-05-01T16:30:15.618965Z  INFO ThreadId(01) rwf: 48: Configuration loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\config.json"
+2026-05-01T16:30:15.823163Z  INFO ThreadId(01) rwf_lib::model::search: 113: Migemo dictionary loaded from "C:\\Users\\user\\AppData\\Roaming\\rwf\\dict\\migemo-compact-dict"
+2026-05-01T16:30:15.823292Z  INFO ThreadId(01) rwf_lib::state: 71: Migemo dictionary loaded successfully
+2026-05-01T16:30:15.824025Z  INFO ThreadId(01) rwf: 51: Application state initialized with session restoration
+2026-05-01T16:30:15.824374Z DEBUG ThreadId(02) rwf_lib::worker_pool: 70: Worker 0 started
+2026-05-01T16:30:15.824374Z DEBUG ThreadId(03) rwf_lib::worker_pool: 70: Worker 1 started
+2026-05-01T16:30:15.824370Z DEBUG ThreadId(05) rwf_lib::worker_pool: 70: Worker 3 started
+2026-05-01T16:30:15.824370Z DEBUG ThreadId(04) rwf_lib::worker_pool: 70: Worker 2 started
+2026-05-01T16:30:15.824837Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 0 executing job job_id=JobId(f80adf9b-b390-46cb-91a6-686ca132d470) kind=ReadDirectory { location: Local("C:\\Users\\user") }
+2026-05-01T16:30:15.824988Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user
+2026-05-01T16:30:15.825252Z DEBUG ThreadId(04) rwf_lib::worker_pool: 84: Worker 1 executing job job_id=JobId(c060ff53-1d39-4763-910c-41c03be2cd9c) kind=ReadDirectory { location: Local("C:\\Users\\user\\source\\repos\\panzoux\\rwf") }
+2026-05-01T16:30:15.825321Z DEBUG ThreadId(04) rwf_lib::backend::local: 57: Reading directory: C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T16:30:15.825797Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .bash_history
+2026-05-01T16:30:15.825859Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .git
+2026-05-01T16:30:15.825983Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .cache
+2026-05-01T16:30:15.826016Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .gitignore
+2026-05-01T16:30:15.826113Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .cargo
+2026-05-01T16:30:15.826172Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .kiro
+2026-05-01T16:30:15.826256Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .config
+2026-05-01T16:30:15.826326Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_COLOR_SPACE_SUMMARY.md
+2026-05-01T16:30:15.826410Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .copilot
+2026-05-01T16:30:15.826474Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_JAPANESE_FILENAME_AND_COLORS.md
+2026-05-01T16:30:15.826563Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .dotnet
+2026-05-01T16:30:15.826619Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_SCROLL_AND_PANE_INFO_COLORS.md
+2026-05-01T16:30:15.826706Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gemini
+2026-05-01T16:30:15.826757Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: BUGFIX_SUMMARY.md
+2026-05-01T16:30:15.826856Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .gitconfig
+2026-05-01T16:30:15.826909Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cargo.lock
+2026-05-01T16:30:15.827005Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .keynavrc
+2026-05-01T16:30:15.827039Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cargo.toml
+2026-05-01T16:30:15.827158Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .lesshst
+2026-05-01T16:30:15.827173Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: CONFIG_FLATTEN_FIX_SUMMARY.md
+2026-05-01T16:30:15.827284Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .matplotlib
+2026-05-01T16:30:15.827305Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: docs
+2026-05-01T16:30:15.827413Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .minttyrc
+2026-05-01T16:30:15.827420Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ELLIPSIS_CONFIG_SUMMARY.md
+2026-05-01T16:30:15.827534Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .nuget
+2026-05-01T16:30:15.827575Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.en.json
+2026-05-01T16:30:15.827687Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: .qwen
+2026-05-01T16:30:15.827696Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: help.jp.json
+2026-05-01T16:30:15.827821Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .templateengine
+2026-05-01T16:30:15.827830Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: logs
+2026-05-01T16:30:15.827962Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .viminfo
+2026-05-01T16:30:15.828021Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: plan
+2026-05-01T16:30:15.828088Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: .vscode
+2026-05-01T16:30:15.828216Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T15-11-41-901Z.json
+2026-05-01T16:30:15.828232Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: .win-vind
+2026-05-01T16:30:15.828381Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: 3D Objects
+2026-05-01T16:30:15.828386Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-23T22-34-17-193Z.json
+2026-05-01T16:30:15.828520Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: AppData
+2026-05-01T16:30:15.828530Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-03-28T13-04-59-261Z.md
+2026-05-01T16:30:15.828646Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Apple
+2026-05-01T16:30:15.828660Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: qwen-code-export-2026-04-17T15-04-52-741Z.md
+2026-05-01T16:30:15.828805Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: README.md
+2026-05-01T16:30:15.828820Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Application Data
+2026-05-01T16:30:15.828937Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: rwf-bin
+2026-05-01T16:30:15.829032Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: battery-report.html
+2026-05-01T16:30:15.829057Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: rwf-lib
+2026-05-01T16:30:15.829164Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: scripts
+2026-05-01T16:30:15.829175Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: bin
+2026-05-01T16:30:15.829302Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Contacts
+2026-05-01T16:30:15.829309Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: specs
+2026-05-01T16:30:15.829444Z DEBUG ThreadId(03) rwf_lib::backend::local: 74: Processing file: Cookies
+2026-05-01T16:30:15.829444Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: target
+2026-05-01T16:30:15.829609Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: TASK_52_SUMMARY.md
+2026-05-01T16:30:15.829621Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Desktop
+2026-05-01T16:30:15.829749Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Documents
+2026-05-01T16:30:15.829753Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: TASK_55_COMPREHENSIVE_TESTING_SUMMARY.md
+2026-05-01T16:30:15.829888Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: dotfiles
+2026-05-01T16:30:15.829893Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: UNICODE_WIDTH_FIX_COMPLETE.md
+2026-05-01T16:30:15.830026Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Downloads
+2026-05-01T16:30:15.830030Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: UUID_FIX_SUMMARY.md
+2026-05-01T16:30:15.830163Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: dwhelper
+2026-05-01T16:30:15.830170Z DEBUG ThreadId(02) rwf_lib::backend::local: 74: Processing file: VOLUME_NAME_FIX_SUMMARY.md
+2026-05-01T16:30:15.830298Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: FastCopy
+2026-05-01T16:30:15.830297Z DEBUG ThreadId(02) rwf_lib::backend::local: 90: Found 31 entries in C:\Users\user\source\repos\panzoux\rwf
+2026-05-01T16:30:15.830587Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Favorites
+2026-05-01T16:30:15.830720Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: HackGenConsole-Regular.ttf
+2026-05-01T16:30:15.830840Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: IntelGraphicsProfiles
+2026-05-01T16:30:15.830948Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Links
+2026-05-01T16:30:15.831053Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Local Settings
+2026-05-01T16:30:15.831201Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Music
+2026-05-01T16:30:15.831306Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: My Documents
+2026-05-01T16:30:15.831448Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: NetHood
+2026-05-01T16:30:15.831589Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT
+2026-05-01T16:30:15.831697Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ntuser.dat.LOG1
+2026-05-01T16:30:15.831804Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ntuser.dat.LOG2
+2026-05-01T16:30:15.831909Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TM.blf
+2026-05-01T16:30:15.832021Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TMContainer00000000000000000001.regtrans-ms
+2026-05-01T16:30:15.832135Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: NTUSER.DAT{53b39e88-18c4-11ea-a811-000d3aa4692b}.TMContainer00000000000000000002.regtrans-ms
+2026-05-01T16:30:15.832246Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: ntuser.ini
+2026-05-01T16:30:15.832351Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: output.txt
+2026-05-01T16:30:15.832454Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Pictures
+2026-05-01T16:30:15.832558Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: PrintHood
+2026-05-01T16:30:15.832698Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: raphnetupdatelog.txt
+2026-05-01T16:30:15.832803Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Recent
+2026-05-01T16:30:15.832942Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Saved Games
+2026-05-01T16:30:15.833048Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Searches
+2026-05-01T16:30:15.833156Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: SendTo
+2026-05-01T16:30:15.833290Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: source
+2026-05-01T16:30:15.833397Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: temp
+2026-05-01T16:30:15.833509Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Templates
+2026-05-01T16:30:15.833645Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: temp_2
+2026-05-01T16:30:15.833755Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: Videos
+2026-05-01T16:30:15.833859Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: vimfiles
+2026-05-01T16:30:15.833991Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: _viminfo
+2026-05-01T16:30:15.834096Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: _vimrc
+2026-05-01T16:30:15.834206Z DEBUG ThreadId(04) rwf_lib::backend::local: 74: Processing file: スタート メニュー
+2026-05-01T16:30:15.834393Z DEBUG ThreadId(04) rwf_lib::backend::local: 90: Found 64 entries in C:\Users\user
+2026-05-01T16:30:15.841896Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T16:30:15.842000Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(f80adf9b-b390-46cb-91a6-686ca132d470)
+2026-05-01T16:30:15.842084Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Started"
+2026-05-01T16:30:15.842113Z DEBUG ThreadId(01) rwf_lib::event_receiver: 28: JobEvent::Started received for job_id=JobId(c060ff53-1d39-4763-910c-41c03be2cd9c)
+2026-05-01T16:30:15.842137Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T16:30:15.842437Z DEBUG ThreadId(01) rwf_lib::event_receiver: 87: process_pending_events: Received event "Completed"
+2026-05-01T16:31:25.832881Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:26.352462Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:26.851989Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:27.126742Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:27.356695Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:27.576320Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:27.721117Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:27.806062Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:27.910956Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:28.052642Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:28.360553Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:28.710216Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:31.677347Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:32.311735Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:32.961462Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:33.335757Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:34.644494Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:35.263857Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:35.883383Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:36.457585Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:31:37.221860Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:31:40.099057Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:32:23.344124Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:32:23.798180Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:19.057887Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:20.951711Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:22.691002Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:24.421071Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:26.349169Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:27.538739Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:29.398577Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:31.181424Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:33.905107Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:35.184510Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:36.743261Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:38.163140Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:38.571736Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:39.071394Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:41.775776Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:42.923318Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:44.716871Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:45.796072Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:47.424790Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left
+2026-05-01T16:33:48.923606Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Left -> Right
+2026-05-01T16:33:50.807223Z DEBUG ThreadId(01) rwf_lib::state: 198: SwitchPane transition: Right -> Left

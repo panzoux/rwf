@@ -2,11 +2,12 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     widgets::{List, ListItem, Paragraph},
     Frame,
 };
 use rwf_lib::ArchiveFormat;
+use crate::ui::text_input::TextInput;
 
 /// Archive format options (name + format enum)
 const ARCHIVE_FORMATS: &[(&str, ArchiveFormat)] = &[
@@ -40,6 +41,10 @@ pub struct CompressionDialogState {
     pub format_focus_index: usize,      // Which format has focus (0-7)
     pub compression_focus_index: usize, // Which compression level has focus (0-5)
     pub cursor_pos: usize,
+    pub scroll_pos: usize,
+    // Vi mode support
+    pub edit_mode: rwf_lib::config::EditMode,
+    pub vi_mode: Option<rwf_lib::config::ViMode>,
 }
 
 impl CompressionDialogState {
@@ -165,36 +170,22 @@ pub fn render_compression_dialog(
     let compression_area = Rect::new(chunks[2].x, chunks[2].y + 1, chunks[2].width, 6);
     frame.render_widget(compression_list, compression_area);
 
-    // Render archive name input (no border)
+    // Render archive name input using TextInput widget
     let name_label = Paragraph::new("Archive Name:")
         .style(Style::default().fg(Color::Black).bg(Color::Gray));
     frame.render_widget(name_label, chunks[4]);
 
-    let name_text = if state.focused_field == 2 {
-        let mut text = state.archive_name.clone();
-        if state.cursor_pos <= text.len() {
-            text.insert(state.cursor_pos, '█');
-        }
-        text
-    } else {
-        state.archive_name.clone()
-    };
-
-    // When name field has focus (field 2): black text on white background with cursor
-    // Otherwise: white text on dark gray background
-    let name_style = if state.focused_field == 2 {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::White)
-    } else {
-        Style::default()
-            .fg(Color::White)
-            .bg(Color::DarkGray)
-    };
-
-    let name_input = Paragraph::new(name_text)
-        .style(name_style);
-    frame.render_widget(name_input, Rect::new(chunks[4].x, chunks[4].y + 1, chunks[4].width, 1));
+    let textbox_is_focused = state.focused_field == 2;
+    let mut text_input = TextInput::new(Some(state.archive_name.clone()), state.edit_mode);
+    if let Some(vm) = state.vi_mode {
+        text_input.set_vi_mode(vm);
+    }
+    text_input.set_width(chunks[4].width);
+    text_input.set_cursor(state.cursor_pos);
+    text_input.set_scroll(state.scroll_pos);
+    // Since we don't have all pending states here in the transient render call,
+    // we just do a basic render. Full state is handled in handle_input and mod.rs render.
+    text_input.render(frame, Rect::new(chunks[4].x, chunks[4].y + 1, chunks[4].width, 1), textbox_is_focused);
 
     // Render buttons directly
     // OK is field 3, Cancel is field 4 in the dialog state

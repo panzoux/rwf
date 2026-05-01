@@ -144,8 +144,14 @@ pub fn init_logging(log_level: LogLevel, log_dir: &Path) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let log_file = log_dir.join("rwf.log");
-    let writer = RotatingFileWriter::new(log_file)?;
+    // Ensure directory exists
+    std::fs::create_dir_all(log_dir)?;
+
+    let log_file = log_dir.join("session.log");
+    let mut writer = RotatingFileWriter::new(log_file)?;
+
+    // Write session start marker
+    let _ = writeln!(writer, "\n=== Log session started at {} ===", chrono::Local::now());
 
     // Create filter
     let filter = EnvFilter::try_from_default_env()
@@ -171,7 +177,14 @@ pub fn init_logging(log_level: LogLevel, log_dir: &Path) -> anyhow::Result<()> {
 
 /// Get the default log directory
 pub fn default_log_dir() -> PathBuf {
-    if let Some(data_dir) = dirs::data_local_dir() {
+    // 1. Check for local logs directory in current working directory
+    let local_logs = PathBuf::from("logs");
+    if local_logs.exists() && local_logs.is_dir() {
+        return local_logs;
+    }
+
+    // 2. Fallback to AppData (Roaming on Windows, Config on Unix)
+    if let Some(data_dir) = dirs::data_dir() {
         data_dir.join("rwf").join("logs")
     } else {
         PathBuf::from(".").join("logs")

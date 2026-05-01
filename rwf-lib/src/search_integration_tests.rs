@@ -403,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "migemo")]
+    #[cfg(feature = "use-migemo")]
     fn test_migemo_search_basic() {
         // Test basic migemo search functionality
         // Validates: Requirements 30.6
@@ -411,7 +411,7 @@ mod tests {
         let mut search = SearchModel::new();
         
         // Try to load migemo dictionary
-        if search.load_migemo_dict_auto().is_ok() {
+        if search.load_migemo_dict_auto(None).is_ok() {
             search.use_migemo = true;
             
             let entries = vec![
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "migemo")]
+    #[cfg(feature = "use-migemo")]
     fn test_migemo_toggle() {
         // Test toggling migemo mode on and off
         // Validates: Requirements 30.6

@@ -3,6 +3,10 @@ name = "rwf"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+migemo = ["rwf-lib/migemo"]
+
 [dependencies]
 rwf-lib = { path = "../rwf-lib" }
 

@@ -611,6 +611,12 @@ pub struct SearchConfig {
     pub use_regex: bool,
     /// Use migemo search by default
     pub use_migemo: bool,
+    /// Path to migemo dictionary file
+    #[serde(rename = "DictPath")]
+    pub dict_path: Option<String>,
+    /// Search debounce interval in milliseconds
+    #[serde(rename = "SearchDebounceMs")]
+    pub search_debounce_ms: u64,
     /// Maximum number of search results
     pub max_results: usize,
 }
@@ -621,6 +627,8 @@ impl Default for SearchConfig {
             case_sensitive: false,
             use_regex: false,
             use_migemo: false,
+            dict_path: None,
+            search_debounce_ms: 150,
             max_results: 1000,
         }
     }

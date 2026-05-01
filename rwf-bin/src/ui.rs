@@ -13,6 +13,7 @@ mod colors;
 mod unicode_utils;
 pub mod dialog;
 pub mod text_input;
+pub mod smart_text;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -30,6 +31,7 @@ pub use pane_info_line::render_pane_info_line;
 pub use colors::parse_color;
 pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
 pub use dialog::render_dialog;
+pub use smart_text::{SmartText, TruncateMode};
 
 /// Main UI rendering function
 pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {

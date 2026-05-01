@@ -6,6 +6,17 @@
 //! - Internal kill buffer (clipboard)
 //! - Horizontal scrolling for long text
 //! - Visible cursor with proper width calculation
+//! - Undo/Redo history (100 levels)
+//!
+//! ## Usage Rules
+//! 1. **Initialization**: Use `TextInput::new(text, mode)` and `set_original_text(text)` to enable Vi 'U' command.
+//! 2. **State Persistence**: If the widget is reconstructed every frame (e.g. in a dynamic dialog), 
+//!    certain internal states MUST be persisted externally and restored:
+//!    - `vi_mode`, `pending_operator`, `pending_find_backward`, `pending_ctrl_x`
+//!    - `history` and `history_index` (if undo/redo must persist)
+//! 3. **Rendering**: Call `set_width(area.width)` before `render()` to ensure proper scrolling.
+//!
+//! See `docs/TEXT_INPUT_WIDGET.md` for detailed keybindings and implementation details.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -123,10 +134,20 @@ impl TextInput {
         self.cursor
     }
 
+    /// Get scroll position
+    pub fn scroll(&self) -> usize {
+        self.scroll
+    }
+
     /// Set cursor position
     pub fn set_cursor(&mut self, cursor: usize) {
         self.cursor = cursor.min(self.text.chars().count());
         self.update_scroll();
+    }
+
+    /// Set scroll position
+    pub fn set_scroll(&mut self, scroll: usize) {
+        self.scroll = scroll;
     }
 
     /// Check if text is empty
@@ -260,6 +281,35 @@ impl TextInput {
             true
         } else {
             false
+        }
+    }
+
+    /// Get history stack (for persistence)
+    pub fn history(&self) -> &Vec<String> {
+        &self.history
+    }
+
+    /// Set history stack (for persistence)
+    pub fn set_history(&mut self, history: Vec<String>) {
+        if !history.is_empty() {
+            self.history = history;
+            self.history_index = self.history.len() - 1;
+        }
+    }
+
+    /// Get current history index
+    pub fn history_index(&self) -> usize {
+        self.history_index
+    }
+
+    /// Set current history index
+    pub fn set_history_index(&mut self, index: usize) {
+        if index < self.history.len() {
+            self.history_index = index;
+            // Sync text with history at this index
+            self.text = self.history[index].clone();
+            self.cursor = self.text.chars().count();
+            self.update_scroll();
         }
     }
 }

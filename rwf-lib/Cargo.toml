@@ -22,16 +22,14 @@ zip = { workspace = true }
 # Additional dependencies
 async-trait = "0.1"
 dirs = "5.0"
+rustmigemo = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 users = "0.11"
 
-# Migemo support (optional)
-rustmigemo = { git = "https://github.com/oguna/rustmigemo", optional = true }
-
 [features]
 default = []
-migemo = ["rustmigemo"]
+migemo = []
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }

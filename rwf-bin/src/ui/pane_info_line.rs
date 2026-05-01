@@ -9,7 +9,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::{AppState, model::PaneModel};
+use rwf_lib::{AppState, model::PaneModel, model::UIMode, model::ActivePane};
 use super::parse_color;
 
 /// Render the pane info line showing stats for both panes
@@ -17,29 +17,58 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
     
-    // Calculate stats for each pane
-    let left_info = calculate_pane_info(&tab.left_pane);
-    let right_info = calculate_pane_info(&tab.right_pane);
-    
     // Split into two halves
     let halves = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
     
-    // Left info
-    let left_para = Paragraph::new(Span::raw(left_info))
-        .style(Style::default()
-            .fg(parse_color(colors.get_pane_info_foreground()))
-            .bg(parse_color(colors.get_pane_info_background())));
-    frame.render_widget(left_para, halves[0]);
+    // Left pane info
+    if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Left {
+        render_search_bar(frame, halves[0], &state.search.query, colors);
+    } else {
+        let left_info = calculate_pane_info(&tab.left_pane);
+        let left_para = Paragraph::new(Span::raw(left_info))
+            .style(Style::default()
+                .fg(parse_color(colors.get_pane_info_foreground()))
+                .bg(parse_color(colors.get_pane_info_background())));
+        frame.render_widget(left_para, halves[0]);
+    }
     
-    // Right info
-    let right_para = Paragraph::new(Span::raw(right_info))
-        .style(Style::default()
-            .fg(parse_color(colors.get_pane_info_foreground()))
-            .bg(parse_color(colors.get_pane_info_background())));
-    frame.render_widget(right_para, halves[1]);
+    // Right pane info
+    if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Right {
+        render_search_bar(frame, halves[1], &state.search.query, colors);
+    } else {
+        let right_info = calculate_pane_info(&tab.right_pane);
+        let right_para = Paragraph::new(Span::raw(right_info))
+            .style(Style::default()
+                .fg(parse_color(colors.get_pane_info_foreground()))
+                .bg(parse_color(colors.get_pane_info_background())));
+        frame.render_widget(right_para, halves[1]);
+    }
+}
+
+/// Render the search bar (replacement for stats)
+fn render_search_bar(frame: &mut Frame, area: Rect, query: &str, colors: &rwf_lib::config::ColorScheme) {
+    use ratatui::text::Line;
+    use ratatui::style::Color;
+
+    let search_style = Style::default()
+        .fg(parse_color(colors.get_pane_info_foreground()))
+        .bg(parse_color(colors.get_pane_info_background()));
+    
+    let query_style = Style::default()
+        .fg(Color::Yellow) // Distinct color for search query
+        .bg(parse_color(colors.get_pane_info_background()));
+
+    let content = Line::from(vec![
+        Span::styled("/", search_style),
+        Span::styled(query, query_style),
+        Span::styled(" ", search_style), // Cursor placeholder
+    ]);
+
+    let para = Paragraph::new(content).style(search_style);
+    frame.render_widget(para, area);
 }
 
 /// Calculate pane information string
