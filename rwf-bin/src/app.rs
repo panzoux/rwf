@@ -12,7 +12,7 @@ use rwf_lib::model::dialog::ConflictPair;
 use std::io::Stdout;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::error;
+use tracing::{error, debug, info};
 
 use crate::ui::render_ui;
 use crate::ui::task_panel::TaskPanel;
@@ -61,11 +61,21 @@ impl App {
         let worker_pool = self.worker_pool.as_ref().expect("Worker pool should exist");
         for tab_index in 0..self.state.tabs.tabs.len() {
             let tab = &self.state.tabs.tabs[tab_index];
-            for pane in [&tab.left_pane, &tab.right_pane] {
-                let job = JobSpec::new(JobKind::ReadDirectory { location: pane.current_location.clone() });
-                self.state.jobs.start_job(job.clone());
-                worker_pool.submit_job(job);
-            }
+            let tab_id = tab.id; // Stable persistent ID
+            
+            // Left pane
+            let job_l = JobSpec::new(JobKind::ReadDirectory { 
+                location: tab.left_pane.current_location.clone() 
+            }).with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left);
+            self.state.jobs.start_job(job_l.clone());
+            worker_pool.submit_job(job_l);
+
+            // Right pane
+            let job_r = JobSpec::new(JobKind::ReadDirectory { 
+                location: tab.right_pane.current_location.clone() 
+            }).with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right);
+            self.state.jobs.start_job(job_r.clone());
+            worker_pool.submit_job(job_r);
         }
     }
     
@@ -73,7 +83,14 @@ impl App {
     pub fn get_exit_directory_public(&self) -> String { self.state.active_pane().current_location.display_path() }
 
     fn has_active_jobs(&self) -> bool {
-        !self.state.jobs.active.is_empty() || self.state.background_jobs.get_active_jobs().next().is_some()
+        let active = !self.state.jobs.active.is_empty();
+        let background = self.state.background_jobs.get_active_jobs().next().is_some();
+        if active || background {
+            tracing::debug!("[AppLoop] has_active_jobs=true (active={}, background={})", active, background);
+        } else {
+            tracing::debug!("[AppLoop] has_active_jobs=false (active_count={})", self.state.jobs.active.len());
+        }
+        active || background
     }
 
     pub async fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
@@ -92,12 +109,17 @@ impl App {
             if let Some(ref mut pool) = self.worker_pool {
                 let results = process_pending_events(pool, &mut self.state);
                 if !results.is_empty() {
+                    tracing::info!("[AppLoop] Processed {} events", results.len());
                     ui_needs_update = true;
                     for result in &results {
+                        tracing::debug!("[AppLoop] Result: ui_changed={}, started_jobs={}", result.ui_changed, result.jobs_to_start.len());
                         for log_msg in &result.task_panel_logs { self.task_panel.add_pending_log(log_msg.clone()); }
                         for refresh in &result.panes_to_refresh {
-                            let location = if refresh.pane == rwf_lib::model::ActivePane::Left { self.state.tabs.tabs[refresh.tab_id].left_pane.current_location.clone() } else { self.state.tabs.tabs[refresh.tab_id].right_pane.current_location.clone() };
-                            let job = JobSpec::new(JobKind::ReadDirectory { location });
+                            let tab = &self.state.tabs.tabs[refresh.tab_id];
+                            let tab_id = tab.id; // Stable ID
+                            let location = if refresh.pane == rwf_lib::model::ActivePane::Left { tab.left_pane.current_location.clone() } else { tab.right_pane.current_location.clone() };
+                            let job = JobSpec::new(JobKind::ReadDirectory { location })
+                                .with_requesting_pane(tab_id, refresh.pane);
                             self.state.jobs.start_job(job.clone());
                             pool.submit_job(job);
                         }
@@ -106,11 +128,11 @@ impl App {
                 }
             }
 
-            // 2. Process pending job submissions
+            // 2. Process pending job submissions (from transitions)
             let pending_jobs: Vec<JobSpec> = self.pending_job_submission.drain(..).collect();
+            if !pending_jobs.is_empty() { ui_needs_update = true; }
             for job_spec in pending_jobs {
                 if let Some(ref pool) = self.worker_pool {
-                    ui_needs_update = true;
                     match &job_spec.kind {
                         JobKind::Copy { sources, dest } | JobKind::Move { sources, dest } => {
                             let conflicts = pool.detect_conflicts(sources, dest).await;
@@ -126,7 +148,11 @@ impl App {
                                 self.state.dialogs.push(rwf_lib::model::Dialog::file_conflict(conflicts, 0, self.state.config.text_input.edit_mode));
                             }
                         }
-                        _ => pool.submit_job(job_spec),
+                        _ => {
+                            tracing::info!("[AppLoop] Submitting pending job: id={:?}, kind={:?}", job_spec.id, job_spec.kind);
+                            self.state.jobs.start_job(job_spec.clone());
+                            pool.submit_job(job_spec);
+                        },
                     }
                 }
             }
@@ -184,6 +210,8 @@ impl App {
                     next_wakeup = next_wakeup.min(Duration::from_millis(0));
                 }
             }
+            
+            tracing::debug!("[AppLoop] Adaptive poll timeout: {}ms", next_wakeup.as_millis());
 
             // Wait for events OR timeout
             if self.handle_events(next_wakeup)? {
@@ -205,13 +233,17 @@ impl App {
         let mut any_event = false;
         // Block until input OR timeout
         if event::poll(timeout)? {
-            // Read all pending events
-            while event::poll(Duration::from_millis(0))? {
+            // Read ALL pending events to clear queue
+            loop {
                 let ev = event::read()?;
                 if let Event::Key(key) = ev {
                     if key.kind == crossterm::event::KeyEventKind::Press {
                         if self.handle_key_event(key) { any_event = true; }
                     }
+                }
+                
+                if !event::poll(Duration::from_millis(0))? {
+                    break;
                 }
             }
         }
@@ -222,7 +254,7 @@ impl App {
         let key_string = rwf_lib::input::format_key_event(&key);
         let now = Instant::now();
         
-        // Key repeat
+        // Key repeat logic
         if let Some((last_key, last_time, is_repeating)) = &self.last_key_press {
             if last_key == &key_string {
                 let elapsed = now.duration_since(*last_time);
@@ -236,7 +268,7 @@ impl App {
             } else { self.last_key_press = Some((key_string.clone(), now, false)); }
         } else { self.last_key_press = Some((key_string.clone(), now, false)); }
 
-        // Dialogs
+        // 1. Dialog handling
         if let Some(dialog) = self.state.dialogs.current_mut() {
             match crate::ui::dialog::handle_dialog_input(dialog, key) {
                 crate::ui::dialog::DialogAction::Cancel => {
@@ -286,7 +318,7 @@ impl App {
             }
         }
 
-        // Search
+        // 2. Search mode handling
         if self.state.ui.mode == rwf_lib::model::UIMode::Search {
             use crossterm::event::KeyCode;
             match key.code {
@@ -323,18 +355,20 @@ impl App {
             }
         }
 
-        // Actions
+        // 3. Normal key handling (transitions)
         if let Some(action) = self.key_bindings.map_key(&key) {
             let transitions = rwf_lib::input::action_to_transitions(&self.state, &action);
-            let mut changed = false;
+            let mut state_changed = false;
             for tr in transitions {
                 if matches!(tr, Transition::Quit) { self.should_quit = true; return true; }
                 if matches!(tr, Transition::ExitAndChangeDirectory) { self.should_exit_and_cd = true; self.should_quit = true; return true; }
-                let res = rwf_lib::state::update_state(&mut self.state, tr);
-                for job in res.jobs_to_start { self.pending_job_submission.push(job); }
-                changed = changed || res.ui_changed;
+                let result = rwf_lib::state::update_state(&mut self.state, tr);
+                for job_spec in result.jobs_to_start {
+                    self.pending_job_submission.push(job_spec);
+                }
+                state_changed = state_changed || result.ui_changed;
             }
-            return changed;
+            return state_changed;
         }
         false
     }

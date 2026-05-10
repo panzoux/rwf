@@ -235,9 +235,9 @@ impl AppState {
             }
             Transition::ChangeLocation { pane, location } => {
                 debug!("ChangeLocation: pane = {:?}, location = {}", pane, location.display_path());
-                
+
                 let cached_entries = self.cache.get(location);
-                
+
                 let tab = self.current_tab();
                 let (current_loc, current_cursor, current_scroll) = match pane {
                     crate::model::ActivePane::Left => (
@@ -251,19 +251,19 @@ impl AppState {
                         tab.right_pane.scroll_offset,
                     ),
                 };
-                
+
                 self.navigation_cache.save(current_loc.clone(), current_cursor, current_scroll);
                 let restored_position = self.navigation_cache.restore(location);
-                
+
                 let tab_mut = self.current_tab_mut();
                 tab_mut.history.push(*pane, current_loc);
-                
+
                 let pane_model = match pane {
                     crate::model::ActivePane::Left => &mut tab_mut.left_pane,
                     crate::model::ActivePane::Right => &mut tab_mut.right_pane,
                 };
                 pane_model.current_location = location.clone();
-                
+
                 if let Some((cached_cursor, cached_scroll)) = restored_position {
                     pane_model.cursor = cached_cursor;
                     pane_model.scroll_offset = cached_scroll;
@@ -271,9 +271,10 @@ impl AppState {
                     pane_model.cursor = 0;
                     pane_model.scroll_offset = 0;
                 }
-                
+
                 if let Some(entries) = cached_entries {
                     pane_model.entries = entries;
+                    pane_model.is_loading = false;
                     pane_model.apply_sort();
                     if !pane_model.entries.is_empty() {
                         pane_model.cursor = pane_model.cursor.min(pane_model.entries.len() - 1);
@@ -283,10 +284,19 @@ impl AppState {
                     }
                     Some(StateUpdateResult::with_ui_change())
                 } else {
-                    let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location: location.clone() });
+                    // Clear current entries and set loading state
+                    pane_model.entries.clear();
+                    pane_model.is_loading = true;
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+
+                    let tab_id = self.current_tab().id;
+                    let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location: location.clone() })
+                        .with_requesting_pane(tab_id, *pane);
                     Some(StateUpdateResult::with_job(job_spec))
                 }
             }
+
             Transition::NavigateUp { pane } => {
                 let tab = self.current_tab();
                 let current_location = match pane {
@@ -325,10 +335,15 @@ impl AppState {
                     
                     if let Some(entries) = cached_entries {
                         pane_model.entries = entries;
+                        pane_model.is_loading = false;
                         pane_model.apply_sort();
                         Some(StateUpdateResult::with_ui_change())
                     } else {
-                        let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location });
+                        pane_model.entries.clear();
+                        pane_model.is_loading = true;
+                        let tab_id = self.current_tab().id;
+                        let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location })
+                            .with_requesting_pane(tab_id, *pane);
                         Some(StateUpdateResult::with_job(job_spec))
                     }
                 } else {
@@ -344,7 +359,34 @@ impl AppState {
             Transition::CreateTab => {
                 let new_index = self.tabs.create_tab();
                 self.tabs.active_index = new_index;
-                Some(StateUpdateResult::with_ui_change())
+                let total_tabs = self.tabs.tabs.len();
+                
+                // Trigger directory reads for both panes in the new tab
+                let tab = &mut self.tabs.tabs[new_index];
+                let tab_id = tab.id; // Use stable persistent ID
+                tracing::info!("[CreateTab] Created new tab at index={}, tab_id={}, total_tabs={}", new_index, tab_id, total_tabs);
+                tracing::info!("[CreateTab] Left pane location: {}", tab.left_pane.current_location.display_path());
+                tracing::info!("[CreateTab] Right pane location: {}", tab.right_pane.current_location.display_path());
+                
+                tab.left_pane.is_loading = true;
+                tab.right_pane.is_loading = true;
+                tracing::debug!("[CreateTab] Set is_loading=true for both panes");
+                
+                let job_left = JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                    location: tab.left_pane.current_location.clone() 
+                }).with_requesting_pane(tab_id, crate::model::ActivePane::Left);
+                
+                let job_right = JobSpec::new(crate::job::JobKind::ReadDirectory { 
+                    location: tab.right_pane.current_location.clone() 
+                }).with_requesting_pane(tab_id, crate::model::ActivePane::Right);
+                
+                tracing::info!("[CreateTab] Job left: id={:?}, requesting_pane=({}, Left)", job_left.id, tab_id);
+                tracing::info!("[CreateTab] Job right: id={:?}, requesting_pane=({}, Right)", job_right.id, tab_id);
+                
+                let mut result = StateUpdateResult::with_ui_change();
+                result.jobs_to_start.push(job_left);
+                result.jobs_to_start.push(job_right);
+                Some(result)
             }
             Transition::CloseTab { index } => {
                 let active_job_ids: Vec<u32> = self.background_jobs.get_active_jobs()
@@ -505,7 +547,10 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::CompleteJob { job_id, result } => {
+                tracing::info!("[CompleteJob] Received completion event for job={:?}", job_id);
                 let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                tracing::debug!("[CompleteJob] Processing job_id={:?}, has_spec={}, result_type={}", job_id, job_spec.is_some(), match result { crate::job::OpResult::Success(_) => "Success", crate::job::OpResult::Failed(_) => "Failed", crate::job::OpResult::Cancelled => "Cancelled" });
+                
                 let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
                     let timestamp = chrono::Local::now().format("[%H:%M:%S]");
                     let status_tag = match result {
@@ -593,19 +638,62 @@ impl AppState {
                 }
 
                 if let Some(spec) = job_spec {
+                    tracing::info!("[CompleteJob] Job spec kind={:?}, requesting_pane={:?}", spec.kind, spec.requesting_pane);
                     match &spec.kind {
                         crate::job::JobKind::ReadDirectory { location } => {
+                            tracing::info!("[CompleteJob::ReadDirectory] location={}, requesting_pane={:?}, success={}", location.display_path(), spec.requesting_pane, matches!(result, crate::job::OpResult::Success(_)));
                             if let crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(entries)) = result {
-                                for tab in self.tabs.tabs.iter_mut() {
-                                    if tab.left_pane.current_location == *location {
-                                        tab.left_pane.entries = entries.clone();
-                                        tab.left_pane.apply_sort();
-                                        tab.left_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                if let Some((requesting_tab_id, pane_side)) = spec.requesting_pane {
+                                    tracing::info!("[CompleteJob::ReadDirectory] Looking up tab_id={}, current_tabs.len()={}", requesting_tab_id, self.tabs.tabs.len());
+                                    for (idx, t) in self.tabs.tabs.iter().enumerate() {
+                                        tracing::debug!("[CompleteJob::ReadDirectory] Tab[{}].id={}", idx, t.id);
                                     }
-                                    if tab.right_pane.current_location == *location {
-                                        tab.right_pane.entries = entries.clone();
-                                        tab.right_pane.apply_sort();
-                                        tab.right_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                    
+                                    if let Some(tab) = self.tabs.tabs.iter_mut().find(|t| t.id == requesting_tab_id) {
+                                        let pane = match pane_side {
+                                            crate::model::ActivePane::Left => &mut tab.left_pane,
+                                            crate::model::ActivePane::Right => &mut tab.right_pane,
+                                        };
+                                        let pane_name = match pane_side { crate::model::ActivePane::Left => "Left", crate::model::ActivePane::Right => "Right" };
+                                        tracing::info!("[CompleteJob::ReadDirectory] Found tab! Updating {} pane with {} entries", pane_name, entries.len());
+                                        pane.entries = entries.clone();
+                                        tracing::info!("[CompleteJob::ReadDirectory] Setting is_loading=false for {} pane", pane_name);
+                                        pane.is_loading = false;
+                                        pane.apply_sort();
+                                        pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                        result_obj.ui_changed = true;
+                                    } else {
+                                        tracing::error!("[CompleteJob::ReadDirectory] Tab not found! requesting_tab_id={}, available tab_ids={:?}", requesting_tab_id, self.tabs.tabs.iter().map(|t| t.id).collect::<Vec<_>>());
+                                    }
+                                } else {
+                                    // Fallback to old behavior
+                                    tracing::warn!("[CompleteJob::ReadDirectory] Using fallback path - requesting_pane is None! location={}", location.display_path());
+                                    for tab in self.tabs.tabs.iter_mut() {
+                                        if tab.left_pane.current_location == *location {
+                                            tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating left pane via fallback");
+                                            tab.left_pane.entries = entries.clone();
+                                            tab.left_pane.is_loading = false;
+                                            tab.left_pane.apply_sort();
+                                            tab.left_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                        }
+                                        if tab.right_pane.current_location == *location {
+                                            tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating right pane via fallback");
+                                            tab.right_pane.entries = entries.clone();
+                                            tab.right_pane.is_loading = false;
+                                            tab.right_pane.apply_sort();
+                                            tab.right_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Reset loading state on failure/cancellation
+                                if let Some((requesting_tab_id, pane_side)) = spec.requesting_pane {
+                                    if let Some(tab) = self.tabs.tabs.iter_mut().find(|t| t.id == requesting_tab_id) {
+                                        let pane = match pane_side {
+                                            crate::model::ActivePane::Left => &mut tab.left_pane,
+                                            crate::model::ActivePane::Right => &mut tab.right_pane,
+                                        };
+                                        pane.is_loading = false;
                                     }
                                 }
                             }

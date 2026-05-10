@@ -59,6 +59,17 @@ fn render_pane(
 ) {
     // NO BORDERS - render directly to area
     
+    // If loading, show fetching message
+    if pane.is_loading {
+        tracing::info!("[UI::render_pane] DEBUG: is_loading=true for pane at location={}", pane.current_location.display_path());
+        let loading_msg = Paragraph::new("(fetching file entries...)")
+            .style(Style::default().fg(parse_color(&colors.foreground_color)));
+        frame.render_widget(loading_msg, area);
+        return;
+    }
+    
+    tracing::info!("[UI::render_pane] DEBUG: is_loading=false for pane at location={}, entries.len()={}", pane.current_location.display_path(), pane.entries.len());
+
     // If no entries, show empty message
     if pane.entries.is_empty() {
         let empty_msg = Paragraph::new("(empty directory)")

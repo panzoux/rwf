@@ -14,6 +14,7 @@ pub struct PaneModel {
     pub sort_mode: SortMode,
     pub display_mode: DisplayMode,
     pub file_mask: Option<String>,
+    pub is_loading: bool,
 }
 
 impl PaneModel {
@@ -26,6 +27,7 @@ impl PaneModel {
             sort_mode: SortMode::Name,
             display_mode: DisplayMode::Detailed,
             file_mask: None,
+            is_loading: false,
         }
     }
     

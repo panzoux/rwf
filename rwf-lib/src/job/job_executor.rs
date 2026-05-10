@@ -47,7 +47,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let job_id = spec.id;
         
         // Always send Started event first
-        let _ = self.event_sender.send(JobEvent::Started(job_id));
+        if let Err(e) = self.event_sender.send(JobEvent::Started(job_id)) {
+            tracing::error!("Failed to send job started event for {:?}: {}", job_id, e);
+        }
         
         let result = match &spec.kind {
             JobKind::ReadDirectory { location } => {
@@ -110,7 +112,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             OpResult::Cancelled => JobEvent::Cancelled(job_id),
         };
         
-        let _ = self.event_sender.send(event);
+        if let Err(e) = self.event_sender.send(event) {
+            tracing::error!("Failed to send job completion event: {}", e);
+        }
     }
     
     /// Execute a read directory operation
@@ -198,7 +202,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             
                             // Progress update
                             let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
-                            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
                             continue;
                         }
                     }
@@ -216,7 +222,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Send progress update
-            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
 
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
@@ -233,7 +241,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
 
         // Send final progress
-        let _ = self.event_sender.send(JobEvent::Progress(spec.id, 1.0));
+        if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
+            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+        }
 
         OpResult::Success(SuccessData::None)
     }
@@ -294,7 +304,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             
                             // Progress update
                             let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
-                            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
                             continue;
                         }
                     }
@@ -312,7 +324,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Send progress update
-            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
 
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
@@ -329,7 +343,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
 
         // Send final progress
-        let _ = self.event_sender.send(JobEvent::Progress(spec.id, 1.0));
+        if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
+            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+        }
 
         OpResult::Success(SuccessData::None)
     }
@@ -356,7 +372,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
             
             // Send progress update
-            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
             
             // Delete the file
             if let Err(e) = self.backend.delete_file(target, &spec.cancel_token).await {
@@ -366,7 +384,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
         
         // Send final progress
-        let _ = self.event_sender.send(JobEvent::Progress(spec.id, 1.0));
+        if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
+            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+        }
         
         OpResult::Success(SuccessData::None)
     }
@@ -427,7 +447,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     // We don't know the total, so we can't calculate a percentage
                     // Send a progress value that indicates activity (oscillating between 0.3 and 0.7)
                     let progress = 0.5 + 0.2 * ((items_processed % 10) as f64 / 10.0 - 0.5);
-                    let _ = event_sender.send(JobEvent::Progress(job_id, progress));
+                    if let Err(e) = event_sender.send(JobEvent::Progress(job_id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", job_id, e);
+                    }
                     *last = std::time::Instant::now();
                 }
             })
@@ -662,7 +684,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 Ok(_) => {
                     // Report progress
                     let progress = (index + 1) as f64 / total as f64;
-                    let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                            if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
                 }
                 Err(e) => {
                     return OpResult::Failed(format!(
@@ -793,7 +817,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             
             // Report progress
             let progress = bytes_read_total as f64 / total_size as f64;
-            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
         }
         
         OpResult::Success(SuccessData::None)
@@ -851,7 +877,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             
             // Report progress
             let progress = (index + 1) as f64 / total_parts as f64;
-            let _ = self.event_sender.send(JobEvent::Progress(spec.id, progress));
+                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
+                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    }
         }
         
         OpResult::Success(SuccessData::None)

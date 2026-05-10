@@ -29,6 +29,7 @@ impl TabState {
 pub struct TabManager {
     pub tabs: Vec<TabState>,
     pub active_index: usize,
+    next_tab_id: usize,
 }
 
 impl Default for TabManager {
@@ -43,15 +44,17 @@ impl TabManager {
         Self {
             tabs: vec![initial_tab],
             active_index: 0,
+            next_tab_id: 1,
         }
     }
     
     /// Create a new tab
     pub fn create_tab(&mut self) -> usize {
-        let new_id = self.tabs.len();
+        let new_id = self.next_tab_id;
         let new_tab = TabState::new(new_id);
         self.tabs.push(new_tab);
-        new_id
+        self.next_tab_id += 1;
+        self.tabs.len() - 1 // Return the new index
     }
     
     /// Close a tab by index

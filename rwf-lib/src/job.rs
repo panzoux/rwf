@@ -29,6 +29,7 @@ pub struct JobSpec {
     pub created_at: SystemTime,
     pub cancel_token: CancellationToken,
     pub conflict_decisions: Option<Vec<ConflictDecision>>,
+    pub requesting_pane: Option<(usize, crate::model::ActivePane)>,
 }
 
 /// Decision for resolving a file conflict
@@ -56,7 +57,13 @@ impl JobSpec {
             created_at: SystemTime::now(),
             cancel_token: CancellationToken::new(),
             conflict_decisions: None,
+            requesting_pane: None,
         }
+    }
+
+    pub fn with_requesting_pane(mut self, tab_idx: usize, pane: crate::model::ActivePane) -> Self {
+        self.requesting_pane = Some((tab_idx, pane));
+        self
     }
 }
 
