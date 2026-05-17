@@ -680,13 +680,14 @@ pub struct StateUpdateResult {
     pub cancelled_jobs: Vec<JobId>,
     pub started_jobs: Vec<JobId>,
     pub task_panel_logs: Vec<String>,
-    pub panes_to_refresh: Vec<PaneId>,
+    pub panes_to_refresh: Vec<PaneRefresh>,
     pub ui_changed: bool,
 }
 
 impl StateUpdateResult {
     pub fn none() -> Self { /* No changes */ }
     pub fn with_ui_change() -> Self { /* ui_changed = true */ }
+    pub fn with_refresh(tab_id: usize, pane: ActivePane) -> Self { /* targets specific pane */ }
     pub fn with_job(spec: JobSpec) -> Self { /* jobs_to_start = vec![spec] */ }
     pub fn with_cancel(job_id: JobId) -> Self { /* jobs_to_cancel = vec![job_id] */ }
 }
@@ -699,6 +700,9 @@ StateUpdateResult::none()
 
 // UI needs refresh
 StateUpdateResult::with_ui_change()
+
+// Targeted pane refresh (prevents global redraws)
+StateUpdateResult::with_refresh(tab_id, pane)
 
 // Start a job
 StateUpdateResult {
