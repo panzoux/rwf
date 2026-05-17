@@ -15,6 +15,7 @@ pub struct TabState {
 impl TabState {
     pub fn new(id: usize) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        tracing::debug!("[TabState::new] Initializing tab id={} with CWD={:?}", id, cwd);
         Self {
             id,
             left_pane: PaneModel::new(Location::Local(cwd.clone())),

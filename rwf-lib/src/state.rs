@@ -661,13 +661,14 @@ impl AppState {
                                         pane.is_loading = false;
                                         pane.apply_sort();
                                         pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
-                                        result_obj.ui_changed = true;
+                                        result_obj = StateUpdateResult::with_refresh(requesting_tab_id, pane_side);
                                     } else {
                                         tracing::error!("[CompleteJob::ReadDirectory] Tab not found! requesting_tab_id={}, available tab_ids={:?}", requesting_tab_id, self.tabs.tabs.iter().map(|t| t.id).collect::<Vec<_>>());
                                     }
                                 } else {
                                     // Fallback to old behavior
                                     tracing::warn!("[CompleteJob::ReadDirectory] Using fallback path - requesting_pane is None! location={}", location.display_path());
+                                    result_obj.ui_changed = false;
                                     for tab in self.tabs.tabs.iter_mut() {
                                         if tab.left_pane.current_location == *location {
                                             tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating left pane via fallback");
@@ -675,6 +676,7 @@ impl AppState {
                                             tab.left_pane.is_loading = false;
                                             tab.left_pane.apply_sort();
                                             tab.left_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                            result_obj.ui_changed = true;
                                         }
                                         if tab.right_pane.current_location == *location {
                                             tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating right pane via fallback");
@@ -682,6 +684,7 @@ impl AppState {
                                             tab.right_pane.is_loading = false;
                                             tab.right_pane.apply_sort();
                                             tab.right_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                            result_obj.ui_changed = true;
                                         }
                                     }
                                 }

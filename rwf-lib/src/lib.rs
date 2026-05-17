@@ -21,6 +21,7 @@ pub mod state;
 pub mod job;
 pub mod backend;
 pub mod model;
+pub mod app_event;
 pub mod worker_pool;
 pub mod event_receiver;
 pub mod input;

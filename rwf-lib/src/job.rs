@@ -68,7 +68,7 @@ impl JobSpec {
 }
 
 /// Types of background jobs
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JobKind {
     ReadDirectory {
         location: Location,
@@ -362,6 +362,14 @@ impl JobManager {
     
     /// Mark a job as started
     pub fn start_job(&mut self, spec: JobSpec) {
+        // Deduplication: Avoid duplicate ReadDirectory jobs for the same pane.
+        if let JobKind::ReadDirectory { .. } = &spec.kind {
+            if self.active.values().any(|j| j.spec.kind == spec.kind && j.spec.requesting_pane == spec.requesting_pane) {
+                tracing::info!("[JobManager] Job {:?} (kind={:?}, pane={:?}) already active, skipping.", spec.id, spec.kind, spec.requesting_pane);
+                return;
+            }
+        }
+
         let job = Job {
             spec: spec.clone(),
             state: ExecutionState::Pending,

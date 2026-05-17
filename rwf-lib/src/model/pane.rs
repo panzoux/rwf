@@ -30,6 +30,13 @@ impl PaneModel {
             is_loading: false,
         }
     }
+
+    pub fn set_loading(&mut self, loading: bool) {
+        if self.is_loading != loading {
+            tracing::info!("[PaneModel] is_loading changed from {} to {} for pane at {:p}", self.is_loading, loading, self as *const _);
+        }
+        self.is_loading = loading;
+    }
     
     /// Get the current entry under cursor
     pub fn current_entry(&self) -> Option<&FileEntry> {
