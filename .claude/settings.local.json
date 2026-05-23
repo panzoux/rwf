@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "PowerShell($lines = \\(Get-Content \"C:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\rwf\\\\logs\\\\session.log\" | Measure-Object -Line\\).Lines; Write-Output \"Total lines: $lines\")",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\twf\\\\\" -Depth 1 | Select-Object FullName, PSIsContainer)",
+      "Bash(cargo test *)"
     ]
   }
 }
