@@ -22,7 +22,7 @@ anyhow = "1.0"
 # Utilities
 regex = "1.11"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time", "local-time"] }
 time = { version = "0.3", features = ["local-offset", "formatting"] }
 dirs = "5.0"
 

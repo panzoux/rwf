@@ -160,6 +160,7 @@ pub fn init_logging(log_level: LogLevel, log_dir: &Path) -> anyhow::Result<()> {
     // Create file layer
     let file_layer = fmt::layer()
         .with_writer(writer)
+        .with_timer(fmt::time::LocalTime::rfc_3339())
         .with_ansi(false)
         .with_target(true)
         .with_thread_ids(true)

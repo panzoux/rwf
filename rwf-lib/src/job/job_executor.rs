@@ -113,7 +113,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         };
         
         if let Err(e) = self.event_sender.send(event) {
-            tracing::error!("Failed to send job completion event: {}", e);
+            tracing::trace!("Failed to send job completion event (receiver likely closed): {}", e);
         }
     }
     

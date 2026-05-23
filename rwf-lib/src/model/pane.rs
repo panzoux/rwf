@@ -15,6 +15,7 @@ pub struct PaneModel {
     pub display_mode: DisplayMode,
     pub file_mask: Option<String>,
     pub is_loading: bool,
+    pub active_job_id: Option<crate::job::JobId>,
 }
 
 impl PaneModel {
@@ -28,6 +29,7 @@ impl PaneModel {
             display_mode: DisplayMode::Detailed,
             file_mask: None,
             is_loading: false,
+            active_job_id: None,
         }
     }
 

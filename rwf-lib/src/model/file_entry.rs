@@ -5,7 +5,7 @@ use std::time::{SystemTime, Duration};
 use super::Location;
 
 /// Represents a file or directory with metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileEntry {
     pub name: String,
     pub location: Location,

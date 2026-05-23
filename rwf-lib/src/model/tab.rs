@@ -58,6 +58,13 @@ impl TabManager {
         self.tabs.len() - 1 // Return the new index
     }
     
+    /// Update next_tab_id after session restore to prevent ID conflicts
+    pub fn update_next_id_after_restore(&mut self) {
+        if let Some(max_id) = self.tabs.iter().map(|t| t.id).max() {
+            self.next_tab_id = max_id + 1;
+        }
+    }
+
     /// Close a tab by index
     pub fn close_tab(&mut self, index: usize) -> bool {
         if self.tabs.len() <= 1 {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct AppConfig {
     /// Display configuration (colors, CJK width, etc.)
@@ -39,6 +39,9 @@ pub struct AppConfig {
     /// Path where session logs are saved (default: "logs/session.log")
     #[serde(rename = "LogSavePath")]
     pub log_save_path: String,
+    /// Temporary flag for tab creation state
+    #[serde(skip)]
+    pub is_creating_tab: bool,
     /// Save log on exit (default: true)
     #[serde(rename = "SaveLogOnExit")]
     pub save_log_on_exit: bool,
@@ -217,6 +220,7 @@ impl Default for AppConfig {
             archive: ArchiveConfig::default(),
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
+            is_creating_tab: false,
         }
     }
 }

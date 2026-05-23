@@ -60,20 +60,21 @@ impl App {
     fn trigger_initial_directory_reads(&mut self) {
         let worker_pool = self.worker_pool.as_ref().expect("Worker pool should exist");
         for tab_index in 0..self.state.tabs.tabs.len() {
-            let tab = &self.state.tabs.tabs[tab_index];
-            let tab_id = tab.id; // Stable persistent ID
-            
-            // Left pane
-            let job_l = JobSpec::new(JobKind::ReadDirectory { 
-                location: tab.left_pane.current_location.clone() 
-            }).with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left);
+            let tab_id = self.state.tabs.tabs[tab_index].id;
+            let left_loc = self.state.tabs.tabs[tab_index].left_pane.current_location.clone();
+            let right_loc = self.state.tabs.tabs[tab_index].right_pane.current_location.clone();
+
+            let job_l = JobSpec::new(JobKind::ReadDirectory { location: left_loc })
+                .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left);
+            self.state.tabs.tabs[tab_index].left_pane.is_loading = true;
+            self.state.tabs.tabs[tab_index].left_pane.active_job_id = Some(job_l.id);
             self.state.jobs.start_job(job_l.clone());
             worker_pool.submit_job(job_l);
 
-            // Right pane
-            let job_r = JobSpec::new(JobKind::ReadDirectory { 
-                location: tab.right_pane.current_location.clone() 
-            }).with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right);
+            let job_r = JobSpec::new(JobKind::ReadDirectory { location: right_loc })
+                .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right);
+            self.state.tabs.tabs[tab_index].right_pane.is_loading = true;
+            self.state.tabs.tabs[tab_index].right_pane.active_job_id = Some(job_r.id);
             self.state.jobs.start_job(job_r.clone());
             worker_pool.submit_job(job_r);
         }
@@ -115,11 +116,22 @@ impl App {
                         tracing::debug!("[AppLoop] Result: ui_changed={}, started_jobs={}", result.ui_changed, result.jobs_to_start.len());
                         for log_msg in &result.task_panel_logs { self.task_panel.add_pending_log(log_msg.clone()); }
                         for refresh in &result.panes_to_refresh {
-                            let tab = &self.state.tabs.tabs[refresh.tab_id];
-                            let tab_id = tab.id; // Stable ID
-                            let location = if refresh.pane == rwf_lib::model::ActivePane::Left { tab.left_pane.current_location.clone() } else { tab.right_pane.current_location.clone() };
+                            let tab_idx = refresh.tab_id; // array index stored by file-op handlers
+                            let tab_id = self.state.tabs.tabs[tab_idx].id;
+                            let location = if refresh.pane == rwf_lib::model::ActivePane::Left {
+                                self.state.tabs.tabs[tab_idx].left_pane.current_location.clone()
+                            } else {
+                                self.state.tabs.tabs[tab_idx].right_pane.current_location.clone()
+                            };
                             let job = JobSpec::new(JobKind::ReadDirectory { location })
                                 .with_requesting_pane(tab_id, refresh.pane);
+                            if refresh.pane == rwf_lib::model::ActivePane::Left {
+                                self.state.tabs.tabs[tab_idx].left_pane.is_loading = true;
+                                self.state.tabs.tabs[tab_idx].left_pane.active_job_id = Some(job.id);
+                            } else {
+                                self.state.tabs.tabs[tab_idx].right_pane.is_loading = true;
+                                self.state.tabs.tabs[tab_idx].right_pane.active_job_id = Some(job.id);
+                            }
                             self.state.jobs.start_job(job.clone());
                             pool.submit_job(job);
                         }

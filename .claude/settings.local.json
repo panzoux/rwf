@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($lines = \\(Get-Content \"C:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\rwf\\\\logs\\\\session.log\" | Measure-Object -Line\\).Lines; Write-Output \"Total lines: $lines\")",
+      "Bash(cargo build *)"
+    ]
+  }
+}
