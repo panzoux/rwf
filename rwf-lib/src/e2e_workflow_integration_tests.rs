@@ -53,8 +53,8 @@ mod tests {
             Location::Local(PathBuf::from("/source"));
 
         // Mark files 2 and 3
-        state.marking.mark(file2_loc.clone());
-        state.marking.mark(file3_loc.clone());
+        state.current_tab_mut().left_pane.marking.mark(file2_loc.clone());
+        state.current_tab_mut().left_pane.marking.mark(file3_loc.clone());
 
         // Setup: Set right pane destination
         state.current_tab_mut().right_pane.current_location =
@@ -228,8 +228,8 @@ mod tests {
         state.current_tab_mut().left_pane.cursor = 0;
 
         // Mark files 1 and 2
-        state.marking.mark(file1_loc.clone());
-        state.marking.mark(file2_loc.clone());
+        state.current_tab_mut().left_pane.marking.mark(file1_loc.clone());
+        state.current_tab_mut().left_pane.marking.mark(file2_loc.clone());
 
         // Step 1: User initiates delete operation
         let transitions = action_to_transitions(&state, &Action::Delete);

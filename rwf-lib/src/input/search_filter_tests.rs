@@ -52,13 +52,12 @@ mod tests {
 
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "File Mask Filter");
+                assert_eq!(dialog.title, "File Mask");
                 match &dialog.content {
-                    DialogContent::Input { prompt, default_value } => {
-                        assert!(prompt.contains("file mask pattern"));
-                        assert_eq!(default_value, "");
+                    DialogContent::FileMask { input, .. } => {
+                        assert_eq!(input, "");
                     }
-                    _ => panic!("Expected Input dialog content"),
+                    _ => panic!("Expected FileMask dialog content"),
                 }
             }
             _ => panic!("Expected ShowDialog transition"),
@@ -78,10 +77,10 @@ mod tests {
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
                 match &dialog.content {
-                    DialogContent::Input { default_value, .. } => {
-                        assert_eq!(default_value, "*.txt");
+                    DialogContent::FileMask { input, .. } => {
+                        assert_eq!(input, "*.txt");
                     }
-                    _ => panic!("Expected Input dialog content"),
+                    _ => panic!("Expected FileMask dialog content"),
                 }
             }
             _ => panic!("Expected ShowDialog transition"),

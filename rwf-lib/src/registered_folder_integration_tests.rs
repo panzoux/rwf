@@ -29,6 +29,7 @@ mod tests {
         // Register the folder
         let result = update_state(&mut state, Transition::RegisterCurrentFolder {
             name: "Test Folder".to_string(),
+            path: "/test/folder".to_string(),
         });
         
         assert!(result.ui_changed);
@@ -231,8 +232,8 @@ mod tests {
         state.current_tab_mut().left_pane.entries = entries;
         
         // Mark the files
-        state.marking.mark(Location::Local(PathBuf::from("/source/file1.txt")));
-        state.marking.mark(Location::Local(PathBuf::from("/source/file2.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/source/file1.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/source/file2.txt")));
         
         // Add a registered folder
         state.registered_folders.add(RegisteredFolder::new("Destination", "/dest/folder"));
@@ -288,7 +289,7 @@ mod tests {
         state.registered_folders = crate::model::RegisteredFolderManager::new();
         
         // Mark a file
-        state.marking.mark(Location::Local(PathBuf::from("/source/file.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/source/file.txt")));
         
         // Try to move to a non-existent folder
         let result = update_state(&mut state, Transition::MoveToRegisteredFolder {
@@ -443,7 +444,7 @@ mod tests {
         state.current_tab_mut().left_pane.entries = vec![file_entry];
         
         // Mark the file
-        state.marking.mark(Location::Local(PathBuf::from("/source/file.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/source/file.txt")));
         
         // Add registered folders
         state.registered_folders.add(RegisteredFolder::new("Destination", "/dest"));

@@ -57,6 +57,11 @@ impl LogManager {
         }
     }
 
+    /// Return the path of the log file
+    pub fn log_path(&self) -> &std::path::Path {
+        &self.log_path
+    }
+
     /// Add a log entry
     pub fn log(&mut self, level: LogEntryLevel, message: String) {
         let entry = LogEntry {

@@ -256,7 +256,7 @@ mod tests {
         };
         
         state.current_tab_mut().left_pane.entries = vec![entry1.clone()];
-        state.marking.mark(entry1.location.clone());
+        state.current_tab_mut().left_pane.marking.mark(entry1.location.clone());
         
         // Get the directory path
         let dir_path = state.active_pane().current_location.display_path();

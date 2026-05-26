@@ -299,8 +299,8 @@ mod tests {
         // Mark some files
         let loc1 = crate::model::Location::Local(PathBuf::from("/test1"));
         let loc2 = crate::model::Location::Local(PathBuf::from("/test2"));
-        state.marking.mark(loc1.clone());
-        state.marking.mark(loc2.clone());
+        state.current_tab_mut().left_pane.marking.mark(loc1.clone());
+        state.current_tab_mut().left_pane.marking.mark(loc2.clone());
         
         // Save session
         let session_path = std::env::temp_dir().join("test_tab_persistence.json");
@@ -308,7 +308,7 @@ mod tests {
             &state.tabs.tabs,
             state.tabs.active_index,
             state.ui.active_pane,
-            &state.marking.marked_locations,
+            &std::collections::HashSet::new(),
             state.ui.layout.show_task_panel,
             state.ui.layout.task_panel_height,
         );
@@ -319,14 +319,12 @@ mod tests {
         let loaded_session = crate::session::SessionState::load_from_file(&session_path).unwrap();
         state2.tabs.tabs = crate::session::restore_tabs(&loaded_session);
         state2.tabs.active_index = loaded_session.active_tab_index;
-        state2.marking.marked_locations = crate::session::restore_marked_locations(&loaded_session);
-        
+        // Marks are per-pane and not persisted across sessions
+
         // Verify restoration
         assert_eq!(state2.tabs.tabs.len(), 3);
         assert_eq!(state2.tabs.active_index, 1);
-        assert_eq!(state2.marking.count(), 2);
-        assert!(state2.marking.is_marked(&loc1));
-        assert!(state2.marking.is_marked(&loc2));
+        assert_eq!(state2.current_tab_mut().left_pane.marking.count(), 0);
         
         // Cleanup
         let _ = std::fs::remove_file(session_path);

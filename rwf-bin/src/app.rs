@@ -33,6 +33,11 @@ pub struct App {
     // Search control fields
     last_search_input_time: Option<Instant>,
     search_dirty: bool,
+    // Pattern rename debounce
+    pattern_rename_dirty: bool,
+    pattern_rename_last_changed: Option<Instant>,
+    /// Cached (find, replace, use_regex, case_sensitive) waiting for debounce flush
+    pattern_rename_pending: Option<(String, String, bool, bool)>,
 }
 
 impl App {
@@ -41,12 +46,9 @@ impl App {
         let archive_handler = Arc::new(ZipArchiveHandler::new());
         let worker_pool = WorkerPool::new(state.config.worker_pool_size, backend, archive_handler);
         let mut task_panel = TaskPanel::new();
-        let migemo_status = if state.search.is_migemo_dict_loaded() {
-            state.search.migemo_dict_path().map_or("OK".to_string(), |p| format!("OK ({})", p))
-        } else {
-            "Available (No Dictionary)".to_string()
-        };
-        task_panel.add_log(format!("LogLevel: {:?} | Migemo: {}", state.config.log_level, migemo_status), crate::ui::task_panel::LogLevel::Info);
+        for line in Self::build_version_info(&state) {
+            task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
+        }
 
         Self {
             state, key_bindings: KeyBindings::default(), should_quit: false, should_exit_and_cd: false,
@@ -54,9 +56,43 @@ impl App {
             last_key_press: None, task_panel, last_spinner_update: None, last_cleanup_check: None,
             pending_conflict_job: None, pending_job_submission: Vec::new(),
             last_search_input_time: None, search_dirty: false,
+            pattern_rename_dirty: false, pattern_rename_last_changed: None, pattern_rename_pending: None,
         }
     }
     
+    fn build_version_info(state: &AppState) -> Vec<String> {
+        let version = env!("CARGO_PKG_VERSION");
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+
+        let config_path = rwf_lib::config::ConfigManager::new()
+            .config_path().to_string_lossy().into_owned();
+        let log_path = state.log_manager.log_path().to_string_lossy().into_owned();
+
+        let migemo = if state.search.is_migemo_dict_loaded() {
+            state.search.migemo_dict_path()
+                .map_or("enabled".to_string(), |p| p.to_string())
+        } else {
+            "no dict".to_string()
+        };
+
+        let log_level = state.config.log_level.to_filter_string();
+
+        vec![
+            format!("RWF v{} | {}/{}", version, os, arch),
+            format!("Config: {}", config_path),
+            format!("Log: {}", log_path),
+            format!("LogLevel: {} | Migemo: {}", log_level, migemo),
+            format!("Archives: ZIP"),
+        ]
+    }
+
+    fn log_version_info(&mut self) {
+        for line in Self::build_version_info(&self.state) {
+            self.task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
+        }
+    }
+
     fn trigger_initial_directory_reads(&mut self) {
         let worker_pool = self.worker_pool.as_ref().expect("Worker pool should exist");
         for tab_index in 0..self.state.tabs.tabs.len() {
@@ -125,11 +161,10 @@ impl App {
                             };
                             let job = JobSpec::new(JobKind::ReadDirectory { location })
                                 .with_requesting_pane(tab_id, refresh.pane);
+                            // Keep showing old entries during refresh (no loading indicator)
                             if refresh.pane == rwf_lib::model::ActivePane::Left {
-                                self.state.tabs.tabs[tab_idx].left_pane.is_loading = true;
                                 self.state.tabs.tabs[tab_idx].left_pane.active_job_id = Some(job.id);
                             } else {
-                                self.state.tabs.tabs[tab_idx].right_pane.is_loading = true;
                                 self.state.tabs.tabs[tab_idx].right_pane.active_job_id = Some(job.id);
                             }
                             self.state.jobs.start_job(job.clone());
@@ -156,12 +191,26 @@ impl App {
                                 pool.submit_job(job_spec);
                             } else {
                                 let job_name = match &job_spec.kind { JobKind::Copy { sources, .. } => format!("Copy ({} files)", sources.len()), JobKind::Move { sources, .. } => format!("Move ({} files)", sources.len()), _ => "File Op".to_string() };
+                                let op_name = match &job_spec.kind { JobKind::Move { .. } => "Move", _ => "Copy" };
                                 self.pending_conflict_job = Some((job_spec, conflicts.clone(), job_name.clone(), job_name));
-                                self.state.dialogs.push(rwf_lib::model::Dialog::file_conflict(conflicts, 0, self.state.config.text_input.edit_mode));
+                                self.state.dialogs.push(rwf_lib::model::Dialog::file_conflict(conflicts, 0, self.state.config.text_input.edit_mode, op_name));
                             }
                         }
                         _ => {
                             tracing::info!("[AppLoop] Submitting pending job: id={:?}, kind={:?}", job_spec.id, job_spec.kind);
+                            // For ReadDirectory jobs, track active_job_id so CompleteJob can validate ownership.
+                            // ChangeLocation/NavigateHistory set is_loading=true but cannot set active_job_id
+                            // (job is submitted here, not in the state handler), so we set it now.
+                            if let JobKind::ReadDirectory { .. } = &job_spec.kind {
+                                if let Some((req_tab_id, req_pane)) = job_spec.requesting_pane {
+                                    if let Some(tab) = self.state.tabs.tabs.iter_mut().find(|t| t.id == req_tab_id) {
+                                        match req_pane {
+                                            rwf_lib::model::ActivePane::Left => tab.left_pane.active_job_id = Some(job_spec.id),
+                                            rwf_lib::model::ActivePane::Right => tab.right_pane.active_job_id = Some(job_spec.id),
+                                        }
+                                    }
+                                }
+                            }
                             self.state.jobs.start_job(job_spec.clone());
                             pool.submit_job(job_spec);
                         },
@@ -172,6 +221,8 @@ impl App {
             // 3. Process logs
             if self.task_panel.pending_log_count() > 0 {
                 self.task_panel.process_pending_logs(self.state.config.job_manager.max_task_panel_log_lines);
+                let h = self.state.ui.layout.task_panel_height;
+                self.task_panel.scroll_to_end(h);
                 ui_needs_update = true;
             }
 
@@ -198,6 +249,26 @@ impl App {
                 }
             }
 
+            // 5b. Pattern Rename Debounce Flush
+            if self.pattern_rename_dirty {
+                if let Some(last_changed) = self.pattern_rename_last_changed {
+                    let debounce = Duration::from_millis(self.state.config.search.pattern_rename_debounce_ms);
+                    if last_changed.elapsed() >= debounce {
+                        if let Some((f, r, ur, cs)) = self.pattern_rename_pending.take() {
+                            rwf_lib::state::update_state(
+                                &mut self.state,
+                                rwf_lib::state::Transition::UpdatePatternRenameFields {
+                                    find: f, replace: r, use_regex: ur, case_sensitive: cs,
+                                },
+                            );
+                        }
+                        self.pattern_rename_dirty = false;
+                        self.pattern_rename_last_changed = None;
+                        ui_needs_update = true;
+                    }
+                }
+            }
+
             // 6. Cleanup
             if self.last_cleanup_check.map_or(true, |l| l.elapsed() >= Duration::from_secs(5)) {
                 self.state.background_jobs.cleanup_expired_jobs();
@@ -214,6 +285,13 @@ impl App {
                 }
             }
 
+            if self.pattern_rename_dirty {
+                if let Some(last_changed) = self.pattern_rename_last_changed {
+                    let debounce = Duration::from_millis(self.state.config.search.pattern_rename_debounce_ms);
+                    next_wakeup = next_wakeup.min(debounce.saturating_sub(last_changed.elapsed()));
+                }
+            }
+
             if self.has_active_jobs() {
                 let interval = Duration::from_millis(self.state.config.job_manager.task_panel_refresh_interval_ms);
                 if let Some(last_tick) = self.last_spinner_update {
@@ -223,6 +301,11 @@ impl App {
                 }
             }
             
+            // If UI needs update, render immediately without blocking
+            if ui_needs_update {
+                next_wakeup = Duration::from_millis(0);
+            }
+
             tracing::debug!("[AppLoop] Adaptive poll timeout: {}ms", next_wakeup.as_millis());
 
             // Wait for events OR timeout
@@ -264,6 +347,7 @@ impl App {
 
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> bool {
         let key_string = rwf_lib::input::format_key_event(&key);
+        tracing::info!("[KEY] code={:?} modifiers={:?} kind={:?} formatted={:?}", key.code, key.modifiers, key.kind, key_string);
         let now = Instant::now();
         
         // Key repeat logic
@@ -282,9 +366,15 @@ impl App {
 
         // 1. Dialog handling
         if let Some(dialog) = self.state.dialogs.current_mut() {
+            tracing::info!("[KEY] consumed by dialog: {:?}", dialog.title);
             match crate::ui::dialog::handle_dialog_input(dialog, key) {
                 crate::ui::dialog::DialogAction::Cancel => {
                     if let rwf_lib::model::dialog::DialogContent::FileConflict { .. } = &dialog.content { self.pending_conflict_job = None; }
+                    if let rwf_lib::model::dialog::DialogContent::PatternRename { .. } = &dialog.content {
+                        self.pattern_rename_dirty = false;
+                        self.pattern_rename_last_changed = None;
+                        self.pattern_rename_pending = None;
+                    }
                     self.state.dialogs.pop();
                     return true;
                 }
@@ -317,6 +407,11 @@ impl App {
                             }
                         }
                         _ => {
+                            if let rwf_lib::model::dialog::DialogContent::PatternRename { .. } = &dialog.content {
+                                self.pattern_rename_dirty = false;
+                                self.pattern_rename_last_changed = None;
+                                self.pattern_rename_pending = None;
+                            }
                             if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
                                 self.state.jobs.start_job(job_spec.clone());
                                 if let Some(ref pool) = self.worker_pool { pool.submit_job(job_spec); }
@@ -324,6 +419,56 @@ impl App {
                         }
                     }
                     if should_pop { self.state.dialogs.pop(); }
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::DeleteSelected => {
+                    if let Some(log_msg) = crate::ui::dialog::process_dialog_delete(&mut self.state) {
+                        self.task_panel.add_log(log_msg, crate::ui::task_panel::LogLevel::Info);
+                        let h = self.state.ui.layout.task_panel_height;
+                        self.task_panel.scroll_to_end(h);
+                    }
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::ConfirmAll => {
+                    // Shift+Enter: all decisions already pushed by handle_file_conflict_input; submit job now
+                    if let rwf_lib::model::dialog::DialogContent::FileConflict { decisions, .. } = &mut dialog.content {
+                        if let Some((job_spec, conflicts_list, job_name, job_desc)) = self.pending_conflict_job.take() {
+                            let conflict_decisions: Vec<_> = conflicts_list.iter().zip(decisions.iter()).map(|(c, a)| rwf_lib::job::ConflictDecision {
+                                source: c.source_path.clone(), dest: c.dest_path.clone(),
+                                action: match a {
+                                    rwf_lib::model::dialog::ConflictAction::Force => rwf_lib::job::ConflictAction::Force,
+                                    rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer => rwf_lib::job::ConflictAction::OverwriteIfNewer,
+                                    rwf_lib::model::dialog::ConflictAction::Skip => rwf_lib::job::ConflictAction::Skip,
+                                    rwf_lib::model::dialog::ConflictAction::Rename { new_name } => rwf_lib::job::ConflictAction::Rename { new_name: new_name.clone() },
+                                },
+                            }).collect();
+                            let mut final_job = job_spec.clone();
+                            final_job.conflict_decisions = Some(conflict_decisions);
+                            let tab_id = self.state.tabs.active_index;
+                            let tab_name = format!("{}|{}", self.state.current_tab().left_pane.current_location.display_path(), self.state.current_tab().right_pane.current_location.display_path());
+                            let _bg_job_id = self.state.background_jobs.start_job(job_name.clone(), job_desc, tab_id, tab_name, final_job.clone());
+                            self.state.jobs.start_job(final_job.clone());
+                            if let Some(ref pool) = self.worker_pool { pool.submit_job(final_job); }
+                        }
+                    }
+                    self.state.dialogs.pop();
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::PatternChanged => {
+                    // Stash current fields for debounced preview regeneration
+                    if let Some(dialog) = self.state.dialogs.current() {
+                        if let rwf_lib::model::dialog::DialogContent::PatternRename {
+                            find, replace, use_regex, case_sensitive, ..
+                        } = &dialog.content {
+                            self.pattern_rename_pending = Some((find.clone(), replace.clone(), *use_regex, *case_sensitive));
+                            self.pattern_rename_dirty = true;
+                            self.pattern_rename_last_changed = Some(Instant::now());
+                        }
+                    }
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::RotateLanguage => {
+                    rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::RotateHelpLanguage);
                     return true;
                 }
                 _ => return true,
@@ -369,7 +514,14 @@ impl App {
 
         // 3. Normal key handling (transitions)
         if let Some(action) = self.key_bindings.map_key(&key) {
+            tracing::info!("[KEY] action={:?}", action);
+            // ShowVersionInfo: write to task panel, no state change
+            if action == rwf_lib::input::Action::ShowVersionInfo {
+                self.log_version_info();
+                return true;
+            }
             let transitions = rwf_lib::input::action_to_transitions(&self.state, &action);
+            tracing::info!("[KEY] transitions={}", transitions.len());
             let mut state_changed = false;
             for tr in transitions {
                 if matches!(tr, Transition::Quit) { self.should_quit = true; return true; }
@@ -378,10 +530,19 @@ impl App {
                 for job_spec in result.jobs_to_start {
                     self.pending_job_submission.push(job_spec);
                 }
+                if !result.task_panel_logs.is_empty() {
+                    for log_msg in result.task_panel_logs {
+                        self.task_panel.add_log(log_msg, crate::ui::task_panel::LogLevel::Info);
+                    }
+                    let h = self.state.ui.layout.task_panel_height;
+                    self.task_panel.scroll_to_end(h);
+                    state_changed = true;
+                }
                 state_changed = state_changed || result.ui_changed;
             }
             return state_changed;
         }
+        tracing::info!("[KEY] no action mapped for {:?}", key_string);
         false
     }
 

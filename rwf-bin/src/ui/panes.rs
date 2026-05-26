@@ -30,7 +30,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         panes[0],
         &tab.left_pane,
         state.ui.active_pane == ActivePane::Left,
-        &state.marking,
+        &tab.left_pane.marking,
         colors,
         ellipsis,
     );
@@ -41,7 +41,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         panes[1],
         &tab.right_pane,
         state.ui.active_pane == ActivePane::Right,
-        &state.marking,
+        &tab.right_pane.marking,
         colors,
         ellipsis,
     );

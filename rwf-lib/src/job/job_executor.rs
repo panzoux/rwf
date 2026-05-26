@@ -88,8 +88,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::LoadFileForViewer { location } => {
                 self.execute_load_file_for_viewer(location, &spec.cancel_token).await
             }
-            JobKind::PatternRename { targets, pattern } => {
-                self.execute_pattern_rename(targets, pattern, &spec).await
+            JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
+                self.execute_pattern_rename(targets, find, replace, *use_regex, *case_sensitive, &spec).await
             }
             JobKind::CompareFiles { left, right } => {
                 self.execute_compare_files(left, right, &spec).await
@@ -632,17 +632,20 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     async fn execute_pattern_rename(
         &self,
         targets: &[Location],
-        pattern: &str,
+        find: &str,
+        replace: &str,
+        use_regex: bool,
+        case_sensitive: bool,
         spec: &JobSpec,
     ) -> OpResult {
         let total = targets.len();
-        
+
         for (index, location) in targets.iter().enumerate() {
             // Check for cancellation
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
-            
+
             // Get the current filename
             let current_name = match self.get_filename(location) {
                 Some(name) => name,
@@ -653,16 +656,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     ));
                 }
             };
-            
+
             // Apply the pattern to get the new name
-            let new_name = match crate::pattern_rename::apply_pattern(&current_name, pattern) {
-                Some(name) => name,
-                None => {
-                    // Pattern doesn't match this file, skip it
-                    continue;
-                }
-            };
-            
+            let new_name = crate::pattern_rename::apply_rename_pattern(
+                &current_name, find, replace, use_regex, case_sensitive,
+            );
+
             // Skip if the name hasn't changed
             if new_name == current_name {
                 continue;

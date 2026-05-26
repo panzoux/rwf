@@ -611,23 +611,23 @@ mod tests {
         let (mut state, _left_dir, _right_dir) = create_test_state();
         
         // Mark a file in left pane
-        if let Some(entry) = state.current_tab().left_pane.entries.first() {
-            state.marking.mark(entry.location.clone());
+        if let Some(loc) = state.current_tab().left_pane.entries.first().map(|e| e.location.clone()) {
+            state.current_tab_mut().left_pane.marking.mark(loc);
         }
         
-        let marked_count_before = state.marking.count();
+        let marked_count_before = state.current_tab_mut().left_pane.marking.count();
         assert_eq!(marked_count_before, 1);
         
         // Swap panes
         update_state(&mut state, Transition::SwapPanes);
         
         // Marked files should still be marked
-        assert_eq!(state.marking.count(), marked_count_before);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), marked_count_before);
         
         // Sync panes
         update_state(&mut state, Transition::SyncPanes);
         
         // Marked files should still be marked
-        assert_eq!(state.marking.count(), marked_count_before);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), marked_count_before);
     }
 }

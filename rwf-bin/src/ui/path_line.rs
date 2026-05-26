@@ -27,16 +27,22 @@ pub fn render_path_line(frame: &mut Frame, area: Rect, state: &AppState) {
     
     // Left path
     let left_prefix = if is_left_active { ">" } else { " " };
-    let left_path = format!("{}{}", left_prefix, tab.left_pane.current_location.display_path());
+    let left_mask = tab.left_pane.file_mask.as_deref()
+        .map(|m| format!(" [{}]", m))
+        .unwrap_or_default();
+    let left_path = format!("{}{}{}", left_prefix, tab.left_pane.current_location.display_path(), left_mask);
     let left_para = Paragraph::new(Span::raw(left_path))
         .style(Style::default()
             .fg(parse_color(&colors.filename_label_foreground_color))
             .bg(parse_color(&colors.filename_label_background_color)));
     frame.render_widget(left_para, halves[0]);
-    
+
     // Right path
     let right_prefix = if is_right_active { ">" } else { " " };
-    let right_path = format!("{}{}", right_prefix, tab.right_pane.current_location.display_path());
+    let right_mask = tab.right_pane.file_mask.as_deref()
+        .map(|m| format!(" [{}]", m))
+        .unwrap_or_default();
+    let right_path = format!("{}{}{}", right_prefix, tab.right_pane.current_location.display_path(), right_mask);
     let right_para = Paragraph::new(Span::raw(right_path))
         .style(Style::default()
             .fg(parse_color(&colors.filename_label_foreground_color))

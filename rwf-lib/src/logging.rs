@@ -181,7 +181,9 @@ pub fn default_log_dir() -> PathBuf {
     // 1. Check for local logs directory in current working directory
     let local_logs = PathBuf::from("logs");
     if local_logs.exists() && local_logs.is_dir() {
-        return local_logs;
+        if let Ok(cwd) = std::env::current_dir() {
+            return cwd.join("logs");
+        }
     }
 
     // 2. Fallback to AppData (Roaming on Windows, Config on Unix)

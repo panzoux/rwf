@@ -90,9 +90,9 @@ mod tests {
         
         // Verify dialog content
         if let Some(dialog) = state.dialogs.current() {
-            assert_eq!(dialog.title, "Drive Selection");
+            assert!(dialog.title.starts_with("Select Drive"), "title must start with 'Select Drive'");
             
-            if let DialogContent::DriveSelection { drives: _, selected_index } = &dialog.content {
+            if let DialogContent::DriveSelection { drives: _, selected_index, .. } = &dialog.content {
                 assert_eq!(selected_index, &0);
                 // Note: drives may be empty in test environment, but the dialog should still be shown
                 // In a real environment, drives would be populated
@@ -145,7 +145,7 @@ mod tests {
             free_space: Some(500000),
         };
         
-        let dialog = Dialog::drive_selection(vec![test_drive]);
+        let dialog = Dialog::drive_selection(vec![test_drive], crate::model::ui::ActivePane::Left);
         state.dialogs.push(dialog);
         
         // Get the initial location
@@ -249,7 +249,7 @@ mod tests {
         let mut state = AppState::new(config);
         
         // Manually create an empty drive selection dialog
-        let dialog = Dialog::drive_selection(vec![]);
+        let dialog = Dialog::drive_selection(vec![], crate::model::ui::ActivePane::Left);
         state.dialogs.push(dialog);
         
         // Verify dialog is shown even with no drives

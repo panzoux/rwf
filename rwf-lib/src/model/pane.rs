@@ -1,6 +1,6 @@
 //! Pane model and display modes
 
-use super::{Location, FileEntry};
+use super::{Location, FileEntry, MarkingModel};
 use std::path::Path;
 use regex;
 
@@ -8,28 +8,36 @@ use regex;
 #[derive(Debug)]
 pub struct PaneModel {
     pub current_location: Location,
+    /// Canonical sorted unfiltered directory contents; set on every ReadDirectory completion.
+    /// Empty until the first ReadDirectory result arrives.
+    pub raw_entries: Vec<FileEntry>,
     pub entries: Vec<FileEntry>,
     pub cursor: usize,
     pub scroll_offset: usize,
     pub sort_mode: SortMode,
+    pub sort_order: SortOrder,
     pub display_mode: DisplayMode,
     pub file_mask: Option<String>,
     pub is_loading: bool,
     pub active_job_id: Option<crate::job::JobId>,
+    pub marking: MarkingModel,
 }
 
 impl PaneModel {
     pub fn new(location: Location) -> Self {
         Self {
             current_location: location,
+            raw_entries: Vec::new(),
             entries: Vec::new(),
             cursor: 0,
             scroll_offset: 0,
             sort_mode: SortMode::Name,
+            sort_order: SortOrder::Ascending,
             display_mode: DisplayMode::Detailed,
             file_mask: None,
             is_loading: false,
             active_job_id: None,
+            marking: MarkingModel::new(),
         }
     }
 
@@ -50,25 +58,14 @@ impl PaneModel {
         self.entries.iter().filter(|e| e.marked).collect()
     }
     
-    /// Apply current sort mode to entries
+    /// Apply current sort mode and order to entries (and raw_entries if populated)
     pub fn apply_sort(&mut self) {
-        self.entries.sort_by(|a, b| {
-            // Directories always come first
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => match self.sort_mode {
-                    SortMode::Name => a.name.cmp(&b.name),
-                    SortMode::Size => a.size.cmp(&b.size),
-                    SortMode::Date => a.modified.cmp(&b.modified),
-                    SortMode::Extension => {
-                        let ext_a = Path::new(&a.name).extension().and_then(|s| s.to_str()).unwrap_or("");
-                        let ext_b = Path::new(&b.name).extension().and_then(|s| s.to_str()).unwrap_or("");
-                        ext_a.cmp(ext_b)
-                    }
-                }
-            }
-        });
+        let mode = self.sort_mode;
+        let order = self.sort_order;
+        self.entries.sort_by(|a, b| cmp_entries(a, b, mode, order));
+        if !self.raw_entries.is_empty() {
+            self.raw_entries.sort_by(|a, b| cmp_entries(a, b, mode, order));
+        }
     }
     
     /// Apply file mask filter to entries
@@ -108,10 +105,16 @@ impl PaneModel {
         self.entries.iter().collect()
     }
     
-    /// Apply the current file mask filter to entries (modifies entries in place)
+    /// Apply the current file mask filter to entries (modifies entries in place).
+    /// Restores from raw_entries first so re-applying a mask never double-filters.
     pub fn apply_current_filter(&mut self) {
-        if let Some(ref mask) = self.file_mask.clone() {
-            self.apply_filter(mask);
+        if !self.raw_entries.is_empty() {
+            self.entries = self.raw_entries.clone();
+        }
+        if let Some(mask) = self.file_mask.clone() {
+            if !mask.is_empty() && mask != "*" {
+                self.apply_filter(&mask);
+            }
         }
     }
 
@@ -169,6 +172,26 @@ impl PaneModel {
     }
 }
 
+fn cmp_entries(a: &FileEntry, b: &FileEntry, mode: SortMode, order: SortOrder) -> std::cmp::Ordering {
+    match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => {
+            let base = match mode {
+                SortMode::Name => a.name.cmp(&b.name),
+                SortMode::Size => a.size.cmp(&b.size),
+                SortMode::Date => a.modified.cmp(&b.modified),
+                SortMode::Extension => {
+                    let ext_a = Path::new(&a.name).extension().and_then(|s| s.to_str()).unwrap_or("");
+                    let ext_b = Path::new(&b.name).extension().and_then(|s| s.to_str()).unwrap_or("");
+                    ext_a.cmp(ext_b)
+                }
+            };
+            if order == SortOrder::Descending { base.reverse() } else { base }
+        }
+    }
+}
+
 /// Convert wildcard pattern to regex pattern
 fn wildcard_to_regex(pattern: &str) -> String {
     let mut regex = String::from("^");
@@ -194,6 +217,22 @@ pub enum SortMode {
     Size,
     Date,
     Extension,
+}
+
+/// Sort order (ascending or descending)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+impl SortOrder {
+    pub fn toggle(self) -> Self {
+        match self {
+            SortOrder::Ascending => SortOrder::Descending,
+            SortOrder::Descending => SortOrder::Ascending,
+        }
+    }
 }
 
 /// Display mode for pane

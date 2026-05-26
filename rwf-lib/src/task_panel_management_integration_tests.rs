@@ -228,7 +228,7 @@ mod tests {
             &state.tabs.tabs,
             state.tabs.active_index,
             state.ui.active_pane,
-            &state.marking.marked_locations,
+            &std::collections::HashSet::new(),
             state.ui.layout.show_task_panel,
             state.ui.layout.task_panel_height,
         );

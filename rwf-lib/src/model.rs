@@ -35,7 +35,7 @@ mod cache_properties;
 
 pub use location::Location;
 pub use file_entry::{FileEntry, format_size};
-pub use pane::{PaneModel, SortMode, DisplayMode};
+pub use pane::{PaneModel, SortMode, SortOrder, DisplayMode};
 pub use tab::{TabState, TabManager};
 pub use search::SearchModel;
 pub use marking::MarkingModel;

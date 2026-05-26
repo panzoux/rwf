@@ -137,5 +137,5 @@ pub use log_manager::{LogManager, LogEntry, LogEntryLevel};
 pub use session::{SessionState, SessionError, save_session, restore_tabs, restore_marked_locations};
 pub use macro_expander::MacroExpander;
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
-pub use pattern_rename::{apply_pattern, generate_preview, validate_pattern};
+pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
 pub use volume_info::{VolumeInfo, VolumeType, MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};

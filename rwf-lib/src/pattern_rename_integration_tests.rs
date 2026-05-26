@@ -1,4 +1,4 @@
-//! Integration tests for pattern-based rename functionality
+//! Integration tests for pattern-based rename functionality (TWF-compatible)
 
 use crate::state::{AppState, update_state, Transition, AppConfig};
 use crate::model::{Location, FileEntry, DialogContent};
@@ -6,43 +6,32 @@ use crate::job::{JobKind, OpResult, SuccessData};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+fn make_entry(name: &str, path: &str) -> FileEntry {
+    FileEntry {
+        name: name.to_string(),
+        location: Location::Local(PathBuf::from(path)),
+        size: 100,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::now(),
+        marked: false,
+        calculated_size: None,
+    }
+}
+
 #[test]
 fn test_show_pattern_rename_dialog_with_marked_files() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add some files to the active pane
+
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        FileEntry {
-            name: "file1.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file1.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-        FileEntry {
-            name: "file2.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file2.txt")),
-            size: 200,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
+        make_entry("file1.txt", "/test/file1.txt"),
+        make_entry("file2.txt", "/test/file2.txt"),
     ];
-    
-    // Mark the files
     update_state(&mut state, Transition::MarkAll);
-    
-    // Show pattern rename dialog
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Verify dialog is shown
+
     assert!(!state.dialogs.is_empty());
     let dialog = state.dialogs.current().unwrap();
     assert!(matches!(dialog.content, DialogContent::PatternRename { .. }));
@@ -52,75 +41,43 @@ fn test_show_pattern_rename_dialog_with_marked_files() {
 fn test_show_pattern_rename_dialog_with_cursor_file() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add a file to the active pane
+
     let pane = state.active_pane_mut();
-    pane.entries = vec![
-        FileEntry {
-            name: "document.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/document.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-    ];
-    
-    // Show pattern rename dialog
+    pane.entries = vec![make_entry("document.txt", "/test/document.txt")];
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Verify dialog is shown
+
     assert!(!state.dialogs.is_empty());
     let dialog = state.dialogs.current().unwrap();
     assert!(matches!(dialog.content, DialogContent::PatternRename { .. }));
 }
 
 #[test]
-fn test_update_pattern_rename_pattern() {
+fn test_update_pattern_rename_fields_regex() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add files to the active pane
+
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        FileEntry {
-            name: "file1.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file1.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-        FileEntry {
-            name: "file2.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file2.txt")),
-            size: 200,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
+        make_entry("file1.txt", "/test/file1.txt"),
+        make_entry("file2.txt", "/test/file2.txt"),
     ];
-    
-    // Mark the files
     update_state(&mut state, Transition::MarkAll);
-    
-    // Show pattern rename dialog
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Update the pattern
-    let pattern = "*.txt -> backup_[1].txt".to_string();
-    update_state(&mut state, Transition::UpdatePatternRenamePattern { pattern: pattern.clone() });
-    
-    // Verify the pattern and preview are updated
+
+    // Regex: prepend "backup_"
+    update_state(&mut state, Transition::UpdatePatternRenameFields {
+        find: "^(.+)$".to_string(),
+        replace: "backup_${1}".to_string(),
+        use_regex: true,
+        case_sensitive: true,
+    });
+
     let dialog = state.dialogs.current().unwrap();
-    if let Some((dialog_pattern, preview)) = dialog.content.as_pattern_rename() {
-        assert_eq!(dialog_pattern, &pattern);
+    if let Some((find, replace, use_regex, case_sensitive, preview)) = dialog.content.as_pattern_rename() {
+        assert_eq!(find, "^(.+)$");
+        assert_eq!(replace, "backup_${1}");
+        assert!(use_regex);
+        assert!(case_sensitive);
         assert_eq!(preview.len(), 2);
         assert_eq!(preview[0], ("file1.txt".to_string(), "backup_file1.txt".to_string()));
         assert_eq!(preview[1], ("file2.txt".to_string(), "backup_file2.txt".to_string()));
@@ -133,180 +90,157 @@ fn test_update_pattern_rename_pattern() {
 fn test_execute_pattern_rename_creates_job() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add files to the active pane
+
     let pane = state.active_pane_mut();
-    let file1_location = Location::Local(PathBuf::from("/test/file1.txt"));
-    let file2_location = Location::Local(PathBuf::from("/test/file2.txt"));
+    let loc1 = Location::Local(PathBuf::from("/test/file1.txt"));
+    let loc2 = Location::Local(PathBuf::from("/test/file2.txt"));
     pane.entries = vec![
-        FileEntry {
-            name: "file1.txt".to_string(),
-            location: file1_location.clone(),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-        FileEntry {
-            name: "file2.txt".to_string(),
-            location: file2_location.clone(),
-            size: 200,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
+        make_entry("file1.txt", "/test/file1.txt"),
+        make_entry("file2.txt", "/test/file2.txt"),
     ];
-    
-    // Mark the files
     update_state(&mut state, Transition::MarkAll);
-    
-    // Execute pattern rename
-    let pattern = "*.txt -> backup_[1].txt".to_string();
-    let targets = vec![file1_location, file2_location];
+
     let result = update_state(&mut state, Transition::ExecutePatternRename {
-        pattern: pattern.clone(),
-        targets: targets.clone(),
+        find: r"\.txt$".to_string(),
+        replace: ".bak".to_string(),
+        use_regex: true,
+        case_sensitive: true,
+        targets: vec![loc1, loc2],
     });
-    
-    // Verify a job was created
+
     assert_eq!(result.jobs_to_start.len(), 1);
     let job_spec = &result.jobs_to_start[0];
-    
     match &job_spec.kind {
-        JobKind::PatternRename { targets: job_targets, pattern: job_pattern } => {
-            assert_eq!(job_targets.len(), 2);
-            assert_eq!(job_pattern, &pattern);
+        JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
+            assert_eq!(targets.len(), 2);
+            assert_eq!(find, r"\.txt$");
+            assert_eq!(replace, ".bak");
+            assert!(*use_regex);
+            assert!(*case_sensitive);
         }
         _ => panic!("Expected PatternRename job kind"),
     }
-    
-    // Verify dialog is closed
     assert!(state.dialogs.is_empty());
 }
 
 #[test]
-fn test_pattern_rename_with_swap() {
+fn test_pattern_rename_plain_mode_replace() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add files to the active pane
+
     let pane = state.active_pane_mut();
-    pane.entries = vec![
-        FileEntry {
-            name: "hello_world.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/hello_world.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-    ];
-    
-    // Show pattern rename dialog
+    pane.entries = vec![make_entry("hello_world.txt", "/test/hello_world.txt")];
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Update the pattern to swap parts
-    let pattern = "*_*.txt -> [2]_[1].txt".to_string();
-    update_state(&mut state, Transition::UpdatePatternRenamePattern { pattern: pattern.clone() });
-    
-    // Verify the preview shows the swap
+
+    // Plain mode: replace _ with -
+    update_state(&mut state, Transition::UpdatePatternRenameFields {
+        find: "_".to_string(),
+        replace: "-".to_string(),
+        use_regex: false,
+        case_sensitive: true,
+    });
+
     let dialog = state.dialogs.current().unwrap();
-    if let Some((_, preview)) = dialog.content.as_pattern_rename() {
+    if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
         assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0], ("hello_world.txt".to_string(), "world_hello.txt".to_string()));
+        assert_eq!(preview[0], ("hello_world.txt".to_string(), "hello-world.txt".to_string()));
     } else {
         panic!("Expected PatternRename dialog content");
     }
 }
 
 #[test]
-fn test_pattern_rename_with_substring_extraction() {
+fn test_pattern_rename_all_files_in_preview() {
+    // TWF behaviour: unchanged files still appear in the preview (just colored differently)
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add files to the active pane
-    let pane = state.active_pane_mut();
-    pane.entries = vec![
-        FileEntry {
-            name: "document.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/document.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-    ];
-    
-    // Show pattern rename dialog
-    update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Update the pattern to extract first 3 characters
-    let pattern = "*.txt -> [0:3]_backup.txt".to_string();
-    update_state(&mut state, Transition::UpdatePatternRenamePattern { pattern: pattern.clone() });
-    
-    // Verify the preview shows the substring extraction
-    let dialog = state.dialogs.current().unwrap();
-    if let Some((_, preview)) = dialog.content.as_pattern_rename() {
-        assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0], ("document.txt".to_string(), "doc_backup.txt".to_string()));
-    } else {
-        panic!("Expected PatternRename dialog content");
-    }
-}
 
-#[test]
-fn test_pattern_rename_filters_non_matching_files() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
-    
-    // Add files with different extensions
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        FileEntry {
-            name: "file1.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file1.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-        FileEntry {
-            name: "file2.pdf".to_string(),
-            location: Location::Local(PathBuf::from("/test/file2.pdf")),
-            size: 200,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
+        make_entry("file1.txt", "/test/file1.txt"),
+        make_entry("file2.pdf", "/test/file2.pdf"),
     ];
-    
-    // Mark all files
     update_state(&mut state, Transition::MarkAll);
-    
-    // Show pattern rename dialog
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    
-    // Update the pattern to only match .txt files
-    let pattern = "*.txt -> backup_[1].txt".to_string();
-    update_state(&mut state, Transition::UpdatePatternRenamePattern { pattern: pattern.clone() });
-    
-    // Verify only .txt files are in the preview
+
+    // Only matches .txt files
+    update_state(&mut state, Transition::UpdatePatternRenameFields {
+        find: r"\.txt$".to_string(),
+        replace: ".bak".to_string(),
+        use_regex: true,
+        case_sensitive: true,
+    });
+
     let dialog = state.dialogs.current().unwrap();
-    if let Some((_, preview)) = dialog.content.as_pattern_rename() {
+    if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
+        // Both files appear in preview (TWF shows all)
+        assert_eq!(preview.len(), 2);
+        let txt = preview.iter().find(|(o, _)| o == "file1.txt").unwrap();
+        assert_eq!(txt.1, "file1.bak");
+        let pdf = preview.iter().find(|(o, _)| o == "file2.pdf").unwrap();
+        assert_eq!(pdf.0, pdf.1, "unchanged file has same name in both columns");
+    } else {
+        panic!("Expected PatternRename dialog content");
+    }
+}
+
+#[test]
+fn test_pattern_rename_s_command() {
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+
+    let pane = state.active_pane_mut();
+    pane.entries = vec![make_entry("Photo_001.JPG", "/test/Photo_001.JPG")];
+    update_state(&mut state, Transition::ShowPatternRenameDialog);
+
+    // s/ command: case-insensitive global replace
+    update_state(&mut state, Transition::UpdatePatternRenameFields {
+        find: "s/photo/img/i".to_string(),
+        replace: String::new(),
+        use_regex: false,
+        case_sensitive: true,
+    });
+
+    let dialog = state.dialogs.current().unwrap();
+    if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
         assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0], ("file1.txt".to_string(), "backup_file1.txt".to_string()));
+        assert_eq!(preview[0].1, "img_001.JPG");
+    } else {
+        panic!("Expected PatternRename dialog content");
+    }
+}
+
+#[test]
+fn test_no_marks_shows_all_pane_entries_in_preview() {
+    // Without any marks, UpdatePatternRenameFields should use ALL pane entries (not just cursor)
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+
+    let pane = state.active_pane_mut();
+    pane.entries = vec![
+        make_entry("alpha.txt", "/test/alpha.txt"),
+        make_entry("beta.txt",  "/test/beta.txt"),
+        make_entry("gamma.pdf", "/test/gamma.pdf"),
+    ];
+    // No MarkAll — no marks at all
+    update_state(&mut state, Transition::ShowPatternRenameDialog);
+    update_state(&mut state, Transition::UpdatePatternRenameFields {
+        find: r"\.txt$".to_string(),
+        replace: ".bak".to_string(),
+        use_regex: true,
+        case_sensitive: true,
+    });
+
+    let dialog = state.dialogs.current().unwrap();
+    if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
+        // All 3 files appear — not just cursor
+        assert_eq!(preview.len(), 3, "all pane entries must appear when no marks");
+        let alpha = preview.iter().find(|(o, _)| o == "alpha.txt").unwrap();
+        assert_eq!(alpha.1, "alpha.bak");
+        let beta = preview.iter().find(|(o, _)| o == "beta.txt").unwrap();
+        assert_eq!(beta.1, "beta.bak");
+        let gamma = preview.iter().find(|(o, _)| o == "gamma.pdf").unwrap();
+        assert_eq!(gamma.0, gamma.1, "unchanged file unchanged in both columns");
     } else {
         panic!("Expected PatternRename dialog content");
     }
@@ -316,46 +250,30 @@ fn test_pattern_rename_filters_non_matching_files() {
 fn test_pattern_rename_job_completion_refreshes_pane() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
-    // Add files to the active pane
+
     let pane = state.active_pane_mut();
     let file_location = Location::Local(PathBuf::from("/test/file1.txt"));
-    pane.entries = vec![
-        FileEntry {
-            name: "file1.txt".to_string(),
-            location: file_location.clone(),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-        },
-    ];
-    
-    // Execute pattern rename
-    let pattern = "*.txt -> backup_[1].txt".to_string();
-    let targets = vec![file_location];
+    pane.entries = vec![make_entry("file1.txt", "/test/file1.txt")];
+
     let result = update_state(&mut state, Transition::ExecutePatternRename {
-        pattern: pattern.clone(),
-        targets: targets.clone(),
+        find: r"\.txt$".to_string(),
+        replace: ".bak".to_string(),
+        use_regex: true,
+        case_sensitive: true,
+        targets: vec![file_location],
     });
-    
-    // Get the job spec
+
     let job_spec = result.jobs_to_start[0].clone();
     let job_id = job_spec.id;
-    
-    // Enqueue and start the job
+
     update_state(&mut state, Transition::EnqueueJob { spec: job_spec.clone() });
     update_state(&mut state, Transition::StartNextJob);
     state.jobs.start_job(job_spec);
-    
-    // Complete the job
+
     let result = update_state(&mut state, Transition::CompleteJob {
         job_id,
         result: OpResult::Success(SuccessData::None),
     });
-    
-    // Verify pane refresh is requested
+
     assert_eq!(result.panes_to_refresh.len(), 1);
 }

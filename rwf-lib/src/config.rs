@@ -66,7 +66,14 @@ pub struct AppConfig {
     /// Text input configuration
     #[serde(default)]
     pub text_input: TextInputConfig,
+
+    /// Background polling interval in milliseconds for detecting external filesystem changes.
+    /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
+    #[serde(default = "default_polling_interval_ms")]
+    pub polling_interval_ms: u32,
 }
+
+fn default_polling_interval_ms() -> u32 { 1000 }
 
 /// Archive configuration for compression operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +227,7 @@ impl Default for AppConfig {
             archive: ArchiveConfig::default(),
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
+            polling_interval_ms: default_polling_interval_ms(),
             is_creating_tab: false,
         }
     }
@@ -621,9 +629,14 @@ pub struct SearchConfig {
     /// Search debounce interval in milliseconds
     #[serde(rename = "SearchDebounceMs")]
     pub search_debounce_ms: u64,
+    /// Pattern rename preview debounce in milliseconds (0 = update every keystroke)
+    #[serde(rename = "PatternRenameDebounceMs", default = "default_pattern_rename_debounce_ms")]
+    pub pattern_rename_debounce_ms: u64,
     /// Maximum number of search results
     pub max_results: usize,
 }
+
+fn default_pattern_rename_debounce_ms() -> u64 { 150 }
 
 impl Default for SearchConfig {
     fn default() -> Self {
@@ -633,6 +646,7 @@ impl Default for SearchConfig {
             use_migemo: false,
             dict_path: None,
             search_debounce_ms: 150,
+            pattern_rename_debounce_ms: 150,
             max_results: 1000,
         }
     }

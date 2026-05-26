@@ -330,10 +330,49 @@ mod tests {
 use ratatui::{
     layout::Rect,
     style::Style,
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{List, ListItem},
     Frame,
 };
+
+/// Wrap a message into multiple lines at ` | ` separators or spaces, staying within `width` chars.
+fn wrap_to_lines<'a>(message: &'a str, width: usize, style: Style) -> Vec<Line<'a>> {
+    if width == 0 || message.chars().count() <= width {
+        return vec![Line::from(Span::styled(message, style))];
+    }
+
+    let mut lines = Vec::new();
+    let mut remaining = message;
+
+    while !remaining.is_empty() {
+        if remaining.chars().count() <= width {
+            lines.push(Line::from(Span::styled(remaining, style)));
+            break;
+        }
+
+        // byte index of the char at position `width`
+        let slice_end = remaining
+            .char_indices()
+            .nth(width)
+            .map(|(i, _)| i)
+            .unwrap_or(remaining.len());
+        let slice = &remaining[..slice_end];
+
+        // Prefer breaking after " | ", then after a space
+        let break_byte = if let Some(pos) = slice.rfind(" | ") {
+            pos + " | ".len()
+        } else if let Some(pos) = slice.rfind(' ') {
+            pos + 1
+        } else {
+            slice_end
+        };
+
+        lines.push(Line::from(Span::styled(&remaining[..break_byte], style)));
+        remaining = remaining[break_byte..].trim_start();
+    }
+
+    lines
+}
 
 /// Render the task panel
 pub fn render_task_panel(
@@ -349,6 +388,7 @@ pub fn render_task_panel(
     let start_idx = task_panel.scroll_offset().min(task_panel.log_count().saturating_sub(1));
     let end_idx = (start_idx + visible_height).min(task_panel.log_count());
     
+    let panel_width = area.width as usize;
     for i in start_idx..end_idx {
         if let Some(entry) = task_panel.get_log_entry(i) {
             let style = match entry.level {
@@ -357,9 +397,9 @@ pub fn render_task_panel(
                 LogLevel::Fail => Style::default().fg(parse_color(&colors.error_color)),
                 LogLevel::Warn => Style::default().fg(parse_color(&colors.warning_color)),
             };
-            
-            let line = Line::from(Span::styled(&entry.message, style));
-            items.push(ListItem::new(line));
+
+            let wrapped = wrap_to_lines(&entry.message, panel_width, style);
+            items.push(ListItem::new(Text::from(wrapped)));
         }
     }
     

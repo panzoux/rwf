@@ -119,7 +119,10 @@ pub enum JobKind {
     },
     PatternRename {
         targets: Vec<Location>,
-        pattern: String,
+        find: String,
+        replace: String,
+        use_regex: bool,
+        case_sensitive: bool,
     },
     CompareFiles {
         left: Location,

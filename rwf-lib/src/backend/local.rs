@@ -66,24 +66,32 @@ impl FilesystemBackend for LocalFilesystemBackend {
             if cancel_token.is_cancelled() {
                 bail!("Operation cancelled");
             }
-            
+
             let metadata = entry.metadata().await?;
             let entry_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            
-            debug!("Processing file: {}", name);
-            
+
+            // Derive is_hidden from already-fetched metadata — avoids a second syscall per entry on Windows
+            #[cfg(target_os = "windows")]
+            let is_hidden = {
+                use std::os::windows::fs::MetadataExt;
+                const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+                (metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN) != 0
+            };
+            #[cfg(not(target_os = "windows"))]
+            let is_hidden = name.starts_with('.');
+
             let file_entry = FileEntry {
                 name,
-                location: Location::Local(entry_path.clone()),
+                location: Location::Local(entry_path),
                 size: metadata.len(),
                 is_dir: metadata.is_dir(),
-                is_hidden: is_hidden(&entry_path),
+                is_hidden,
                 modified: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
                 marked: false,
                 calculated_size: None,
             };
-            
+
             entries.push(file_entry);
         }
         

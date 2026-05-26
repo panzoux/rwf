@@ -79,6 +79,7 @@ pub enum DialogContent {
     Help {
         content: String,
         language: String,
+        scroll_pos: usize,
     },
     JobManager {
         selected_index: usize,
@@ -105,13 +106,32 @@ pub enum DialogContent {
         selected_index: usize,
     },
     PatternRename {
-        pattern: String,
+        find: String,
+        find_cursor_pos: usize,
+        find_scroll_pos: usize,
+        replace: String,
+        replace_cursor_pos: usize,
+        replace_scroll_pos: usize,
+        use_regex: bool,
+        case_sensitive: bool,
         preview: Vec<(String, String)>,
+        /// 0=find textbox, 1=replace textbox, 2=filelist
+        focused_field: usize,
+        preview_scroll: usize,
+        preview_horizontal_scroll: usize,
+        /// Non-None when a collision was detected at confirm time
+        error_message: Option<String>,
+        /// 0=SIDE-BY-SIDE, 1=Preview (new names), 2=Original (original names); Alt+P cycles
+        preview_mode: u8,
+        /// true=show all files, false=matching files only; Alt+A toggles
+        show_all: bool,
     },
     Error {
         message: String,
         details: Option<String>,
         error_type: ErrorType,
+        /// 0=OK (default), 1=Cancel — both buttons just dismiss the dialog
+        focused_button: usize,
     },
     ComparisonView {
         diff: crate::job::FileDiff,
@@ -128,6 +148,7 @@ pub enum DialogContent {
     DriveSelection {
         drives: Vec<DriveInfo>,
         selected_index: usize,
+        filter: String,
     },
     FileInfo {
         file_name: String,
@@ -163,6 +184,8 @@ pub enum DialogContent {
         // Undo/Redo history
         history: Vec<String>,
         history_index: usize,
+        /// "Copy" or "Move" — used in the dialog title
+        operation: String,
     },
     Compression {
         // Data fields
@@ -198,6 +221,49 @@ pub enum DialogContent {
         version: String,
         build_date: String,
         copyright: String,
+    },
+    SortDialog {
+        /// Currently highlighted sort key (0=Name, 1=Size, 2=Date, 3=Extension)
+        selected_mode_index: usize,
+        /// Currently highlighted order (0=Ascending, 1=Descending)
+        selected_order_index: usize,
+        /// Which section has keyboard focus (0=sort-key list, 1=order list, 2=OK, 3=Cancel)
+        focused_section: usize,
+    },
+    /// File mask filter dialog — single text input for a wildcard pattern
+    FileMask {
+        /// Current pattern text being edited
+        input: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
+        /// 0=textbox (default), 1=OK, 2=Cancel
+        focused_field: usize,
+    },
+    /// Wildcard marking dialog — enter a pattern to mark matching entries
+    WildcardMark {
+        input: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
+        /// 0=textbox (default), 1=OK, 2=Cancel
+        focused_field: usize,
+    },
+    /// Simple rename dialog — single text input prefilled with current filename
+    SimpleRename {
+        input: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
+        /// 0=textbox (default), 1=OK, 2=Cancel
+        focused_field: usize,
+    },
+    /// Navigation history list — holds both panes, switches with Tab/h/l
+    HistoryDialog {
+        left_entries: Vec<Location>,
+        right_entries: Vec<Location>,
+        left_selected: usize,
+        right_selected: usize,
+        left_current_pos: usize,
+        right_current_pos: usize,
+        active_pane: crate::model::ui::ActivePane,
     },
 }
 
@@ -249,6 +315,31 @@ pub struct DriveInfo {
     pub drive_type: DriveType,
     pub total_space: Option<u64>,
     pub free_space: Option<u64>,
+}
+
+impl DriveInfo {
+    /// Returns the display string shown in the drive selection list.
+    pub fn display_label(&self) -> String {
+        // Home entry: label starts with '~'
+        if self.label.starts_with('~') {
+            return self.label.clone();
+        }
+        // Network share: show path
+        if self.drive_type == DriveType::Network {
+            return self.path.clone();
+        }
+        let type_str = match self.drive_type {
+            DriveType::Local     => "Local",
+            DriveType::Removable => "Removable",
+            _                    => "Unknown",
+        };
+        let path_trimmed = self.path.trim_end_matches(|c| c == '/' || c == '\\');
+        if self.label.is_empty() {
+            format!("{} ({})", path_trimmed, type_str)
+        } else {
+            format!("{} - {} ({})", path_trimmed, self.label, type_str)
+        }
+    }
 }
 
 /// Drive type
@@ -380,9 +471,9 @@ impl Dialog {
     }
 
     /// Create a file conflict dialog
-    pub fn file_conflict(conflicts: Vec<crate::model::dialog::ConflictPair>, current_index: usize, edit_mode: crate::config::EditMode) -> Self {
+    pub fn file_conflict(conflicts: Vec<crate::model::dialog::ConflictPair>, current_index: usize, edit_mode: crate::config::EditMode, op_name: &str) -> Self {
         let total = conflicts.len();
-        let title = format!("Copy - File Conflict ({}/{})", current_index + 1, total);
+        let title = format!("{} - File Conflict ({}/{})", op_name, current_index + 1, total);
         let rename_text = if !conflicts.is_empty() {
             conflicts[current_index].source.name.clone()
         } else {
@@ -415,18 +506,18 @@ impl Dialog {
                 vi_pending_find_backward: None,
                 vi_pending_operator: None,
                 vi_pending_ctrl_x: false,
-                // Initialize history
                 history: vec![rename_text],
                 history_index: 0,
+                operation: op_name.to_string(),
             },
         }
     }
 
     /// Update the dialog title with current progress
     pub fn update_file_conflict_title(&mut self) {
-        if let DialogContent::FileConflict { conflicts, current_index, .. } = &self.content {
+        if let DialogContent::FileConflict { conflicts, current_index, operation, .. } = &self.content {
             let total = conflicts.len();
-            self.title = format!("Copy - File Conflict ({}/{})", current_index + 1, total);
+            self.title = format!("{} - File Conflict ({}/{})", operation, current_index + 1, total);
         }
     }
 
@@ -445,6 +536,7 @@ impl Dialog {
             content: DialogContent::Help {
                 content: help_content.format(),
                 language: lang.to_string(),
+                scroll_pos: 0,
             },
         }
     }
@@ -486,13 +578,26 @@ impl Dialog {
         }
     }
 
-    /// Create a pattern rename dialog
-    pub fn pattern_rename(pattern: String, preview: Vec<(String, String)>) -> Self {
+    /// Create a pattern rename dialog (TWF-style: separate Find/Replace fields)
+    pub fn pattern_rename() -> Self {
         Self {
             title: "Pattern Rename".to_string(),
             content: DialogContent::PatternRename {
-                pattern,
-                preview,
+                find: String::new(),
+                find_cursor_pos: 0,
+                find_scroll_pos: 0,
+                replace: String::new(),
+                replace_cursor_pos: 0,
+                replace_scroll_pos: 0,
+                use_regex: true,
+                case_sensitive: false,
+                preview: Vec::new(),
+                focused_field: 0,
+                preview_scroll: 0,
+                preview_horizontal_scroll: 0,
+                error_message: None,
+                preview_mode: 0,
+                show_all: true,
             },
         }
     }
@@ -532,12 +637,17 @@ impl Dialog {
     }
 
     /// Create a drive selection dialog
-    pub fn drive_selection(drives: Vec<DriveInfo>) -> Self {
+    pub fn drive_selection(drives: Vec<DriveInfo>, pane: crate::model::ui::ActivePane) -> Self {
+        let pane_label = match pane {
+            crate::model::ui::ActivePane::Left  => "Left",
+            crate::model::ui::ActivePane::Right => "Right",
+        };
         Self {
-            title: "Drive Selection".to_string(),
+            title: format!("Select Drive [{}]", pane_label),
             content: DialogContent::DriveSelection {
                 drives,
                 selected_index: 0,
+                filter: String::new(),
             },
         }
     }
@@ -611,6 +721,95 @@ impl Dialog {
         }
     }
 
+    /// Create a sort dialog pre-selected to the pane's current mode and order
+    pub fn sort_dialog(current_mode: crate::model::SortMode, current_order: crate::model::SortOrder) -> Self {
+        use crate::model::{SortMode, SortOrder};
+        let selected_mode_index = match current_mode {
+            SortMode::Name      => 0,
+            SortMode::Size      => 1,
+            SortMode::Date      => 2,
+            SortMode::Extension => 3,
+        };
+        let selected_order_index = match current_order {
+            SortOrder::Ascending  => 0,
+            SortOrder::Descending => 1,
+        };
+        Self {
+            title: "Sort".to_string(),
+            content: DialogContent::SortDialog {
+                selected_mode_index,
+                selected_order_index,
+                focused_section: 0,
+            },
+        }
+    }
+
+    /// Create a file mask filter dialog pre-filled with the pane's current mask
+    pub fn file_mask(current_mask: Option<&str>) -> Self {
+        let initial = current_mask.unwrap_or("");
+        Self {
+            title: "File Mask".to_string(),
+            content: DialogContent::FileMask {
+                input: initial.to_string(),
+                cursor_pos: initial.chars().count(), // char count, not byte len
+                scroll_pos: 0,
+                focused_field: 0,
+            },
+        }
+    }
+
+    /// Create a wildcard marking dialog
+    pub fn wildcard_mark() -> Self {
+        Self {
+            title: "Wildcard Marking".to_string(),
+            content: DialogContent::WildcardMark {
+                input: String::new(),
+                cursor_pos: 0,
+                scroll_pos: 0,
+                focused_field: 0,
+            },
+        }
+    }
+
+    /// Create a simple rename dialog prefilled with the current filename
+    pub fn simple_rename(current_name: String) -> Self {
+        let cursor = current_name.chars().count();
+        Self {
+            title: "Rename".to_string(),
+            content: DialogContent::SimpleRename {
+                input: current_name,
+                cursor_pos: cursor,
+                scroll_pos: 0,
+                focused_field: 0,
+            },
+        }
+    }
+
+    /// Create a navigation history dialog showing both panes
+    pub fn history_dialog(
+        tab_index: usize,
+        active_pane: crate::model::ui::ActivePane,
+        left_entries: Vec<Location>, left_current_pos: usize,
+        right_entries: Vec<Location>, right_current_pos: usize,
+    ) -> Self {
+        let pane_label = match active_pane {
+            crate::model::ui::ActivePane::Left  => "Left",
+            crate::model::ui::ActivePane::Right => "Right",
+        };
+        Self {
+            title: format!("History [Tab {} | {}]", tab_index + 1, pane_label),
+            content: DialogContent::HistoryDialog {
+                left_selected: left_current_pos,
+                right_selected: right_current_pos,
+                left_current_pos,
+                right_current_pos,
+                left_entries,
+                right_entries,
+                active_pane,
+            },
+        }
+    }
+
     /// Create a version information dialog
     pub fn version() -> Self {
         let version = env!("CARGO_PKG_VERSION").to_string();
@@ -637,6 +836,7 @@ impl Dialog {
                 message: message.into(),
                 details: None,
                 error_type: ErrorType::General,
+                focused_button: 0,
             },
         }
     }
@@ -649,6 +849,7 @@ impl Dialog {
                 message: message.into(),
                 details: Some(details.into()),
                 error_type: ErrorType::General,
+                focused_button: 0,
             },
         }
     }
@@ -661,6 +862,7 @@ impl Dialog {
                 message: message.into(),
                 details: Some("This operation requires elevated privileges.".to_string()),
                 error_type: ErrorType::Permission,
+                focused_button: 0,
             },
         }
     }
@@ -673,6 +875,7 @@ impl Dialog {
                 message: format!("The file or directory could not be found: {}", path.into()),
                 details: None,
                 error_type: ErrorType::FileNotFound,
+                focused_button: 0,
             },
         }
     }
@@ -685,6 +888,7 @@ impl Dialog {
                 message: format!("The path is invalid: {}", path.into()),
                 details: None,
                 error_type: ErrorType::InvalidPath,
+                focused_button: 0,
             },
         }
     }
@@ -722,6 +926,7 @@ impl Dialog {
                 message: format!("{} failed: {}", operation, error_message),
                 details,
                 error_type,
+                focused_button: 0,
             },
         }
     }
@@ -870,7 +1075,8 @@ impl DialogContent {
     pub fn filter(&self) -> Option<&str> {
         match self {
             DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. } => Some(filter),
+            | DialogContent::RegisteredFolderSelector { filter, .. }
+            | DialogContent::DriveSelection { filter, .. } => Some(filter),
             _ => None,
         }
     }
@@ -879,7 +1085,8 @@ impl DialogContent {
     pub fn set_filter(&mut self, new_filter: String) {
         match self {
             DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. } => {
+            | DialogContent::RegisteredFolderSelector { filter, .. }
+            | DialogContent::DriveSelection { filter, .. } => {
                 *filter = new_filter;
             }
             _ => {}
@@ -1622,23 +1829,21 @@ impl DialogContent {
     }
 
     /// Get drive selection data if this is a drive selection dialog
-    pub fn as_drive_selection(&self) -> Option<(&[DriveInfo], usize)> {
+    pub fn as_drive_selection(&self) -> Option<(&[DriveInfo], usize, &str)> {
         match self {
-            DialogContent::DriveSelection {
-                drives,
-                selected_index,
-            } => Some((drives, *selected_index)),
+            DialogContent::DriveSelection { drives, selected_index, filter } => {
+                Some((drives, *selected_index, filter.as_str()))
+            }
             _ => None,
         }
     }
 
     /// Get mutable drive selection data
-    pub fn as_drive_selection_mut(&mut self) -> Option<(&mut Vec<DriveInfo>, &mut usize)> {
+    pub fn as_drive_selection_mut(&mut self) -> Option<(&mut Vec<DriveInfo>, &mut usize, &mut String)> {
         match self {
-            DialogContent::DriveSelection {
-                drives,
-                selected_index,
-            } => Some((drives, selected_index)),
+            DialogContent::DriveSelection { drives, selected_index, filter } => {
+                Some((drives, selected_index, filter))
+            }
             _ => None,
         }
     }
@@ -1646,70 +1851,49 @@ impl DialogContent {
 
 /// Pattern rename dialog helper
 pub struct PatternRenameDialog {
-    pattern: String,
+    find: String,
+    replace: String,
+    use_regex: bool,
+    case_sensitive: bool,
     preview: Vec<(String, String)>,
 }
 
 impl PatternRenameDialog {
-    /// Create a new pattern rename dialog
-    pub fn new(pattern: String, preview: Vec<(String, String)>) -> Self {
-        Self { pattern, preview }
+    pub fn new(find: String, replace: String, use_regex: bool, case_sensitive: bool, preview: Vec<(String, String)>) -> Self {
+        Self { find, replace, use_regex, case_sensitive, preview }
     }
 
-    /// Get the pattern
-    pub fn pattern(&self) -> &str {
-        &self.pattern
-    }
-
-    /// Get the preview
-    pub fn preview(&self) -> &[(String, String)] {
-        &self.preview
-    }
-
-    /// Update the pattern
-    pub fn set_pattern(&mut self, pattern: String) {
-        self.pattern = pattern;
-    }
-
-    /// Update the preview
-    pub fn set_preview(&mut self, preview: Vec<(String, String)>) {
-        self.preview = preview;
-    }
-
-    /// Check if there are any preview items
-    pub fn is_empty(&self) -> bool {
-        self.preview.is_empty()
-    }
-
-    /// Get preview count
-    pub fn count(&self) -> usize {
-        self.preview.len()
-    }
-
-    /// Get a specific preview item
-    pub fn get_preview(&self, index: usize) -> Option<&(String, String)> {
-        self.preview.get(index)
-    }
-
-    /// Check if the pattern is valid (not empty)
-    pub fn is_valid(&self) -> bool {
-        !self.pattern.is_empty()
-    }
+    pub fn find(&self) -> &str { &self.find }
+    pub fn replace(&self) -> &str { &self.replace }
+    pub fn use_regex(&self) -> bool { self.use_regex }
+    pub fn case_sensitive(&self) -> bool { self.case_sensitive }
+    pub fn preview(&self) -> &[(String, String)] { &self.preview }
+    pub fn set_preview(&mut self, preview: Vec<(String, String)>) { self.preview = preview; }
+    pub fn is_empty(&self) -> bool { self.preview.is_empty() }
+    pub fn count(&self) -> usize { self.preview.len() }
+    pub fn get_preview(&self, index: usize) -> Option<&(String, String)> { self.preview.get(index) }
+    pub fn is_valid(&self) -> bool { !self.find.is_empty() }
 }
 
 impl DialogContent {
-    /// Get pattern rename helper if this is a pattern rename dialog
-    pub fn as_pattern_rename(&self) -> Option<(&str, &[(String, String)])> {
+    /// Get pattern rename fields: (find, replace, use_regex, case_sensitive, preview)
+    pub fn as_pattern_rename(&self) -> Option<(&str, &str, bool, bool, &[(String, String)])> {
         match self {
-            DialogContent::PatternRename { pattern, preview } => Some((pattern, preview)),
+            DialogContent::PatternRename { find, replace, use_regex, case_sensitive, preview, .. } => {
+                Some((find, replace, *use_regex, *case_sensitive, preview))
+            }
             _ => None,
         }
     }
 
-    /// Get mutable pattern rename data
-    pub fn as_pattern_rename_mut(&mut self) -> Option<(&mut String, &mut Vec<(String, String)>)> {
+    /// Get mutable pattern rename fields
+    pub fn as_pattern_rename_mut(
+        &mut self,
+    ) -> Option<(&mut String, &mut String, &mut bool, &mut bool, &mut Vec<(String, String)>)> {
         match self {
-            DialogContent::PatternRename { pattern, preview } => Some((pattern, preview)),
+            DialogContent::PatternRename {
+                find, replace, use_regex, case_sensitive, preview, ..
+            } => Some((find, replace, use_regex, case_sensitive, preview)),
             _ => None,
         }
     }

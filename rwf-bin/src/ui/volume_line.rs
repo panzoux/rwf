@@ -24,8 +24,8 @@ pub fn render_volume_line(frame: &mut Frame, area: Rect, state: &AppState) {
     let right_volume = get_drive_or_share_name(&tab.right_pane.current_location);
     
     // Calculate marked stats
-    let left_stats = calculate_marked_stats(&tab.left_pane.entries, &state.marking);
-    let right_stats = calculate_marked_stats(&tab.right_pane.entries, &state.marking);
+    let left_stats = calculate_marked_stats(&tab.left_pane.entries, &tab.left_pane.marking);
+    let right_stats = calculate_marked_stats(&tab.right_pane.entries, &tab.right_pane.marking);
     
     // Format separator info
     let left_info = format_top_separator_info(&left_volume, &left_stats);

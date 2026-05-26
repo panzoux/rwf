@@ -78,12 +78,14 @@ impl KeyBindings {
         normal_mode.insert("Backspace".to_string(), Action::NavigateToParent);
         normal_mode.insert("Left".to_string(), Action::SwitchToLeftPane);
         normal_mode.insert("Right".to_string(), Action::SwitchToRightPane);
+        normal_mode.insert("h".to_string(), Action::SwitchToLeftPane);
         normal_mode.insert("Alt+Left".to_string(), Action::HistoryBack);
         normal_mode.insert("Alt+Right".to_string(), Action::HistoryForward);
+        normal_mode.insert("H".to_string(), Action::ShowHistoryDialog);
         
         // Marking
         normal_mode.insert("Space".to_string(), Action::ToggleMark);
-        normal_mode.insert("*".to_string(), Action::WildcardMarking);
+        normal_mode.insert("*".to_string(), Action::FileMaskFilter);
         normal_mode.insert("A".to_string(), Action::MarkAll);
         normal_mode.insert("Ctrl+u".to_string(), Action::UnmarkAll);
         normal_mode.insert("@".to_string(), Action::WildcardMarking);
@@ -107,12 +109,12 @@ impl KeyBindings {
         normal_mode.insert("s+s".to_string(), Action::SortBySize);
         normal_mode.insert("s+d".to_string(), Action::SortByDate);
         normal_mode.insert("s+e".to_string(), Action::SortByExtension);
+        normal_mode.insert("s+o".to_string(), Action::ToggleSortOrder);
         
         // Search and filter
         normal_mode.insert("/".to_string(), Action::StartSearch);
         normal_mode.insert("Ctrl+f".to_string(), Action::StartSearch);
         normal_mode.insert("f".to_string(), Action::FileMaskFilter);
-        normal_mode.insert(":".to_string(), Action::FileMaskFilter);
         normal_mode.insert("Ctrl+k".to_string(), Action::ClearSearchFilter);
         normal_mode.insert("Escape".to_string(), Action::Quit);
         
@@ -138,11 +140,13 @@ impl KeyBindings {
         normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("Shift+m".to_string(), Action::MoveToRegisteredFolder);
         
+        // File info
+        normal_mode.insert("i".to_string(), Action::ShowFileInfoForCursor);
+
         // Miscellaneous
         normal_mode.insert("q".to_string(), Action::Quit);
         normal_mode.insert("Q".to_string(), Action::ExitAndChangeDirectory);
         normal_mode.insert("?".to_string(), Action::Help);
-        normal_mode.insert("Shift+/".to_string(), Action::Help);
         normal_mode.insert("F1".to_string(), Action::Help);
         // Job management
         normal_mode.insert("Alt+j".to_string(), Action::JobManager);
@@ -153,7 +157,7 @@ impl KeyBindings {
         // Test jobs
         normal_mode.insert("9".to_string(), Action::CountDownJob(0));  // 0 = default 180 seconds
         
-        normal_mode.insert("H".to_string(), Action::CalculateDirectorySize);
+        normal_mode.insert("Alt+S".to_string(), Action::CalculateDirectorySize);
         
         // Pane operations
         normal_mode.insert("O".to_string(), Action::SyncPanes);
@@ -161,8 +165,10 @@ impl KeyBindings {
         
         // Context menu and drive selection
         normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
-        normal_mode.insert("`".to_string(), Action::ShowContextMenu);
         normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
+
+        // Version / system info (outputs to task panel, not a modal dialog)
+        normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
         
         // Task panel operations
         normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
@@ -283,6 +289,7 @@ pub enum Action {
     SwitchToRightPane,
     HistoryBack,
     HistoryForward,
+    ShowHistoryDialog,
     
     // File Operations
     Copy,
@@ -307,6 +314,8 @@ pub enum Action {
     SortByDate,
     SortByExtension,
     CycleSortMode,
+    ToggleSortOrder,
+    OpenSortDialog,
     
     // Search and Filter
     StartSearch,
@@ -361,6 +370,7 @@ pub enum Action {
     // Information dialogs
     ShowFileInfoForCursor,
     ShowVersion,
+    ShowVersionInfo,  // Output version/system info to task panel (backtick key)
     SaveLog,
     LaunchConfigurationProgram,
     
@@ -386,13 +396,15 @@ pub enum Action {
 pub fn format_key_event(event: &KeyEvent) -> String {
     let mut parts = Vec::new();
 
-    // For alphabetic characters, don't include SHIFT modifier since case already represents it
-    let is_alpha = matches!(event.code, KeyCode::Char(c) if c.is_ascii_alphabetic());
-    
+    // For Char keys, never add "Shift+" — the character value already encodes shift state
+    // (e.g., '?' is already the shifted '/', 'A' is already the shifted 'a').
+    // For non-Char keys (F-keys, arrows, etc.), include "Shift+" when the modifier is held.
+    let is_char = matches!(event.code, KeyCode::Char(_));
+
     if event.modifiers.contains(KeyModifiers::CONTROL) {
         parts.push("Ctrl");
     }
-    if event.modifiers.contains(KeyModifiers::SHIFT) && !is_alpha {
+    if event.modifiers.contains(KeyModifiers::SHIFT) && !is_char {
         parts.push("Shift");
     }
     if event.modifiers.contains(KeyModifiers::ALT) {
@@ -401,11 +413,12 @@ pub fn format_key_event(event: &KeyEvent) -> String {
 
     let key = match event.code {
         KeyCode::Char(c) => {
-            // Handle space specially to match key binding format
             if c == ' ' {
                 "Space".to_string()
+            } else if c.is_ascii_alphabetic() && event.modifiers.contains(KeyModifiers::SHIFT) {
+                // crossterm on Windows may send lowercase + SHIFT; normalise to uppercase.
+                c.to_ascii_uppercase().to_string()
             } else {
-                // Use character as-is (preserving case for alphabetic, exact char for others)
                 c.to_string()
             }
         }
@@ -539,6 +552,40 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             pane: state.ui.active_pane,
             direction: crate::state::HistoryDirection::Forward,
         }],
+        Action::ShowHistoryDialog => {
+            let active_pane = state.ui.active_pane;
+            let tab_index = state.tabs.active_index;
+            let tab = state.current_tab();
+
+            let build_entries = |pane: crate::model::ui::ActivePane| -> (Vec<crate::model::Location>, usize) {
+                let (stack, _) = tab.history.stack_and_pos(pane);
+                let current_loc = match pane {
+                    crate::model::ui::ActivePane::Left  => tab.left_pane.current_location.clone(),
+                    crate::model::ui::ActivePane::Right => tab.right_pane.current_location.clone(),
+                };
+                let mut entries = stack.to_vec();
+                if entries.last() != Some(&current_loc) {
+                    entries.push(current_loc);
+                }
+                let pos = entries.len().saturating_sub(1);
+                (entries, pos)
+            };
+
+            let (left_entries, left_pos) = build_entries(crate::model::ui::ActivePane::Left);
+            let (right_entries, right_pos) = build_entries(crate::model::ui::ActivePane::Right);
+
+            if left_entries.is_empty() && right_entries.is_empty() {
+                vec![]
+            } else {
+                vec![Transition::ShowDialog {
+                    dialog: crate::model::Dialog::history_dialog(
+                        tab_index, active_pane,
+                        left_entries, left_pos,
+                        right_entries, right_pos,
+                    ),
+                }]
+            }
+        }
         Action::ToggleMark => {
             if let Some(entry) = state.active_pane().current_entry() {
                 vec![
@@ -559,15 +606,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::ClearMarks => vec![Transition::UnmarkAll],
         Action::InvertMarks => vec![Transition::InvertMarks],
         Action::WildcardMarking => {
-            // Show wildcard marking dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog {
-                    title: "Wildcard Marking".to_string(),
-                    content: crate::model::DialogContent::Input {
-                        prompt: "Enter pattern (* and ? wildcards):".to_string(),
-                        default_value: String::new(),
-                    },
-                },
+                dialog: crate::model::Dialog::wildcard_mark(),
             }]
         }
         Action::RangeMarking => {
@@ -610,6 +650,18 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 pane: state.ui.active_pane,
                 mode: next_mode,
             }]
+        }
+        Action::ToggleSortOrder => {
+            let current_order = state.active_pane().sort_order;
+            vec![Transition::ChangeSortOrder {
+                pane: state.ui.active_pane,
+                order: current_order.toggle(),
+            }]
+        }
+        Action::OpenSortDialog => {
+            let pane = state.active_pane();
+            let dialog = crate::model::Dialog::sort_dialog(pane.sort_mode, pane.sort_order);
+            vec![Transition::ShowDialog { dialog }]
         }
         Action::DisplayModeDetailed => vec![Transition::ChangeDisplayMode {
             pane: state.ui.active_pane,
@@ -669,15 +721,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::Copy => {
-            // Get marked files or current cursor entry
-            let sources = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.location.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
+            let pane = state.active_pane();
+            let active_marked: Vec<_> = pane.entries.iter()
+                .filter(|e| pane.marking.is_marked(&e.location))
+                .map(|e| e.location.clone())
+                .collect();
+            let sources = if !active_marked.is_empty() {
+                active_marked
+            } else if let Some(entry) = pane.current_entry() {
                 vec![entry.location.clone()]
             } else {
                 vec![]
@@ -703,15 +754,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::Move => {
-            // Get marked files or current cursor entry
-            let sources = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.location.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
+            let pane = state.active_pane();
+            let active_marked: Vec<_> = pane.entries.iter()
+                .filter(|e| pane.marking.is_marked(&e.location))
+                .map(|e| e.location.clone())
+                .collect();
+            let sources = if !active_marked.is_empty() {
+                active_marked
+            } else if let Some(entry) = pane.current_entry() {
                 vec![entry.location.clone()]
             } else {
                 vec![]
@@ -737,15 +787,14 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::Delete => {
-            // Get marked files or current cursor entry
-            let targets = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.location.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
+            let pane = state.active_pane();
+            let active_marked: Vec<_> = pane.entries.iter()
+                .filter(|e| pane.marking.is_marked(&e.location))
+                .map(|e| e.location.clone())
+                .collect();
+            let targets = if !active_marked.is_empty() {
+                active_marked
+            } else if let Some(entry) = pane.current_entry() {
                 vec![entry.location.clone()]
             } else {
                 vec![]
@@ -768,18 +817,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::Rename => {
-            // Only rename the current cursor entry
             if let Some(entry) = state.active_pane().current_entry() {
                 let current_name = entry.name.clone();
-                
                 vec![Transition::ShowDialog {
-                    dialog: crate::model::Dialog {
-                        title: "Rename".to_string(),
-                        content: crate::model::DialogContent::Input {
-                            prompt: "New name:".to_string(),
-                            default_value: current_name,
-                        },
-                    },
+                    dialog: crate::model::Dialog::simple_rename(current_name),
                 }]
             } else {
                 vec![]
@@ -810,13 +851,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             ]
         }
         Action::FileMaskFilter => {
-            // Show file mask filter dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::input(
-                    "File Mask Filter",
-                    "Enter file mask pattern (* and ? wildcards):",
-                    state.active_pane().file_mask.clone().unwrap_or_default(),
-                ),
+                dialog: crate::model::Dialog::file_mask(state.active_pane().file_mask.as_deref()),
             }]
         }
         Action::ClearSearchFilter => {
@@ -972,6 +1008,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             // Show version information dialog
             vec![Transition::ShowVersion]
         }
+        Action::ShowVersionInfo => {
+            // Handled entirely at the app layer (writes to task panel, no state change)
+            vec![]
+        }
         Action::SaveLog => {
             // Save the current session log to file
             vec![Transition::SaveLog]
@@ -981,23 +1021,25 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::LaunchConfigurationProgram]
         }
         Action::RegisterCurrentFolder => {
-            // Show input dialog to get folder name
-            vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::input(
-                    "Register Folder",
-                    "Enter folder name:",
-                    "",
-                ),
-            }]
+            let pane = state.active_pane();
+            let loc = match pane.current_entry() {
+                Some(entry) if entry.is_dir && entry.name != ".." => &entry.location,
+                _ => &pane.current_location,
+            };
+            let path = loc.display_path();
+            let name = loc.path()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| path.clone());
+            vec![Transition::RegisterCurrentFolder { name, path }]
         }
         Action::ShowRegisteredFolderDialog => {
             // Show registered folder selector dialog
             vec![Transition::ShowRegisteredFolderDialog]
         }
         Action::MoveToRegisteredFolder => {
-            // Check if there are marked files
-            if state.marking.count() > 0 {
-                // Show registered folder selector dialog for moving files
+            if state.active_pane().marking.count() > 0 {
                 vec![Transition::ShowRegisteredFolderDialog]
             } else {
                 vec![]
@@ -1020,18 +1062,21 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::Compress => {
             debug!("Action::Compress triggered");
-            // Get marked files or current cursor entry
-            let sources = if state.marking.count() > 0 {
-                state.active_pane()
-                    .entries
-                    .iter()
-                    .filter(|e| state.marking.is_marked(&e.location))
-                    .map(|e| e.location.clone())
-                    .collect()
-            } else if let Some(entry) = state.active_pane().current_entry() {
-                debug!("No marked files, using current entry from active pane: {:?}", entry.location);
-                vec![entry.location.clone()]
-            } else {
+            let sources = {
+                let pane = state.active_pane();
+                if pane.marking.count() > 0 {
+                    pane.entries.iter()
+                        .filter(|e| pane.marking.is_marked(&e.location))
+                        .map(|e| e.location.clone())
+                        .collect()
+                } else if let Some(entry) = pane.current_entry() {
+                    debug!("No marked files, using current entry from active pane: {:?}", entry.location);
+                    vec![entry.location.clone()]
+                } else {
+                    vec![]
+                }
+            };
+            let sources = if sources.is_empty() {
                 // Active pane is empty, try the opposite pane
                 debug!("Active pane is empty, checking opposite pane");
                 if let Some(entry) = state.opposite_pane().current_entry() {
@@ -1041,6 +1086,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     debug!("No files to compress - both panes have no current entry");
                     return vec![];
                 }
+            } else {
+                sources
             };
 
             debug!("Creating compression dialog with {} file(s)", sources.len());
@@ -1094,13 +1141,20 @@ mod tests {
         let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
         assert_eq!(format_key_event(&event), "Ctrl+a");
 
-        // When SHIFT is pressed with an alphabetic character, the character itself is uppercase
-        // and we don't include "Shift+" in the key string
+        // Shift+alpha: uppercase char, no "Shift+" prefix
         let event = KeyEvent::new(KeyCode::Char('A'), KeyModifiers::SHIFT);
         assert_eq!(format_key_event(&event), "A");
 
+        // Shift+non-alpha: char value encodes shift, no "Shift+" prefix
+        let event = KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT);
+        assert_eq!(format_key_event(&event), "?");
+
         let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         assert_eq!(format_key_event(&event), "Enter");
+
+        // Shift+non-char key: "Shift+" IS included
+        let event = KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT);
+        assert_eq!(format_key_event(&event), "Shift+F1");
     }
 
     #[test]
@@ -1146,7 +1200,30 @@ mod file_operations_tests;
 mod marking_tests;
 
 #[cfg(test)]
+mod marking_wildcard_tests;
+mod rename_tests;
+mod history_tests;
+
+#[cfg(test)]
+mod drive_dialog_tests;
+
+#[cfg(test)]
+mod file_info_tests;
+
+#[cfg(test)]
+mod pattern_rename_dialog_tests;
+
+#[cfg(test)]
+mod help_dialog_tests;
+
+#[cfg(test)]
+mod registered_folder_tests;
+
+#[cfg(test)]
 mod sorting_tests;
+
+#[cfg(test)]
+mod file_mask_tests;
 
 #[cfg(test)]
 mod search_filter_tests;

@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{KeyBindings, Action, action_to_transitions};
-    use crate::model::{ActivePane, FileEntry, Location, SortMode};
+    use crate::model::{ActivePane, FileEntry, Location, SortMode, SortOrder};
     use crate::state::{AppState, AppConfig, Transition, update_state};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use proptest::prelude::*;
@@ -658,5 +658,75 @@ mod tests {
         
         // Order should be identical
         assert_eq!(first_order, second_order, "Sort should be stable for equal elements");
+    }
+
+    #[test]
+    fn test_sort_order_ascending_default() {
+        let mut state = AppState::new(AppConfig::default());
+        assert_eq!(state.current_tab().left_pane.sort_order, SortOrder::Ascending);
+    }
+
+    #[test]
+    fn test_sort_order_toggle() {
+        assert_eq!(SortOrder::Ascending.toggle(), SortOrder::Descending);
+        assert_eq!(SortOrder::Descending.toggle(), SortOrder::Ascending);
+    }
+
+    #[test]
+    fn test_sort_descending_reverses_order() {
+        let mut state = AppState::new(AppConfig::default());
+        let entries = vec![
+            create_test_entry("apple.txt", 100, false),
+            create_test_entry("cherry.txt", 300, false),
+            create_test_entry("banana.txt", 200, false),
+        ];
+        state.current_tab_mut().left_pane.entries = entries;
+
+        // Ascending sort by name
+        update_state(&mut state, Transition::ChangeSortMode { pane: ActivePane::Left, mode: SortMode::Name });
+        update_state(&mut state, Transition::ChangeSortOrder { pane: ActivePane::Left, order: SortOrder::Ascending });
+        let asc: Vec<_> = state.current_tab().left_pane.entries.iter().map(|e| e.name.clone()).collect();
+
+        // Descending sort by name
+        update_state(&mut state, Transition::ChangeSortOrder { pane: ActivePane::Left, order: SortOrder::Descending });
+        let desc: Vec<_> = state.current_tab().left_pane.entries.iter().map(|e| e.name.clone()).collect();
+
+        assert_eq!(asc, vec!["apple.txt", "banana.txt", "cherry.txt"]);
+        assert_eq!(desc, vec!["cherry.txt", "banana.txt", "apple.txt"]);
+    }
+
+    #[test]
+    fn test_sort_order_dirs_always_first() {
+        let mut state = AppState::new(AppConfig::default());
+        state.current_tab_mut().left_pane.entries = vec![
+            create_test_entry("z_file.txt", 100, false),
+            create_test_entry("a_dir",      0,   true),
+        ];
+
+        // Even with descending, dirs come first
+        update_state(&mut state, Transition::ChangeSortMode { pane: ActivePane::Left, mode: SortMode::Name });
+        update_state(&mut state, Transition::ChangeSortOrder { pane: ActivePane::Left, order: SortOrder::Descending });
+        let result: Vec<_> = state.current_tab().left_pane.entries.iter().collect();
+        assert!(result[0].is_dir, "Directory should be first even in descending order");
+        assert!(!result[1].is_dir, "File should be second");
+    }
+
+    #[test]
+    fn test_toggle_sort_order_action() {
+        let mut state = AppState::new(AppConfig::default());
+        assert_eq!(state.current_tab().left_pane.sort_order, SortOrder::Ascending);
+
+        let transitions = action_to_transitions(&state, &Action::ToggleSortOrder);
+        assert!(matches!(transitions[0], Transition::ChangeSortOrder { order: SortOrder::Descending, .. }));
+
+        update_state(&mut state, transitions[0].clone());
+        assert_eq!(state.current_tab().left_pane.sort_order, SortOrder::Descending);
+    }
+
+    #[test]
+    fn test_open_sort_dialog_action() {
+        let state = AppState::new(AppConfig::default());
+        let transitions = action_to_transitions(&state, &Action::OpenSortDialog);
+        assert!(matches!(transitions[0], Transition::ShowDialog { .. }));
     }
 }

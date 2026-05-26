@@ -503,7 +503,8 @@ mod tests {
             }
             
             // Total size should be 0
-            let total = state.marking.total_size(&state.current_tab().left_pane.entries);
+            let entries = state.current_tab().left_pane.entries.clone();
+            let total = state.current_tab_mut().left_pane.marking.total_size(&entries);
             prop_assert_eq!(total, 0, "Total size of zero-size files should be 0");
         });
     }
@@ -611,7 +612,7 @@ mod tests {
         let _ = update_state(&mut state, Transition::MarkAll);
         
         // Count should be 0
-        assert_eq!(state.marking.count(), 0);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
     }
 
     /// **Property: Unmark All Idempotence**
@@ -647,7 +648,7 @@ mod tests {
             }
             
             // Count should be 0
-            prop_assert_eq!(state.marking.count(), 0);
+            prop_assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
         });
     }
 
@@ -682,7 +683,7 @@ mod tests {
             }
             
             // All should be unmarked
-            prop_assert_eq!(state.marking.count(), 0, "All files should be unmarked after double toggle");
+            prop_assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0, "All files should be unmarked after double toggle");
         });
     }
 

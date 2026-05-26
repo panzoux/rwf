@@ -123,7 +123,7 @@ impl StateSnapshot {
             right_sort_mode: tab.right_pane.sort_mode,
             right_display_mode: tab.right_pane.display_mode,
             right_file_mask: tab.right_pane.file_mask.clone(),
-            marked_count: state.marking.marked_locations.len(),
+            marked_count: state.current_tab_mut().left_pane.marking.marked_locations.len(),
             job_queue_len: state.jobs.queue.len(),
             job_active_len: state.jobs.active.len(),
         }

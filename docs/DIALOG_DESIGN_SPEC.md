@@ -2,8 +2,8 @@
 
 ## Document Status
 - **Created**: 2026-03-14
-- **Last Updated**: 2026-03-14
-- **Version**: 2.0 (Final - After Implementation)
+- **Last Updated**: 2026-05-24
+- **Version**: 2.1 (Sort Dialog Added)
 - **Status**: Approved & Implemented
 
 ---
@@ -634,6 +634,9 @@ pub struct CompressionDialogState {
 | Multiple spacing lines | Ugly gaps between sections | Use exactly 1 line spacing between sections |
 | Rendering buttons twice | Two sets of buttons visible | Render buttons ONLY in compression dialog, NOT in generic render_dialog |
 | Dialog height > screen height | Dialog clipped or doesn't fit | Cap at `screen_height.saturating_sub(2)` |
+| **`Block::title()` overlaps first item** | First item in a list section is hidden behind the section label | Never use `Block::default().title("Label")` for section headers. Render the label as a plain `Paragraph::new("Label:")` at `chunks[n].y`, then render items starting at `chunks[n].y + 1 + i`. Add 1 extra line to the section's `Length()` constraint to accommodate the label. |
+| **Inconsistent item widths** | Shorter items (e.g. "Ascending") have narrower focus highlight than longer items ("Descending") | Always use the same `item_width = chunks[n].width.saturating_sub(4)` for every item in a section. `Paragraph` fills its `Rect` regardless of text length, so identical widths produce uniform rows. |
+| **Button style applied to Paragraph** | Entire button row (including padding) is covered by focus color | Apply focus style to `Span::styled("[*OK*]", style)` inside a `Line`, NOT to the `Paragraph`. The outer `Paragraph` keeps `base_style` (Gray bg). Only the text span gets White bg. |
 
 ---
 
@@ -958,3 +961,126 @@ Used in:
 |------|---------|
 | `rwf-bin/src/ui/task_panel.rs` | TaskPanel state and rendering |
 | `rwf-lib/src/job/background_job_manager.rs` | Job tracking |
+
+---
+
+# Part 8: Sort Dialog
+
+## 8.1 Overview
+
+The Sort Dialog lets the user choose a sort key and sort order for the active pane. It is a compact dialog with two radio-button sections and an OK/Cancel button row.
+
+**Trigger key:** `s` (main view, vi-normal mode off)  
+**Quick-toggle (no dialog):** `s+o` toggles ascending/descending without opening the dialog.
+
+## 8.2 Dialog Title
+
+```
+"Sort"
+```
+
+## 8.3 Sections (Tab Order)
+
+| focused_section | Section | Type | Items |
+|---|---|---|---|
+| 0 | Sort Key | Vertical List | Name / Size / Date / Extension |
+| 1 | Order | Vertical List | Ascending / Descending |
+| 2 | OK Button | Button | `[*OK*]` (default) |
+| 3 | Cancel Button | Button | `[Cancel]` |
+
+## 8.4 Layout Constraints (11 lines total content)
+
+```rust
+[
+    Constraint::Length(5), // "Sort by:" label (1) + 4 sort-key items
+    Constraint::Length(1), // spacer
+    Constraint::Length(3), // "Order:" label (1) + 2 order items
+    Constraint::Length(1), // spacer
+    Constraint::Length(1), // buttons
+]
+```
+
+**Total content: 11 lines → Dialog height: 13 (11 + 2 borders)**
+
+## 8.5 Layout Mockup
+
+```
+┌────────────────────────────────┐  ← border + title "Sort"
+│ Sort by:                       │  ← label (plain Paragraph, no Block)
+│ ● Name                         │  ← item 0 (white bg when focused+selected)
+│ ○ Size                         │  ← item 1
+│ ○ Date                         │  ← item 2
+│ ○ Extension                    │  ← item 3
+│                                │  ← spacer
+│ Order:                         │  ← label
+│ ● Ascending                    │  ← item 0
+│ ○ Descending                   │  ← item 1
+│                                │  ← spacer
+│      [*OK*]  [Cancel]          │  ← button row (Span-level styling only)
+└────────────────────────────────┘
+```
+
+## 8.6 Rendering Rules (lessons from Phase 1.1 implementation)
+
+### Labels
+- Render as `Paragraph::new("Sort by:")` at `chunks[0].y` — **never** `Block::default().title()`.
+- `Block::title()` places the text at the top of the block area at `y + 0`, which overlaps `items[0]` if items also start at `y + 0`.
+
+### Items
+- Render items at `chunks[n].y + 1 + i` (offset by 1 to skip the label line).
+- Use `item_width = chunks[n].width.saturating_sub(4)` for every item — identical width → uniform focus highlight regardless of text length.
+
+### Selection marker
+- Selected: `●` — Unselected: `○` (per spec 2.3)
+
+### Focus color
+- Focused item: `Style::default().fg(Color::Black).bg(Color::White)` (spec 2.2 — NOT Cyan)
+- All other items: `base_style = Style::default().fg(Color::Black).bg(Color::Gray)`
+
+### Buttons
+- Wrap in a `Line::from(vec![Span::styled("[*OK*]", ok_style), Span::raw("  "), Span::styled("[Cancel]", cancel_style)])`.
+- Outer `Paragraph` keeps `base_style` (Gray) — focus color applies to text `Span` only.
+
+## 8.7 Key Bindings
+
+| Key | Action |
+|-----|--------|
+| Tab | focused_section: 0→1→2→3→0 |
+| Shift+Tab | focused_section: 0→3→2→1→0 |
+| Up / Down | Move selection within focused section (0 or 1) |
+| Left / Right | Switch section (0↔1) |
+| Enter | If section 2 (OK): confirm; if section 3 (Cancel): cancel; sections 0/1: no-op |
+| Escape | Cancel |
+
+### In-section Up/Down behavior (section 0 and 1)
+- Moving the cursor changes `selected_*_index` directly (no separate cursor index).
+- This means "moving focus" and "changing selection" are the same gesture — consistent with the compact dialog design.
+
+## 8.8 Confirmation (OK)
+
+On OK:
+1. Extract `selected_mode_index` → map to `SortMode` (0=Name, 1=Size, 2=Date, 3=Extension).
+2. Extract `selected_order_index` → map to `SortOrder` (0=Ascending, 1=Descending).
+3. Fire `Transition::ChangeSortMode` and `Transition::ChangeSortOrder` for the active pane.
+4. Return `None` (no background job).
+
+## 8.9 Dialog State (embedded in `DialogContent::SortDialog`)
+
+```rust
+SortDialog {
+    selected_mode_index: usize,  // 0-3: which sort key is selected
+    selected_order_index: usize, // 0-1: which order is selected
+    focused_section: usize,      // 0=sort-key, 1=order, 2=OK, 3=Cancel
+}
+```
+
+## 8.10 Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `rwf-bin/src/ui/dialog/mod.rs` | `render_sort_dialog()`, input handling, confirmation |
+| `rwf-lib/src/model/dialog.rs` | `DialogContent::SortDialog`, `Dialog::sort_dialog()` |
+| `rwf-lib/src/model/pane.rs` | `SortMode`, `SortOrder` enums, `apply_sort()` |
+| `rwf-lib/src/input/mod.rs` | `Action::OpenSortDialog`, `Action::ToggleSortOrder` bindings |
+| `rwf-lib/src/state.rs` | `Transition::ChangeSortOrder` handler |
+| `rwf-lib/src/input/sorting_tests.rs` | Unit + action tests for sort order |

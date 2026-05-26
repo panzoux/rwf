@@ -394,7 +394,7 @@ mod tests {
             if use_marked && mark_count > 0 {
                 for i in 0..mark_count.min(state.current_tab().left_pane.entries.len()) {
                     let location = state.current_tab().left_pane.entries[i].location.clone();
-                    state.marking.mark(location);
+                    state.current_tab_mut().left_pane.marking.mark(location);
                 }
             }
             
@@ -453,7 +453,7 @@ mod tests {
             if use_marked && mark_count > 0 {
                 for i in 0..mark_count.min(state.current_tab().left_pane.entries.len()) {
                     let location = state.current_tab().left_pane.entries[i].location.clone();
-                    state.marking.mark(location);
+                    state.current_tab_mut().left_pane.marking.mark(location);
                 }
             }
             
@@ -512,7 +512,7 @@ mod tests {
             if use_marked && mark_count > 0 {
                 for i in 0..mark_count.min(state.current_tab().left_pane.entries.len()) {
                     let location = state.current_tab().left_pane.entries[i].location.clone();
-                    state.marking.mark(location);
+                    state.current_tab_mut().left_pane.marking.mark(location);
                 }
             }
             
@@ -567,13 +567,13 @@ mod tests {
             .collect();
         
         for location in &marked_locations {
-            state.marking.mark(location.clone());
+            state.current_tab_mut().left_pane.marking.mark(location.clone());
         }
         
         // Verify files are marked
-        assert_eq!(state.marking.count(), 3);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 3);
         for location in &marked_locations {
-            assert!(state.marking.is_marked(location));
+            assert!(state.current_tab_mut().left_pane.marking.is_marked(location));
         }
         
         // Show and confirm delete dialog
@@ -593,13 +593,13 @@ mod tests {
                 // Simulate job completion by unmarking the deleted files
                 // In the real implementation, this would happen in the job completion handler
                 for target in targets {
-                    state.marking.unmark(target.clone());
+                    state.current_tab_mut().left_pane.marking.unmark(target.clone());
                 }
                 
                 // Verify all deleted files are unmarked
-                assert_eq!(state.marking.count(), 0);
+                assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
                 for location in &marked_locations {
-                    assert!(!state.marking.is_marked(location));
+                    assert!(!state.current_tab_mut().left_pane.marking.is_marked(location));
                 }
             }
             _ => panic!("Expected Delete job"),
@@ -664,7 +664,7 @@ mod tests {
             // Verify all matching entries are marked
             for entry in &entries {
                 let should_be_marked = matches_wildcard(&entry.name, &pattern);
-                let is_marked = state.marking.is_marked(&entry.location);
+                let is_marked = state.current_tab_mut().left_pane.marking.is_marked(&entry.location);
                 
                 prop_assert_eq!(
                     is_marked,
@@ -682,11 +682,11 @@ mod tests {
                 .filter(|e| matches_wildcard(&e.name, &pattern))
                 .count();
             prop_assert_eq!(
-                state.marking.count(),
+                state.current_tab_mut().left_pane.marking.count(),
                 expected_marked_count,
                 "Expected {} marked files, got {}",
                 expected_marked_count,
-                state.marking.count()
+                state.current_tab_mut().left_pane.marking.count()
             );
         });
     }
@@ -701,7 +701,7 @@ mod tests {
         update_state(&mut state, Transition::MarkPattern { pattern: "*".to_string() });
         
         // All files should be marked
-        assert_eq!(state.marking.count(), 10);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 10);
     }
 
     #[test]
@@ -712,7 +712,7 @@ mod tests {
         update_state(&mut state, Transition::MarkPattern { pattern: "nonexistent*.xyz".to_string() });
         
         // No files should be marked
-        assert_eq!(state.marking.count(), 0);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
     }
 
     #[test]
@@ -732,11 +732,11 @@ mod tests {
         update_state(&mut state, Transition::MarkPattern { pattern: "?.txt".to_string() });
         
         // Only single-character names should be marked
-        assert_eq!(state.marking.count(), 2);
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/a.txt"))));
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/b.txt"))));
-        assert!(!state.marking.is_marked(&Location::Local(PathBuf::from("/test/ab.txt"))));
-        assert!(!state.marking.is_marked(&Location::Local(PathBuf::from("/test/abc.txt"))));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/a.txt"))));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/b.txt"))));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/ab.txt"))));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/abc.txt"))));
     }
 
     #[test]
@@ -756,11 +756,11 @@ mod tests {
         update_state(&mut state, Transition::MarkPattern { pattern: "test_*_*.txt".to_string() });
         
         // Only test_* files should be marked
-        assert_eq!(state.marking.count(), 3);
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/test_file_1.txt"))));
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/test_file_2.txt"))));
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/test_doc_1.txt"))));
-        assert!(!state.marking.is_marked(&Location::Local(PathBuf::from("/test/other_file_1.txt"))));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 3);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/test_file_1.txt"))));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/test_file_2.txt"))));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/test_doc_1.txt"))));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/other_file_1.txt"))));
     }
 
     #[test]
@@ -780,11 +780,11 @@ mod tests {
         update_state(&mut state, Transition::MarkPattern { pattern: "*.rs".to_string() });
         
         // Only .rs files should be marked
-        assert_eq!(state.marking.count(), 2);
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/file1.rs"))));
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/file2.rs"))));
-        assert!(!state.marking.is_marked(&Location::Local(PathBuf::from("/test/file3.txt"))));
-        assert!(!state.marking.is_marked(&Location::Local(PathBuf::from("/test/file4.md"))));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/file1.rs"))));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/file2.rs"))));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/file3.txt"))));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/file4.md"))));
     }
 
     #[test]
@@ -800,17 +800,17 @@ mod tests {
         state.current_tab_mut().left_pane.entries = entries.clone();
         
         // Manually mark file2.rs
-        state.marking.mark(entries[1].location.clone());
-        assert_eq!(state.marking.count(), 1);
+        state.current_tab_mut().left_pane.marking.mark(entries[1].location.clone());
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 1);
         
         // Mark all .txt files
         update_state(&mut state, Transition::MarkPattern { pattern: "*.txt".to_string() });
         
         // Should have 3 marked files total (2 .txt + 1 .rs)
-        assert_eq!(state.marking.count(), 3);
-        assert!(state.marking.is_marked(&entries[0].location));
-        assert!(state.marking.is_marked(&entries[1].location));
-        assert!(state.marking.is_marked(&entries[2].location));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 3);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&entries[0].location));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&entries[1].location));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&entries[2].location));
     }
 
     /// **Property 18: Directory-First Sorting**

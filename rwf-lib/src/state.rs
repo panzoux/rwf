@@ -4,7 +4,7 @@
 //! for explicit state changes following the AppState pattern.
 
 use crate::job::{JobManager, JobId, JobSpec, BackgroundJobManager};
-use crate::model::{TabManager, SearchModel, MarkingModel, UIState, DialogStack, DirectoryCache, ViewerState, NavigationStateCache};
+use crate::model::{TabManager, SearchModel, UIState, DialogStack, DirectoryCache, ViewerState, NavigationStateCache};
 use crate::log_manager::LogManager;
 use std::time::Duration;
 use tracing::debug;
@@ -20,8 +20,6 @@ pub struct AppState {
     pub background_jobs: BackgroundJobManager,
     /// Search state
     pub search: SearchModel,
-    /// File marking state
-    pub marking: MarkingModel,
     /// UI state
     pub ui: UIState,
     /// Dialog stack
@@ -85,7 +83,6 @@ impl AppState {
                 Duration::from_secs(config.job_manager.job_retention_period_secs)
             ),
             search,
-            marking: MarkingModel::new(),
             ui: UIState::new(),
             dialogs: DialogStack::new(),
             registered_folders,
@@ -136,13 +133,21 @@ impl AppState {
         }
     }
 
+    /// Clear marks on every pane in every tab
+    pub fn unmark_all_panes(&mut self) {
+        for tab in self.tabs.tabs.iter_mut() {
+            tab.left_pane.marking.unmark_all();
+            tab.right_pane.marking.unmark_all();
+        }
+    }
+
     /// Save current state to session storage
     pub fn save_session(&self) -> Result<(), crate::session::SessionError> {
         let session = crate::session::save_session(
             &self.tabs.tabs,
             self.tabs.active_index,
             self.ui.active_pane,
-            &self.marking.marked_locations,
+            &std::collections::HashSet::new(),
             self.ui.layout.show_task_panel,
             self.ui.layout.task_panel_height,
         );
@@ -171,9 +176,6 @@ impl AppState {
 
         // Restore active pane
         self.ui.active_pane = session.active_pane.into();
-
-        // Restore marked locations
-        self.marking.marked_locations = crate::session::restore_marked_locations(&session);
 
         // Restore task panel settings
         self.ui.layout.show_task_panel = session.show_task_panel;
@@ -245,6 +247,7 @@ impl AppState {
                 let cached_entries = self.cache.get(location);
 
                 let tab = self.current_tab();
+                let tab_id = tab.id;
                 let (current_loc, current_cursor, current_scroll) = match pane {
                     crate::model::ActivePane::Left => (
                         tab.left_pane.current_location.clone(),
@@ -296,9 +299,9 @@ impl AppState {
                     pane_model.cursor = 0;
                     pane_model.scroll_offset = 0;
 
-                    let tab_id = self.current_tab().id;
                     let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location: location.clone() })
                         .with_requesting_pane(tab_id, *pane);
+                    pane_model.active_job_id = Some(job_spec.id);
                     Some(StateUpdateResult::with_job(job_spec))
                 }
             }
@@ -453,32 +456,32 @@ impl AppState {
     fn handle_marking_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
         match transition {
             Transition::ToggleMark { location } => {
-                self.marking.toggle(location.clone());
-                Some(StateUpdateResult::none())
+                self.active_pane_mut().marking.toggle(location.clone());
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::MarkAll => {
                 let entries = self.active_pane().entries.clone();
-                self.marking.mark_all(&entries);
-                Some(StateUpdateResult::none())
+                self.active_pane_mut().marking.mark_all(&entries);
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::UnmarkAll => {
-                self.marking.unmark_all();
-                Some(StateUpdateResult::none())
+                self.active_pane_mut().marking.unmark_all();
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::MarkPattern { pattern } => {
                 let entries = self.active_pane().entries.clone();
-                self.marking.mark_pattern(&entries, pattern);
-                Some(StateUpdateResult::none())
+                self.active_pane_mut().marking.mark_pattern(&entries, pattern);
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::MarkRange { start, end } => {
                 let entries = self.active_pane().entries.clone();
-                self.marking.mark_range(&entries, *start, *end);
+                self.active_pane_mut().marking.mark_range(&entries, *start, *end);
                 self.ui.range_marking_start = None;
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::InvertMarks => {
                 let entries = self.active_pane().entries.clone();
-                self.marking.invert_marks(&entries);
+                self.active_pane_mut().marking.invert_marks(&entries);
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::EnterRangeMarkingMode => {
@@ -674,10 +677,12 @@ impl AppState {
                                         if pane.active_job_id == Some(*job_id) {
                                             let pane_name = match pane_side { crate::model::ActivePane::Left => "Left", crate::model::ActivePane::Right => "Right" };
                                             tracing::info!("[CompleteJob::ReadDirectory] Found tab! Updating {} pane with {} entries", pane_name, entries.len());
-                                            if pane.entries != *entries {
+                                            if pane.raw_entries != *entries {
+                                                pane.raw_entries = entries.clone();
                                                 pane.entries = entries.clone();
                                                 pane.is_loading = false;
                                                 pane.apply_sort();
+                                                pane.apply_current_filter();
                                                 pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
                                                 result_obj.ui_changed = true;
                                             } else {
@@ -697,17 +702,21 @@ impl AppState {
                                     for tab in self.tabs.tabs.iter_mut() {
                                         if tab.left_pane.current_location == *location {
                                             tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating left pane via fallback");
+                                            tab.left_pane.raw_entries = entries.clone();
                                             tab.left_pane.entries = entries.clone();
                                             tab.left_pane.is_loading = false;
                                             tab.left_pane.apply_sort();
+                                            tab.left_pane.apply_current_filter();
                                             tab.left_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
                                             result_obj.ui_changed = true;
                                         }
                                         if tab.right_pane.current_location == *location {
                                             tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating right pane via fallback");
+                                            tab.right_pane.raw_entries = entries.clone();
                                             tab.right_pane.entries = entries.clone();
                                             tab.right_pane.is_loading = false;
                                             tab.right_pane.apply_sort();
+                                            tab.right_pane.apply_current_filter();
                                             tab.right_pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
                                             result_obj.ui_changed = true;
                                         }
@@ -784,16 +793,66 @@ impl AppState {
                                     }
                                 }
                             }
-                            self.marking.unmark_all();
+                            self.unmark_all_panes();
                         }
-                        crate::job::JobKind::Delete { .. } |
-                        crate::job::JobKind::Rename { .. } |
+                        crate::job::JobKind::Rename { from, to } => {
+                            // In-memory update: no ReadDirectory needed for a single rename
+                            if let crate::job::OpResult::Success(_) = result {
+                                let new_name = to.path()
+                                    .and_then(|p| p.file_name())
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default();
+                                if !new_name.is_empty() {
+                                    let pane_height = self.ui.layout.pane_height;
+                                    let scroll_offset = self.config.ui.scroll_offset;
+                                    for tab in self.tabs.tabs.iter_mut() {
+                                        for pane in [&mut tab.left_pane, &mut tab.right_pane] {
+                                            if let Some(e) = pane.raw_entries.iter_mut().find(|e| &e.location == from) {
+                                                e.name = new_name.clone();
+                                                e.location = to.clone();
+                                            }
+                                            pane.apply_sort();
+                                            pane.apply_current_filter();
+                                            pane.update_scroll(pane_height, scroll_offset);
+                                        }
+                                    }
+                                    result_obj.ui_changed = true;
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Delete { targets } => {
+                            if let crate::job::OpResult::Success(_) = result {
+                                // In-memory removal: remove deleted entries from all panes without
+                                // triggering a full ReadDirectory (same approach as Rename).
+                                let pane_height = self.ui.layout.pane_height;
+                                let scroll_offset = self.config.ui.scroll_offset;
+                                let mut any_changed = false;
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    for pane in [&mut tab.left_pane, &mut tab.right_pane] {
+                                        let before = pane.raw_entries.len();
+                                        pane.raw_entries.retain(|e| !targets.contains(&e.location));
+                                        if pane.raw_entries.len() != before {
+                                            pane.apply_current_filter();
+                                            pane.apply_sort();
+                                            if pane.entries.is_empty() {
+                                                pane.cursor = 0;
+                                            } else {
+                                                pane.cursor = pane.cursor.min(pane.entries.len() - 1);
+                                            }
+                                            pane.update_scroll(pane_height, scroll_offset);
+                                            any_changed = true;
+                                        }
+                                    }
+                                }
+                                if any_changed { result_obj.ui_changed = true; }
+                            } else {
+                                result_obj.panes_to_refresh.push(PaneRefresh { tab_id: self.tabs.active_index, pane: self.ui.active_pane });
+                            }
+                            self.unmark_all_panes();
+                        }
                         crate::job::JobKind::PatternRename { .. } |
                         crate::job::JobKind::Mkdir { .. } => {
                             result_obj.panes_to_refresh.push(PaneRefresh { tab_id: self.tabs.active_index, pane: self.ui.active_pane });
-                            if let crate::job::JobKind::Delete { .. } = spec.kind {
-                                self.marking.unmark_all();
-                            }
                         }
                         crate::job::JobKind::CalculateSize { location } => {
                             if let crate::job::OpResult::Success(crate::job::SuccessData::SizeCalculated(size)) = result {
@@ -808,16 +867,24 @@ impl AppState {
                             }
                         }
                         crate::job::JobKind::ExecuteCustomFunction { command, .. } => {
-                            let config_manager = crate::config::ConfigManager::new();
-                            let config_path = config_manager.config_path().to_string_lossy().to_string();
-                            
-                            if command.contains(&config_path) {
-                                if let crate::job::OpResult::Success(_) = result {
+                            if let crate::job::OpResult::Success(_) = result {
+                                let config_manager = crate::config::ConfigManager::new();
+                                let config_path = config_manager.config_path().to_string_lossy().to_string();
+
+                                if command.contains(&config_path) {
                                     let dialog = crate::model::Dialog::confirmation(
                                         "Configuration Editor Closed",
                                         "Reload configuration?"
                                     );
                                     self.dialogs.push(dialog);
+                                } else {
+                                    // External commands may change files in unknown ways.
+                                    // Always refresh the active pane rather than requiring the user
+                                    // to declare an explicit refresh scope in config.
+                                    result_obj.panes_to_refresh.push(PaneRefresh {
+                                        tab_id: self.tabs.active_index,
+                                        pane: self.ui.active_pane,
+                                    });
                                 }
                             }
                         }
@@ -848,6 +915,38 @@ impl AppState {
                 self.jobs.acknowledge_cancel(*job_id);
                 Some(StateUpdateResult::with_ui_change())
             }
+            Transition::NavigateToHistoryIndex { pane, index } => {
+                let location = {
+                    let tab = self.current_tab_mut();
+                    tab.history.jump_to_index(*pane, *index)
+                };
+                if let Some(location) = location {
+                    let cached_entries = self.cache.get(&location);
+                    let tab = self.current_tab_mut();
+                    let pane_model = match pane {
+                        crate::model::ActivePane::Left => &mut tab.left_pane,
+                        crate::model::ActivePane::Right => &mut tab.right_pane,
+                    };
+                    pane_model.current_location = location.clone();
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+                    if let Some(entries) = cached_entries {
+                        pane_model.entries = entries;
+                        pane_model.is_loading = false;
+                        pane_model.apply_sort();
+                        Some(StateUpdateResult::with_ui_change())
+                    } else {
+                        pane_model.entries.clear();
+                        pane_model.is_loading = true;
+                        let tab_id = self.current_tab().id;
+                        let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location })
+                            .with_requesting_pane(tab_id, *pane);
+                        Some(StateUpdateResult::with_job(job_spec))
+                    }
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
             _ => None,
         }
     }
@@ -862,6 +961,7 @@ impl AppState {
                     };
                     pane_model.is_loading = false;
                     pane_model.apply_sort();
+                    pane_model.apply_current_filter();
                     pane_model.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
                     Some(StateUpdateResult::with_ui_change())
                 } else {
@@ -925,17 +1025,20 @@ impl AppState {
                         crate::model::DialogContent::Confirmation { .. } => {
                             let title = dialog.title.as_str();
                             if title == "Copy" {
-                                let sources = if self.marking.count() > 0 {
-                                    self.active_pane().entries.iter()
-                                        .filter(|e| self.marking.is_marked(&e.location))
-                                        .map(|e| e.location.clone())
-                                        .collect()
-                                } else if let Some(entry) = self.active_pane().current_entry() {
-                                    vec![entry.location.clone()]
-                                } else {
-                                    vec![]
+                                let sources: Vec<_> = {
+                                    let pane = self.active_pane();
+                                    if pane.marking.count() > 0 {
+                                        pane.entries.iter()
+                                            .filter(|e| pane.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = pane.current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    }
                                 };
-                                
+
                                 if !sources.is_empty() {
                                     let dest = self.opposite_pane().current_location.clone();
                                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Copy { sources, dest });
@@ -943,17 +1046,20 @@ impl AppState {
                                     return Some(StateUpdateResult::with_job(job_spec));
                                 }
                             } else if title == "Move" {
-                                let sources = if self.marking.count() > 0 {
-                                    self.active_pane().entries.iter()
-                                        .filter(|e| self.marking.is_marked(&e.location))
-                                        .map(|e| e.location.clone())
-                                        .collect()
-                                } else if let Some(entry) = self.active_pane().current_entry() {
-                                    vec![entry.location.clone()]
-                                } else {
-                                    vec![]
+                                let sources: Vec<_> = {
+                                    let pane = self.active_pane();
+                                    if pane.marking.count() > 0 {
+                                        pane.entries.iter()
+                                            .filter(|e| pane.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = pane.current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    }
                                 };
-                                
+
                                 if !sources.is_empty() {
                                     let dest = self.opposite_pane().current_location.clone();
                                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move { sources, dest });
@@ -961,17 +1067,20 @@ impl AppState {
                                     return Some(StateUpdateResult::with_job(job_spec));
                                 }
                             } else if title == "Delete" {
-                                let targets = if self.marking.count() > 0 {
-                                    self.active_pane().entries.iter()
-                                        .filter(|e| self.marking.is_marked(&e.location))
-                                        .map(|e| e.location.clone())
-                                        .collect()
-                                } else if let Some(entry) = self.active_pane().current_entry() {
-                                    vec![entry.location.clone()]
-                                } else {
-                                    vec![]
+                                let targets: Vec<_> = {
+                                    let pane = self.active_pane();
+                                    if pane.marking.count() > 0 {
+                                        pane.entries.iter()
+                                            .filter(|e| pane.marking.is_marked(&e.location))
+                                            .map(|e| e.location.clone())
+                                            .collect()
+                                    } else if let Some(entry) = pane.current_entry() {
+                                        vec![entry.location.clone()]
+                                    } else {
+                                        vec![]
+                                    }
                                 };
-                                
+
                                 if !targets.is_empty() {
                                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete { targets });
                                     self.dialogs.pop();
@@ -1002,16 +1111,6 @@ impl AppState {
                                 }
                                 self.dialogs.pop();
                                 return Some(update_state(self, Transition::ChangeUIMode { mode: crate::model::UIMode::Normal }));
-                            } else if title == "Rename" {
-                                if let Some(entry) = self.active_pane().current_entry() {
-                                    let from = entry.location.clone();
-                                    let to = from.parent()
-                                        .map(|parent| parent.join(&input))
-                                        .unwrap_or_else(|| from.clone());
-                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Rename { from, to });
-                                    self.dialogs.pop();
-                                    return Some(StateUpdateResult::with_job(job_spec));
-                                }
                             } else if title == "Create Directory" {
                                 let current_location = self.active_pane().current_location.clone();
                                 let new_dir_location = current_location.join(&input);
@@ -1026,16 +1125,22 @@ impl AppState {
                             } else if title == "Register Folder" {
                                 if !input.is_empty() {
                                     self.dialogs.pop();
-                                    return Some(update_state(self, Transition::RegisterCurrentFolder { name: input }));
+                                    let path = self.active_pane().current_location.display_path();
+                                    return Some(update_state(self, Transition::RegisterCurrentFolder { name: input, path }));
                                 }
-                            } else if title == "File Mask Filter" {
-                                self.dialogs.pop();
-                                let mask = if input.is_empty() { None } else { Some(input) };
-                                return Some(update_state(self, Transition::SetFileMask { pane: self.ui.active_pane, mask }));
                             }
                         }
-                        crate::model::DialogContent::DriveSelection { drives, selected_index } => {
-                            if let Some(drive) = drives.get(*selected_index) {
+                        crate::model::DialogContent::DriveSelection { drives, selected_index, filter } => {
+                            let lower = filter.to_lowercase();
+                            let filtered: Vec<&crate::model::dialog::DriveInfo> = if filter.is_empty() {
+                                drives.iter().collect()
+                            } else {
+                                drives.iter().filter(|d| {
+                                    d.display_label().to_lowercase().contains(&lower)
+                                        || d.path.to_lowercase().contains(&lower)
+                                }).collect()
+                            };
+                            if let Some(drive) = filtered.get(*selected_index) {
                                 let location = crate::model::Location::Local(std::path::PathBuf::from(&drive.path));
                                 let pane = self.ui.active_pane;
                                 self.dialogs.pop();
@@ -1044,7 +1149,7 @@ impl AppState {
                         }
                         crate::model::DialogContent::RegisteredFolderSelector { selected_index, .. } => {
                             let folder_index = *selected_index;
-                            if self.marking.count() > 0 {
+                            if self.active_pane().marking.count() > 0 {
                                 self.dialogs.pop();
                                 return Some(update_state(self, Transition::MoveToRegisteredFolder { folder_index }));
                             } else {
@@ -1068,8 +1173,51 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ShowDriveChangeDialog => {
-                let drives = crate::volume_info::get_all_drives();
-                let dialog = crate::model::Dialog::drive_selection(drives);
+                let mut entries = Vec::new();
+
+                // 1. Home directory
+                if let Some(home) = dirs::home_dir() {
+                    entries.push(crate::model::dialog::DriveInfo {
+                        path: home.to_string_lossy().into_owned(),
+                        label: "~ User Directory".to_string(),
+                        drive_type: crate::model::dialog::DriveType::Local,
+                        total_space: None,
+                        free_space: None,
+                    });
+                }
+
+                // 2. Network shares discovered from both panes' history
+                let (left_stack, right_stack, cur_left, cur_right) = {
+                    let tab = self.current_tab();
+                    let (ls, _) = tab.history.stack_and_pos(crate::model::ui::ActivePane::Left);
+                    let (rs, _) = tab.history.stack_and_pos(crate::model::ui::ActivePane::Right);
+                    (ls.to_vec(), rs.to_vec(),
+                     tab.left_pane.current_location.clone(),
+                     tab.right_pane.current_location.clone())
+                };
+                let mut nw_roots: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                for loc in left_stack.iter().chain(right_stack.iter())
+                                     .chain(std::iter::once(&cur_left))
+                                     .chain(std::iter::once(&cur_right))
+                {
+                    if let Some(root) = get_share_root_from_location(loc) {
+                        nw_roots.insert(root);
+                    }
+                }
+                for root in &nw_roots {
+                    entries.push(crate::model::dialog::DriveInfo {
+                        path: root.clone(),
+                        label: root.clone(),
+                        drive_type: crate::model::dialog::DriveType::Network,
+                        total_space: None,
+                        free_space: None,
+                    });
+                }
+
+                // 3. System drives
+                entries.extend(crate::volume_info::get_all_drives());
+
+                let dialog = crate::model::Dialog::drive_selection(entries, self.ui.active_pane);
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -1109,16 +1257,17 @@ impl AppState {
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
-            Transition::RegisterCurrentFolder { name } => {
-                let current_location = self.active_pane().current_location.clone();
-                let path = current_location.display_path();
-                let folder = crate::model::RegisteredFolder::new(name.clone(), path);
+            Transition::RegisterCurrentFolder { name, path } => {
+                let folder = crate::model::RegisteredFolder::new(name.clone(), path.clone());
                 self.registered_folders.add(folder);
-                
+
                 let save_path = crate::model::RegisteredFolderManager::default_path();
                 let _ = self.registered_folders.save_to_file(&save_path);
-                
-                Some(StateUpdateResult::with_ui_change())
+
+                let log = format!("[Folder] Registered \"{}\" → {}", name, path);
+                let mut result = StateUpdateResult::with_ui_change();
+                result.task_panel_logs.push(log);
+                Some(result)
             }
             Transition::NavigateToRegisteredFolder { folder_index } => {
                 if let Some(folder) = self.registered_folders.folders.get(*folder_index) {
@@ -1137,16 +1286,19 @@ impl AppState {
                 if let Some(folder) = self.registered_folders.folders.get(*folder_index) {
                     let expanded_path = self.registered_folders.expand_path(folder);
                     let dest = crate::model::Location::Local(expanded_path);
-                    
-                    let sources = if self.marking.count() > 0 {
-                        self.active_pane().entries.iter()
-                            .filter(|e| self.marking.is_marked(&e.location))
-                            .map(|e| e.location.clone())
-                            .collect()
-                    } else {
-                        vec![]
+
+                    let sources: Vec<_> = {
+                        let pane = self.active_pane();
+                        if pane.marking.count() > 0 {
+                            pane.entries.iter()
+                                .filter(|e| pane.marking.is_marked(&e.location))
+                                .map(|e| e.location.clone())
+                                .collect()
+                        } else {
+                            vec![]
+                        }
                     };
-                    
+
                     if !sources.is_empty() {
                         let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Move { sources, dest });
                         self.dialogs.pop();
@@ -1200,6 +1352,16 @@ impl AppState {
                 pane_model.apply_sort();
                 Some(StateUpdateResult::with_ui_change())
             }
+            Transition::ChangeSortOrder { pane, order } => {
+                let tab = self.current_tab_mut();
+                let pane_model = match pane {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                pane_model.sort_order = *order;
+                pane_model.apply_sort();
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::ChangeDisplayMode { pane, mode } => {
                 let tab = self.current_tab_mut();
                 let pane_model = match pane {
@@ -1210,13 +1372,17 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::SetFileMask { pane, mask } => {
+                let pane_height = self.ui.layout.pane_height;
+                let scroll_offset = self.config.ui.scroll_offset;
                 let tab = self.current_tab_mut();
                 let pane_model = match pane {
                     crate::model::ActivePane::Left => &mut tab.left_pane,
                     crate::model::ActivePane::Right => &mut tab.right_pane,
                 };
                 pane_model.file_mask = mask.clone();
-                Some(StateUpdateResult::with_refresh(self.tabs.active_index, *pane))
+                pane_model.apply_current_filter();
+                pane_model.update_scroll(pane_height, scroll_offset);
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::ToggleHidden => {
                 self.ui.show_hidden = !self.ui.show_hidden;
@@ -1226,7 +1392,12 @@ impl AppState {
             Transition::RefreshAndClearMarks { pane } |
             Transition::RefreshNoClearMarks { pane } => {
                 if let Transition::RefreshAndClearMarks { .. } = transition {
-                    self.marking.unmark_all();
+                    let cleared_pane = *pane;
+                    let tab = self.current_tab_mut();
+                    match cleared_pane {
+                        crate::model::ActivePane::Left => tab.left_pane.marking.unmark_all(),
+                        crate::model::ActivePane::Right => tab.right_pane.marking.unmark_all(),
+                    }
                 }
                 let tab = self.current_tab_mut();
                 let tab_id = tab.id;
@@ -1507,53 +1678,68 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowPatternRenameDialog => {
-                let filenames = if self.marking.count() > 0 {
-                    self.active_pane().entries.iter()
-                        .filter(|e| self.marking.is_marked(&e.location))
-                        .map(|e| e.name.clone())
-                        .collect()
-                } else if let Some(entry) = self.active_pane().current_entry() {
-                    vec![entry.name.clone()]
-                } else {
-                    vec![]
+                let filenames: Vec<String> = {
+                    let pane = self.active_pane();
+                    if pane.entries.is_empty() {
+                        return Some(StateUpdateResult::none());
+                    }
+                    if pane.marking.count() > 0 {
+                        pane.entries.iter()
+                            .filter(|e| pane.marking.is_marked(&e.location))
+                            .map(|e| e.name.clone())
+                            .collect()
+                    } else {
+                        pane.entries.iter().map(|e| e.name.clone()).collect()
+                    }
                 };
-                
-                if !filenames.is_empty() {
-                    let dialog = crate::model::Dialog::pattern_rename(String::new(), vec![]);
-                    self.dialogs.push(dialog);
-                    Some(StateUpdateResult::with_ui_change())
-                } else {
-                    Some(StateUpdateResult::none())
+                // Pre-populate preview so the dialog opens at full size with all files visible
+                let initial_preview = crate::pattern_rename::generate_preview(
+                    &filenames, "", "", true, false,
+                );
+                let mut dialog = crate::model::Dialog::pattern_rename();
+                if let crate::model::DialogContent::PatternRename { preview, .. } = &mut dialog.content {
+                    *preview = initial_preview;
                 }
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
             }
-            Transition::UpdatePatternRenamePattern { pattern } => {
-                let filenames = if self.marking.count() > 0 {
-                    self.active_pane().entries.iter()
-                        .filter(|e| self.marking.is_marked(&e.location))
-                        .map(|e| e.name.clone())
-                        .collect()
-                } else if let Some(entry) = self.active_pane().current_entry() {
-                    vec![entry.name.clone()]
-                } else {
-                    vec![]
+            Transition::UpdatePatternRenameFields { find, replace, use_regex, case_sensitive } => {
+                let filenames: Vec<_> = {
+                    let pane = self.active_pane();
+                    if pane.marking.count() > 0 {
+                        pane.entries.iter()
+                            .filter(|e| pane.marking.is_marked(&e.location))
+                            .map(|e| e.name.clone())
+                            .collect()
+                    } else {
+                        pane.entries.iter().map(|e| e.name.clone()).collect()
+                    }
                 };
-                
-                let preview = crate::pattern_rename::generate_preview(&filenames, pattern);
+
+                let preview = crate::pattern_rename::generate_preview(
+                    &filenames, find, replace, *use_regex, *case_sensitive,
+                );
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    match &mut dialog.content {
-                        crate::model::DialogContent::PatternRename { pattern: p, preview: pr, .. } => {
-                            *p = pattern.clone();
-                            *pr = preview;
-                        }
-                        _ => {}
+                    if let crate::model::DialogContent::PatternRename {
+                        find: f, replace: r, use_regex: ur, case_sensitive: cs, preview: pr, error_message: em, ..
+                    } = &mut dialog.content {
+                        *f = find.clone();
+                        *r = replace.clone();
+                        *ur = *use_regex;
+                        *cs = *case_sensitive;
+                        *pr = preview;
+                        *em = None;
                     }
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
-            Transition::ExecutePatternRename { pattern, targets } => {
+            Transition::ExecutePatternRename { find, replace, use_regex, case_sensitive, targets } => {
                 let job_spec = JobSpec::new(crate::job::JobKind::PatternRename {
                     targets: targets.clone(),
-                    pattern: pattern.clone(),
+                    find: find.clone(),
+                    replace: replace.clone(),
+                    use_regex: *use_regex,
+                    case_sensitive: *case_sensitive,
                 });
                 self.dialogs.pop();
                 Some(StateUpdateResult::with_job(job_spec))
@@ -1661,6 +1847,7 @@ pub enum Transition {
     ChangeLocation { pane: crate::model::ActivePane, location: crate::model::Location },
     NavigateUp { pane: crate::model::ActivePane },
     NavigateHistory { pane: crate::model::ActivePane, direction: HistoryDirection },
+    NavigateToHistoryIndex { pane: crate::model::ActivePane, index: usize },
     SwitchPane,
     SyncPanes,
     SwapPanes,
@@ -1706,6 +1893,7 @@ pub enum Transition {
     
     // View settings
     ChangeSortMode { pane: crate::model::ActivePane, mode: crate::model::SortMode },
+    ChangeSortOrder { pane: crate::model::ActivePane, order: crate::model::SortOrder },
     ChangeDisplayMode { pane: crate::model::ActivePane, mode: crate::model::DisplayMode },
     SetFileMask { pane: crate::model::ActivePane, mask: Option<String> },
     ToggleHidden,
@@ -1734,7 +1922,7 @@ pub enum Transition {
     RotateHelpLanguage,
     LaunchConfigurationProgram,
     ShowRegisteredFolderDialog,
-    RegisterCurrentFolder { name: String },
+    RegisterCurrentFolder { name: String, path: String },
     NavigateToRegisteredFolder { folder_index: usize },
     MoveToRegisteredFolder { folder_index: usize },
     
@@ -1771,8 +1959,8 @@ pub enum Transition {
     
     // Pattern rename operations
     ShowPatternRenameDialog,
-    UpdatePatternRenamePattern { pattern: String },
-    ExecutePatternRename { pattern: String, targets: Vec<crate::model::Location> },
+    UpdatePatternRenameFields { find: String, replace: String, use_regex: bool, case_sensitive: bool },
+    ExecutePatternRename { find: String, replace: String, use_regex: bool, case_sensitive: bool, targets: Vec<crate::model::Location> },
     
     // File comparison and split/join operations
     CompareFiles { left: crate::model::Location, right: crate::model::Location },
@@ -1982,6 +2170,25 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
 
         _ => StateUpdateResult::none(),
     }
+}
+
+/// Extract `\\server\share` root from a `Location::Local` network path.
+/// Returns `None` for non-network paths.
+fn get_share_root_from_location(loc: &crate::model::Location) -> Option<String> {
+    if let crate::model::Location::Local(path) = loc {
+        let s = path.to_string_lossy();
+        let normalized = s.replace('/', "\\");
+        if normalized.starts_with("\\\\") {
+            let clean = normalized.trim_start_matches('\\');
+            let parts: Vec<&str> = clean.split('\\').filter(|p| !p.is_empty()).collect();
+            return match parts.len() {
+                0 => None,
+                1 => Some(format!("\\\\{}", parts[0])),
+                _ => Some(format!("\\\\{}\\{}", parts[0], parts[1])),
+            };
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -2195,15 +2402,15 @@ mod tests {
         
         let location = Location::Local(PathBuf::from("/test/file.txt"));
         
-        assert!(!state.marking.is_marked(&location));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&location));
         
         let result = update_state(&mut state, Transition::ToggleMark { location: location.clone() });
         assert!(result.ui_changed);
-        assert!(state.marking.is_marked(&location));
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&location));
         
         let result = update_state(&mut state, Transition::ToggleMark { location: location.clone() });
         assert!(result.ui_changed);
-        assert!(!state.marking.is_marked(&location));
+        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&location));
     }
 
     #[test]
@@ -2242,7 +2449,7 @@ mod tests {
         
         let result = update_state(&mut state, Transition::MarkAll);
         assert!(result.ui_changed);
-        assert_eq!(state.marking.count(), 2);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
     }
 
     #[test]
@@ -2253,13 +2460,13 @@ mod tests {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        state.marking.toggle(Location::Local(PathBuf::from("/test/file1.txt")));
-        state.marking.toggle(Location::Local(PathBuf::from("/test/file2.txt")));
-        assert_eq!(state.marking.count(), 2);
+        state.current_tab_mut().left_pane.marking.toggle(Location::Local(PathBuf::from("/test/file1.txt")));
+        state.current_tab_mut().left_pane.marking.toggle(Location::Local(PathBuf::from("/test/file2.txt")));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
         
         let result = update_state(&mut state, Transition::UnmarkAll);
         assert!(result.ui_changed);
-        assert_eq!(state.marking.count(), 0);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
     }
 
     #[test]
@@ -2297,8 +2504,8 @@ mod tests {
         
         let result = update_state(&mut state, Transition::MarkPattern { pattern: "*.txt".to_string() });
         assert!(result.ui_changed);
-        assert_eq!(state.marking.count(), 1);
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/test.txt"))));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 1);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/test.txt"))));
     }
 
     #[test]
@@ -2346,7 +2553,7 @@ mod tests {
         
         let result = update_state(&mut state, Transition::MarkRange { start: 0, end: 1 });
         assert!(result.ui_changed);
-        assert_eq!(state.marking.count(), 2);
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
     }
 
     #[test]
@@ -2382,13 +2589,13 @@ mod tests {
         ];
         state.active_pane_mut().entries = entries;
         
-        state.marking.toggle(Location::Local(PathBuf::from("/test/f1.txt")));
-        assert_eq!(state.marking.count(), 1);
+        state.current_tab_mut().left_pane.marking.toggle(Location::Local(PathBuf::from("/test/f1.txt")));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 1);
         
         let result = update_state(&mut state, Transition::InvertMarks);
         assert!(result.ui_changed);
-        assert_eq!(state.marking.count(), 1);
-        assert!(state.marking.is_marked(&Location::Local(PathBuf::from("/test/f2.txt"))));
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 1);
+        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/f2.txt"))));
     }
 
     #[test]

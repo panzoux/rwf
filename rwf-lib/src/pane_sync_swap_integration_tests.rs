@@ -271,25 +271,25 @@ mod tests {
         let left_file = state.current_tab().left_pane.entries[0].location.clone();
         let right_file = state.current_tab().right_pane.entries[1].location.clone();
         
-        state.marking.mark(left_file.clone());
-        state.marking.mark(right_file.clone());
+        state.current_tab_mut().left_pane.marking.mark(left_file.clone());
+        state.current_tab_mut().left_pane.marking.mark(right_file.clone());
         
-        assert_eq!(state.marking.count(), 2, "Should have 2 marked files");
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2, "Should have 2 marked files");
         
         // Swap panes
         let _result = update_state(&mut state, Transition::SwapPanes);
         
         // Verify marked files are still marked
         assert!(
-            state.marking.is_marked(&left_file),
+            state.current_tab_mut().left_pane.marking.is_marked(&left_file),
             "Left file should still be marked after swap"
         );
         assert!(
-            state.marking.is_marked(&right_file),
+            state.current_tab_mut().left_pane.marking.is_marked(&right_file),
             "Right file should still be marked after swap"
         );
         assert_eq!(
-            state.marking.count(),
+            state.current_tab_mut().left_pane.marking.count(),
             2,
             "Should still have 2 marked files after swap"
         );

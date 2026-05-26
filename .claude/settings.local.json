@@ -4,7 +4,28 @@
       "PowerShell($lines = \\(Get-Content \"C:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\rwf\\\\logs\\\\session.log\" | Measure-Object -Line\\).Lines; Write-Output \"Total lines: $lines\")",
       "Bash(cargo build *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\twf\\\\\" -Depth 1 | Select-Object FullName, PSIsContainer)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "PowerShell(head -30)",
+      "Bash(xargs grep -l \"class TabSession\")",
+      "Bash(grep -n \"WildcardMark\\\\|\\\\\"\\\\\\\\*\\\\\"\\\\|FileMask\" c:/Users/user/source/repos/panzoux/rwf/rwf-lib/src/input/mod.rs)",
+      "Bash(grep -n \"current_location\\\\|render_path\\\\|pane_header\\\\|render_pane_header\\\\|>C:\\\\\\\\\\\\\\\\\" c:/Users/user/source/repos/panzoux/rwf/rwf-bin/src/ui/ -r --include=\"*.rs\")",
+      "Bash(Select-String -Pattern \"FAILED|test result|error\\\\[\")",
+      "Bash(Out-String)",
+      "Bash(ls \"c:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\twf\\\\src\" 2>&1)",
+      "Read(//c/Users/user/source/repos/panzoux/twf/**)",
+      "Bash(cargo check *)",
+      "Bash(grep -E \"^error|warning.*unused|^$\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-user-source-repos-panzoux-rwf\\\\26c9af31-de94-47d6-8453-7c7a85033c9f\\\\tasks\\\\b3mtwqu1l.output\")",
+      "Bash(Select-Object -Last 5)",
+      "PowerShell(cargo test --lib -- \"advanced_marking\" \"state::tests\" \"input::marking\" 2>&1)",
+      "PowerShell(cargo test --lib -- \"state::tests::test_mark\" \"state::tests::test_toggle\" \"state::tests::test_unmark\" \"input::marking_tests\" 2>&1)",
+      "PowerShell(cargo test --lib -- \"state::tests::test_mark\" \"state::tests::test_toggle\" \"state::tests::test_unmark\" \"state::tests::test_range\" \"state::tests::test_invert\" \"input::marking_tests\" \"model::marking\" \"model::tab_properties::unit_tests::test_tab_independence\" 2>&1)",
+      "PowerShell(cargo test --lib -- \"advanced_marking\" 2>&1)",
+      "PowerShell(cargo build 2>&1)",
+      "Bash(grep \"\\\\.cs$\")",
+      "Bash(ls \"c:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\")",
+      "Read(//c/Users/user/source/repos/panzoux/**)",
+      "Bash(grep -i \"version\\\\|backtick\\\\|\\\\`\")"
     ]
   }
 }

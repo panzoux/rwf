@@ -81,8 +81,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Mark two files
-        state.marking.mark(Location::Local(PathBuf::from("/test/file1.txt")));
-        state.marking.mark(Location::Local(PathBuf::from("/test/file2.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/test/file1.txt")));
+        state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/test/file2.txt")));
         
         let transitions = action_to_transitions(&state, &Action::Copy);
         
@@ -1115,10 +1115,10 @@ mod tests {
         let file1 = Location::Local(PathBuf::from("/test/file1.txt"));
         let file2 = Location::Local(PathBuf::from("/test/file2.txt"));
         
-        state.marking.mark(file1.clone());
-        state.marking.mark(file2.clone());
+        state.current_tab_mut().left_pane.marking.mark(file1.clone());
+        state.current_tab_mut().left_pane.marking.mark(file2.clone());
         
-        assert_eq!(state.marking.count(), 2, "Should have 2 marked files");
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2, "Should have 2 marked files");
         
         // Create and enqueue delete job
         let spec = JobSpec::new(JobKind::Delete {
@@ -1139,7 +1139,7 @@ mod tests {
         });
         
         // Verify files were unmarked
-        assert_eq!(state.marking.count(), 0, "All files should be unmarked after delete");
+        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0, "All files should be unmarked after delete");
         
         // Verify pane refresh was requested
         assert_eq!(result.panes_to_refresh.len(), 1, "Should request pane refresh");

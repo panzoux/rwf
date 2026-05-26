@@ -302,14 +302,10 @@ impl TextInput {
         self.history_index
     }
 
-    /// Set current history index
+    /// Set current history index (for state restoration — does NOT modify text or cursor)
     pub fn set_history_index(&mut self, index: usize) {
         if index < self.history.len() {
             self.history_index = index;
-            // Sync text with history at this index
-            self.text = self.history[index].clone();
-            self.cursor = self.text.chars().count();
-            self.update_scroll();
         }
     }
 }
