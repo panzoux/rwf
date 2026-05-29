@@ -100,6 +100,7 @@ impl KeyBindings {
         normal_mode.insert("m".to_string(), Action::Move);
         normal_mode.insert("D".to_string(), Action::Delete);
         normal_mode.insert("d".to_string(), Action::Delete);
+        normal_mode.insert("Ctrl+D".to_string(), Action::DeleteForce);
         normal_mode.insert("R".to_string(), Action::PatternRename);
         normal_mode.insert("r".to_string(), Action::Rename);
         normal_mode.insert("K".to_string(), Action::CreateDirectory);
@@ -139,7 +140,11 @@ impl KeyBindings {
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("Shift+m".to_string(), Action::MoveToRegisteredFolder);
-        
+
+        // Jump navigation
+        normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);
+        normal_mode.insert("N".to_string(), Action::ShowJumpToFileDialog);
+
         // File info
         normal_mode.insert("i".to_string(), Action::ShowFileInfoForCursor);
 
@@ -295,6 +300,7 @@ pub enum Action {
     Copy,
     Move,
     Delete,
+    DeleteForce,
     Rename,
     PatternRename,
     CreateDirectory,
@@ -350,7 +356,11 @@ pub enum Action {
     RegisterCurrentFolder,
     ShowRegisteredFolderDialog,
     MoveToRegisteredFolder,
-    
+
+    // Jump navigation
+    ShowJumpToPathDialog,
+    ShowJumpToFileDialog,
+
     // Miscellaneous
     Quit,
     ExitAndChangeDirectory,
@@ -442,6 +452,21 @@ pub fn format_key_event(event: &KeyEvent) -> String {
     parts.join("+")
 }
 
+
+fn delete_job_name(targets: &[Location]) -> String {
+    let file_name = |loc: &Location| -> String {
+        loc.path()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| loc.display_path())
+    };
+    match targets.len() {
+        0 => "Delete".to_string(),
+        1 => format!("Delete '{}'", file_name(&targets[0])),
+        2 => format!("Delete '{}', '{}'", file_name(&targets[0]), file_name(&targets[1])),
+        n => format!("Delete {} files: '{}', '{}'...", n, file_name(&targets[0]), file_name(&targets[1])),
+    }
+}
 
 /// Map an action to state transitions
 pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transition> {
@@ -790,6 +815,28 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             let pane = state.active_pane();
             let active_marked: Vec<_> = pane.entries.iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
+                .map(|e| (e.location.clone(), e.is_dir))
+                .collect();
+            let targets = if !active_marked.is_empty() {
+                active_marked
+            } else if let Some(entry) = pane.current_entry() {
+                vec![(entry.location.clone(), entry.is_dir)]
+            } else {
+                vec![]
+            };
+
+            if targets.is_empty() {
+                return vec![];
+            }
+
+            vec![Transition::ShowDialog {
+                dialog: crate::model::Dialog::delete_confirm(targets),
+            }]
+        }
+        Action::DeleteForce => {
+            let pane = state.active_pane();
+            let active_marked: Vec<_> = pane.entries.iter()
+                .filter(|e| pane.marking.is_marked(&e.location))
                 .map(|e| e.location.clone())
                 .collect();
             let targets = if !active_marked.is_empty() {
@@ -804,16 +851,15 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 return vec![];
             }
 
-            // Create job spec directly - NO confirmation dialog
-            // User already pressed 'D' intentionally, progress shown in task pane
+            let name = delete_job_name(&targets);
             let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete {
                 targets: targets.clone(),
             });
 
             vec![Transition::CreateAndStartFileJob {
                 spec: job_spec,
-                name: format!("Delete ({} files)", targets.len()),
-                description: format!("Delete {} files", targets.len()),
+                name: name.clone(),
+                description: name,
             }]
         }
         Action::Rename => {
@@ -1045,6 +1091,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 vec![]
             }
         }
+        Action::ShowJumpToPathDialog => {
+            vec![Transition::ShowJumpToPathDialog]
+        }
+        Action::ShowJumpToFileDialog => {
+            vec![Transition::ShowJumpToFileDialog]
+        }
         Action::ToggleTaskPanel => {
             vec![Transition::ToggleTaskPanel]
         }
@@ -1218,6 +1270,12 @@ mod help_dialog_tests;
 
 #[cfg(test)]
 mod registered_folder_tests;
+
+#[cfg(test)]
+mod jump_to_path_tests;
+
+#[cfg(test)]
+mod jump_to_file_tests;
 
 #[cfg(test)]
 mod sorting_tests;

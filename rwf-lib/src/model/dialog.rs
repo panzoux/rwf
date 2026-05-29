@@ -217,6 +217,11 @@ pub enum DialogContent {
         dest: crate::model::Location,
         file_count: usize,
     },
+    DeleteConfirm {
+        /// (location, is_dir) pairs to be deleted
+        targets: Vec<(crate::model::Location, bool)>,
+        scroll_offset: usize,
+    },
     Version {
         version: String,
         build_date: String,
@@ -264,6 +269,36 @@ pub enum DialogContent {
         left_current_pos: usize,
         right_current_pos: usize,
         active_pane: crate::model::ui::ActivePane,
+    },
+    /// Jump to Directory dialog — AND-filtered directory suggestions
+    JumpToPath {
+        query: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
+        /// Fast candidates shown immediately; async job appends disk-walk results
+        candidates: Vec<String>,
+        /// Current AND-filtered subset of candidates
+        suggestions: Vec<String>,
+        selected_index: usize,
+        /// Root path for recursive search and relative-path fallback
+        search_root: String,
+        /// Background job collecting more candidates; None when done
+        loading_job_id: Option<crate::job::JobId>,
+    },
+    /// Jump to File dialog — AND-filtered file+directory suggestions
+    JumpToFile {
+        query: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
+        /// Fast candidates shown immediately; async job appends disk-walk results
+        candidates: Vec<String>,
+        /// Current AND-filtered subset of candidates
+        suggestions: Vec<String>,
+        selected_index: usize,
+        /// Root path for recursive search and relative-path fallback
+        search_root: String,
+        /// Background job collecting more candidates; None when done
+        loading_job_id: Option<crate::job::JobId>,
     },
 }
 
@@ -748,7 +783,7 @@ impl Dialog {
     pub fn file_mask(current_mask: Option<&str>) -> Self {
         let initial = current_mask.unwrap_or("");
         Self {
-            title: "File Mask".to_string(),
+            title: "File Mask Filter".to_string(),
             content: DialogContent::FileMask {
                 input: initial.to_string(),
                 cursor_pos: initial.chars().count(), // char count, not byte len
@@ -781,6 +816,42 @@ impl Dialog {
                 cursor_pos: cursor,
                 scroll_pos: 0,
                 focused_field: 0,
+            },
+        }
+    }
+
+    /// Create a Jump to Directory dialog with pre-fetched candidates
+    pub fn jump_to_path(search_root: String, candidates: Vec<String>) -> Self {
+        let suggestions = candidates.clone();
+        Self {
+            title: "Jump to Directory".to_string(),
+            content: DialogContent::JumpToPath {
+                query: String::new(),
+                cursor_pos: 0,
+                scroll_pos: 0,
+                candidates,
+                suggestions,
+                selected_index: 0,
+                search_root,
+                loading_job_id: None,
+            },
+        }
+    }
+
+    /// Create a Jump to File dialog with pre-fetched candidates (files + dirs)
+    pub fn jump_to_file(search_root: String, candidates: Vec<String>) -> Self {
+        let suggestions = candidates.clone();
+        Self {
+            title: "Jump to File".to_string(),
+            content: DialogContent::JumpToFile {
+                query: String::new(),
+                cursor_pos: 0,
+                scroll_pos: 0,
+                candidates,
+                suggestions,
+                selected_index: 0,
+                search_root,
+                loading_job_id: None,
             },
         }
     }
@@ -1011,6 +1082,16 @@ impl Dialog {
                 dest,
                 file_count,
             },
+        }
+    }
+
+    /// Create a delete confirmation dialog
+    pub fn delete_confirm(targets: Vec<(crate::model::Location, bool)>) -> Self {
+        let n = targets.len();
+        let title = if n == 1 { "Delete File".to_string() } else { format!("Delete {} Files", n) };
+        Self {
+            title,
+            content: DialogContent::DeleteConfirm { targets, scroll_offset: 0 },
         }
     }
 }
@@ -1912,6 +1993,48 @@ impl DialogContent {
             DialogContent::SplitJoinDialog { mode, chunk_size_mb } => Some((mode, chunk_size_mb)),
             _ => None,
         }
+    }
+}
+
+/// AND-filter paths: all whitespace-split tokens must appear as case-insensitive substrings.
+pub fn filter_jump_to_path_suggestions(candidates: &[String], query: &str) -> Vec<String> {
+    let tokens: Vec<String> = query
+        .split_whitespace()
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
+        .collect();
+    if tokens.is_empty() {
+        candidates.to_vec()
+    } else {
+        candidates
+            .iter()
+            .filter(|p| {
+                let lower = p.to_lowercase();
+                tokens.iter().all(|t| lower.contains(t.as_str()))
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// AND-filter file/dir paths: same semantics as filter_jump_to_path_suggestions.
+pub fn filter_jump_to_file_suggestions(candidates: &[String], query: &str) -> Vec<String> {
+    let tokens: Vec<String> = query
+        .split_whitespace()
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
+        .collect();
+    if tokens.is_empty() {
+        candidates.to_vec()
+    } else {
+        candidates
+            .iter()
+            .filter(|p| {
+                let lower = p.to_lowercase();
+                tokens.iter().all(|t| lower.contains(t.as_str()))
+            })
+            .cloned()
+            .collect()
     }
 }
 

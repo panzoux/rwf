@@ -68,7 +68,8 @@ impl AppState {
         let dict_path = config.search.dict_path.as_deref();
         match search.load_migemo_dict_auto(dict_path) {
             Ok(_) => {
-                tracing::info!("Migemo dictionary loaded successfully");
+                search.use_migemo = true;
+                tracing::info!("Migemo dictionary loaded successfully; migemo search enabled");
             }
             Err(e) => {
                 tracing::warn!("Migemo dictionary load failed (Dictionary search feature will fallback to substring matching): {}", e);
@@ -600,6 +601,7 @@ impl AppState {
                             crate::job::JobKind::SplitFile { .. } => "File split",
                             crate::job::JobKind::JoinFiles { .. } => "File join",
                             crate::job::JobKind::CountDown { .. } => "Countdown",
+                            crate::job::JobKind::CollectJumpCandidates { .. } => "Collect jump candidates",
                         };
                         let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
                         self.dialogs.push(error_dialog);
@@ -684,9 +686,16 @@ impl AppState {
                                                 pane.apply_sort();
                                                 pane.apply_current_filter();
                                                 pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                                if let Some(name) = pane.pending_cursor_name.take() {
+                                                    if let Some(pos) = pane.entries.iter().position(|e| e.name == name) {
+                                                        pane.cursor = pos;
+                                                        pane.update_scroll(self.ui.layout.pane_height, self.config.ui.scroll_offset);
+                                                    }
+                                                }
                                                 result_obj.ui_changed = true;
                                             } else {
                                                 pane.is_loading = false;
+                                                pane.pending_cursor_name = None;
                                             }
                                             pane.active_job_id = None; // Job complete
                                         } else {
@@ -885,6 +894,47 @@ impl AppState {
                                         tab_id: self.tabs.active_index,
                                         pane: self.ui.active_pane,
                                     });
+                                }
+                            }
+                        }
+                        crate::job::JobKind::CollectJumpCandidates { include_files, .. } => {
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::JumpCandidates(new_candidates)) = result {
+                                let include_files = *include_files;
+                                let job_id_val = *job_id;
+                                for dialog in self.dialogs.stack.iter_mut().rev() {
+                                    let matched = match &dialog.content {
+                                        crate::model::dialog::DialogContent::JumpToFile { loading_job_id, .. } => *loading_job_id == Some(job_id_val),
+                                        crate::model::dialog::DialogContent::JumpToPath { loading_job_id, .. } => !include_files && *loading_job_id == Some(job_id_val),
+                                        _ => false,
+                                    };
+                                    if matched {
+                                        match &mut dialog.content {
+                                            crate::model::dialog::DialogContent::JumpToFile { candidates, suggestions, loading_job_id, query, .. } => {
+                                                let mut seen: std::collections::HashSet<String> = candidates.iter().cloned().collect();
+                                                for c in new_candidates {
+                                                    if seen.insert(c.clone()) {
+                                                        candidates.push(c.clone());
+                                                    }
+                                                }
+                                                *loading_job_id = None;
+                                                *suggestions = crate::model::dialog::filter_jump_to_file_suggestions(candidates, query);
+                                                result_obj.ui_changed = true;
+                                            }
+                                            crate::model::dialog::DialogContent::JumpToPath { candidates, suggestions, loading_job_id, query, .. } => {
+                                                let mut seen: std::collections::HashSet<String> = candidates.iter().cloned().collect();
+                                                for c in new_candidates {
+                                                    if seen.insert(c.clone()) {
+                                                        candidates.push(c.clone());
+                                                    }
+                                                }
+                                                *loading_job_id = None;
+                                                *suggestions = crate::model::dialog::filter_jump_to_path_suggestions(candidates, query);
+                                                result_obj.ui_changed = true;
+                                            }
+                                            _ => {}
+                                        }
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1256,6 +1306,40 @@ impl AppState {
                 let dialog = crate::model::Dialog::registered_folder_selector(folders);
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowJumpToPathDialog => {
+                let root = self.active_pane().current_location.display_path();
+                let fast_candidates = collect_jump_path_fast_candidates(self);
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CollectJumpCandidates {
+                    root: root.clone(),
+                    include_files: false,
+                    max_results: self.config.jump_nav.jump_path_max_results,
+                    max_depth: self.config.jump_nav.jump_path_max_depth,
+                });
+                let job_id = job_spec.id;
+                let mut dialog = crate::model::Dialog::jump_to_path(root, fast_candidates);
+                if let crate::model::dialog::DialogContent::JumpToPath { loading_job_id, .. } = &mut dialog.content {
+                    *loading_job_id = Some(job_id);
+                }
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::ShowJumpToFileDialog => {
+                let root = self.active_pane().current_location.display_path();
+                let fast_candidates = collect_jump_file_fast_candidates(self);
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CollectJumpCandidates {
+                    root: root.clone(),
+                    include_files: true,
+                    max_results: self.config.jump_nav.jump_file_max_results,
+                    max_depth: self.config.jump_nav.jump_file_max_depth,
+                });
+                let job_id = job_spec.id;
+                let mut dialog = crate::model::Dialog::jump_to_file(root, fast_candidates);
+                if let crate::model::dialog::DialogContent::JumpToFile { loading_job_id, .. } = &mut dialog.content {
+                    *loading_job_id = Some(job_id);
+                }
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::RegisterCurrentFolder { name, path } => {
                 let folder = crate::model::RegisteredFolder::new(name.clone(), path.clone());
@@ -1923,6 +2007,8 @@ pub enum Transition {
     LaunchConfigurationProgram,
     ShowRegisteredFolderDialog,
     RegisterCurrentFolder { name: String, path: String },
+    ShowJumpToPathDialog,
+    ShowJumpToFileDialog,
     NavigateToRegisteredFolder { folder_index: usize },
     MoveToRegisteredFolder { folder_index: usize },
     
@@ -2170,6 +2256,70 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
 
         _ => StateUpdateResult::none(),
     }
+}
+
+/// Collect directory candidates for the Jump to Path dialog.
+///
+/// Collect fast (instant) candidates for Jump to Directory dialog.
+/// Returns current pane subdirs + registered folders + navigation history.
+/// The disk walk is done asynchronously by a CollectJumpCandidates job.
+fn collect_jump_path_fast_candidates(state: &AppState) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut candidates: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    // 1. Current pane subdirs
+    let pane = state.active_pane();
+    for entry in &pane.entries {
+        if entry.is_dir && entry.name != ".." {
+            let p = entry.location.display_path();
+            if seen.insert(p.clone()) {
+                candidates.push(p);
+            }
+        }
+    }
+
+    // 2. Registered folders (expanded)
+    for folder in &state.registered_folders.folders {
+        let p = state.registered_folders.expand_path(folder)
+            .to_string_lossy()
+            .into_owned();
+        if !p.is_empty() && seen.insert(p.clone()) {
+            candidates.push(p);
+        }
+    }
+
+    // 3. Navigation history (both panes, current tab)
+    let tab = state.current_tab();
+    let (left_stack, _) = tab.history.stack_and_pos(crate::model::ui::ActivePane::Left);
+    let (right_stack, _) = tab.history.stack_and_pos(crate::model::ui::ActivePane::Right);
+    for loc in left_stack.iter().chain(right_stack.iter()) {
+        let p = loc.display_path();
+        if !p.is_empty() && seen.insert(p.clone()) {
+            candidates.push(p);
+        }
+    }
+
+    candidates
+}
+
+/// Collect fast (instant) candidates for Jump to File dialog.
+/// Returns current pane items (files AND dirs). The disk walk is async.
+fn collect_jump_file_fast_candidates(state: &AppState) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let pane = state.active_pane();
+    for entry in &pane.entries {
+        if entry.name == ".." { continue; }
+        let p = entry.location.display_path();
+        if seen.insert(p.clone()) {
+            candidates.push(p);
+        }
+    }
+
+    candidates
 }
 
 /// Extract `\\server\share` root from a `Location::Local` network path.

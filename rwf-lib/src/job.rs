@@ -142,6 +142,13 @@ pub enum JobKind {
         duration_secs: u32,
         start_value: u32,
     },
+    /// Collect jump-navigation candidates by walking the filesystem
+    CollectJumpCandidates {
+        root: String,
+        include_files: bool,
+        max_results: usize,
+        max_depth: usize,
+    },
 }
 
 /// Action to perform with custom function output
@@ -197,6 +204,7 @@ pub enum SuccessData {
     SearchResults(Vec<crate::model::FileEntry>),
     FileContents(Vec<u8>),
     ComparisonResult(FileDiff),
+    JumpCandidates(Vec<String>),
     None,
 }
 

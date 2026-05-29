@@ -45,8 +45,8 @@
 
 | # | 機能 | 詳細 | テスト方針 |
 |---|------|------|-----------|
-| 2.1 | **Jump to Path ダイアログ** | 複数キーワードAND絞り込み、非同期補完 | パス補完・AND検索のユニットテスト |
-| 2.2 | **Jump to File ダイアログ** | 再帰検索、ignoreリスト対応 | 実FS上の統合テスト (tempfile) |
+| 2.1 | **Jump to Path ダイアログ** | 複数キーワードAND絞り込み、非同期補完 | パス補完・AND検索のユニットテスト | `[x]` |
+| 2.2 | **Jump to File ダイアログ** | 再帰検索、ignoreリスト対応 | 実FS上の統合テスト (tempfile) | `[x]` |
 
 **推定規模**: 各800〜1200行  
 **リスク**: 中（再帰検索の非同期キャンセル処理）
@@ -226,7 +226,22 @@ Phase 7 (随時)     → 差別化機能
 - 残課題・ブロッカー
 
 最終更新: 2026-05-26  
-次の作業: Phase 1.11 ヘルプダイアログ
+次の作業: Phase 2.2 Jump to File ダイアログ
+
+## 2.1 実装内訳（2026-05-26）
+- `DialogContent::JumpToPath { query, cursor_pos, scroll_pos, candidates, suggestions, selected_index, search_root }` を dialog.rs に追加
+- `Dialog::jump_to_path(search_root, candidates)` コンストラクタ追加
+- `filter_jump_to_path_suggestions(candidates, query)` — スペース区切りトークンの AND 絞り込み関数（テスト可能）
+- `collect_jump_candidates(state, root)` — ダイアログ開時に候補収集: カレントペイン dir → 登録フォルダ → ナビゲーション履歴 → 再帰ディスク探索（depth 3, max 100）
+- `Transition::ShowJumpToPathDialog` — 候補収集してダイアログ push
+- `Action::ShowJumpToPathDialog` + `J` キーバインド（twf の `Shift+J` 相当）
+- `dialog/mod.rs`:
+  - height: suggestions.min(10)+5, min 8; 80% height グループ; 70% width
+  - `render_jump_to_path_dialog()`: 入力行（クエリ + ヒット数）→ 区切り線 → 候補リスト（スクロール対応）→ 区切り線 → フルパスプレビュー → ヒント行
+  - input handler: ↑↓/j/k で選択移動、文字入力でリアルタイム AND フィルタ、Backspace/Ctrl+K でクエリ編集、Enter/Esc
+  - process_dialog_confirmation: 選択パスへ ChangeLocation（フォールバック: クエリを直接パスとして解釈）
+- `jump_to_path_tests.rs` — 11テスト: キーバインド(1)、ダイアログ開く(2)、初期状態(3)、フィルタロジック(5)
+- 全11テスト合格
 
 ## 1.10 実装内訳（2026-05-26）
 - モーダルダイアログ方式を廃止し、タスクペインへの出力方式を採用

@@ -326,8 +326,48 @@ impl SearchModel {
     
     pub fn filter_entries(&mut self, entries: &[FileEntry]) {
         self.results = entries.iter().filter(|e| self.matches(e)).cloned().collect();
-        if self.results.is_empty() { self.current_index = None; } 
+        if self.results.is_empty() { self.current_index = None; }
         else if self.current_index.map_or(true, |idx| idx >= self.results.len()) { self.current_index = Some(0); }
+    }
+
+    /// Filter a list of path strings with AND-token matching, using migemo when enabled.
+    pub fn filter_paths(&self, candidates: &[String], query: &str) -> Vec<String> {
+        let tokens: Vec<&str> = query.split_whitespace().filter(|t| !t.is_empty()).collect();
+        if tokens.is_empty() {
+            return candidates.to_vec();
+        }
+        candidates.iter()
+            .filter(|path| tokens.iter().all(|token| self.path_matches_token(path, token)))
+            .cloned()
+            .collect()
+    }
+
+    fn path_matches_token(&self, path: &str, token: &str) -> bool {
+        if self.use_migemo && self.migemo_dict.is_some() {
+            let mut cache = self.migemo_cache.borrow_mut();
+            let cache_key = format!("p:{}:{}", self.case_sensitive, token);
+            if let Some(re) = cache.get(&cache_key) {
+                return re.is_match(path);
+            }
+            if let Some(ref dict) = self.migemo_dict {
+                let migemo_pattern = migemo_query(token.to_string(), dict, &RegexOperator::Default);
+                let final_pattern = if self.case_sensitive {
+                    migemo_pattern
+                } else {
+                    format!("(?i){}", migemo_pattern)
+                };
+                if let Ok(re) = Regex::new(&final_pattern) {
+                    let result = re.is_match(path);
+                    if cache.len() >= 100 {
+                        if let Some(key) = cache.keys().next().cloned() { cache.remove(&key); }
+                    }
+                    cache.insert(cache_key, re);
+                    return result;
+                }
+            }
+        }
+        if self.case_sensitive { path.contains(token) }
+        else { path.to_lowercase().contains(&token.to_lowercase()) }
     }
     
     pub fn current_result(&self) -> Option<&FileEntry> {

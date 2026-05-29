@@ -1,5 +1,8 @@
 {
   "permissions": {
-    "allow": ["powershell"]
+    "allow": [
+      "Bash(Get-Content \"c:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\rwf\\\\logs\\\\session.log\")",
+      "Bash(Select-Object -Last 150)"
+    ]
   }
 }

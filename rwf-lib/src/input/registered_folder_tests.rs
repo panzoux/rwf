@@ -110,9 +110,10 @@ mod tests {
     fn test_register_folder_adds_entry() {
         let mut state = AppState::new(AppConfig::default());
         let initial_count = state.registered_folders.folders.len();
+        let path = state.active_pane().current_location.display_path();
         update_state(&mut state, Transition::RegisterCurrentFolder {
             name: "MyFolder".to_string(),
-            path: state.active_pane().current_location.display_path(),
+            path,
         });
         assert_eq!(state.registered_folders.folders.len(), initial_count + 1);
         let last = state.registered_folders.folders.last().unwrap();

@@ -67,6 +67,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub text_input: TextInputConfig,
 
+    /// Jump navigation configuration (Jump to File / Jump to Directory dialogs)
+    #[serde(default)]
+    pub jump_nav: JumpNavConfig,
+
     /// Background polling interval in milliseconds for detecting external filesystem changes.
     /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
     #[serde(default = "default_polling_interval_ms")]
@@ -74,6 +78,40 @@ pub struct AppConfig {
 }
 
 fn default_polling_interval_ms() -> u32 { 1000 }
+
+/// Configuration for Jump to File / Jump to Directory dialogs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct JumpNavConfig {
+    /// Maximum number of file+dir candidates collected for Jump to File (default: 1000)
+    #[serde(default = "default_jump_file_max_results")]
+    pub jump_file_max_results: usize,
+    /// Recursive search depth for Jump to File (default: 4)
+    #[serde(default = "default_jump_file_max_depth")]
+    pub jump_file_max_depth: usize,
+    /// Maximum number of directory candidates collected for Jump to Directory (default: 500)
+    #[serde(default = "default_jump_path_max_results")]
+    pub jump_path_max_results: usize,
+    /// Recursive search depth for Jump to Directory (default: 3)
+    #[serde(default = "default_jump_path_max_depth")]
+    pub jump_path_max_depth: usize,
+}
+
+fn default_jump_file_max_results() -> usize { 1000 }
+fn default_jump_file_max_depth()   -> usize { 4 }
+fn default_jump_path_max_results() -> usize { 500 }
+fn default_jump_path_max_depth()   -> usize { 3 }
+
+impl Default for JumpNavConfig {
+    fn default() -> Self {
+        Self {
+            jump_file_max_results: default_jump_file_max_results(),
+            jump_file_max_depth:   default_jump_file_max_depth(),
+            jump_path_max_results: default_jump_path_max_results(),
+            jump_path_max_depth:   default_jump_path_max_depth(),
+        }
+    }
+}
 
 /// Archive configuration for compression operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +265,7 @@ impl Default for AppConfig {
             archive: ArchiveConfig::default(),
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
+            jump_nav: JumpNavConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
             is_creating_tab: false,
         }

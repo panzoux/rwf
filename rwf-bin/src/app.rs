@@ -367,13 +367,21 @@ impl App {
         // 1. Dialog handling
         if let Some(dialog) = self.state.dialogs.current_mut() {
             tracing::info!("[KEY] consumed by dialog: {:?}", dialog.title);
-            match crate::ui::dialog::handle_dialog_input(dialog, key) {
+            match crate::ui::dialog::handle_dialog_input(dialog, key, Some(&self.state.search)) {
                 crate::ui::dialog::DialogAction::Cancel => {
                     if let rwf_lib::model::dialog::DialogContent::FileConflict { .. } = &dialog.content { self.pending_conflict_job = None; }
                     if let rwf_lib::model::dialog::DialogContent::PatternRename { .. } = &dialog.content {
                         self.pattern_rename_dirty = false;
                         self.pattern_rename_last_changed = None;
                         self.pattern_rename_pending = None;
+                    }
+                    let loading_job = match &dialog.content {
+                        rwf_lib::model::dialog::DialogContent::JumpToFile { loading_job_id, .. } => *loading_job_id,
+                        rwf_lib::model::dialog::DialogContent::JumpToPath { loading_job_id, .. } => *loading_job_id,
+                        _ => None,
+                    };
+                    if let Some(job_id) = loading_job {
+                        self.state.jobs.request_cancel(job_id);
                     }
                     self.state.dialogs.pop();
                     return true;
@@ -413,6 +421,25 @@ impl App {
                                 self.pattern_rename_pending = None;
                             }
                             if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
+                                // For Delete jobs confirmed via dialog, register background job for task panel logs
+                                if let JobKind::Delete { ref targets } = job_spec.kind {
+                                    let job_name = crate::ui::dialog::delete_job_name(targets);
+                                    let tab_id = self.state.tabs.active_index;
+                                    let tab_name = format!("{}|{}",
+                                        self.state.current_tab().left_pane.current_location.display_path(),
+                                        self.state.current_tab().right_pane.current_location.display_path()
+                                    );
+                                    let bg_id = self.state.background_jobs.start_job(
+                                        job_name.clone(), job_name.clone(), tab_id, tab_name, job_spec.clone()
+                                    );
+                                    self.task_panel.add_pending_log(format!(
+                                        "{} [Job {}] [Tab {}] {}: Started",
+                                        chrono::Local::now().format("[%H:%M:%S]"),
+                                        bg_id.short_id, tab_id + 1, job_name
+                                    ));
+                                    let h = self.state.ui.layout.task_panel_height;
+                                    self.task_panel.scroll_to_end(h);
+                                }
                                 self.state.jobs.start_job(job_spec.clone());
                                 if let Some(ref pool) = self.worker_pool { pool.submit_job(job_spec); }
                             }

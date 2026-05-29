@@ -103,6 +103,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::CountDown { duration_secs, start_value } => {
                 self.execute_countdown(*duration_secs, *start_value, &spec).await
             }
+            JobKind::CollectJumpCandidates { root, include_files, max_results, max_depth } => {
+                self.execute_collect_jump_candidates(root, *include_files, *max_results, *max_depth, &spec.cancel_token).await
+            }
         };
         
         // Send completion event based on result
@@ -1099,6 +1102,62 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
         
         OpResult::Success(SuccessData::None)
+    }
+
+    /// Walk the filesystem collecting jump-navigation candidates.
+    /// Yields periodically so other tasks can run; respects cancellation.
+    async fn execute_collect_jump_candidates(
+        &self,
+        root: &str,
+        include_files: bool,
+        max_results: usize,
+        max_depth: usize,
+        cancel: &CancellationToken,
+    ) -> OpResult {
+        const IGNORE: &[&str] = &[
+            ".git", ".svn", ".hg", "node_modules", "target", "__pycache__",
+            ".cache", ".tox", "venv", ".venv",
+        ];
+
+        let mut candidates: Vec<String> = Vec::new();
+        let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(std::path::PathBuf::from(root), 0)];
+
+        while let Some((dir, depth)) = stack.pop() {
+            if cancel.is_cancelled() {
+                return OpResult::Cancelled;
+            }
+            if candidates.len() >= max_results {
+                break;
+            }
+            if let Ok(read_dir) = std::fs::read_dir(&dir) {
+                for entry in read_dir.flatten() {
+                    if cancel.is_cancelled() {
+                        return OpResult::Cancelled;
+                    }
+                    let path = entry.path();
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if IGNORE.iter().any(|ign| name_str == *ign) {
+                        continue;
+                    }
+                    let is_dir = path.is_dir();
+                    if is_dir || include_files {
+                        let p = path.to_string_lossy().into_owned();
+                        candidates.push(p);
+                        if candidates.len() >= max_results {
+                            break;
+                        }
+                    }
+                    if is_dir && depth < max_depth {
+                        stack.push((path, depth + 1));
+                    }
+                }
+            }
+            // Yield after each directory to keep the event loop responsive
+            tokio::task::yield_now().await;
+        }
+
+        OpResult::Success(SuccessData::JumpCandidates(candidates))
     }
 }
 

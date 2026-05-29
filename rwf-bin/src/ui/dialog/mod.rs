@@ -12,7 +12,7 @@ mod job_manager;
 
 pub use compression::{render_compression_dialog, CompressionDialogState};
 pub use extract_confirm::ExtractionConfirmDialog;
-pub use frame::{centered_rect, render_dialog_buttons, render_dialog_frame};
+pub use frame::{centered_rect_abs, render_dialog_buttons, render_dialog_frame};
 pub use job_manager::{
     render_job_manager_dialog, 
     JobManagerDialogState, 
@@ -32,6 +32,33 @@ use rwf_lib::config::ViMode;
 use tracing::debug;
 
 use super::{smart_truncate, SmartText, TruncateMode};
+
+/// Chunk `text` into at most `max_lines` rows of `width` terminal columns, respecting double-width chars.
+fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'static>> {
+    use unicode_width::UnicodeWidthChar;
+    let w = width as usize;
+    if text.is_empty() || w == 0 { return vec![]; }
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos < text.len() && out.len() < max_lines as usize {
+        let prefix = if out.is_empty() { 1usize } else { 0 };
+        let avail = w.saturating_sub(prefix);
+        let mut cols = 0usize;
+        let mut end = pos;
+        for c in text[pos..].chars() {
+            let cw = c.width().unwrap_or(1);
+            if cols + cw > avail { break; }
+            cols += cw;
+            end += c.len_utf8();
+        }
+        if end == pos { break; }
+        let chunk = &text[pos..end];
+        let s = if out.is_empty() { format!(" {chunk}") } else { chunk.to_string() };
+        out.push(Line::from(s));
+        pos = end;
+    }
+    out
+}
 
 /// Result of dialog input handling
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -81,6 +108,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Extraction dialog: ~6 lines content
             6u16
         }
+        DialogContent::DeleteConfirm { targets, .. } => {
+            // layout: header(1)+blank(1)+list(N≤12) | spacer(1) | hint(1) | buttons(3)
+            // min_content = (N+2) + 1 + 1 + 3 = N + 7
+            (targets.len().min(12) as u16 + 7).max(10)
+        }
         DialogContent::JobManager { .. } => {
             // Job Manager dialog: calculate from constraints (Part 6.2)
             calculate_job_manager_dialog_min_height()
@@ -93,7 +125,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Sort key list (4) + spacer (1) + order list (2) + spacer (1) + buttons (3) = 11
             11u16
         }
-        DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } => {
+        DialogContent::FileMask { .. } => {
+            // blank(1) + prompt(1) + textbox(1) + hint1(1) + hint2(1) + hint3(1) + blank(1) + buttons(1) = 8
+            8u16
+        }
+        DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } => {
             // prompt(1) + textbox(1) + hint(1) + spacer(1) + buttons(1) = 5
             5u16
         }
@@ -112,6 +148,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::RegisteredFolderSelector { folders, .. } => {
             // list + hint(1) + search(1)
             (folders.len() as u16 + 2).max(6)
+        }
+        DialogContent::JumpToPath { suggestions, .. } => {
+            // input(1) + sep(1) + list(up to 10) + sep(1) + preview(1) + hint(1) = list+5, min 8
+            (suggestions.len().min(10) as u16 + 5).max(8)
+        }
+        DialogContent::JumpToFile { suggestions, .. } => {
+            (suggestions.len().min(10) as u16 + 5).max(8)
         }
         DialogContent::FileInfo { .. } => 11u16,  // name+path+size+type+3×datetime + hint
         DialogContent::PatternRename { preview, .. } => {
@@ -138,11 +181,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Use exact minimum height, but ensure it fits on screen
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::HistoryDialog { .. } | DialogContent::DriveSelection { .. } | DialogContent::PatternRename { .. } | DialogContent::Help { .. } | DialogContent::RegisteredFolderSelector { .. } => {
+        DialogContent::HistoryDialog { .. } | DialogContent::DriveSelection { .. } | DialogContent::PatternRename { .. } | DialogContent::Help { .. } | DialogContent::RegisteredFolderSelector { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } | DialogContent::DeleteConfirm { .. } => {
             let percent_height = (screen_height * 80) / 100;
             percent_height.max(min_dialog_height).min(screen_height.saturating_sub(2))
         }
-        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } => {
+        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
@@ -153,51 +196,30 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }
     };
 
-    // Convert to percentage for centered_rect
-    let height_percent = if screen_height > 0 {
-        ((dialog_height as u32 * 100) / screen_height as u32) as u16
-    } else {
-        70
-    };
-
-    // For Job Manager dialog, use fixed width of 64 (Part 6.2)
-    // For File Conflict dialog, use min 64, max 80% of terminal width
-    let width_percent = match &dialog.content {
+    // Compute dialog width in absolute pixels to avoid double-floor rounding
+    let dialog_width: u16 = match &dialog.content {
         DialogContent::JobManager { .. } => {
-            // Calculate width percent for 64 characters
-            let screen_width = frame.area().width;
-            if screen_width > 0 {
-                // Cap at 95% to leave margins, minimum 60%
-                let calculated = ((64u32 * 100) / screen_width as u32) as u16;
-                calculated.min(95).max(60)
-            } else {
-                60
-            }
+            // Fixed 64 columns, capped to screen
+            64u16.min(screen_width.saturating_sub(2)).max(40)
         }
         DialogContent::FileConflict { .. } => {
-            // Min 64 chars, max 80% of terminal width
-            let screen_width = frame.area().width;
-            if screen_width > 0 {
-                let max_width = ((screen_width as u32 * 80) / 100) as u16;
-                let min_width = 64u16;
-                let dialog_width = min_width.max(max_width.min(min_width));
-                let calculated = ((dialog_width as u32 * 100) / screen_width as u32) as u16;
-                calculated.min(95).max(50)
-            } else {
-                60
-            }
+            // Min 64 chars, up to 80% of terminal width
+            let w80 = (screen_width * 80) / 100;
+            64u16.max(w80).min(screen_width.saturating_sub(2)).max(40)
         }
         DialogContent::DriveSelection { .. } | DialogContent::RegisteredFolderSelector { .. } => {
-            // 60-char wide like twf, min 40%
-            let calculated = ((60u32 * 100) / screen_width as u32) as u16;
-            calculated.min(90).max(40)
+            60u16.min(screen_width.saturating_sub(2)).max(40)
         }
-        DialogContent::PatternRename { .. } => 80,
-        DialogContent::Help { .. } => 70,
-        _ => 60,  // Default 60% for other dialogs
+        DialogContent::PatternRename { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } => {
+            ((screen_width * 80) / 100).max(40).min(screen_width.saturating_sub(2))
+        }
+        DialogContent::Help { .. } => {
+            ((screen_width * 70) / 100).max(40).min(screen_width.saturating_sub(2))
+        }
+        _ => ((screen_width * 60) / 100).max(40).min(screen_width.saturating_sub(2)),
     };
 
-    let area = centered_rect(width_percent, height_percent, frame.area());
+    let area = centered_rect_abs(dialog_width, dialog_height, frame.area());
 
     // Render common frame (border, title)
     let content_area = render_dialog_frame(frame, &dialog.title, area);
@@ -281,6 +303,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::RegisteredFolderSelector { folders, selected_index, filter } => {
             render_registered_folder_selector(frame, content_area, folders, *selected_index, filter);
         }
+        DialogContent::JumpToPath { query, cursor_pos, suggestions, selected_index, loading_job_id, .. } => {
+            render_jump_to_path_dialog(frame, content_area, query, *cursor_pos, suggestions, *selected_index, loading_job_id.is_some());
+        }
+        DialogContent::JumpToFile { query, cursor_pos, suggestions, selected_index, loading_job_id, .. } => {
+            render_jump_to_file_dialog(frame, content_area, query, *cursor_pos, suggestions, *selected_index, loading_job_id.is_some());
+        }
         DialogContent::FileInfo {
             file_name, file_path, size, created, modified, accessed,
             is_dir, is_readonly,
@@ -316,6 +344,84 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }
         DialogContent::Help { content, language, scroll_pos } => {
             render_help_dialog(frame, content_area, content, language, *scroll_pos);
+        }
+        DialogContent::DeleteConfirm { targets, scroll_offset } => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(3),    // header + blank + list items
+                    Constraint::Length(1), // spacer (hint 1 line down)
+                    Constraint::Length(1), // hint
+                    Constraint::Length(3), // buttons
+                ])
+                .split(content_area);
+
+            let base  = Style::default().fg(Color::Black).bg(Color::Gray);
+            let dir_s = Style::default().fg(Color::Black).bg(Color::Gray).add_modifier(Modifier::BOLD);
+            let hint  = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+            let w = content_area.width.saturating_sub(2) as usize;
+            let total = targets.len();
+
+            // Header
+            let header_txt = if total == 1 { "Delete this item?".to_string() }
+                             else { format!("Delete these {} items?", total) };
+            frame.render_widget(
+                Paragraph::new(smart_truncate(&header_txt, w, "…")).style(base),
+                Rect::new(chunks[0].x + 1, chunks[0].y, w as u16, 1),
+            );
+
+            // List items (chunks[0]: row 0 = header, row 1 = up-indicator or blank, rows 2+ = items)
+            let list_h = (chunks[0].height as usize).saturating_sub(2);
+            let max_scroll = total.saturating_sub(list_h);
+            let scroll = (*scroll_offset).min(max_scroll);
+            let remaining_below = total.saturating_sub(scroll + list_h);
+            let show_up   = scroll > 0;
+            let show_down = remaining_below > 0;
+
+            // Up indicator in row 1 (the blank line), never displaces items
+            if show_up {
+                frame.render_widget(
+                    Paragraph::new(format!("  ↑ {} more above", scroll)).style(hint),
+                    Rect::new(chunks[0].x + 1, chunks[0].y + 1, w as u16, 1),
+                );
+            }
+
+            // Items always start at row 2, no offset for indicators
+            for row in 0..list_h {
+                let item_idx = scroll + row;
+                if item_idx >= total { break; }
+                let y = chunks[0].y + 2 + row as u16;
+                let (loc, is_dir) = &targets[item_idx];
+                let raw_name = loc.path()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| loc.display_path());
+                let label = if *is_dir { format!("  {}/", raw_name) } else { format!("  {}", raw_name) };
+                let truncated = smart_truncate(&label, w, "…");
+                frame.render_widget(
+                    Paragraph::new(truncated).style(if *is_dir { dir_s } else { base }),
+                    Rect::new(chunks[0].x + 1, y, w as u16, 1),
+                );
+            }
+
+            // Down indicator in chunks[1] (spacer row), never displaces items
+            if show_down {
+                frame.render_widget(
+                    Paragraph::new(format!("  ↓ {} more below", remaining_below)).style(hint),
+                    Rect::new(chunks[1].x + 1, chunks[1].y, w as u16, 1),
+                );
+            }
+
+            // Hint (chunks[2])
+            let hint_txt = if total > 1 { "↑↓:scroll  Enter:delete  Esc:cancel" }
+                           else { "Enter:delete  Esc:cancel" };
+            frame.render_widget(
+                Paragraph::new(smart_truncate(hint_txt, w, "…")).style(hint),
+                Rect::new(chunks[2].x + 1, chunks[2].y, w as u16, 1),
+            );
+
+            // Buttons (chunks[3])
+            render_dialog_buttons(frame, chunks[3], &dialog.content, 0);
         }
         _ => {
             // Split content area for buttons (generic layout)
@@ -524,39 +630,50 @@ fn render_file_mask_dialog(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1), // blank
             Constraint::Length(1), // prompt label
             Constraint::Length(1), // textbox
-            Constraint::Length(1), // hint
-            Constraint::Length(1), // spacer
+            Constraint::Length(1), // hint1: Multiple patterns
+            Constraint::Length(1), // hint2: Exclusion
+            Constraint::Length(1), // hint3: Regexp
+            Constraint::Length(1), // blank/spacer
             Constraint::Length(1), // buttons
         ])
         .split(area);
 
-    let base_style   = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint_style   = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let item_width   = area.width.saturating_sub(4);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let item_width = area.width.saturating_sub(4);
 
     // Prompt
     frame.render_widget(
-        Paragraph::new("Enter mask pattern:").style(base_style),
-        Rect::new(area.x + 2, chunks[0].y, item_width, 1),
+        Paragraph::new("Enter file mask (* = any chars, ? = single char):").style(base_style),
+        Rect::new(area.x + 2, chunks[1].y, item_width, 1),
     );
 
-    // Textbox — delegate rendering to TextInput widget (TEXT_INPUT_WIDGET.md rule #4)
+    // Textbox
     {
         use crate::ui::text_input::TextInput;
         let mut ti = TextInput::new(Some(input.to_string()), rwf_lib::config::EditMode::Emacs);
-        ti.set_original_text(input.to_string()); // rule #1: for Vi U (revert) command
+        ti.set_original_text(input.to_string());
         ti.set_cursor(cursor_pos);
         ti.set_scroll(scroll_pos);
         ti.set_width(item_width);
-        ti.render(frame, Rect::new(area.x + 2, chunks[1].y, item_width, 1), focused_field == 0);
+        ti.render(frame, Rect::new(area.x + 2, chunks[2].y, item_width, 1), focused_field == 0);
     }
 
-    // Hint
+    // Hint lines
     frame.render_widget(
-        Paragraph::new("(* = any chars, ? = one char, empty = show all)").style(hint_style),
-        Rect::new(area.x + 2, chunks[2].y, item_width, 1),
+        Paragraph::new("Multiple patterns: *.txt *.doc").style(hint_style),
+        Rect::new(area.x + 2, chunks[3].y, item_width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new("Exclusion: :*.txt :temp*").style(hint_style),
+        Rect::new(area.x + 2, chunks[4].y, item_width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new("Regexp: /.*\\.json$/ /TEST/i /Test/").style(hint_style),
+        Rect::new(area.x + 2, chunks[5].y, item_width, 1),
     );
 
     // Buttons [*OK*] [Cancel]
@@ -570,7 +687,7 @@ fn render_file_mask_dialog(
     ]);
     frame.render_widget(
         Paragraph::new(btn_line).alignment(Alignment::Center).style(base_style),
-        chunks[4],
+        chunks[7],
     );
 }
 
@@ -876,6 +993,215 @@ fn render_registered_folder_selector(
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
         );
     }
+}
+
+fn render_jump_to_path_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    query: &str,
+    cursor_pos: usize,
+    suggestions: &[String],
+    selected_index: usize,
+    is_loading: bool,
+) {
+    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let input_style    = Style::default().fg(Color::White).bg(Color::Black);
+    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let preview_style  = Style::default().fg(Color::White).bg(Color::Black);
+
+    let clamped_sel = if suggestions.is_empty() { 0 } else { selected_index.min(suggestions.len() - 1) };
+    let item_width = area.width.saturating_sub(4) as usize;
+
+    // ── Row 0: input field + hit count ────────────────────────────────────
+    let status = if is_loading {
+        if suggestions.is_empty() { "searching…".to_string() } else { format!("{}+ hits", suggestions.len()) }
+    } else if suggestions.is_empty() { "No match".to_string() }
+    else { format!("{} hits", suggestions.len()) };
+    let status_width: u16 = 10;
+    let input_width = area.width.saturating_sub(status_width + 3).max(4);
+    // Horizontal scroll: show the end of the query when cursor is near it
+    let q_chars: Vec<char> = query.chars().collect();
+    let visible_chars = input_width as usize;
+    let scroll = if cursor_pos > visible_chars { cursor_pos - visible_chars } else { 0 };
+    let visible_query: String = q_chars.iter().skip(scroll).take(visible_chars).collect();
+    let input_text = format!("{:<width$}", visible_query, width = visible_chars);
+    frame.render_widget(
+        Paragraph::new(input_text).style(input_style),
+        Rect::new(area.x + 1, area.y, input_width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new(format!("{:>width$}", status, width = status_width as usize)).style(base_style),
+        Rect::new(area.x + 1 + input_width, area.y, status_width, 1),
+    );
+
+    // ── Row 1: separator ──────────────────────────────────────────────────
+    frame.render_widget(
+        Paragraph::new("─".repeat(item_width)).style(sep_style),
+        Rect::new(area.x + 2, area.y + 1, item_width as u16, 1),
+    );
+
+    // ── Rows 2..height-6: suggestion list ────────────────────────────────
+    // Footer = sep(1) + preview(4) + hint(1) = 6 rows
+    let header_rows: u16 = 2;
+    let footer_rows: u16 = 6;
+    let list_height = area.height.saturating_sub(header_rows + footer_rows) as usize;
+    let scroll_start = if list_height > 0 && clamped_sel >= list_height {
+        clamped_sel + 1 - list_height
+    } else {
+        0
+    };
+    for row in 0..list_height {
+        let si = scroll_start + row;
+        if si >= suggestions.len() { break; }
+        let path = &suggestions[si];
+        let label = smart_truncate(path, item_width.saturating_sub(2), "…");
+        let style = if si == clamped_sel { selected_style } else { base_style };
+        frame.render_widget(
+            Paragraph::new(format!(" {}", label)).style(style),
+            Rect::new(area.x + 2, area.y + header_rows + row as u16, item_width as u16, 1),
+        );
+    }
+
+    // ── Row height-6: separator before preview ────────────────────────────
+    let sep2_y = area.y + area.height.saturating_sub(6);
+    frame.render_widget(
+        Paragraph::new("─".repeat(item_width)).style(sep_style),
+        Rect::new(area.x + 2, sep2_y, item_width as u16, 1),
+    );
+
+    // ── Rows height-5..height-2: full-path preview (4 lines, char-chunked) ─
+    let preview_y = area.y + area.height.saturating_sub(5);
+    let preview_w = area.width.saturating_sub(2);
+    let preview_lines = if !suggestions.is_empty() && clamped_sel < suggestions.len() {
+        let raw = &suggestions[clamped_sel];
+        let text = if raw.len() > 1024 { &raw[..1024] } else { raw.as_str() };
+        chunk_path_preview(text, preview_w, 4)
+    } else { vec![] };
+    frame.render_widget(
+        Paragraph::new(preview_lines).style(preview_style),
+        Rect::new(area.x + 1, preview_y, preview_w, 4),
+    );
+
+    // ── Row height-1: hint ────────────────────────────────────────────────
+    let hint_y = area.y + area.height.saturating_sub(1);
+    frame.render_widget(
+        Paragraph::new("↑↓:select  Enter:jump  Esc:cancel  Bksp:del  ^K:clear").style(hint_style),
+        Rect::new(area.x + 2, hint_y, item_width as u16, 1),
+    );
+
+    // ── Cursor rendering on input row ─────────────────────────────────────
+    let cursor_x_in_visible = cursor_pos.saturating_sub(scroll);
+    let cursor_screen_x = (area.x + 1 + cursor_x_in_visible as u16).min(area.x + input_width);
+    frame.set_cursor_position((cursor_screen_x, area.y));
+}
+
+fn render_jump_to_file_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    query: &str,
+    cursor_pos: usize,
+    suggestions: &[String],
+    selected_index: usize,
+    is_loading: bool,
+) {
+    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let input_style    = Style::default().fg(Color::White).bg(Color::Black);
+    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let preview_style  = Style::default().fg(Color::White).bg(Color::Black);
+
+    let clamped_sel = if suggestions.is_empty() { 0 } else { selected_index.min(suggestions.len() - 1) };
+    let item_width = area.width.saturating_sub(4) as usize;
+
+    // ── Row 0: input field + hit count ────────────────────────────────────
+    let status = if is_loading {
+        if suggestions.is_empty() { "searching…".to_string() } else { format!("{}+ hits", suggestions.len()) }
+    } else if suggestions.is_empty() { "No match".to_string() }
+    else { format!("{} hits", suggestions.len()) };
+    let status_width: u16 = 10;
+    let input_width = area.width.saturating_sub(status_width + 3).max(4);
+    let q_chars: Vec<char> = query.chars().collect();
+    let visible_chars = input_width as usize;
+    let scroll = if cursor_pos > visible_chars { cursor_pos - visible_chars } else { 0 };
+    let visible_query: String = q_chars.iter().skip(scroll).take(visible_chars).collect();
+    let input_text = format!("{:<width$}", visible_query, width = visible_chars);
+    frame.render_widget(
+        Paragraph::new(input_text).style(input_style),
+        Rect::new(area.x + 1, area.y, input_width, 1),
+    );
+    frame.render_widget(
+        Paragraph::new(format!("{:>width$}", status, width = status_width as usize)).style(base_style),
+        Rect::new(area.x + 1 + input_width, area.y, status_width, 1),
+    );
+
+    // ── Row 1: separator ──────────────────────────────────────────────────
+    frame.render_widget(
+        Paragraph::new("─".repeat(item_width)).style(sep_style),
+        Rect::new(area.x + 2, area.y + 1, item_width as u16, 1),
+    );
+
+    // ── Rows 2..height-6: suggestion list ────────────────────────────────
+    // Footer = sep(1) + preview(4) + hint(1) = 6 rows
+    let header_rows: u16 = 2;
+    let footer_rows: u16 = 6;
+    let list_height = area.height.saturating_sub(header_rows + footer_rows) as usize;
+    let scroll_start = if list_height > 0 && clamped_sel >= list_height {
+        clamped_sel + 1 - list_height
+    } else {
+        0
+    };
+    for row in 0..list_height {
+        let si = scroll_start + row;
+        if si >= suggestions.len() { break; }
+        let path = &suggestions[si];
+        // Show a trailing '/' hint for directories
+        let is_dir = std::path::Path::new(path.as_str()).is_dir();
+        let display = if is_dir {
+            format!("{}/", smart_truncate(path, item_width.saturating_sub(3), "…"))
+        } else {
+            smart_truncate(path, item_width.saturating_sub(2), "…")
+        };
+        let style = if si == clamped_sel { selected_style } else { base_style };
+        frame.render_widget(
+            Paragraph::new(format!(" {}", display)).style(style),
+            Rect::new(area.x + 2, area.y + header_rows + row as u16, item_width as u16, 1),
+        );
+    }
+
+    // ── Row height-6: separator before preview ────────────────────────────
+    let sep2_y = area.y + area.height.saturating_sub(6);
+    frame.render_widget(
+        Paragraph::new("─".repeat(item_width)).style(sep_style),
+        Rect::new(area.x + 2, sep2_y, item_width as u16, 1),
+    );
+
+    // ── Rows height-5..height-2: full-path preview (4 lines, char-chunked) ─
+    let preview_y = area.y + area.height.saturating_sub(5);
+    let preview_w = area.width.saturating_sub(2);
+    let preview_lines = if !suggestions.is_empty() && clamped_sel < suggestions.len() {
+        let raw = &suggestions[clamped_sel];
+        let text = if raw.len() > 1024 { &raw[..1024] } else { raw.as_str() };
+        chunk_path_preview(text, preview_w, 4)
+    } else { vec![] };
+    frame.render_widget(
+        Paragraph::new(preview_lines).style(preview_style),
+        Rect::new(area.x + 1, preview_y, preview_w, 4),
+    );
+
+    // ── Row height-1: hint ────────────────────────────────────────────────
+    let hint_y = area.y + area.height.saturating_sub(1);
+    frame.render_widget(
+        Paragraph::new("↑↓:select  Enter:open  Esc:cancel  Bksp:del  ^K:clear").style(hint_style),
+        Rect::new(area.x + 2, hint_y, item_width as u16, 1),
+    );
+
+    // ── Cursor rendering on input row ─────────────────────────────────────
+    let cursor_x_in_visible = cursor_pos.saturating_sub(scroll);
+    let cursor_screen_x = (area.x + 1 + cursor_x_in_visible as u16).min(area.x + input_width);
+    frame.set_cursor_position((cursor_screen_x, area.y));
 }
 
 fn fmt_size(bytes: u64) -> String {
@@ -1287,6 +1613,9 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
             };
             dialog.render(frame, area, focused);
         }
+        DialogContent::DeleteConfirm { .. } => {
+            // Rendered by the dedicated arm in render_dialog — not reached via render_dialog_content.
+        }
         _ => {}
     }
 }
@@ -1571,7 +1900,7 @@ fn button_index_to_action(index: usize) -> rwf_lib::model::dialog::ConflictActio
 
 
 /// Handle dialog input centrally
-pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent) -> DialogAction {
+pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&rwf_lib::model::SearchModel>) -> DialogAction {
     // Note: Esc handling is delegated to individual dialog handlers
     // - FileConflict: Esc cancels (Emacs) or switches to Normal mode (Vi)
     // - Other dialogs: Esc cancels
@@ -1949,6 +2278,144 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent) -> DialogAction {
                               && !key.modifiers.contains(KeyModifiers::ALT)
                               && !key.modifiers.contains(KeyModifiers::SUPER) => {
                 filter.push(c);
+                *selected_index = 0;
+            }
+            _ => {}
+        }
+        return DialogAction::None;
+    }
+
+    // JumpToPath — text input + AND-filter suggestions + arrow navigation
+    if let DialogContent::JumpToPath { query, cursor_pos, suggestions, selected_index, candidates, .. } = &mut dialog.content {
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Enter => return DialogAction::Confirm,
+            KeyCode::Up    if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index > 0 { *selected_index -= 1; }
+            }
+            KeyCode::Down  if key.modifiers == KeyModifiers::NONE => {
+                if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
+                    *selected_index += 1;
+                }
+            }
+            KeyCode::Home => { *selected_index = 0; }
+            KeyCode::End  => {
+                *selected_index = suggestions.len().saturating_sub(1);
+            }
+            KeyCode::PageUp => {
+                *selected_index = selected_index.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                if !suggestions.is_empty() {
+                    *selected_index = (*selected_index + 10).min(suggestions.len() - 1);
+                }
+            }
+            KeyCode::Backspace => {
+                if !query.is_empty() {
+                    let mut chars = query.chars();
+                    chars.next_back();
+                    *query = chars.as_str().to_string();
+                    if *cursor_pos > 0 { *cursor_pos -= 1; }
+                    *suggestions = if let Some(s) = search {
+                        s.filter_paths(candidates, query)
+                    } else {
+                        rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
+                    };
+                    *selected_index = 0;
+                }
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.clear();
+                *cursor_pos = 0;
+                *suggestions = candidates.clone();
+                *selected_index = 0;
+            }
+            KeyCode::Char('\x0b') => {
+                query.clear();
+                *cursor_pos = 0;
+                *suggestions = candidates.clone();
+                *selected_index = 0;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
+                              && !key.modifiers.contains(KeyModifiers::ALT)
+                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+                query.push(c);
+                *cursor_pos += 1;
+                *suggestions = if let Some(s) = search {
+                    s.filter_paths(candidates, query)
+                } else {
+                    rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
+                };
+                *selected_index = 0;
+            }
+            _ => {}
+        }
+        return DialogAction::None;
+    }
+
+    // JumpToFile — text input + AND-filter suggestions (files + dirs) + arrow navigation
+    if let DialogContent::JumpToFile { query, cursor_pos, suggestions, selected_index, candidates, .. } = &mut dialog.content {
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Enter => return DialogAction::Confirm,
+            KeyCode::Up    if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index > 0 { *selected_index -= 1; }
+            }
+            KeyCode::Down  if key.modifiers == KeyModifiers::NONE => {
+                if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
+                    *selected_index += 1;
+                }
+            }
+            KeyCode::Home => { *selected_index = 0; }
+            KeyCode::End  => {
+                *selected_index = suggestions.len().saturating_sub(1);
+            }
+            KeyCode::PageUp => {
+                *selected_index = selected_index.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                if !suggestions.is_empty() {
+                    *selected_index = (*selected_index + 10).min(suggestions.len() - 1);
+                }
+            }
+            KeyCode::Backspace => {
+                if !query.is_empty() {
+                    let mut chars = query.chars();
+                    chars.next_back();
+                    *query = chars.as_str().to_string();
+                    if *cursor_pos > 0 { *cursor_pos -= 1; }
+                    *suggestions = if let Some(s) = search {
+                        s.filter_paths(candidates, query)
+                    } else {
+                        rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
+                    };
+                    *selected_index = 0;
+                }
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.clear();
+                *cursor_pos = 0;
+                *suggestions = candidates.clone();
+                *selected_index = 0;
+            }
+            KeyCode::Char('\x0b') => {
+                query.clear();
+                *cursor_pos = 0;
+                *suggestions = candidates.clone();
+                *selected_index = 0;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
+                              && !key.modifiers.contains(KeyModifiers::ALT)
+                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+                query.push(c);
+                *cursor_pos += 1;
+                *suggestions = if let Some(s) = search {
+                    s.filter_paths(candidates, query)
+                } else {
+                    rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
+                };
                 *selected_index = 0;
             }
             _ => {}
@@ -2349,6 +2816,32 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
             // Simple confirmation - only global shortcuts apply
             DialogAction::None
         }
+        DialogContent::DeleteConfirm { targets, scroll_offset } => {
+            let total = targets.len();
+            // Mirror the render-side height formula exactly (now using centered_rect_abs, no rounding loss)
+            // min_content = total.min(12) + 7; min_dialog = min_content + 2 = total.min(12) + 9
+            // dialog_h = max(80% of screen, min_dialog), capped at screen - 2
+            // layout fixed overhead: borders(2) + spacer(1) + hint(1) + buttons(3) + header(1) + blank(1) = 9
+            let screen_h = crossterm::terminal::size().map(|(_, h)| h).unwrap_or(24);
+            let min_content = total.min(12) as u16 + 7;
+            let min_dialog = min_content + 2;
+            let dialog_h = (screen_h * 80 / 100).max(min_dialog).min(screen_h.saturating_sub(2));
+            let list_h = dialog_h.saturating_sub(9).max(1) as usize;
+            let visible_rows = total.min(list_h);
+            let max_scroll = total.saturating_sub(visible_rows);
+            match key.code {
+                crossterm::event::KeyCode::Up => {
+                    *scroll_offset = scroll_offset.saturating_sub(1);
+                }
+                crossterm::event::KeyCode::Down => {
+                    if *scroll_offset < max_scroll {
+                        *scroll_offset += 1;
+                    }
+                }
+                _ => {}
+            }
+            DialogAction::None
+        }
         _ => DialogAction::None,
     }
 }
@@ -2399,6 +2892,22 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
     }
 
     removed.map(|f| format!("[Folder] Removed \"{}\" → {}", f.name, f.path))
+}
+
+/// Build a human-readable job name for a delete operation showing file names.
+pub fn delete_job_name(targets: &[rwf_lib::Location]) -> String {
+    let file_name = |loc: &rwf_lib::Location| -> String {
+        loc.path()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| loc.display_path())
+    };
+    match targets.len() {
+        0 => "Delete".to_string(),
+        1 => format!("Delete '{}'", file_name(&targets[0])),
+        2 => format!("Delete '{}', '{}'", file_name(&targets[0]), file_name(&targets[1])),
+        n => format!("Delete {} files: '{}', '{}'...", n, file_name(&targets[0]), file_name(&targets[1])),
+    }
 }
 
 /// Process dialog confirmation and create transitions
@@ -2512,6 +3021,102 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
+            DialogContent::JumpToPath { suggestions, selected_index, query, search_root, loading_job_id, .. } => {
+                let path_str: Option<String> = if !suggestions.is_empty() && *selected_index < suggestions.len() {
+                    Some(suggestions[*selected_index].clone())
+                } else if !query.is_empty() {
+                    // Fallback: interpret typed text as a direct path
+                    let candidate = std::path::PathBuf::from(query.as_str());
+                    if candidate.is_absolute() && candidate.is_dir() {
+                        Some(query.clone())
+                    } else {
+                        let combined = std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
+                        if combined.is_dir() { Some(combined.to_string_lossy().into_owned()) }
+                        else { None }
+                    }
+                } else {
+                    None
+                };
+                let pending_job = *loading_job_id;
+                if let Some(path) = path_str {
+                    let location = rwf_lib::Location::Local(std::path::PathBuf::from(&path));
+                    let pane = state.ui.active_pane;
+                    state.dialogs.pop();
+                    if let Some(job_id) = pending_job {
+                        state.jobs.request_cancel(job_id);
+                    }
+                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeLocation { pane, location });
+                    return result.jobs_to_start.into_iter().next();
+                }
+                return None;
+            }
+            DialogContent::JumpToFile { suggestions, selected_index, query, search_root, loading_job_id, .. } => {
+                let path_str: Option<String> = if !suggestions.is_empty() && *selected_index < suggestions.len() {
+                    Some(suggestions[*selected_index].clone())
+                } else if !query.is_empty() {
+                    // Fallback: interpret typed text as a direct path
+                    let candidate = std::path::PathBuf::from(query.as_str());
+                    if candidate.is_absolute() && (candidate.is_file() || candidate.is_dir()) {
+                        Some(query.clone())
+                    } else {
+                        let combined = std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
+                        if combined.is_file() || combined.is_dir() {
+                            Some(combined.to_string_lossy().into_owned())
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                let pending_job = *loading_job_id;
+                // For a file selection, record the filename to position cursor after navigation.
+                let target_file_name: Option<String> = path_str.as_ref().and_then(|p| {
+                    let pb = std::path::Path::new(p);
+                    if pb.is_file() {
+                        pb.file_name().map(|n| n.to_string_lossy().into_owned())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(path) = path_str {
+                    // For files: navigate to the parent directory. For dirs: navigate into them.
+                    let nav_path = {
+                        let pb = std::path::PathBuf::from(&path);
+                        if pb.is_dir() {
+                            path.clone()
+                        } else {
+                            pb.parent()
+                                .map(|p| p.to_string_lossy().into_owned())
+                                .unwrap_or(path.clone())
+                        }
+                    };
+                    let location = rwf_lib::Location::Local(std::path::PathBuf::from(&nav_path));
+                    let pane = state.ui.active_pane;
+                    state.dialogs.pop();
+                    if let Some(job_id) = pending_job {
+                        state.jobs.request_cancel(job_id);
+                    }
+                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeLocation { pane, location });
+                    if let Some(name) = target_file_name {
+                        let pane_height = state.ui.layout.pane_height;
+                        let scroll_margin = state.config.ui.scroll_offset;
+                        let tab = state.current_tab_mut();
+                        let pane_model = match pane {
+                            rwf_lib::model::ActivePane::Left  => &mut tab.left_pane,
+                            rwf_lib::model::ActivePane::Right => &mut tab.right_pane,
+                        };
+                        if pane_model.is_loading {
+                            pane_model.pending_cursor_name = Some(name);
+                        } else if let Some(pos) = pane_model.entries.iter().position(|e| e.name == name) {
+                            pane_model.cursor = pos;
+                            pane_model.update_scroll(pane_height, scroll_margin);
+                        }
+                    }
+                    return result.jobs_to_start.into_iter().next();
+                }
+                return None;
+            }
             DialogContent::Compression { 
                 sources, 
                 archive_name, 
@@ -2570,6 +3175,12 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 );
 
                 return Some(job_spec);
+            }
+            DialogContent::DeleteConfirm { targets, .. } => {
+                let locations: Vec<rwf_lib::Location> = targets.iter().map(|(loc, _)| loc.clone()).collect();
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::Delete { targets: locations }
+                ));
             }
             DialogContent::RegisteredFolderSelector { folders, selected_index, filter } => {
                 let lower = filter.to_lowercase();

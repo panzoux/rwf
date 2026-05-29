@@ -21,6 +21,8 @@ pub struct PaneModel {
     pub is_loading: bool,
     pub active_job_id: Option<crate::job::JobId>,
     pub marking: MarkingModel,
+    /// After JumpToFile navigation: filename to select once ReadDirectory completes.
+    pub pending_cursor_name: Option<String>,
 }
 
 impl PaneModel {
@@ -38,6 +40,7 @@ impl PaneModel {
             is_loading: false,
             active_job_id: None,
             marking: MarkingModel::new(),
+            pending_cursor_name: None,
         }
     }
 

@@ -85,13 +85,14 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
     match content {
         DialogContent::Compression { .. } => vec!["OK", "Cancel"],
         DialogContent::ExtractionConfirm { .. } => vec!["Extract", "Cancel"],
+        DialogContent::DeleteConfirm { .. } => vec!["Delete", "Cancel"],
         DialogContent::CloseTabWithActiveJob { .. } => vec!["OK", "Cancel"],
         _ => vec!["OK", "Cancel"],
     }
 }
 
 /// Center a rectangle within another rectangle
-/// 
+///
 /// # Arguments
 /// * `percent_x` - Width as percentage of parent (0-100)
 /// * `percent_y` - Height as percentage of parent (0-100)
@@ -99,11 +100,20 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let width = (area.width * percent_x / 100).max(40);
     let height = (area.height * percent_y / 100).max(10);
-    
+
     let x = area.x + (area.width - width) / 2;
     let y = area.y + (area.height - height) / 2;
-    
+
     Rect::new(x, y, width, height)
+}
+
+/// Center a rectangle using absolute pixel dimensions (no rounding loss)
+pub fn centered_rect_abs(width: u16, height: u16, area: Rect) -> Rect {
+    let w = width.min(area.width);
+    let h = height.min(area.height);
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    Rect::new(x, y, w, h)
 }
 
 /// Render a simple text line with optional highlighting
