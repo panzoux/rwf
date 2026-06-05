@@ -1,9 +1,5 @@
 //! Task Panel with state management
-//!
-//! This module provides a task panel with state for displaying job logs,
-//! supporting expansion, scrolling, and spinner animation.
 
-use std::time::SystemTime;
 use rwf_lib::config::ColorScheme;
 use super::colors::parse_color;
 
@@ -16,25 +12,18 @@ pub enum LogLevel {
     Warn,    // [WARN] - Yellow
 }
 
-/// Log entry with timestamp and level
+/// Log entry with level
 #[derive(Debug, Clone)]
 pub struct LogEntry {
-    pub timestamp: SystemTime,
     pub message: String,
     pub level: LogLevel,
 }
 
 /// Task panel with state
 pub struct TaskPanel {
-    /// In-memory log buffer
     log_entries: Vec<LogEntry>,
-    /// Pending logs from background thread
     pending_logs: Vec<String>,
-    /// Panel expansion state
-    is_expanded: bool,
-    /// Expanded height in lines
-    expanded_height: usize,
-    /// Scroll offset
+    /// Scroll offset in visual lines (not log entries)
     scroll_offset: usize,
     /// Spinner animation frames (TWF reference: "|", "/", "-", "\\")
     spinner_frames: [&'static str; 4],
@@ -54,8 +43,6 @@ impl TaskPanel {
         Self {
             log_entries: Vec::with_capacity(256),
             pending_logs: Vec::new(),
-            is_expanded: false,
-            expanded_height: 10,  // Default height
             scroll_offset: 0,
             spinner_frames: ["|", "/", "-", "\\"],
             spinner_index: 0,
@@ -64,9 +51,7 @@ impl TaskPanel {
     
     /// Add a log entry with level
     pub fn add_log(&mut self, message: String, level: LogLevel) {
-        let timestamp = SystemTime::now();
         self.log_entries.push(LogEntry {
-            timestamp,
             message,
             level,
         });
@@ -95,7 +80,6 @@ impl TaskPanel {
             };
 
             self.log_entries.push(LogEntry {
-                timestamp: SystemTime::now(),
                 message,
                 level,
             });
@@ -130,47 +114,9 @@ impl TaskPanel {
         }
     }
     
-    /// Scroll to end
-    pub fn scroll_to_end(&mut self, visible_height: usize) {
-        self.scroll_offset = self.log_entries.len().saturating_sub(visible_height);
-    }
-    
-    /// Toggle expand/collapse
-    pub fn toggle_expanded(&mut self) {
-        self.is_expanded = !self.is_expanded;
-    }
-    
-    /// Check if panel is expanded
-    pub fn is_expanded(&self) -> bool {
-        self.is_expanded
-    }
-    
-    /// Get current panel height
-    pub fn current_height(&self) -> usize {
-        if self.is_expanded {
-            self.expanded_height
-        } else {
-            1
-        }
-    }
-    
-    /// Resize panel up
-    pub fn resize_up(&mut self, max_height: usize) {
-        if self.expanded_height < max_height {
-            self.expanded_height += 1;
-        }
-    }
-    
-    /// Resize panel down
-    pub fn resize_down(&mut self, min_height: usize) {
-        if self.expanded_height > min_height {
-            self.expanded_height -= 1;
-        }
-    }
-    
-    /// Get expanded height
-    pub fn expanded_height(&self) -> usize {
-        self.expanded_height
+    /// Scroll to end (sets offset to a large value; rendering will clamp it)
+    pub fn scroll_to_end(&mut self, _visible_height: usize) {
+        self.scroll_offset = usize::MAX;
     }
     
     /// Advance spinner animation (TWF Tick() equivalent)
@@ -181,11 +127,6 @@ impl TaskPanel {
     /// Get current spinner frame
     pub fn current_spinner(&self) -> &'static str {
         self.spinner_frames[self.spinner_index]
-    }
-    
-    /// Get all log entries (for rendering)
-    pub fn log_entries(&self) -> &[LogEntry] {
-        &self.log_entries
     }
     
     /// Get scroll offset (for rendering)
@@ -216,25 +157,9 @@ mod tests {
     #[test]
     fn test_task_panel_new() {
         let panel = TaskPanel::new();
-        assert!(!panel.is_expanded());
-        assert_eq!(panel.expanded_height(), 10);
-        assert_eq!(panel.current_height(), 1);
         assert_eq!(panel.log_count(), 0);
     }
-    
-    #[test]
-    fn test_task_panel_toggle_expanded() {
-        let mut panel = TaskPanel::new();
-        assert!(!panel.is_expanded());
-        
-        panel.toggle_expanded();
-        assert!(panel.is_expanded());
-        assert_eq!(panel.current_height(), 10);
-        
-        panel.toggle_expanded();
-        assert!(!panel.is_expanded());
-    }
-    
+
     #[test]
     fn test_task_panel_add_log() {
         let mut panel = TaskPanel::new();
@@ -272,19 +197,7 @@ mod tests {
         
         // Scroll to end
         panel.scroll_to_end(10);
-        assert_eq!(panel.scroll_offset(), 10);  // 20 - 10 = 10
-    }
-    
-    #[test]
-    fn test_task_panel_resize() {
-        let mut panel = TaskPanel::new();
-        assert_eq!(panel.expanded_height(), 10);
-        
-        panel.resize_up(20);
-        assert_eq!(panel.expanded_height(), 11);
-        
-        panel.resize_down(5);
-        assert_eq!(panel.expanded_height(), 10);
+        assert_eq!(panel.scroll_offset(), usize::MAX);  // Sets to max; rendering clamps it
     }
     
     #[test]
@@ -330,7 +243,7 @@ mod tests {
 use ratatui::{
     layout::Rect,
     style::Style,
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{List, ListItem},
     Frame,
 };
@@ -374,7 +287,7 @@ fn wrap_to_lines<'a>(message: &'a str, width: usize, style: Style) -> Vec<Line<'
     lines
 }
 
-/// Render the task panel
+/// Render the task panel with visual line scrolling
 pub fn render_task_panel(
     frame: &mut Frame,
     area: Rect,
@@ -382,15 +295,48 @@ pub fn render_task_panel(
     colors: &ColorScheme,
 ) {
     let mut items = Vec::new();
-    
-    // Get visible log entries based on scroll offset
     let visible_height = area.height as usize;
-    let start_idx = task_panel.scroll_offset().min(task_panel.log_count().saturating_sub(1));
-    let end_idx = (start_idx + visible_height).min(task_panel.log_count());
-    
     let panel_width = area.width as usize;
-    for i in start_idx..end_idx {
+    let visual_scroll = task_panel.scroll_offset();
+
+    // Build list of all entries with their visual line counts
+    let mut entry_visual_lines: Vec<(usize, usize)> = Vec::new(); // (entry_idx, visual_line_count)
+    let mut total_visual_lines = 0;
+
+    for i in 0..task_panel.log_count() {
         if let Some(entry) = task_panel.get_log_entry(i) {
+            let style = Style::default().fg(parse_color(&colors.foreground_color));
+            let wrapped = wrap_to_lines(&entry.message, panel_width, style);
+            let line_count = wrapped.len();
+            entry_visual_lines.push((i, line_count));
+            total_visual_lines += line_count;
+        }
+    }
+
+    // Calculate max scroll to keep content at bottom
+    let max_scroll = total_visual_lines.saturating_sub(visible_height);
+    let actual_scroll = visual_scroll.min(max_scroll);
+
+    // Find starting entry and line offset based on visual scroll
+    let mut current_visual_line = 0;
+    let mut start_entry_idx = 0;
+    let mut start_line_offset = 0;
+
+    for &(entry_idx, line_count) in &entry_visual_lines {
+        if current_visual_line + line_count > actual_scroll {
+            start_entry_idx = entry_idx;
+            start_line_offset = actual_scroll.saturating_sub(current_visual_line);
+            break;
+        }
+        current_visual_line += line_count;
+    }
+
+    // Render entries from start position until visible height is filled
+    let mut rendered_lines = 0;
+    let mut current_entry_idx = start_entry_idx;
+
+    while rendered_lines < visible_height && current_entry_idx < task_panel.log_count() {
+        if let Some(entry) = task_panel.get_log_entry(current_entry_idx) {
             let style = match entry.level {
                 LogLevel::Info => Style::default().fg(parse_color(&colors.foreground_color)),
                 LogLevel::Ok => Style::default().fg(parse_color(&colors.ok_color)),
@@ -399,17 +345,22 @@ pub fn render_task_panel(
             };
 
             let wrapped = wrap_to_lines(&entry.message, panel_width, style);
-            items.push(ListItem::new(Text::from(wrapped)));
+
+            // Skip lines if this is the first entry (due to offset)
+            let start_line = if current_entry_idx == start_entry_idx { start_line_offset } else { 0 };
+
+            for (idx, line) in wrapped.iter().enumerate() {
+                if idx < start_line {
+                    continue;
+                }
+                if rendered_lines >= visible_height {
+                    break;
+                }
+                items.push(ListItem::new(line.clone()));
+                rendered_lines += 1;
+            }
         }
-    }
-    
-    // If no items, show empty message
-    if items.is_empty() {
-        let empty_msg = Line::from(Span::styled(
-            "No active tasks",
-            Style::default().fg(parse_color(&colors.foreground_color)),
-        ));
-        items.push(ListItem::new(empty_msg));
+        current_entry_idx += 1;
     }
 
     let list = List::new(items);

@@ -6,13 +6,13 @@ use anyhow::Result;
 use crossterm::event::{self, Event};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rwf_lib::{AppState, Transition, KeyBindings, WorkerPool, process_pending_events};
-use rwf_lib::backend::{LocalFilesystemBackend, ZipArchiveHandler};
+use rwf_lib::backend::{LocalFilesystemBackend, MultiFormatArchiveHandler};
 use rwf_lib::job::{JobSpec, JobKind};
 use rwf_lib::model::dialog::ConflictPair;
 use std::io::Stdout;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{error, debug, info};
+use tracing::error;
 
 use crate::ui::render_ui;
 use crate::ui::task_panel::TaskPanel;
@@ -23,7 +23,7 @@ pub struct App {
     key_bindings: KeyBindings,
     should_quit: bool,
     should_exit_and_cd: bool,
-    worker_pool: Option<WorkerPool<LocalFilesystemBackend, ZipArchiveHandler>>,
+    worker_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
     task_panel: TaskPanel,
     last_spinner_update: Option<Instant>,
@@ -41,17 +41,18 @@ pub struct App {
 }
 
 impl App {
-    pub fn with_cwd_flag(state: AppState, _cwd_flag: bool) -> Self {
+    pub fn with_state_and_keybindings(state: AppState, _cwd_flag: bool, key_bindings: KeyBindings) -> Self {
         let backend = Arc::new(LocalFilesystemBackend::new());
-        let archive_handler = Arc::new(ZipArchiveHandler::new());
+        let archive_handler = Arc::new(MultiFormatArchiveHandler::new());
         let worker_pool = WorkerPool::new(state.config.worker_pool_size, backend, archive_handler);
         let mut task_panel = TaskPanel::new();
         for line in Self::build_version_info(&state) {
             task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
         }
+        task_panel.add_log("No active tasks".to_string(), crate::ui::task_panel::LogLevel::Info);
 
         Self {
-            state, key_bindings: KeyBindings::default(), should_quit: false, should_exit_and_cd: false,
+            state, key_bindings, should_quit: false, should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
             last_key_press: None, task_panel, last_spinner_update: None, last_cleanup_check: None,
             pending_conflict_job: None, pending_job_submission: Vec::new(),
@@ -83,7 +84,7 @@ impl App {
             format!("Config: {}", config_path),
             format!("Log: {}", log_path),
             format!("LogLevel: {} | Migemo: {}", log_level, migemo),
-            format!("Archives: ZIP"),
+            format!("Archives: ZIP · 7Z · TAR · TGZ · ISO"),
         ]
     }
 
@@ -300,7 +301,15 @@ impl App {
                     next_wakeup = next_wakeup.min(Duration::from_millis(0));
                 }
             }
-            
+
+            // Poll frequently while any pane is still loading so completion events
+            // are picked up promptly rather than waiting for the full spinner interval.
+            let any_pane_loading = self.state.tabs.tabs.iter()
+                .any(|t| t.left_pane.is_loading || t.right_pane.is_loading);
+            if any_pane_loading {
+                next_wakeup = next_wakeup.min(Duration::from_millis(50));
+            }
+
             // If UI needs update, render immediately without blocking
             if ui_needs_update {
                 next_wakeup = Duration::from_millis(0);
@@ -331,12 +340,21 @@ impl App {
             // Read ALL pending events to clear queue
             loop {
                 let ev = event::read()?;
-                if let Event::Key(key) = ev {
-                    if key.kind == crossterm::event::KeyEventKind::Press {
-                        if self.handle_key_event(key) { any_event = true; }
+                match ev {
+                    Event::Key(key) => {
+                        if key.kind == crossterm::event::KeyEventKind::Press {
+                            if self.handle_key_event(key) { any_event = true; }
+                        }
                     }
+                    Event::Resize(_, _) => {
+                        // Recalculate task panel view on terminal resize
+                        let h = self.state.ui.layout.task_panel_height;
+                        self.task_panel.scroll_to_end(h);
+                        any_event = true;
+                    }
+                    _ => {}
                 }
-                
+
                 if !event::poll(Duration::from_millis(0))? {
                     break;
                 }
@@ -346,6 +364,13 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // Ctrl+L: force full redraw (works in any mode)
+        if key.code == crossterm::event::KeyCode::Char('l')
+            && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+        {
+            return true;
+        }
+
         let key_string = rwf_lib::input::format_key_event(&key);
         tracing::info!("[KEY] code={:?} modifiers={:?} kind={:?} formatted={:?}", key.code, key.modifiers, key.kind, key_string);
         let now = Instant::now();
@@ -409,7 +434,7 @@ impl App {
                                 final_job.conflict_decisions = Some(conflict_decisions);
                                 let tab_id = self.state.tabs.active_index;
                                 let tab_name = format!("{}|{}", self.state.current_tab().left_pane.current_location.display_path(), self.state.current_tab().right_pane.current_location.display_path());
-                                let bg_job_id = self.state.background_jobs.start_job(job_name.clone(), job_desc, tab_id, tab_name, final_job.clone());
+                                let _bg_job_id = self.state.background_jobs.start_job(job_name.clone(), job_desc, tab_id, tab_name, final_job.clone());
                                 self.state.jobs.start_job(final_job.clone());
                                 if let Some(ref pool) = self.worker_pool { pool.submit_job(final_job); }
                             }
@@ -502,7 +527,208 @@ impl App {
             }
         }
 
-        // 2. Search mode handling
+        // 2. Viewer mode handling
+        if self.state.ui.mode == rwf_lib::model::UIMode::Viewer
+            || self.state.ui.mode == rwf_lib::model::UIMode::ViewerSearch
+            || self.state.ui.mode == rwf_lib::model::UIMode::ViewerCommand
+        {
+            // 2.0 "v"/"V"/Tab — viewer layout cycling (handled before search/command sub-modes)
+            if self.state.ui.mode == rwf_lib::model::UIMode::Viewer {
+                use rwf_lib::model::ViewerLayout;
+                let layout = self.state.ui.layout.viewer_layout;
+                match key_string.as_str() {
+                    "v" => {
+                        match layout {
+                            ViewerLayout::SideBySide => {
+                                rwf_lib::state::update_state(&mut self.state,
+                                    Transition::ViewerSwitchLayout { layout: ViewerLayout::FullScreen });
+                            }
+                            ViewerLayout::FullScreen => {
+                                rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+                            }
+                        }
+                        return true;
+                    }
+                    "V" => {
+                        match layout {
+                            ViewerLayout::FullScreen => {
+                                rwf_lib::state::update_state(&mut self.state,
+                                    Transition::ViewerSwitchLayout { layout: ViewerLayout::SideBySide });
+                            }
+                            ViewerLayout::SideBySide => {
+                                rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+                            }
+                        }
+                        return true;
+                    }
+                    "Tab" | "Shift+Tab" if layout == ViewerLayout::SideBySide => {
+                        self.state.ui.mode = rwf_lib::model::UIMode::Normal;
+                        self.refresh_sbs_preview();
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // 2a. ViewerSearch: typing builds the query and searches incrementally
+            if self.state.ui.mode == rwf_lib::model::UIMode::ViewerSearch {
+                use crossterm::event::{KeyCode, KeyModifiers};
+                match key.code {
+                    KeyCode::Esc => {
+                        self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        self.state.viewer_search_input.clear();
+                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerClearSearch);
+                        return true;
+                    }
+                    KeyCode::Enter => {
+                        // Commit — stay in Viewer mode with current results.
+                        self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        return true;
+                    }
+                    KeyCode::Backspace => {
+                        self.state.viewer_search_input.pop();
+                        let query = self.state.viewer_search_input.clone();
+                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        return true;
+                    }
+                    // Ctrl+~ or Ctrl+^ toggles case sensitivity while typing
+                    KeyCode::Char('~') | KeyCode::Char('^')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerToggleCaseSensitive);
+                        return true;
+                    }
+                    KeyCode::Char(c) => {
+                        self.state.viewer_search_input.push(c);
+                        let query = self.state.viewer_search_input.clone();
+                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        return true;
+                    }
+                    _ => return false,
+                }
+            }
+
+            // 2b. ViewerCommand: line-jump (less-style "100g")
+            if self.state.ui.mode == rwf_lib::model::UIMode::ViewerCommand {
+                use crossterm::event::KeyCode;
+                match key.code {
+                    KeyCode::Esc => {
+                        self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        self.state.viewer_command_input.clear();
+                        return true;
+                    }
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        self.state.viewer_command_input.push(c);
+                        return true;
+                    }
+                    KeyCode::Backspace => {
+                        self.state.viewer_command_input.pop();
+                        if self.state.viewer_command_input.is_empty() {
+                            self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        }
+                        return true;
+                    }
+                    KeyCode::Char('g') | KeyCode::Char('<') => {
+                        let vp = self.state.ui.layout.pane_height;
+                        let tr = if let Ok(n) = self.state.viewer_command_input.parse::<usize>() {
+                            Transition::ViewerJumpToLine { line_idx: n.saturating_sub(1), viewport_height: vp }
+                        } else {
+                            Transition::ViewerJumpToTop
+                        };
+                        rwf_lib::state::update_state(&mut self.state, tr);
+                        self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        self.state.viewer_command_input.clear();
+                        return true;
+                    }
+                    KeyCode::Char('G') | KeyCode::Char('>') => {
+                        let vp = self.state.ui.layout.pane_height;
+                        let tr = if let Ok(n) = self.state.viewer_command_input.parse::<usize>() {
+                            Transition::ViewerJumpToLine { line_idx: n.saturating_sub(1), viewport_height: vp }
+                        } else {
+                            Transition::ViewerJumpToBottom { viewport_height: vp }
+                        };
+                        rwf_lib::state::update_state(&mut self.state, tr);
+                        self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                        self.state.viewer_command_input.clear();
+                        return true;
+                    }
+                    _ => return false,
+                }
+            }
+
+            // 2c. Normal viewer actions
+            let vp_height = self.state.ui.layout.pane_height;
+
+            // Digit or ':' enters command mode.
+            if self.state.ui.mode == rwf_lib::model::UIMode::Viewer {
+                use crossterm::event::KeyCode;
+                match key.code {
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        self.state.viewer_command_input.clear();
+                        self.state.viewer_command_input.push(c);
+                        self.state.ui.mode = rwf_lib::model::UIMode::ViewerCommand;
+                        return true;
+                    }
+                    KeyCode::Char(':') => {
+                        self.state.viewer_command_input.clear();
+                        self.state.ui.mode = rwf_lib::model::UIMode::ViewerCommand;
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Remaining normal viewer actions (keybinding lookup)
+            let vp_height = vp_height;
+            if let Some(action) = self.key_bindings.viewer_mode.get(&key_string).cloned() {
+                use rwf_lib::input::Action;
+                let tr = match action {
+                    Action::ViewerClose => Some(Transition::CloseViewer),
+                    Action::ViewerToggleHexMode => Some(Transition::ViewerToggleMode),
+                    Action::ViewerScrollDown => Some(Transition::ViewerScrollDown { viewport_height: vp_height }),
+                    Action::ViewerScrollUp => Some(Transition::ViewerScrollUp),
+                    Action::ViewerPageDown => Some(Transition::ViewerPageDown { viewport_height: vp_height }),
+                    Action::ViewerPageUp => Some(Transition::ViewerPageUp { viewport_height: vp_height }),
+                    Action::ViewerGoToTop => Some(Transition::ViewerJumpToTop),
+                    Action::ViewerGoToBottom => Some(Transition::ViewerJumpToBottom { viewport_height: vp_height }),
+                    Action::ViewerClearSearch => Some(Transition::ViewerClearSearch),
+                    Action::ViewerCycleEncoding => Some(Transition::ViewerCycleEncoding),
+                    Action::ViewerBeginSearch => {
+                        if let Some(ref mut viewer) = self.state.viewer {
+                            viewer.search_forward = true;
+                        }
+                        self.state.ui.mode = rwf_lib::model::UIMode::ViewerSearch;
+                        self.state.viewer_search_input.clear();
+                        return true;
+                    }
+                    Action::ViewerBeginSearchBackward => {
+                        if let Some(ref mut viewer) = self.state.viewer {
+                            viewer.search_forward = false;
+                        }
+                        self.state.ui.mode = rwf_lib::model::UIMode::ViewerSearch;
+                        self.state.viewer_search_input.clear();
+                        return true;
+                    }
+                    Action::ViewerFindNext => Some(Transition::ViewerFindNext),
+                    Action::ViewerFindPrev => Some(Transition::ViewerFindPrev),
+                    Action::ViewerToggleCaseSensitive => Some(Transition::ViewerToggleCaseSensitive),
+                    Action::ViewerScrollLeft  => Some(Transition::ViewerScrollLeft  { cols: 1 }),
+                    Action::ViewerScrollRight => Some(Transition::ViewerScrollRight { cols: 1 }),
+                    Action::ViewerFastScrollLeft  => Some(Transition::ViewerScrollLeft  { cols: 10 }),
+                    Action::ViewerFastScrollRight => Some(Transition::ViewerScrollRight { cols: 10 }),
+                    Action::ViewerFastScrollUp   => Some(Transition::ViewerFastScrollUp   { lines: 10 }),
+                    Action::ViewerFastScrollDown => Some(Transition::ViewerFastScrollDown { lines: 10, viewport_height: vp_height }),
+                    _ => None,
+                };
+                if let Some(t) = tr {
+                    rwf_lib::state::update_state(&mut self.state, t);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 3. Search mode handling
         if self.state.ui.mode == rwf_lib::model::UIMode::Search {
             use crossterm::event::KeyCode;
             match key.code {
@@ -539,12 +765,106 @@ impl App {
             }
         }
 
-        // 3. Normal key handling (transitions)
+        // 3.5 SideBySide focus: Tab toggles focus to viewer; Esc closes SideBySide.
+        if self.state.ui.mode == rwf_lib::model::UIMode::Normal
+            && self.state.viewer.is_some()
+            && self.state.ui.layout.viewer_layout == rwf_lib::model::ViewerLayout::SideBySide
+        {
+            match key_string.as_str() {
+                "Tab" | "Shift+Tab" => {
+                    self.state.ui.mode = rwf_lib::model::UIMode::Viewer;
+                    return true;
+                }
+                "Escape" => {
+                    // Close the SideBySide viewer; restore both file panes.
+                    rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+                    return true;
+                }
+                _ => {}
+            }
+        }
+
+        // 3.6 Viewer open/cycle: "v" and "V" in normal mode
+        if self.state.ui.mode == rwf_lib::model::UIMode::Normal
+            && (key_string == "v" || key_string == "V")
+        {
+            use rwf_lib::model::ViewerLayout;
+            if self.state.viewer.is_some() {
+                // Viewer already open: "v" closes (FullScreen) or switches to FullScreen (SideBySide).
+                // "V" closes (SideBySide) or switches to SideBySide (FullScreen).
+                let layout = self.state.ui.layout.viewer_layout;
+                if key_string == "v" {
+                    match layout {
+                        ViewerLayout::SideBySide => {
+                            rwf_lib::state::update_state(&mut self.state,
+                                Transition::ViewerSwitchLayout { layout: ViewerLayout::FullScreen });
+                        }
+                        ViewerLayout::FullScreen => {
+                            rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+                        }
+                    }
+                } else {
+                    match layout {
+                        ViewerLayout::FullScreen => {
+                            rwf_lib::state::update_state(&mut self.state,
+                                Transition::ViewerSwitchLayout { layout: ViewerLayout::SideBySide });
+                        }
+                        ViewerLayout::SideBySide => {
+                            rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+                        }
+                    }
+                }
+            } else {
+                // No viewer: open one. "v" uses preferred layout; "V" forces SideBySide.
+                // Binary files open in Hex mode by default; everything else in Text mode.
+                if let Some(entry) = self.state.active_pane().current_entry().cloned() {
+                    if !entry.is_dir {
+                        let location = entry.location.clone();
+                        let mode = Self::default_viewer_mode(&location);
+                        let is_sbs = key_string == "V"; // "v" = always FullScreen; "V" = always SideBySide
+                        let tr = if is_sbs {
+                            Transition::OpenSideBySideViewer { location, mode }
+                        } else {
+                            match mode {
+                                rwf_lib::model::ViewerMode::Hex  => Transition::OpenHexViewer { location },
+                                rwf_lib::model::ViewerMode::Text => Transition::OpenTextViewer { location },
+                            }
+                        };
+                        let result = rwf_lib::state::update_state(&mut self.state, tr);
+                        for job_spec in result.jobs_to_start {
+                            self.pending_job_submission.push(job_spec);
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        // 4. Normal key handling (transitions)
         if let Some(action) = self.key_bindings.map_key(&key) {
+            use rwf_lib::input::Action;
+            // In SideBySide mode, pane-switching is disabled: the anchored file pane
+            // stays on its side for the duration of the SideBySide session.
+            if self.state.viewer.is_some()
+                && self.state.ui.layout.viewer_layout == rwf_lib::model::ViewerLayout::SideBySide
+                && matches!(action, Action::SwitchPane | Action::SwitchToLeftPane | Action::SwitchToRightPane)
+            {
+                return false;
+            }
             tracing::info!("[KEY] action={:?}", action);
             // ShowVersionInfo: write to task panel, no state change
             if action == rwf_lib::input::Action::ShowVersionInfo {
                 self.log_version_info();
+                return true;
+            }
+            // Task panel log scroll — operates on the widget, not app state
+            if action == Action::ScrollTaskPanelUp {
+                self.task_panel.scroll_up();
+                return true;
+            }
+            if action == Action::ScrollTaskPanelDown {
+                let h = self.state.ui.layout.task_panel_height;
+                self.task_panel.scroll_down(h);
                 return true;
             }
             let transitions = rwf_lib::input::action_to_transitions(&self.state, &action);
@@ -567,6 +887,8 @@ impl App {
                 }
                 state_changed = state_changed || result.ui_changed;
             }
+
+            if self.refresh_sbs_preview() { state_changed = true; }
             return state_changed;
         }
         tracing::info!("[KEY] no action mapped for {:?}", key_string);
@@ -579,12 +901,79 @@ impl App {
         let task_h = if self.state.ui.layout.show_task_panel { self.state.ui.layout.task_panel_height as u16 } else { 0 };
         let stat_h = if self.state.ui.layout.show_status_bar { 1 } else { 0 };
         let pane_h = size.height.saturating_sub(tab_h + task_h + stat_h + 4) as usize;
-        
+        let pane_w = size.width as usize;
+
         if self.state.ui.layout.pane_height != pane_h {
             let _ = rwf_lib::state::update_state(&mut self.state, Transition::UpdatePaneHeight { height: pane_h });
         }
+        if self.state.ui.layout.pane_width != pane_w {
+            let _ = rwf_lib::state::update_state(&mut self.state, Transition::UpdatePaneWidth { width: pane_w });
+        }
         terminal.draw(|f| render_ui(f, &self.state, &self.task_panel))?;
         Ok(())
+    }
+
+    /// Called whenever the cursor might have moved in SideBySide file-pane mode.
+    /// For files: reloads the viewer if the location changed.
+    /// Directory preview counts are computed inline in render_ui (no state needed).
+    /// Returns true if a state change requires a redraw.
+    fn refresh_sbs_preview(&mut self) -> bool {
+        if self.state.viewer.is_none()
+            || self.state.ui.layout.viewer_layout != rwf_lib::model::ViewerLayout::SideBySide
+            || self.state.ui.mode != rwf_lib::model::UIMode::Normal
+        {
+            return false;
+        }
+
+        let anchor = self.state.ui.layout.viewer_anchor_pane;
+        let entry = {
+            let tab = self.state.current_tab();
+            match anchor {
+                rwf_lib::model::ActivePane::Left  => tab.left_pane.current_entry().cloned(),
+                rwf_lib::model::ActivePane::Right => tab.right_pane.current_entry().cloned(),
+            }
+        };
+
+        let Some(entry) = entry else { return false; };
+
+        if entry.is_dir {
+            // Dir preview is rendered inline in render_ui — just signal a redraw.
+            true
+        } else {
+            // File: reload viewer if the location changed, auto-selecting mode by extension.
+            let new_loc = entry.location.clone();
+            let current_loc = self.state.viewer.as_ref().map(|v| v.location.clone());
+            if current_loc.as_ref() == Some(&new_loc) {
+                return false;
+            }
+            let mode = Self::default_viewer_mode(&new_loc);
+            let result = rwf_lib::state::update_state(
+                &mut self.state, Transition::ReloadViewer { location: new_loc, mode },
+            );
+            for job_spec in result.jobs_to_start {
+                self.pending_job_submission.push(job_spec);
+            }
+            true
+        }
+    }
+
+    /// Choose the default viewer mode for a file based on its extension.
+    /// Binary/media files open in Hex mode; everything else opens in Text mode.
+    fn default_viewer_mode(location: &rwf_lib::model::Location) -> rwf_lib::model::ViewerMode {
+        let ext = std::path::Path::new(&location.display_path())
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        let is_binary = matches!(ext.as_str(),
+            "mp4" | "mp3" | "avi" | "mov" | "mkv" | "wmv" | "flv" | "m4v" | "m4a" |
+            "aac" | "flac" | "wav" | "ogg" | "opus" | "wma" |
+            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "tiff" | "tif" | "ico" |
+            "exe" | "dll" | "so" | "dylib" | "pdb" | "lib" | "a" |
+            "zip" | "7z" | "rar" | "tar" | "gz" | "bz2" | "xz" | "zst" |
+            "pdf" | "db" | "sqlite" | "sqlite3" | "iso" | "img" | "dmg"
+        );
+        if is_binary { rwf_lib::model::ViewerMode::Hex } else { rwf_lib::model::ViewerMode::Text }
     }
 
     fn perform_incremental_search(&mut self) {
