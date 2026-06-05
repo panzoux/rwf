@@ -7,24 +7,6 @@ use crate::model::{FileEntry, Location};
 use crate::model::marking::MarkingModel;
 use std::path::Path;
 
-/// Volume information
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct VolumeInfo {
-    pub display_name: String,
-    pub volume_type: VolumeType,
-}
-
-/// Type of volume
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VolumeType {
-    Local,
-    Network,
-    Removable,
-    Unknown,
-}
-
 /// Marked file statistics
 #[derive(Debug, Clone, Default)]
 pub struct MarkedFileStats {

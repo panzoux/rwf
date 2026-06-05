@@ -35,6 +35,19 @@ impl DirectoryCache {
         }
     }
     
+    /// Peek at cached file/folder counts without updating LRU order.
+    /// Returns `Some((file_count, folder_count))` if the location is cached and not expired.
+    pub fn peek_counts(&self, location: &Location) -> Option<(usize, usize)> {
+        if let Some(cached) = self.entries.get(location) {
+            if cached.timestamp.elapsed() < self.ttl {
+                let files   = cached.entries.iter().filter(|e| !e.is_dir).count();
+                let folders = cached.entries.iter().filter(|e| e.is_dir && e.name != "..").count();
+                return Some((files, folders));
+            }
+        }
+        None
+    }
+
     /// Get cached directory entries if available and not expired
     pub fn get(&mut self, location: &Location) -> Option<Vec<FileEntry>> {
         if let Some(cached) = self.entries.get(location) {
@@ -291,24 +304,26 @@ mod tests {
 
     #[test]
     fn test_cleanup_expired() {
-        let mut cache = DirectoryCache::new(Duration::from_millis(30));
+        // Use generous timings to avoid flakiness on Windows (timer granularity ~15ms)
+        let mut cache = DirectoryCache::new(Duration::from_millis(100));
         let loc1 = Location::Local(std::path::PathBuf::from("/test1"));
         let loc2 = Location::Local(std::path::PathBuf::from("/test2"));
-        
+
         cache.insert(loc1.clone(), vec![create_test_entry("file1.txt", 100, false)]);
-        
-        // Wait a bit
-        std::thread::sleep(Duration::from_millis(15));
-        
+
+        // Wait long enough that loc1 will expire after loc2 is inserted
+        std::thread::sleep(Duration::from_millis(60));
+
         cache.insert(loc2.clone(), vec![create_test_entry("file2.txt", 200, false)]);
-        
-        // Wait for first entry to expire
-        std::thread::sleep(Duration::from_millis(20));
-        
+
+        // Wait for loc1 to expire (total ~110ms since insert) but NOT loc2 (~50ms since insert)
+        std::thread::sleep(Duration::from_millis(60));
+
         cache.cleanup_expired();
-        
-        // First entry should be removed, second should remain
+
+        // First entry should be expired (inserted ~120ms ago, TTL=100ms)
         assert!(cache.get(&loc1).is_none());
+        // Second entry should still be valid (inserted ~60ms ago, TTL=100ms)
         assert!(cache.get(&loc2).is_some());
     }
 

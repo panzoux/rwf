@@ -60,6 +60,10 @@ pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
         JobEvent::Cancelled(job_id) => {
             Transition::AcknowledgeCancel { job_id }
         }
+
+        JobEvent::ViewerReady(_job_id, buffer, encoding) => {
+            Transition::ViewerReady { buffer, encoding }
+        }
     }
 }
 
@@ -84,7 +88,7 @@ pub fn process_pending_events<B: crate::backend::FilesystemBackend + 'static, A:
 
     // Process all available events without blocking
     while let Some(event) = pool.try_recv_event() {
-        debug!("process_pending_events: Received event {:?}", 
+        debug!("process_pending_events: Received event {:?}",
             match &event {
                 JobEvent::Started(_) => "Started",
                 JobEvent::Progress(_, _) => "Progress",
@@ -92,6 +96,7 @@ pub fn process_pending_events<B: crate::backend::FilesystemBackend + 'static, A:
                 JobEvent::Completed(_, _) => "Completed",
                 JobEvent::Failed(_, _) => "Failed",
                 JobEvent::Cancelled(_) => "Cancelled",
+                JobEvent::ViewerReady(_, _, _) => "ViewerReady",
             }
         );
         let transition = map_job_event_to_transition(event);

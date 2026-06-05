@@ -403,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "use-migemo")]
+    #[cfg(feature = "migemo")]
     fn test_migemo_search_basic() {
         // Test basic migemo search functionality
         // Validates: Requirements 30.6
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "use-migemo")]
+    #[cfg(feature = "migemo")]
     fn test_migemo_toggle() {
         // Test toggling migemo mode on and off
         // Validates: Requirements 30.6

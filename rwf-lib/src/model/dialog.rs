@@ -340,6 +340,8 @@ pub enum ContextMenuAction {
     Rename,
     View,
     CustomFunction(String),
+    /// Visual separator — not selectable
+    Separator,
 }
 
 /// Drive information for drive selection dialog
@@ -637,31 +639,14 @@ impl Dialog {
         }
     }
 
-    /// Create a context menu dialog
-    pub fn context_menu() -> Self {
-        let options = vec![
-            ContextMenuOption {
-                label: "Copy".to_string(),
-                action: ContextMenuAction::Copy,
-            },
-            ContextMenuOption {
-                label: "Move".to_string(),
-                action: ContextMenuAction::Move,
-            },
-            ContextMenuOption {
-                label: "Delete".to_string(),
-                action: ContextMenuAction::Delete,
-            },
-            ContextMenuOption {
-                label: "Rename".to_string(),
-                action: ContextMenuAction::Rename,
-            },
-            ContextMenuOption {
-                label: "View".to_string(),
-                action: ContextMenuAction::View,
-            },
-        ];
-        
+    /// Create a context menu dialog with the given custom options.
+    /// Falls back to built-in defaults if `extra` is empty.
+    pub fn context_menu_with_options(extra: Vec<ContextMenuOption>) -> Self {
+        let options = if extra.is_empty() {
+            Self::default_context_menu_options()
+        } else {
+            extra
+        };
         Self {
             title: "Context Menu".to_string(),
             content: DialogContent::ContextMenu {
@@ -669,6 +654,23 @@ impl Dialog {
                 selected_index: 0,
             },
         }
+    }
+
+    fn default_context_menu_options() -> Vec<ContextMenuOption> {
+        vec![
+            ContextMenuOption { label: "View".to_string(), action: ContextMenuAction::View },
+            ContextMenuOption { label: "─────".to_string(), action: ContextMenuAction::Separator },
+            ContextMenuOption { label: "Copy".to_string(), action: ContextMenuAction::Copy },
+            ContextMenuOption { label: "Move".to_string(), action: ContextMenuAction::Move },
+            ContextMenuOption { label: "Rename".to_string(), action: ContextMenuAction::Rename },
+            ContextMenuOption { label: "─────".to_string(), action: ContextMenuAction::Separator },
+            ContextMenuOption { label: "Delete".to_string(), action: ContextMenuAction::Delete },
+        ]
+    }
+
+    /// Create a context menu dialog with default built-in options
+    pub fn context_menu() -> Self {
+        Self::context_menu_with_options(Vec::new())
     }
 
     /// Create a drive selection dialog

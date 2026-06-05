@@ -13,41 +13,38 @@ use ratatui::{
 use rwf_lib::{AppState, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};
 use super::parse_color;
 
-/// Render the volume name line showing drive/volume names and marked stats for both panes
-/// **Validates: Requirements 39A.1, 39A.13, 39A.14**
-pub fn render_volume_line(frame: &mut Frame, area: Rect, state: &AppState) {
+/// Render the volume name line.
+/// `single_pane`: when `Some(pane)`, render only that pane at full width
+/// (used in SideBySide mode where the other half is the viewer).
+pub fn render_volume_line(frame: &mut Frame, area: Rect, state: &AppState, single_pane: Option<rwf_lib::model::ActivePane>) {
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
-    
-    // Get volume names
-    let left_volume = get_drive_or_share_name(&tab.left_pane.current_location);
-    let right_volume = get_drive_or_share_name(&tab.right_pane.current_location);
-    
-    // Calculate marked stats
-    let left_stats = calculate_marked_stats(&tab.left_pane.entries, &tab.left_pane.marking);
-    let right_stats = calculate_marked_stats(&tab.right_pane.entries, &tab.right_pane.marking);
-    
-    // Format separator info
-    let left_info = format_top_separator_info(&left_volume, &left_stats);
-    let right_info = format_top_separator_info(&right_volume, &right_stats);
-    
-    // Split into two halves
-    let halves = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-    
-    // Left volume with marked stats
-    let left_para = Paragraph::new(Span::raw(format!(" {}", left_info)))
-        .style(Style::default()
-            .fg(parse_color(&colors.top_separator_foreground_color))
-            .bg(parse_color(&colors.top_separator_background_color)));
-    frame.render_widget(left_para, halves[0]);
-    
-    // Right volume with marked stats
-    let right_para = Paragraph::new(Span::raw(format!(" {}", right_info)))
-        .style(Style::default()
-            .fg(parse_color(&colors.top_separator_foreground_color))
-            .bg(parse_color(&colors.top_separator_background_color)));
-    frame.render_widget(right_para, halves[1]);
+    let style = Style::default()
+        .fg(parse_color(&colors.top_separator_foreground_color))
+        .bg(parse_color(&colors.top_separator_background_color));
+
+    let render_one = |frame: &mut Frame, rect: Rect, pane: rwf_lib::model::ActivePane| {
+        let pane_model = match pane {
+            rwf_lib::model::ActivePane::Left  => &tab.left_pane,
+            rwf_lib::model::ActivePane::Right => &tab.right_pane,
+        };
+        let volume = get_drive_or_share_name(&pane_model.current_location);
+        let stats  = calculate_marked_stats(&pane_model.entries, &pane_model.marking);
+        let info   = format_top_separator_info(&volume, &stats);
+        frame.render_widget(
+            Paragraph::new(Span::raw(format!(" {}", info))).style(style),
+            rect,
+        );
+    };
+
+    if let Some(pane) = single_pane {
+        render_one(frame, area, pane);
+    } else {
+        let halves = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+        render_one(frame, halves[0], rwf_lib::model::ActivePane::Left);
+        render_one(frame, halves[1], rwf_lib::model::ActivePane::Right);
+    }
 }

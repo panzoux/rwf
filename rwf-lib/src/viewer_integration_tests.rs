@@ -85,11 +85,10 @@ fn test_viewer_load_complete() {
         contents: contents.clone(),
     });
     
-    // Verify contents are loaded
+    // Verify contents are loaded (InMemory path via set_contents)
     let viewer = state.viewer.as_ref().unwrap();
-    assert_eq!(viewer.contents, contents);
-    assert_eq!(viewer.text(), Some("Hello World\nLine 2\nLine 3"));
     assert_eq!(viewer.line_count(), 3);
+    assert_eq!(viewer.text(), Some("Hello World\nLine 2\nLine 3"));
 }
 
 #[test]
@@ -167,7 +166,7 @@ fn test_viewer_navigation_top_bottom() {
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 0);
     
     // Test F6 (jump to bottom)
-    update_state(&mut state, Transition::ViewerJumpToBottom);
+    update_state(&mut state, Transition::ViewerJumpToBottom { viewport_height: 20 });
     // With 5 lines and viewport height of 20, line_offset should be 0
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 0);
 }
@@ -272,7 +271,7 @@ fn test_viewer_hex_mode_navigation() {
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 0);
     
     // Test jump to bottom in hex mode
-    update_state(&mut state, Transition::ViewerJumpToBottom);
+    update_state(&mut state, Transition::ViewerJumpToBottom { viewport_height: 20 });
     // With 7 lines and viewport height of 20, line_offset should be 0
     assert_eq!(state.viewer.as_ref().unwrap().line_offset, 0);
 }

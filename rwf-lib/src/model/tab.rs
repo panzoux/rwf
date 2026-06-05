@@ -1,7 +1,24 @@
 //! Tab management
 
 use super::{PaneModel, Location, NavigationHistory};
+use super::ui::{ViewerLayout, ActivePane};
 use std::path::PathBuf;
+
+/// Viewer state saved for a tab that is not currently active.
+/// When a tab becomes active, this is moved into AppState fields.
+/// When a tab is deactivated, AppState fields are moved here.
+#[derive(Debug, Default)]
+pub struct TabViewerState {
+    pub viewer: Option<crate::model::viewer::ViewerState>,
+    pub viewer_job_id: Option<crate::job::JobId>,
+    pub viewer_layout: ViewerLayout,
+    pub viewer_preferred_layout: ViewerLayout,
+    pub viewer_anchor_pane: ActivePane,
+    /// Whether the tab was in viewer-focus mode (UIMode::Viewer/Search/Command)
+    pub viewer_was_focused: bool,
+    pub viewer_search_input: String,
+    pub viewer_command_input: String,
+}
 
 /// State for a single tab
 #[derive(Debug)]
@@ -10,6 +27,8 @@ pub struct TabState {
     pub left_pane: PaneModel,
     pub right_pane: PaneModel,
     pub history: NavigationHistory,
+    /// Viewer state saved while this tab is not active.
+    pub tab_viewer: TabViewerState,
 }
 
 impl TabState {
@@ -21,6 +40,7 @@ impl TabState {
             left_pane: PaneModel::new(Location::Local(cwd.clone())),
             right_pane: PaneModel::new(Location::Local(cwd)),
             history: NavigationHistory::new(),
+            tab_viewer: TabViewerState::default(),
         }
     }
 }

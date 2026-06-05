@@ -13,10 +13,9 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::StartSearch);
 
-        // Should have two transitions: change UI mode and show dialog
+        // Search is now inline: ChangeUIMode + ClearSearch (no dialog)
         assert_eq!(transitions.len(), 2);
 
-        // First transition should change UI mode to Search
         match &transitions[0] {
             Transition::ChangeUIMode { mode } => {
                 assert_eq!(*mode, UIMode::Search);
@@ -24,20 +23,7 @@ mod tests {
             _ => panic!("Expected ChangeUIMode transition"),
         }
 
-        // Second transition should show search dialog
-        match &transitions[1] {
-            Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "Search");
-                match &dialog.content {
-                    DialogContent::Input { prompt, default_value } => {
-                        assert!(prompt.contains("search pattern"));
-                        assert_eq!(default_value, "");
-                    }
-                    _ => panic!("Expected Input dialog content"),
-                }
-            }
-            _ => panic!("Expected ShowDialog transition"),
-        }
+        assert!(matches!(transitions[1], Transition::ClearSearch));
     }
 
     #[test]
@@ -47,12 +33,11 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
 
-        // Should have one transition: show dialog
         assert_eq!(transitions.len(), 1);
 
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "File Mask");
+                assert_eq!(dialog.title, "File Mask Filter");
                 match &dialog.content {
                     DialogContent::FileMask { input, .. } => {
                         assert_eq!(input, "");
@@ -284,9 +269,9 @@ mod tests {
             update_state(&mut state, transition);
         }
 
-        // Verify we're in search mode
+        // Verify we're in search mode (inline search — no dialog)
         assert_eq!(state.ui.mode, UIMode::Search);
-        assert!(!state.dialogs.is_empty());
+        assert!(state.dialogs.is_empty());
 
         // Exit search mode
         let transitions = action_to_transitions(&state, &Action::ExitSearchMode);

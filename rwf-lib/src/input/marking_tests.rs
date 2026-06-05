@@ -80,13 +80,7 @@ mod tests {
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Wildcard Marking");
-                match &dialog.content {
-                    crate::model::DialogContent::Input { prompt, default_value } => {
-                        assert!(prompt.contains("pattern"));
-                        assert_eq!(default_value, "");
-                    }
-                    _ => panic!("Expected Input dialog"),
-                }
+                assert!(matches!(dialog.content, crate::model::DialogContent::WildcardMark { .. }));
             }
             _ => panic!("Expected ShowDialog transition"),
         }

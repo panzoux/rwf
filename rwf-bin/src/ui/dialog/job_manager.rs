@@ -11,7 +11,7 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::{AppState, job::BackgroundJob};
-use super::DialogAction;
+use crate::ui::unicode_utils::smart_truncate;
 
 /// Job Manager Dialog state
 /// 
@@ -27,15 +27,6 @@ pub struct JobManagerDialogState {
     pub job_list_focus_index: usize, // Which job has focus in the list
 }
 
-impl JobManagerDialogState {
-    pub fn new() -> Self {
-        Self {
-            selected_index: 0,
-            focused_field: 0,  // Start with Job List focused
-            job_list_focus_index: 0,
-        }
-    }
-}
 
 /// Get layout constraints for Job Manager Dialog (Part 6.2)
 /// 
@@ -182,7 +173,7 @@ fn render_job_list(
 
             // Smart truncation preserving extension
             let max_name_len = (area.width.saturating_sub(20) as usize).min(35);
-            let truncated_name = smart_truncate(&job.name, max_name_len);
+            let truncated_name = smart_truncate(&job.name, max_name_len, "...");
 
             let line_text = format!(
                 "{}#{} [{}] {}{}",
@@ -217,31 +208,6 @@ fn render_job_list(
         ));
         frame.render_widget(Paragraph::new(blank), Rect::new(area.x, area.y + y_offset, area.width, 1));
         y_offset += 1;
-    }
-}
-
-/// Smart truncation preserving file extension
-fn smart_truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        return s.to_string();
-    }
-    
-    // Try to preserve extension
-    if let Some(dot_pos) = s.rfind('.') {
-        let name = &s[..dot_pos];
-        let ext = &s[dot_pos..];
-        
-        if name.len() <= 3 || max_len <= ext.len() + 4 {
-            // Name too short or max_len too small, just truncate
-            format!("{}...", &s[..max_len.saturating_sub(3)])
-        } else {
-            // Preserve extension: "very_long...ame.txt"
-            let available = max_len - ext.len() - 3; // 3 for "..."
-            format!("{}...{}", &name[..available], ext)
-        }
-    } else {
-        // No extension, simple truncation
-        format!("{}...", &s[..max_len.saturating_sub(3)])
     }
 }
 
@@ -356,109 +322,3 @@ fn render_buttons(
     frame.render_widget(Paragraph::new(line), area);
 }
 
-/// Handle Job Manager Dialog input
-/// 
-/// Key Bindings (Part 6.6):
-/// - Tab: Move focus forward (Job List → Close → Cancel)
-/// - Shift+Tab: Move focus backward
-/// - Up: Move selection up in job list (when Job List focused)
-/// - Down: Move selection down in job list (when Job List focused)
-/// - Enter: Activate focused button
-/// - Escape: Close dialog
-/// - C: Cancel selected job (shortcut, when Job List focused)
-pub fn handle_job_manager_input(
-    dialog_state: &mut JobManagerDialogState,
-    state: &mut AppState,
-    key: crossterm::event::KeyEvent,
-) -> DialogAction {
-    use crossterm::event::{KeyCode, KeyModifiers};
-    
-    // Escape: Cancel dialog
-    if key.code == KeyCode::Esc {
-        return DialogAction::Cancel;
-    }
-    
-    // Tab navigation (Part 6.6, 6.7)
-    if key.code == KeyCode::Tab {
-        if key.modifiers.contains(KeyModifiers::SHIFT) {
-            // Shift+Tab: backwards (0→2→1→0)
-            dialog_state.focused_field = match dialog_state.focused_field {
-                0 => 2,  // Job List → Cancel
-                1 => 0,  // Close → Job List
-                2 => 1,  // Cancel → Close
-                _ => 0,
-            };
-        } else {
-            // Tab: forwards (0→1→2→0)
-            dialog_state.focused_field = match dialog_state.focused_field {
-                0 => 1,  // Job List → Close
-                1 => 2,  // Close → Cancel
-                2 => 0,  // Cancel → Job List
-                _ => 0,
-            };
-        }
-        return DialogAction::None;
-    }
-    
-    // Up/Down navigation in Job List (Part 6.6)
-    if dialog_state.focused_field == 0 {
-        let jobs: Vec<BackgroundJob> = state.background_jobs.get_all_jobs()
-            .cloned()
-            .collect();
-
-        if !jobs.is_empty() {
-            // Ensure selected_index is within bounds
-            if dialog_state.selected_index >= jobs.len() {
-                dialog_state.selected_index = jobs.len() - 1;
-            }
-            if dialog_state.job_list_focus_index >= jobs.len() {
-                dialog_state.job_list_focus_index = jobs.len() - 1;
-            }
-
-            if key.code == KeyCode::Up {
-                if dialog_state.job_list_focus_index > 0 {
-                    dialog_state.job_list_focus_index -= 1;
-                }
-                dialog_state.selected_index = dialog_state.job_list_focus_index;
-                return DialogAction::None;
-            }
-
-            if key.code == KeyCode::Down {
-                if dialog_state.job_list_focus_index < jobs.len() - 1 {
-                    dialog_state.job_list_focus_index += 1;
-                }
-                dialog_state.selected_index = dialog_state.job_list_focus_index;
-                return DialogAction::None;
-            }
-
-            // C key: Cancel selected job (Part 6.6)
-            if key.code == KeyCode::Char('c') || key.code == KeyCode::Char('C') {
-                let job_to_cancel = jobs.get(dialog_state.selected_index);
-                if let Some(job) = job_to_cancel {
-                    state.background_jobs.cancel_job(job.id.uuid);
-                }
-                return DialogAction::None;
-            }
-        }
-    }
-
-    // Enter: Activate button
-    if key.code == KeyCode::Enter {
-        match dialog_state.focused_field {
-            1 => return DialogAction::Confirm,     // Close button
-            2 => {
-                // Terminate Job button
-                let jobs: Vec<BackgroundJob> = state.background_jobs.get_all_jobs()
-                    .cloned()
-                    .collect();
-                if let Some(job) = jobs.get(dialog_state.selected_index) {
-                    state.background_jobs.cancel_job(job.id.uuid);
-                }
-                return DialogAction::None;
-            }
-            _ => {}
-        }
-    }
-
-    DialogAction::None
-}

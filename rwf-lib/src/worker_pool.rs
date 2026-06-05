@@ -7,6 +7,7 @@ use crate::job::{JobSpec, JobId, JobExecutor};
 use crate::backend::{FilesystemBackend, ArchiveHandler};
 use tokio::sync::mpsc;
 use std::sync::Arc;
+use std::marker::PhantomData;
 
 /// Events sent from workers to the UI thread
 #[derive(Debug, Clone)]
@@ -23,6 +24,11 @@ pub enum JobEvent {
     Failed(JobId, String),
     /// Job was cancelled
     Cancelled(JobId),
+    /// Viewer file opened: mmap ready and line-index building started.
+    /// Sent immediately so the UI can render the first visible lines before
+    /// the full line index is built. The ViewerBuffer's line_index Arc is
+    /// shared with the background indexer — no copy, just Arc::clone.
+    ViewerReady(JobId, crate::model::viewer::ViewerBuffer, crate::model::viewer::TextEncoding),
 }
 
 /// Worker pool managing background job execution
@@ -31,8 +37,7 @@ pub struct WorkerPool<B: FilesystemBackend, A: ArchiveHandler> {
     job_sender: mpsc::UnboundedSender<JobSpec>,
     event_receiver: mpsc::UnboundedReceiver<JobEvent>,
     backend: Arc<B>,
-    #[allow(dead_code)]
-    archive_handler: Arc<A>,
+    _phantom: PhantomData<A>,
 }
 
 impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, A> {
@@ -102,7 +107,7 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
             job_sender,
             event_receiver,
             backend,
-            archive_handler,
+            _phantom: PhantomData,
         }
     }
 

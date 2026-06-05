@@ -17,7 +17,9 @@ use crate::backend::ArchiveHandler;
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ArchiveFormat {
     ZIP,
-    // SevenZip, // Future: .7z, .rar, .tar, .tgz using 7z crate
+    SevenZip,
+    Tar,
+    TarGz,
 }
 
 impl Default for ArchiveFormat {
@@ -26,18 +28,21 @@ impl Default for ArchiveFormat {
     }
 }
 
-/// Check if a location is an archive file (by extension)
+/// Check if a location is an archive file (by name suffix).
+/// Uses suffix matching rather than Path::extension() to support double
+/// extensions like .tar.gz.
 fn is_archive(location: &crate::model::Location) -> bool {
     let path_str = location.display_path();
-    let ext = std::path::Path::new(&path_str)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-    
-    matches!(ext.as_str(), "zip")
-    // Future: Add more formats when 7z support is added
-    // matches!(ext.as_str(), "zip" | "7z" | "rar" | "tar" | "tgz" | "gz" | "bz2")
+    let name = path_str.to_lowercase();
+    name.ends_with(".zip")
+        || name.ends_with(".7z")
+        || name.ends_with(".tar")
+        || name.ends_with(".tgz")
+        || name.ends_with(".tar.gz")
+        || name.ends_with(".rar")
+        || name.ends_with(".iso")
+        || name.ends_with(".lzh")
+        || name.ends_with(".lha")
 }
 
 /// Configurable key bindings loaded from keybindings.json
@@ -52,6 +57,9 @@ pub struct KeyBindings {
     /// Key bindings for dialog mode
     #[serde(rename = "DialogMode")]
     pub dialog_mode: HashMap<String, Action>,
+    /// Key bindings for viewer mode
+    #[serde(rename = "ViewerMode", default)]
+    pub viewer_mode: HashMap<String, Action>,
     /// Multi-key sequence state
     #[serde(skip)]
     pub pending_sequence: Option<String>,
@@ -85,6 +93,7 @@ impl KeyBindings {
         
         // Marking
         normal_mode.insert("Space".to_string(), Action::ToggleMark);
+        normal_mode.insert("Shift+Space".to_string(), Action::ToggleMarkUp);
         normal_mode.insert("*".to_string(), Action::FileMaskFilter);
         normal_mode.insert("A".to_string(), Action::MarkAll);
         normal_mode.insert("Ctrl+u".to_string(), Action::UnmarkAll);
@@ -145,6 +154,10 @@ impl KeyBindings {
         normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);
         normal_mode.insert("N".to_string(), Action::ShowJumpToFileDialog);
 
+        // Viewer
+        normal_mode.insert("v".to_string(), Action::OpenTextViewer);
+        normal_mode.insert("X".to_string(), Action::OpenHexViewer);
+
         // File info
         normal_mode.insert("i".to_string(), Action::ShowFileInfoForCursor);
 
@@ -168,9 +181,10 @@ impl KeyBindings {
         normal_mode.insert("O".to_string(), Action::SyncPanes);
         normal_mode.insert("Shift+o".to_string(), Action::SwapPanes);
         
-        // Context menu and drive selection
+        // Context menu, drive selection, custom functions
         normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
         normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
+        normal_mode.insert("Shift+T".to_string(), Action::ShowCustomFunctionsDialog);
 
         // Version / system info (outputs to task panel, not a modal dialog)
         normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
@@ -179,8 +193,8 @@ impl KeyBindings {
         normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
         normal_mode.insert("Ctrl+Up".to_string(), Action::IncreaseTaskPanelHeight);
         normal_mode.insert("Ctrl+Down".to_string(), Action::DecreaseTaskPanelHeight);
-        normal_mode.insert("Alt+Up".to_string(), Action::ScrollTaskPanelUp);
-        normal_mode.insert("Alt+Down".to_string(), Action::ScrollTaskPanelDown);
+        normal_mode.insert("Shift+Up".to_string(), Action::ScrollTaskPanelUp);
+        normal_mode.insert("Shift+Down".to_string(), Action::ScrollTaskPanelDown);
 
         // Archive operations
         normal_mode.insert("P".to_string(), Action::Compress);
@@ -188,10 +202,51 @@ impl KeyBindings {
         normal_mode.insert("U".to_string(), Action::Extract);
         normal_mode.insert("u".to_string(), Action::Extract);
 
+        // Viewer mode bindings
+        let mut viewer_mode = HashMap::new();
+        viewer_mode.insert("Escape".to_string(), Action::ViewerClose);
+        viewer_mode.insert("q".to_string(), Action::ViewerClose);
+        viewer_mode.insert("b".to_string(), Action::ViewerToggleHexMode);
+        viewer_mode.insert("F8".to_string(), Action::ViewerToggleHexMode);
+        viewer_mode.insert("j".to_string(), Action::ViewerScrollDown);
+        viewer_mode.insert("Down".to_string(), Action::ViewerScrollDown);
+        viewer_mode.insert("k".to_string(), Action::ViewerScrollUp);
+        viewer_mode.insert("Up".to_string(), Action::ViewerScrollUp);
+        viewer_mode.insert("PageDown".to_string(), Action::ViewerPageDown);
+        viewer_mode.insert("PageUp".to_string(), Action::ViewerPageUp);
+        viewer_mode.insert("Ctrl+f".to_string(), Action::ViewerPageDown);
+        viewer_mode.insert("Space".to_string(), Action::ViewerPageDown);
+        viewer_mode.insert("Ctrl+b".to_string(), Action::ViewerPageUp);
+        viewer_mode.insert("F5".to_string(), Action::ViewerGoToTop);
+        viewer_mode.insert("g".to_string(), Action::ViewerGoToTop);
+        viewer_mode.insert("<".to_string(), Action::ViewerGoToTop);
+        viewer_mode.insert("Home".to_string(), Action::ViewerGoToTop);
+        viewer_mode.insert("F6".to_string(), Action::ViewerGoToBottom);
+        viewer_mode.insert("G".to_string(), Action::ViewerGoToBottom);
+        viewer_mode.insert(">".to_string(), Action::ViewerGoToBottom);
+        viewer_mode.insert("End".to_string(), Action::ViewerGoToBottom);
+        viewer_mode.insert("e".to_string(), Action::ViewerCycleEncoding);
+        viewer_mode.insert("/".to_string(), Action::ViewerBeginSearch);
+        viewer_mode.insert("?".to_string(), Action::ViewerBeginSearchBackward);
+        viewer_mode.insert("F3".to_string(), Action::ViewerFindNext);
+        viewer_mode.insert("Shift+F3".to_string(), Action::ViewerFindPrev);
+        viewer_mode.insert("n".to_string(), Action::ViewerFindNext);
+        viewer_mode.insert("N".to_string(), Action::ViewerFindPrev);
+        viewer_mode.insert("Ctrl+~".to_string(), Action::ViewerToggleCaseSensitive);
+        viewer_mode.insert("Ctrl+^".to_string(), Action::ViewerToggleCaseSensitive);
+        viewer_mode.insert("Ctrl+u".to_string(), Action::ViewerClearSearch);
+        viewer_mode.insert("Left".to_string(),       Action::ViewerScrollLeft);
+        viewer_mode.insert("Right".to_string(),      Action::ViewerScrollRight);
+        viewer_mode.insert("Shift+Left".to_string(),  Action::ViewerFastScrollLeft);
+        viewer_mode.insert("Shift+Right".to_string(), Action::ViewerFastScrollRight);
+        viewer_mode.insert("Shift+Up".to_string(),    Action::ViewerFastScrollUp);
+        viewer_mode.insert("Shift+Down".to_string(),  Action::ViewerFastScrollDown);
+
         Self {
             normal_mode,
             search_mode: HashMap::new(),
             dialog_mode: HashMap::new(),
+            viewer_mode,
             pending_sequence: None,
         }
     }
@@ -307,6 +362,7 @@ pub enum Action {
     
     // Marking
     ToggleMark,
+    ToggleMarkUp,
     MarkAll,
     UnmarkAll,
     ClearMarks,
@@ -361,6 +417,33 @@ pub enum Action {
     ShowJumpToPathDialog,
     ShowJumpToFileDialog,
 
+    // Viewer (open from normal mode)
+    OpenTextViewer,
+    OpenHexViewer,
+
+    // Viewer mode actions (used in ViewerMode key bindings)
+    ViewerClose,
+    ViewerToggleHexMode,
+    ViewerScrollDown,
+    ViewerScrollUp,
+    ViewerPageDown,
+    ViewerPageUp,
+    ViewerGoToTop,
+    ViewerGoToBottom,
+    ViewerCycleEncoding,
+    ViewerBeginSearch,
+    ViewerBeginSearchBackward,
+    ViewerFindNext,
+    ViewerFindPrev,
+    ViewerToggleCaseSensitive,
+    ViewerClearSearch,
+    ViewerScrollLeft,
+    ViewerScrollRight,
+    ViewerFastScrollUp,
+    ViewerFastScrollDown,
+    ViewerFastScrollLeft,
+    ViewerFastScrollRight,
+
     // Miscellaneous
     Quit,
     ExitAndChangeDirectory,
@@ -373,9 +456,10 @@ pub enum Action {
     SyncPanes,
     SwapPanes,
     
-    // Context menu and drive selection
+    // Context menu, drive selection, custom functions
     ShowContextMenu,
     ShowDriveChangeDialog,
+    ShowCustomFunctionsDialog,
     
     // Information dialogs
     ShowFileInfoForCursor,
@@ -414,7 +498,9 @@ pub fn format_key_event(event: &KeyEvent) -> String {
     if event.modifiers.contains(KeyModifiers::CONTROL) {
         parts.push("Ctrl");
     }
-    if event.modifiers.contains(KeyModifiers::SHIFT) && !is_char {
+    // Space has no shifted form, so Shift+Space must be distinguished explicitly
+    let is_space = matches!(event.code, KeyCode::Char(' '));
+    if event.modifiers.contains(KeyModifiers::SHIFT) && (!is_char || is_space) {
         parts.push("Shift");
     }
     if event.modifiers.contains(KeyModifiers::ALT) {
@@ -541,8 +627,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     }]
                 } else {
                     // Check if this is an archive file
-                    use crate::backend::ZipArchiveHandler;
-                    let handler = ZipArchiveHandler::new();
+                    use crate::backend::MultiFormatArchiveHandler;
+                    let handler = MultiFormatArchiveHandler::new();
                     if handler.is_archive(&entry.name) {
                         debug!("EnterDirectory: entering archive {}", entry.name);
                         // Enter archive as virtual folder
@@ -555,8 +641,35 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                             location: archive_location,
                         }]
                     } else {
-                        debug!("EnterDirectory: not a directory or archive, ignoring");
-                        vec![]
+                        // Check for file-type extension association (Phase 6.2)
+                        let assoc = entry.extension().and_then(|ext| {
+                            let ext_lower = ext.to_lowercase();
+                            state.extension_associations.iter().find(|a| {
+                                a.extension.trim_start_matches('.').to_lowercase() == ext_lower
+                            })
+                        });
+                        if let Some(assoc) = assoc {
+                            let expander = crate::macro_expander::MacroExpander::new();
+                            let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
+                            let func = if let Some(ref shell) = assoc.shell {
+                                func.with_shell(shell)
+                            } else { func };
+                            match expander.expand(state, &func) {
+                                Ok(command) => {
+                                    debug!("EnterDirectory: running association command: {}", command);
+                                    let working_dir = state.active_pane().current_location.clone();
+                                    let shell = assoc.shell.clone();
+                                    vec![Transition::ExecuteAssociation { command, working_dir, shell }]
+                                }
+                                Err(_) => {
+                                    debug!("EnterDirectory: association command expansion failed, falling back to viewer");
+                                    vec![Transition::OpenTextViewer { location: entry.location.clone() }]
+                                }
+                            }
+                        } else {
+                            debug!("EnterDirectory: opening text viewer for {}", entry.name);
+                            vec![Transition::OpenTextViewer { location: entry.location.clone() }]
+                        }
                     }
                 }
             } else {
@@ -620,6 +733,21 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     Transition::CursorMove {
                         pane: state.ui.active_pane,
                         delta: 1,
+                    },
+                ]
+            } else {
+                vec![]
+            }
+        }
+        Action::ToggleMarkUp => {
+            if let Some(entry) = state.active_pane().current_entry() {
+                vec![
+                    Transition::ToggleMark {
+                        location: entry.location.clone(),
+                    },
+                    Transition::CursorMove {
+                        pane: state.ui.active_pane,
+                        delta: -1,
                     },
                 ]
             } else {
@@ -1039,8 +1167,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::SwapPanes]
         }
         Action::ShowContextMenu => {
-            // Show context menu dialog
             vec![Transition::ShowContextMenu]
+        }
+        Action::ShowCustomFunctionsDialog => {
+            vec![Transition::ShowCustomFunctionsDialog]
         }
         Action::ShowDriveChangeDialog => {
             // Show drive selection dialog
@@ -1096,6 +1226,34 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::ShowJumpToFileDialog => {
             vec![Transition::ShowJumpToFileDialog]
+        }
+        Action::OpenTextViewer => {
+            if let Some(entry) = state.active_pane().current_entry() {
+                if !entry.is_dir {
+                    debug!("OpenTextViewer: opening text viewer for {}", entry.name);
+                    vec![Transition::OpenTextViewer {
+                        location: entry.location.clone(),
+                    }]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
+        }
+        Action::OpenHexViewer => {
+            if let Some(entry) = state.active_pane().current_entry() {
+                if !entry.is_dir {
+                    debug!("OpenHexViewer: opening hex viewer for {}", entry.name);
+                    vec![Transition::OpenHexViewer {
+                        location: entry.location.clone(),
+                    }]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
         }
         Action::ToggleTaskPanel => {
             vec![Transition::ToggleTaskPanel]

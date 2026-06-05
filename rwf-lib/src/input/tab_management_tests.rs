@@ -13,6 +13,11 @@ mod tests {
         AppState::new(config)
     }
 
+    fn create_tab(state: &mut AppState) {
+        state.last_tab_created = None;
+        update_state(state, Transition::CreateTab);
+    }
+
     #[test]
     fn test_new_tab_key_binding() {
         let mut bindings = KeyBindings::default();
@@ -139,8 +144,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create additional tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         let transitions = action_to_transitions(&state, &Action::TabSelector);
         
@@ -227,7 +232,7 @@ mod tests {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
         
         // Create a new tab
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
         
         // New tab should be initialized with CWD
         let new_tab = &state.tabs.tabs[1];
@@ -240,8 +245,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create 3 tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         // Should be on tab 2 (index 2)
         assert_eq!(state.tabs.active_index, 2);
@@ -259,8 +264,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create 3 tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         // Go to first tab
         update_state(&mut state, Transition::SwitchTab { index: 0 });
@@ -290,8 +295,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create multiple tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         // Switch to middle tab
         update_state(&mut state, Transition::SwitchTab { index: 1 });
@@ -335,8 +340,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create multiple tabs with different locations
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         // Show tab selector
         let transitions = action_to_transitions(&state, &Action::TabSelector);
@@ -365,7 +370,7 @@ mod tests {
         let mut state = create_test_state();
         
         // Create second tab
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
         
         // Go to first tab
         update_state(&mut state, Transition::SwitchTab { index: 0 });
@@ -424,8 +429,8 @@ mod tests {
         let mut state = create_test_state();
         
         // Create 3 tabs
-        update_state(&mut state, Transition::CreateTab);
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
+        create_tab(&mut state);
         
         // Go to middle tab (index 1)
         update_state(&mut state, Transition::SwitchTab { index: 1 });
@@ -461,7 +466,7 @@ mod tests {
         
         // Create 4 tabs
         for _ in 0..4 {
-            update_state(&mut state, Transition::CreateTab);
+            create_tab(&mut state);
         }
         assert_eq!(state.tabs.tabs.len(), 5);
         
@@ -474,7 +479,7 @@ mod tests {
         assert_eq!(state.tabs.tabs.len(), 3);
         
         // Create a new tab
-        update_state(&mut state, Transition::CreateTab);
+        create_tab(&mut state);
         assert_eq!(state.tabs.tabs.len(), 4);
         
         // Close all but one

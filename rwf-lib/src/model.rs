@@ -36,11 +36,11 @@ mod cache_properties;
 pub use location::Location;
 pub use file_entry::{FileEntry, format_size};
 pub use pane::{PaneModel, SortMode, SortOrder, DisplayMode};
-pub use tab::{TabState, TabManager};
+pub use tab::{TabState, TabManager, TabViewerState};
 pub use search::SearchModel;
 pub use marking::MarkingModel;
 pub use navigation::NavigationHistory;
-pub use ui::{UIState, ActivePane, UIMode};
+pub use ui::{UIState, ActivePane, UIMode, ViewerLayout};
 pub use dialog::{
     DialogStack, Dialog, DialogContent, CustomFunction, RegisteredFolder, RegisteredFolderManager,
     PipeToAction, OsConfig, JobInfo, JobKind, JobState, JobManagerDialog,
@@ -48,5 +48,5 @@ pub use dialog::{
     ErrorType, SplitJoinMode, ContextMenuOption, ContextMenuAction, DriveInfo, DriveType
 };
 pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
-pub use viewer::{ViewerState, ViewerMode, TextEncoding};
+pub use viewer::{ViewerState, ViewerMode, TextEncoding, ViewerBuffer, LineIndex, FileBytes};
 pub use navigation_cache::NavigationStateCache;

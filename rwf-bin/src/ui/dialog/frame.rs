@@ -3,9 +3,9 @@
 //! Provides reusable functions for rendering dialog borders, titles, and buttons.
 
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Rect},
     prelude::Stylize,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
@@ -91,22 +91,6 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
     }
 }
 
-/// Center a rectangle within another rectangle
-///
-/// # Arguments
-/// * `percent_x` - Width as percentage of parent (0-100)
-/// * `percent_y` - Height as percentage of parent (0-100)
-/// * `area` - Parent rectangle
-pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let width = (area.width * percent_x / 100).max(40);
-    let height = (area.height * percent_y / 100).max(10);
-
-    let x = area.x + (area.width - width) / 2;
-    let y = area.y + (area.height - height) / 2;
-
-    Rect::new(x, y, width, height)
-}
-
 /// Center a rectangle using absolute pixel dimensions (no rounding loss)
 pub fn centered_rect_abs(width: u16, height: u16, area: Rect) -> Rect {
     let w = width.min(area.width);
@@ -114,48 +98,4 @@ pub fn centered_rect_abs(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;
     Rect::new(x, y, w, h)
-}
-
-/// Render a simple text line with optional highlighting
-pub fn render_text_line(frame: &mut Frame, text: &str, area: Rect, highlighted: bool) {
-    let style = if highlighted {
-        Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    
-    let paragraph = Paragraph::new(text).style(style);
-    frame.render_widget(paragraph, area);
-}
-
-/// Render a labeled input field
-pub fn render_labeled_field(frame: &mut Frame, label: &str, value: &str, area: Rect, focused: bool) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(label.len() as u16 + 2),
-            Constraint::Min(10),
-        ])
-        .split(area);
-    
-    // Render label
-    let label_paragraph = Paragraph::new(label).style(Style::default().fg(Color::Yellow));
-    frame.render_widget(label_paragraph, chunks[0]);
-    
-    // Render value with border if focused
-    let value_style = if focused {
-        Style::default().fg(Color::Black).bg(Color::White)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    
-    let value_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(value_style);
-    
-    let value_inner = value_block.inner(chunks[1]);
-    frame.render_widget(value_block, chunks[1]);
-    
-    let value_paragraph = Paragraph::new(value).style(value_style);
-    frame.render_widget(value_paragraph, value_inner);
 }

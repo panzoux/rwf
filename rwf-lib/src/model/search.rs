@@ -137,6 +137,15 @@ impl SearchModel {
     pub fn migemo_dict_path(&self) -> Option<&str> {
         self.migemo_dict_path.as_deref()
     }
+
+    /// Build a migemo regex pattern for the given query. Returns None if migemo
+    /// is not available or the query should be matched as plain text.
+    pub fn get_migemo_regex(&self, query: &str, case_sensitive: bool) -> Option<String> {
+        if !self.use_migemo { return None; }
+        let dict = self.migemo_dict.as_ref()?;
+        let pattern = migemo_query(query.to_string(), dict, &RegexOperator::Default);
+        Some(if case_sensitive { pattern } else { format!("(?i){}", pattern) })
+    }
     
     /// Start a new search with the given query
     pub fn start_search(&mut self, query: String) {
@@ -316,11 +325,18 @@ impl SearchModel {
     }
     
     fn matches_wildcard(&self, entry: &FileEntry, pattern: &str) -> bool {
-        // For search (incremental), we use substring match by default, not exact match
-        if self.case_sensitive { 
-            entry.name.contains(pattern) 
-        } else { 
-            entry.name.to_lowercase().contains(&pattern.to_lowercase()) 
+        if pattern.contains('*') || pattern.contains('?') {
+            let anchored = format!("^{}$", wildcard_to_regex(pattern));
+            let re = if self.case_sensitive {
+                Regex::new(&anchored)
+            } else {
+                Regex::new(&format!("(?i){}", anchored))
+            };
+            re.map_or(false, |re| re.is_match(&entry.name))
+        } else if self.case_sensitive {
+            entry.name.contains(pattern)
+        } else {
+            entry.name.to_lowercase().contains(&pattern.to_lowercase())
         }
     }
     

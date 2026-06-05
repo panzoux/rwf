@@ -56,6 +56,7 @@ async fn main() {
                     println!("Job {:?} was cancelled", job_id);
                     completed_count += 1;
                 }
+                JobEvent::ViewerReady(_, _, _) => {}
             }
         }
     }

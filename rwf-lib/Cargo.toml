@@ -21,8 +21,14 @@ zip = { workspace = true }
 
 # Additional dependencies
 async-trait = "0.1"
+memmap2 = "0.9"
 dirs = "5.0"
 rustmigemo = { workspace = true }
+encoding_rs = "0.8"
+sevenz-rust = { workspace = true }
+tar = { workspace = true }
+flate2 = { workspace = true }
+iso9660 = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 users = "0.11"

@@ -1,0 +1,205 @@
+  for taskpanel message "No active tasks" make this conigurable
+  languages...?
+
+* sort out version info messages.
+```current
+RWF v0.1.0 | windows/x86
+Config: C:\Users\user\AppData\Roaming\rwf\config.json
+Log: C:\Users\user\source\repos\panzoux\rwf\logs/session.log
+LogLevel: info | Migemo: C:\Users\user\AppData\Roaming\rwf\dict\migemo-compact-dict
+Archives: ZIP · 7Z · TAR · TGZ · ISO
+```
+there are many config files not mentioned
+to show at startup, its too long
+Loglevel should be with the log
+want build no (git hash?)
+```new (compact) invoked by shift+`
+RWF v0.1.0 build xxxxx | windows/x86
+Log [info] C:\Users\user\source\repos\panzoux\rwf\logs/session.log
+Archives: ZIP, 7Z, TAR, TGZ, ISO | Migemo: available
+```
+```new (verbose) invoked by ctrl+shift+`
+RWF v0.1.0 build xxxxx  | windows/x86
+Log: C:\Users\user\source\repos\panzoux\rwf\logs/session.log
+LogLevel: info | Migemo: C:\Users\user\AppData\Roaming\rwf\dict\migemo-compact-dict
+Archives: ZIP · 7Z · TAR · TGZ / Extract only: ISO
+Migemo: available
+Migemo-dict: C:\Users\user\AppData\Roaming\rwf\dict\migemo-compact-dict
+Config files:
+ C:\Users\user\AppData\Roaming\rwf\config.json
+ C:\Users\user\AppData\Roaming\rwf\keybindings.json
+ C:\... CustomFunctions.json
+ C:\... Menu_xxx.json
+```
+we prefer ascii char "," than unicode " · " : readability is not that different
+
+
+  ---
+  Proposed Plan: config_system_modularization.md
+
+  Plan: Configuration System Modularization
+
+  Objective
+  Improve the configuration system by modularizing settings into separate files, specifically
+  moving color configurations to an independent colors.json file. This enhances maintainability
+  and allows for easier sharing and switching of themes.
+
+  Background & Motivation
+  Currently, rwf stores most settings in config.json, including a large ColorScheme struct
+  flattened into DisplayConfig. As the number of color settings grows (twf has 42+), config.json
+  becomes bloated. Separating these concerns follows the established pattern of keybindings.json
+  and prepares the system for future modular additions like custom_functions.json and
+  registered_folders.json.
+
+  Proposed Solution
+
+  1. Modular Configuration Files
+  Transition from a monolithic config.json to a multi-file system:
+   - config.json: Core application behavior (search, UI, file ops).
+   - keybindings.json: Key mappings (already exists).
+   - colors.json: (New) Independent color scheme configuration.
+   - custom_functions.json: External command definitions.
+   - registered_folders.json: Shortcut directory definitions.
+
+  2. Code Changes in rwf-lib
+
+  src/config.rs
+   - Modify ColorScheme to be optionally loaded from colors.json.
+   - Update DisplayConfig to no longer flatten ColorScheme by default, or provide a migration
+     path.
+   - Enhance ConfigManager to:
+       - Load colors.json, custom_functions.json, and registered_folders.json during
+         initialization.
+       - Provide a unified AppConfig view that aggregates data from all files.
+       - Implement a fallback mechanism: if colors.json is missing, check config.json (for
+         backward compatibility) or use defaults.
+
+  src/model/dialog.rs
+   - Ensure CustomFunction and RegisteredFolder structs are easily accessible by the configuration
+     system (consider moving them to config.rs or a dedicated config module).
+
+  3. Implementation Steps
+
+  Phase 1: Foundation
+   - Define the new file structure and updated AppConfig layout.
+   - Implement the colors.json loading logic in ConfigManager.
+
+  Phase 2: Migration & Compatibility
+   - Add logic to ConfigManager::load_config() to detect old-style flattened colors in config.json
+     and optionally migrate them to colors.json.
+   - Ensure default colors are still applied if no files exist.
+
+  Phase 3: Extension
+   - Implement loading for custom_functions.json and registered_folders.json.
+   - Update the Shift+Z (Reload Config) action to reload all configuration files.
+
+  Verification & Testing
+   - Unit Tests:
+       - Test ConfigManager with various combinations of existing/missing config files.
+       - Verify that colors.json correctly overrides defaults.
+       - Test migration logic from old config.json.
+   - Integration Tests:
+       - Verify that changing colors in colors.json and hitting Shift+Z updates the UI colors
+         immediately.
+       - Ensure custom_functions.json and registered_folders.json are correctly populated in their
+         respective dialogs.
+   - Manual Verification:
+       - Create a custom colors.json and verify the UI reflects the changes.
+       - Delete colors.json and verify it falls back gracefully.
+
+  Does this modular approach align with your vision for the configuration system? If you agree,
+  I'll proceed to formalize this for implementation.
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+ > ok, colorscheme is good. give me esveral more  suggestions. think laterally, check out other
+   well known cui file managers that have unique/interesting/useful features, and for each review
+   honestly and coldly and set recommendation%
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+  Lateral Research: CUI File Manager Features:
+  Researching features from well-known CUI file managers (Ranger, Vifm, nnn, Midnight
+  Commander) to propose high-impact improvements for rwf, including a "cold" review and
+  recommendation percentage for each.
+
+  ✓  GoogleSearch  Searching the web for: "unique features of ranger vifm nnn midnight comman…
+   → Search results for "unique features of ranger vifm nnn midnight commander file managers …
+
+✦ Based on a lateral review of Ranger, Vifm, nnn, and Midnight Commander, here are several
+  high-impact suggestions for rwf, reviewed with a "cold" engineering eye.
+
+  1. Undo/Redo System (vifm style)
+  The Feature: A transaction log for file operations (Move, Rename, Mkdir, Delete to Trash) that
+  allows u to undo and Ctrl-r to redo.
+   * Review: This is the "killer feature" that moves a file manager from a utility to a
+     professional tool. It significantly reduces "destructive operation anxiety." Since rwf
+     already uses a Transition and Job system, capturing the inverse operation (e.g., Rename A ->
+     B becomes Rename B -> A) is architecturally straightforward but requires a persistent
+     transaction stack.
+   * Risk: Managing "stale" undos (e.g., undoing a move after the source directory was deleted by
+     an external process).
+   * Recommendation: 95% (High impact, fits rwf's reactive architecture perfectly).
+
+  2. "Navigate-as-you-type" / Filter-First Workflow (nnn style)
+  The Feature: A mode where simply typing characters filters the current directory view and, if
+  only one directory matches, automatically enters it.
+   * Review: Traditional "Search Mode" (/) is a two-step process (Enter search -> Type -> Enter).
+     nnn proves that for power users, filtering is navigation. Implementing this as an optional
+     "Quick-Filter Mode" would make rwf feel significantly faster without adding visual clutter.
+   * Risk: Conflict with single-key bindings (e.g., d for delete vs. d for filtering files
+     starting with 'd'). Requires a dedicated "Leap" mode or a clever toggle.
+   * Recommendation: 85% (Massive UX speed boost, relatively low implementation cost).
+
+  3. Smart File Opener / "Rifle" System (ranger style)
+  The Feature: A centralized, rule-based logic (e.g., rifle.conf) that decides which tool opens a
+  file based on mime-type, extension, or content, with a "Pick" menu if multiple options exist.
+   * Review: rwf currently plans for ExtensionAssociations (Phase 6.2). Elevating this to a "Smart
+     Opener" that handles terminal-based vs. GUI-based programs and offers a quick "Open with..."
+     menu (r key) would solve the "how do I open this?" problem once and for all.
+   * Risk: High maintenance for default rules across different OSs (Linux/macOS/Windows).
+   * Recommendation: 80% (Essential for a "Daily Driver" file manager; should be the focus of
+     Phase 6.2).
+
+  4. Virtual File System (VFS) for Archives (mc style)
+  The Feature: Treating .zip, .7z, and .tar files not as files to be extracted, but as directories
+  to be entered.
+   * Review: You already have archive handlers (Phase 5). Turning these into a "Transparent Layer"
+     where the user just presses Enter on a ZIP and sees the content in the same pane (using a
+     Location::Archive variant) is the hallmark of a mature orthodox file manager. It avoids the
+     "extract-check-delete" loop.
+   * Risk: High complexity in FilesystemBackend to handle nested archives and write operations
+     (adding files to an archive via a VFS layer).
+   * Recommendation: 75% (Extremely useful, but high engineering effort. Start with read-only
+     VFS).
+
+  5. Disk Usage Analysis Mode (nnn / ncdu style)
+  The Feature: A toggle that replaces "File Size" with "Directory Size" (recursively calculated)
+  and shows a bar graph or percentage of parent directory usage.
+   * Review: This is one of the most common reasons users leave their file manager for another
+     tool (ncdu or du). Integrating this as a "View Mode" (Alt+D) would keep users within rwf. You
+     already have a CalculateSize job.
+   * Risk: Performance on large network drives (requires background caching and a "Scanning..."
+     state in the UI).
+   * Recommendation: 70% (Very useful, but a "secondary" feature compared to core navigation).
+
+  ---
+
+  Revised Strategic Priority for Phase 6 & 7
+
+  ┌──────┬──────────────────────┬────────────────┬───────────────────────────────────────────┐
+  │ Rank │ Feature              │ Recommendation │ Why?                                      │
+  ├──────┼──────────────────────┼────────────────┼───────────────────────────────────────────┤
+  │ 1    │ Undo/Redo            │ 95%            │ Highest "Safety" value. Fits the existing │
+  │      │                      │                │ Job system.                               │
+  │ 2    │ Navigate-as-you-type │ 85%            │ Highest "Speed" value. Minimalist but     │
+  │      │                      │                │ powerful.                                 │
+  │ 3    │ Smart Opener (Rifle) │ 80%            │ Solves external tool integration once and │
+  │      │                      │                │ for all.                                  │
+  │ 4    │ Archive VFS          │ 75%            │ Essential for "Orthodox" parity (Midnight │
+  │      │                      │                │ Commander).                               │
+  └──────┴──────────────────────┴────────────────┴───────────────────────────────────────────┘
+
+  Next Step Recommendation:
+  I suggest we prioritize Undo/Redo and Quick-Filter Navigation as the primary "rwf-specific"
+  enhancements for Phase 6.1/6.2 alongside the colors.json modularization.
+
+  Would you like me to incorporate the Undo/Redo System or Quick-Filter Navigation into the
+  current design plan?

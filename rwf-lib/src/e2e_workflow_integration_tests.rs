@@ -60,29 +60,14 @@ mod tests {
         state.current_tab_mut().right_pane.current_location =
             Location::Local(PathBuf::from("/dest"));
 
-        // Step 1: User initiates copy operation
+        // Step 1: User initiates copy operation (CreatePendingFileJob — no dialog)
         let transitions = action_to_transitions(&state, &Action::Copy);
-        assert!(!transitions.is_empty());
+        assert_eq!(transitions.len(), 1);
+        assert!(matches!(transitions[0], Transition::CreatePendingFileJob { .. }));
 
-        // Apply transitions to show copy confirmation dialog
-        for transition in transitions {
-            update_state(&mut state, transition);
-        }
+        let result = update_state(&mut state, transitions.into_iter().next().unwrap());
 
-        // Verify copy confirmation dialog is shown
-        assert!(!state.dialogs.is_empty());
-        let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::Confirmation { message, .. } = &dialog.content {
-            assert!(message.contains("Copy"));
-            assert!(message.contains("2 files")); // 2 marked files
-        } else {
-            panic!("Expected confirmation dialog");
-        }
-
-        // Step 2: User confirms copy operation
-        let result = update_state(&mut state, Transition::ConfirmDialog);
-
-        // Verify copy job was created
+        // Verify copy job was created directly
         assert_eq!(result.jobs_to_start.len(), 1);
         let job_spec = &result.jobs_to_start[0];
         match &job_spec.kind {
@@ -156,25 +141,12 @@ mod tests {
         state.current_tab_mut().right_pane.current_location =
             Location::Local(PathBuf::from("/dest"));
 
-        // Step 1: User initiates move operation
+        // Step 1: User initiates move operation (CreatePendingFileJob — no dialog)
         let transitions = action_to_transitions(&state, &Action::Move);
-        for transition in transitions {
-            update_state(&mut state, transition);
-        }
+        assert_eq!(transitions.len(), 1);
+        let result = update_state(&mut state, transitions.into_iter().next().unwrap());
 
-        // Verify move confirmation dialog
-        assert!(!state.dialogs.is_empty());
-        let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::Confirmation { message, .. } = &dialog.content {
-            assert!(message.contains("Move"));
-        } else {
-            panic!("Expected confirmation dialog");
-        }
-
-        // Step 2: Confirm move
-        let result = update_state(&mut state, Transition::ConfirmDialog);
-
-        // Verify move job was created
+        // Verify move job was created directly
         assert_eq!(result.jobs_to_start.len(), 1);
         match &result.jobs_to_start[0].kind {
             JobKind::Move { sources, dest } => {
@@ -240,11 +212,10 @@ mod tests {
         // Verify delete confirmation dialog
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::Confirmation { message, .. } = &dialog.content {
-            assert!(message.contains("Delete"));
-            assert!(message.contains("2 files")); // 2 marked files
+        if let DialogContent::DeleteConfirm { targets, .. } = &dialog.content {
+            assert_eq!(targets.len(), 2); // 2 marked files
         } else {
-            panic!("Expected confirmation dialog");
+            panic!("Expected DeleteConfirm dialog");
         }
 
         // Step 2: Confirm delete
@@ -304,6 +275,7 @@ mod tests {
         assert_eq!(state.tabs.active_index, 1);
 
         // Step 2: Create another tab
+        state.last_tab_created = None;
         let transitions = action_to_transitions(&state, &Action::NewTab);
         for transition in transitions {
             update_state(&mut state, transition);
@@ -511,16 +483,10 @@ mod tests {
         // Verify rename dialog is shown
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::Input {
-            prompt,
-            default_value,
-            ..
-        } = &dialog.content
-        {
-            assert_eq!(prompt, "New name:");
-            assert_eq!(default_value, "oldname.txt");
+        if let DialogContent::SimpleRename { input, .. } = &dialog.content {
+            assert_eq!(input, "oldname.txt");
         } else {
-            panic!("Expected input dialog");
+            panic!("Expected SimpleRename dialog");
         }
 
         // Step 2: User enters new name

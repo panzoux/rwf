@@ -116,6 +116,8 @@ pub enum JobKind {
     },
     LoadFileForViewer {
         location: Location,
+        /// true = text mode (build newline index); false = hex mode (mmap only, no scan)
+        index_lines: bool,
     },
     PatternRename {
         targets: Vec<Location>,

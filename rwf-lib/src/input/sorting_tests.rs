@@ -662,7 +662,7 @@ mod tests {
 
     #[test]
     fn test_sort_order_ascending_default() {
-        let mut state = AppState::new(AppConfig::default());
+        let state = AppState::new(AppConfig::default());
         assert_eq!(state.current_tab().left_pane.sort_order, SortOrder::Ascending);
     }
 

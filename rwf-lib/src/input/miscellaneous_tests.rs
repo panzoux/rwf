@@ -81,12 +81,16 @@ fn test_job_manager_action() {
 #[test]
 fn test_key_bindings_quit_q() {
     let mut bindings = KeyBindings::default();
-    
-    // Shift+Q produces 'q' with SHIFT modifier, which gets formatted as "Shift+Q"
+
+    // Lowercase 'q' (no modifier) maps to Quit
+    let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+    let action = bindings.map_key(&event);
+    assert_eq!(action, Some(Action::Quit));
+
+    // Uppercase 'Q' (Shift+q) maps to ExitAndChangeDirectory
     let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::SHIFT);
     let action = bindings.map_key(&event);
-    
-    assert_eq!(action, Some(Action::Quit));
+    assert_eq!(action, Some(Action::ExitAndChangeDirectory));
 }
 
 #[test]
@@ -102,11 +106,11 @@ fn test_key_bindings_quit_escape() {
 #[test]
 fn test_key_bindings_help_question_mark() {
     let mut bindings = KeyBindings::default();
-    
-    // '?' is Shift+/ which gets formatted as "Shift+/"
-    let event = KeyEvent::new(KeyCode::Char('/'), KeyModifiers::SHIFT);
+
+    // '?' character maps to Help (terminal sends '?' directly, not '/' with SHIFT)
+    let event = KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE);
     let action = bindings.map_key(&event);
-    
+
     assert_eq!(action, Some(Action::Help));
 }
 

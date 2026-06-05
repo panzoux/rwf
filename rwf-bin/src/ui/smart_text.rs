@@ -10,19 +10,13 @@ use ratatui::{
     widgets::{Paragraph, Widget},
     Frame,
 };
-use crate::ui::unicode_utils::{smart_truncate, truncate_to_width, shorten_path};
+use crate::ui::unicode_utils::{truncate_to_width, shorten_path};
 
 /// Truncation modes for SmartText
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TruncateMode {
-    /// Truncate at the end: "Very long te..."
-    End,
-    /// Truncate in the middle: "Very...ext"
-    Middle,
-    /// Truncate at the start: "...long text"
-    Start,
-    /// Smart path shortening: "C:\...\dir\file.txt"
-    Path,
+    End,  // "Very long te..."
+    Path, // "C:\...\dir\file.txt"
 }
 
 /// A widget that renders text with smart truncation and multi-line support
@@ -61,12 +55,6 @@ impl<'a> SmartText<'a> {
     /// Set the maximum number of lines
     pub fn max_lines(mut self, max_lines: usize) -> Self {
         self.max_lines = max_lines;
-        self
-    }
-
-    /// Set the ellipsis string
-    pub fn ellipsis(mut self, ellipsis: &'a str) -> Self {
-        self.ellipsis = ellipsis;
         self
     }
 
@@ -136,33 +124,7 @@ impl<'a> SmartText<'a> {
     fn truncate_single_line(&self, s: &str, width: usize) -> String {
         match self.mode {
             TruncateMode::End => truncate_to_width(s, width, self.ellipsis),
-            TruncateMode::Middle => smart_truncate(s, width, self.ellipsis),
             TruncateMode::Path => shorten_path(s, width, self.ellipsis),
-            TruncateMode::Start => {
-                // Custom Start truncation (not in unicode_utils yet)
-                let current_width = unicode_width::UnicodeWidthStr::width(s);
-                if current_width <= width {
-                    return s.to_string();
-                }
-                let ellipsis_width = unicode_width::UnicodeWidthStr::width(self.ellipsis);
-                if width <= ellipsis_width {
-                    return truncate_to_width(s, width, self.ellipsis);
-                }
-                
-                let target_width = width - ellipsis_width;
-                let mut end_width = 0;
-                let mut start_byte_pos = s.len();
-                
-                for (pos, ch) in s.char_indices().rev() {
-                    let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-                    if end_width + ch_width > target_width {
-                        break;
-                    }
-                    end_width += ch_width;
-                    start_byte_pos = pos;
-                }
-                format!("{}{}", self.ellipsis, &s[start_byte_pos..])
-            }
         }
     }
 
@@ -215,14 +177,4 @@ mod tests {
         assert!(lines[0].ends_with('\\') || lines[1].starts_with('\\'));
     }
 
-    #[test]
-    fn test_smart_text_mode_middle() {
-        let widget = SmartText::new("filename_with_long_name.txt")
-            .max_lines(1)
-            .mode(TruncateMode::Middle);
-        let lines = widget.split_to_lines(15);
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains("..."));
-        assert!(lines[0].ends_with(".txt"));
-    }
 }

@@ -59,9 +59,9 @@
 
 | # | 機能 | 状態 | 詳細 |
 |---|------|------|------|
-| 3.1 | **タスクパネル** | `[~]` | 折り畳み/展開、ログ、スピナーアニメーション |
-| 3.2 | **ジョブマネージャダイアログ** | `[~]` | 進捗表示、キャンセル操作、表示内容の洗練 |
-| 3.3 | **タブのビジーインジケーター** | `[ ]` | アクティブジョブ時のスピナー（TabBarView連携） |
+| 3.1 | **タスクパネル** | `[x]` | 折り畳み/展開、ログ、スピナーアニメーション |
+| 3.2 | **ジョブマネージャダイアログ** | `[x]` | 進捗表示、キャンセル操作、表示内容の洗練 |
+| 3.3 | **タブのビジーインジケーター** | `[x]` | アクティブジョブ時のスピナー（TabBarView連携） |
 
 **テスト**: ジョブ状態遷移の単体テスト + UIレンダリングのスナップショットテスト
 
@@ -75,11 +75,12 @@
 
 | # | 機能 | 状態 | 詳細 |
 |---|------|------|------|
-| 4.1 | **テキストビューア TUI ウィジェット** | `[~]` | スクロール、行番号、検索ハイライト |
-| 4.2 | **Hex/バイナリビューア TUI ウィジェット** | `[~]` | `get_hex_line()` 使用、オフセット・ASCII表示 |
-| 4.3 | **大容量ファイル対応** | `[ ]` | ストリーミング読み込み（全体をメモリに乗せない） |
-| 4.4 | **エンコーディング実装補完** | `[~]` | Shift-JIS/EUC-JP のTODOを `encoding_rs` クレートで実装 |
-| 4.5 | **エンコーディング自動検出** | `[ ]` | BOM検出 + 統計的検出（`chardet` 相当） |
+| 4.1 | **テキストビューア TUI ウィジェット** | `[x]` | スクロール、行番号、検索ハイライト |
+| 4.2 | **Hex/バイナリビューア TUI ウィジェット** | `[x]` | `get_hex_line()` 使用、オフセット・ASCII表示 |
+| 4.3 | **大容量ファイル対応** | `[x]` | `memmap2` によるメモリマップ + `LineIndex` バックグラウンドインデックス（ファイル全体をRAMに乗せない） |
+| 4.4 | **エンコーディング実装補完** | `[x]` | Shift-JIS/EUC-JP を `encoding_rs` クレートで完全実装済み |
+| 4.5 | **エンコーディング自動検出** | `[x]` | BOM検出 + 日本語統計的検出を `TextEncoding::detect()` として実装済み |
+| 4.6 | **サイドバイサイドビューアモード** | `[x]` | `v`=フルスクリーン、`V`=サイドバイサイド、Tab/Shift+Tab フォーカス移動 ([詳細](4.6.side-by-side_viewer_mode.md)) |
 
 **追加クレート候補**:
 - `encoding_rs` — Shift-JIS/EUC-JP等のデコード（Mozilla製、クロスプラットフォーム）
@@ -95,9 +96,12 @@
 
 | # | 機能 | 状態 | クレート/方針 |
 |---|------|------|-------------|
-| 5.1 | **7z サポート** | `[ ]` | `sevenz-rust`（純Rust、win/mac/linux対応） |
-| 5.2 | **TAR/TGZ サポート** | `[ ]` | `tar` + `flate2` クレート |
-| 5.3 | **RAR サポート** | `[ ]` | `unrar`クレートまたは外部ツール連携（オプション） |
+| 5.1 | **7z サポート** | `[x]` | `sevenz-rust`（純Rust、win/mac/linux対応）`SevenZArchiveHandler` + `MultiFormatArchiveHandler` 実装済み、9テスト合格 |
+| 5.2 | **TAR/TGZ サポート** | `[x]` | `tar` + `flate2` クレート。`TarArchiveHandler`実装済み（.tar/.tgz/.tar.gz）、10テスト合格 |
+| 5.3 | **RAR サポート** | `[ ]` | `.rar` は認識済み（graceful error）。将来: `libarchive` クレート経由で実装予定（→ 5.6 参照） |
+| 5.4 | **ISO サポート** | `[x]` | `iso9660` クレート（純Rust）でブラウズ・展開実装済み。作成不可（read-only） |
+| 5.5 | **LZH サポート** | `[ ]` | `.lzh/.lha` は認識済み（graceful error）。将来: `libarchive` クレート経由で実装予定（→ 5.6 参照） |
+| 5.6 | **libarchive 統合（RAR・LZH 他）** | `[ ]` | `compress-tools` クレート（`libarchive` ラッパー）で RAR/LZH/CAB 等を一括対応。libarchive がインストール済みの環境で有効化。将来の機能強化フェーズで実装 |
 
 **テスト**: 実アーカイブファイルを使った統合テスト（各形式で作成→展開→内容確認）
 
@@ -109,10 +113,10 @@
 
 | # | 機能 | 状態 | 詳細 |
 |---|------|------|------|
-| 6.1 | **ペイン更新機構整備**（外部コマンド対応の基盤） | `[~]` | 設計決定事項セクション参照。Layer 1 の外部コマンド対応（1.4.1）は先行実装済み。Layer 2 ポーリングは 7.4 |
-| 6.2 | **ファイルタイプ関連付け** | `[ ]` | 拡張子→外部ツール設定（`ExtensionAssociations`相当） |
-| 6.3 | **カスタム関数システム** | `[ ]` | `CustomFunctionManager`相当、キー割り当て対応。refresh_after 宣言は不要（6.1 の設計による）。選択ダイアログUIは Phase 1.12 の登録フォルダと同パターンで追加予定 |
-| 6.4 | **コンテキストメニューシステム** | `[ ]` | `menu_*.json`相当の設定ファイルベースメニュー |
+| 6.1 | **設定システム・ペイン更新機構整備** | `[~]` | Layer 1更新機構(外部コマンド後の自動リフレッシュ)実装済み。ConfigManagerに extension_associations.json / custom_functions.json / context_menu.json パス追加。colors.json分離は未実装（後フェーズ） |
+| 6.2 | **ファイルタイプ関連付け** | `[x]` | `ExtensionAssociation`構造体、`extension_associations.json`読み込み、Enter時の拡張子マッチ→外部コマンド実行。マクロ展開対応。AppState起動時ロード・Shift+Zでリロード。 |
+| 6.3 | **カスタム関数システム** | `[x]` | `custom_functions.json`読み込み、Shift+T でカスタム関数選択ダイアログ表示・実行。インクリメンタルフィルタ、マクロ展開対応、PipeToAction対応。AppState起動時ロード・Shift+Zでリロード。 |
+| 6.4 | **コンテキストメニューシステム** | `[x]` | `\`キー でコンテキストメニュー表示。デフォルト組み込みアクション(View/Copy/Move/Rename/Delete)+セパレータ対応。カスタム関数呼び出し対応(`ContextMenuAction::CustomFunction`)。上下ナビ（セパレータスキップ）実装。 |
 | 6.5 | **ヘルプ強化（実キーバインドビューア）** | `[~]` | `?`/F1 オンラインヘルプは修正済み（ハードコード表示）。設定変更を即反映する動的キーバインドビューアは未実装。後で対応 |
 
 ---
@@ -176,13 +180,44 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 
 > CJK表示はすでに rwf の強み。さらに差別化できる機能。
 
-| # | 機能 | 詳細 |
-|---|------|------|
-| 7.1 | **シンタックスハイライト（ビューア）** | `syntect`クレートによるコードハイライト（twfにない） |
-| 7.2 | **クロスプラットフォームアーカイブ** | クレートベースの7z/TAR（twfの`7z.exe`依存より優秀） |
-| 7.3 | **CI/CDパイプライン** | GitHub Actions によるテスト自動化 |
-| 7.4 | **バックグラウンドポーリング（Layer 2）** | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） |
-| 7.5 | **SSH/SFTP対応**（将来） | リモートファイルシステム（大規模追加） |
+### 推奨実装優先度（2026-06-04更新）
+
+| # | 機能 | 詳細 | 優先度 | 工期 |
+|---|------|------|--------|------|
+| 7.1 | **Undo/Redo（トランザクション・ロールバック）** | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.1.undo_redo.md](7.1.undo_redo.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
+| 7.2 | **Leap ナビゲーション（高速フィルタ移動）** | 'l' キーで "Quick-Filter Mode" 起動。入力でリアルタイムフィルタ、単一match でオートエンター。nnn 風。詳細は [7.2.leap_navigation.md](7.2.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 2週間 |
+| 7.3 | **スマート・ファイルオープナー（Rifle システム）** | Phase 6.2 (ExtensionAssociations) の発展形。MIME型ベース、条件付きロジック、複数オプション選択メニュー。詳細は [7.3.rifle_system.md](7.3.rifle_system.md) 参照 | ⭐⭐⭐⭐ | 2週間 |
+| 7.4 | **バックグラウンド・ディレクトリサイズ計算** | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
+| 7.5 | **バックグラウンドポーリング（Layer 2）** | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
+| 7.6 | **シンタックスハイライト（ビューア）** | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張 | ⭐⭐⭐ | 2週間 |
+| 7.7 | **スマート・トラッシュ（ゴミ箱）管理** | Windows/macOS/Linux 各OS標準への対応。削除ではなくゴミ箱へ移動、復元サポート。詳細は [7.7.smart_trash.md](7.7.smart_trash.md) 参照 | ⭐⭐⭐ | 2週間 |
+| 7.8 | **SSH/SFTP対応**（将来） | リモートファイルシステム（大規模追加） | ⭐⭐ | TBD |
+
+### 実装前フェーズ（Phase 6 完了後）
+
+**推奨スケジュール**:
+```
+Week 1-3  → 7.1 Undo/Redo (最高インパクト)
+Week 3-5  → 7.2 Leap Nav (UX game-changer)
+Week 5-7  → 7.3 Rifle System (daily driver必須)
+Week 7-10 → 7.4 Size Calc (便利機能)
+```
+
+並列実装可能: 7.2 と 7.3 は独立しているため並列化可能 (7.2, 7.3: week 3-7)
+
+---
+
+## Future Enhancement Candidates (Phase 8+検討事項)
+
+> Phase 7 完了後に検討すべき高付加価値機能。
+
+| 機能 | 詳細 | 可能性 |
+|------|------|--------|
+| **ディスク使用量可視化（グラフ）** | サイズ計算結果を円グラフ/棒グラフで表示。ncdu 風のビジュアル分析 | Phase 8.1 |
+| **永続サイズキャッシュ** | `~/.rwf/size_cache.json` に計算結果を保存。ディレクトリ mtime で無効化判定 | Phase 8.2 |
+| **動的ペイン幅調整** | マウス・キーでペイン幅を変更（左右均等分割 → カスタム比率） | Phase 8.3 |
+| **Escape キャンセル** | バックグラウンドジョブ実行中に Escape で即座にキャンセル | Phase 8.4 |
+| **Git ステータス表示** | ペイン内で Git ファイル状態（modified/staged等）を色分け表示 | Phase 8.5 |
 
 ---
 
@@ -225,8 +260,33 @@ Phase 7 (随時)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-05-26  
-次の作業: Phase 2.2 Jump to File ダイアログ
+最終更新: 2026-06-05  
+現在のフェーズ: Phase 6完了（twfパリティ完結）→ Phase 7 開始へ
+Phase 6完了内容: 6.2(拡張子関連付け) / 6.3(カスタム関数ダイアログ) / 6.4(コンテキストメニュー) 実装
+次の作業: Phase 7.1（Undo/Redo システム）
+Phase 7 準備: 設計ドキュメント作成完了、実装スケジュール確定
+
+## Phase 7 実装順序（2026-06-04確定）
+
+1. **7.1 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.1.undo_redo.md
+2. **7.2 Leap Navigation** — 'l' キー Quick-Filter Mode。詳細: 7.2.leap_navigation.md
+3. **7.3 Rifle System** — Phase 6.2 の発展。詳細: 7.3.rifle_system.md
+4. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md（NEW）
+
+並列実装可能: 7.2 と 7.3 は独立 → week 3-7 で同時進行推奨
+
+## 4.6 実装内訳（2026-05-30）
+- `ViewerLayout` enum（`FullScreen` / `SideBySide`）を `model/ui.rs` に追加
+- `LayoutState` に `viewer_layout: ViewerLayout`・`viewer_preferred_layout: ViewerLayout` フィールド追加
+- `Transition::OpenSideBySideViewer { location }` — ファイルペインにフォーカスを残してビューア表示
+- `Transition::ViewerSwitchLayout { layout }` — FullScreen ↔ SideBySide 切り替え（UIMode も同時に更新）
+- `OpenTextViewer` / `OpenHexViewer` / `CloseViewer` に `viewer_layout` リセット処理を追加
+- `app.rs` セクション 2.0: ビューアモード中の `v`/`V`/Tab 処理（SideBySide ↔ FullScreen サイクル）
+- `app.rs` セクション 3.5: SideBySide 中の Tab/Shift+Tab でファイルペイン → ビューアへフォーカス移動
+- `app.rs` セクション 3.6: 通常モード中の `v`（preferred layout で開く / FullScreen→閉じる / SideBySide→FullScreen）と `V`（SideBySide で開く / FullScreen→SideBySide / SideBySide→閉じる）
+- `ui.rs` `render_ui()`: SideBySide レイアウト — 縦3段（tab bar / content / task panel）→ content を水平50/50分割。アクティブペインの反対側にビューア配置。ファイルペイン側は既存の path/volume/panes/pane-info/filename 構成を維持
+- タスクパネルは常に画面下部に表示（ビューアに隠れない）
+- `docs/rwf/keybindings.json` キーバインド記述更新（`V` → OpenSideBySideViewer、`Shift+V` 説明更新）
 
 ## 2.1 実装内訳（2026-05-26）
 - `DialogContent::JumpToPath { query, cursor_pos, scroll_pos, candidates, suggestions, selected_index, search_root }` を dialog.rs に追加

@@ -12,6 +12,18 @@ use ratatui::{
 use rwf_lib::{model::ActivePane, AppState, FileEntry, config::ColorScheme};
 use super::{parse_color, pad_to_width, smart_truncate};
 
+/// Render only the anchored pane, filling the entire area (used in SideBySide viewer mode).
+pub fn render_active_pane_only(frame: &mut Frame, area: Rect, state: &AppState, anchor: ActivePane) {
+    let tab = state.current_tab();
+    let colors = &state.config.display.colors;
+    let ellipsis = &state.config.ellipsis;
+    let (pane, marking) = match anchor {
+        ActivePane::Left  => (&tab.left_pane,  &tab.left_pane.marking),
+        ActivePane::Right => (&tab.right_pane, &tab.right_pane.marking),
+    };
+    render_pane(frame, area, pane, true, marking, colors, ellipsis);
+}
+
 /// Render both panes side by side
 pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
     // Split area into two vertical panes

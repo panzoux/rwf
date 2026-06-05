@@ -58,45 +58,45 @@ mod tests {
     fn test_copy_action_shows_dialog() {
         let state = create_test_state();
         let transitions = action_to_transitions(&state, &Action::Copy);
-        
+
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "Copy");
-                match &dialog.content {
-                    crate::model::DialogContent::Confirmation { message } => {
-                        assert!(message.contains("Copy"));
-                        assert!(message.contains("/test/file1.txt"));
-                        assert!(message.contains("/dest"));
+            Transition::CreatePendingFileJob { spec, name, .. } => {
+                assert!(name.contains("Copy"));
+                match &spec.kind {
+                    crate::job::JobKind::Copy { sources, dest } => {
+                        assert_eq!(sources.len(), 1);
+                        assert_eq!(sources[0], Location::Local(PathBuf::from("/test/file1.txt")));
+                        assert_eq!(*dest, Location::Local(PathBuf::from("/dest")));
                     }
-                    _ => panic!("Expected confirmation dialog"),
+                    _ => panic!("Expected Copy job kind"),
                 }
             }
-            _ => panic!("Expected ShowDialog transition"),
+            _ => panic!("Expected CreatePendingFileJob transition"),
         }
     }
 
     #[test]
     fn test_copy_action_with_marked_files() {
         let mut state = create_test_state();
-        
+
         // Mark two files
         state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/test/file1.txt")));
         state.current_tab_mut().left_pane.marking.mark(Location::Local(PathBuf::from("/test/file2.txt")));
-        
+
         let transitions = action_to_transitions(&state, &Action::Copy);
-        
+
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowDialog { dialog } => {
-                match &dialog.content {
-                    crate::model::DialogContent::Confirmation { message } => {
-                        assert!(message.contains("Copy 2 files"));
+            Transition::CreatePendingFileJob { spec, .. } => {
+                match &spec.kind {
+                    crate::job::JobKind::Copy { sources, .. } => {
+                        assert_eq!(sources.len(), 2);
                     }
-                    _ => panic!("Expected confirmation dialog"),
+                    _ => panic!("Expected Copy job kind"),
                 }
             }
-            _ => panic!("Expected ShowDialog transition"),
+            _ => panic!("Expected CreatePendingFileJob transition"),
         }
     }
 
@@ -104,19 +104,20 @@ mod tests {
     fn test_move_action_shows_dialog() {
         let state = create_test_state();
         let transitions = action_to_transitions(&state, &Action::Move);
-        
+
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "Move");
-                match &dialog.content {
-                    crate::model::DialogContent::Confirmation { message } => {
-                        assert!(message.contains("Move"));
+            Transition::CreatePendingFileJob { spec, name, .. } => {
+                assert!(name.contains("Move"));
+                match &spec.kind {
+                    crate::job::JobKind::Move { sources, dest } => {
+                        assert_eq!(sources.len(), 1);
+                        assert_eq!(*dest, Location::Local(PathBuf::from("/dest")));
                     }
-                    _ => panic!("Expected confirmation dialog"),
+                    _ => panic!("Expected Move job kind"),
                 }
             }
-            _ => panic!("Expected ShowDialog transition"),
+            _ => panic!("Expected CreatePendingFileJob transition"),
         }
     }
 
@@ -124,17 +125,12 @@ mod tests {
     fn test_delete_action_shows_dialog() {
         let state = create_test_state();
         let transitions = action_to_transitions(&state, &Action::Delete);
-        
+
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
-                assert_eq!(dialog.title, "Delete");
-                match &dialog.content {
-                    crate::model::DialogContent::Confirmation { message } => {
-                        assert!(message.contains("Delete"));
-                    }
-                    _ => panic!("Expected confirmation dialog"),
-                }
+                assert!(dialog.title.contains("Delete"));
+                assert!(matches!(dialog.content, crate::model::DialogContent::DeleteConfirm { .. }));
             }
             _ => panic!("Expected ShowDialog transition"),
         }
@@ -144,17 +140,16 @@ mod tests {
     fn test_rename_action_shows_input_dialog() {
         let state = create_test_state();
         let transitions = action_to_transitions(&state, &Action::Rename);
-        
+
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Rename");
                 match &dialog.content {
-                    crate::model::DialogContent::Input { prompt, default_value } => {
-                        assert_eq!(prompt, "New name:");
-                        assert_eq!(default_value, "file1.txt");
+                    crate::model::DialogContent::SimpleRename { input, .. } => {
+                        assert_eq!(input, "file1.txt");
                     }
-                    _ => panic!("Expected input dialog"),
+                    _ => panic!("Expected SimpleRename dialog content"),
                 }
             }
             _ => panic!("Expected ShowDialog transition"),
@@ -185,20 +180,14 @@ mod tests {
     #[test]
     fn test_confirm_copy_dialog_creates_job() {
         let mut state = create_test_state();
-        
-        // First show the copy dialog
+
+        // Copy now uses CreatePendingFileJob — no dialog shown
         let transitions = action_to_transitions(&state, &Action::Copy);
-        for transition in transitions {
-            update_state(&mut state, transition);
-        }
-        
-        // Verify dialog is shown
-        assert!(!state.dialogs.is_empty());
-        
-        // Confirm the dialog
-        let result = update_state(&mut state, Transition::ConfirmDialog);
-        
-        // Should create a copy job
+        assert_eq!(transitions.len(), 1);
+
+        let result = update_state(&mut state, transitions.into_iter().next().unwrap());
+
+        // CreatePendingFileJob immediately produces jobs_to_start
         assert_eq!(result.jobs_to_start.len(), 1);
         match &result.jobs_to_start[0].kind {
             crate::job::JobKind::Copy { sources, dest } => {
@@ -208,23 +197,19 @@ mod tests {
             }
             _ => panic!("Expected Copy job"),
         }
-        
-        // Dialog should be closed
+
         assert!(state.dialogs.is_empty());
     }
 
     #[test]
     fn test_confirm_move_dialog_creates_job() {
         let mut state = create_test_state();
-        
-        // Show and confirm move dialog
+
         let transitions = action_to_transitions(&state, &Action::Move);
-        for transition in transitions {
-            update_state(&mut state, transition);
-        }
-        
-        let result = update_state(&mut state, Transition::ConfirmDialog);
-        
+        assert_eq!(transitions.len(), 1);
+
+        let result = update_state(&mut state, transitions.into_iter().next().unwrap());
+
         assert_eq!(result.jobs_to_start.len(), 1);
         match &result.jobs_to_start[0].kind {
             crate::job::JobKind::Move { sources, dest } => {
@@ -309,21 +294,21 @@ mod tests {
     #[test]
     fn test_cancel_dialog_closes_without_job() {
         let mut state = create_test_state();
-        
-        // Show copy dialog
-        let transitions = action_to_transitions(&state, &Action::Copy);
+
+        // Delete still shows a dialog — use it to test cancel
+        let transitions = action_to_transitions(&state, &Action::Delete);
         for transition in transitions {
             update_state(&mut state, transition);
         }
-        
+
         assert!(!state.dialogs.is_empty());
-        
+
         // Cancel the dialog
         let result = update_state(&mut state, Transition::CancelDialog);
-        
+
         // Should not create any jobs
         assert_eq!(result.jobs_to_start.len(), 0);
-        
+
         // Dialog should be closed
         assert!(state.dialogs.is_empty());
     }
@@ -1140,9 +1125,8 @@ mod tests {
         
         // Verify files were unmarked
         assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0, "All files should be unmarked after delete");
-        
-        // Verify pane refresh was requested
-        assert_eq!(result.panes_to_refresh.len(), 1, "Should request pane refresh");
+        // Successful delete does in-memory removal — no pane refresh needed
+        assert!(result.ui_changed || result.panes_to_refresh.is_empty());
     }
 
     // Integration tests for rename operation execution

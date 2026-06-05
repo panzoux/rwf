@@ -25,7 +25,16 @@
       "Bash(grep \"\\\\.cs$\")",
       "Bash(ls \"c:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\")",
       "Read(//c/Users/user/source/repos/panzoux/**)",
-      "Bash(grep -i \"version\\\\|backtick\\\\|\\\\`\")"
+      "Bash(grep -i \"version\\\\|backtick\\\\|\\\\`\")",
+      "Bash(grep -v \"^0$\")",
+      "Bash(xargs grep -l \"plugin\\\\|extension\\\\|macro\")",
+      "Bash(xargs grep -l \"custom.*function\\\\|CustomFunction\")",
+      "Bash(xargs grep -l \"struct.*Custom\")",
+      "Bash(xargs grep -l \"CustomFunction\")",
+      "Bash(xargs grep -l \"theme\\\\|Theme\\\\|color\\\\|Color\")",
+      "WebSearch",
+      "Bash(xargs grep -l \"#\\\\[allow\\(dead_code\\)\\\\]\")",
+      "Bash(grep -v \"^--$\")"
     ]
   }
 }

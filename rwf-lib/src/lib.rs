@@ -125,6 +125,15 @@ mod edge_case_properties;
 #[cfg(test)]
 mod comprehensive_phase8_integration_tests;
 
+#[cfg(test)]
+mod sevenz_integration_tests;
+
+#[cfg(test)]
+mod tar_integration_tests;
+
+#[cfg(test)]
+mod archive_format_recognition_tests;
+
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
 pub use job::{JobManager, JobId, JobSpec, JobKind, Job, JobResult};
 pub use model::{Location, FileEntry, PaneModel, TabState, TabManager, DialogContent};
@@ -138,4 +147,4 @@ pub use session::{SessionState, SessionError, save_session, restore_tabs, restor
 pub use macro_expander::MacroExpander;
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
 pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
-pub use volume_info::{VolumeInfo, VolumeType, MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};
+pub use volume_info::{MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};

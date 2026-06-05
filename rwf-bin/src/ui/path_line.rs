@@ -10,42 +10,45 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::{AppState, model::ActivePane};
-use super::parse_color;
+use super::{parse_color, shorten_path};
 
-/// Render the path line showing left and right pane paths
-pub fn render_path_line(frame: &mut Frame, area: Rect, state: &AppState) {
+/// Render the path line.
+/// `single_pane`: when `Some(pane)`, render only that pane's path at full width
+/// (used in SideBySide mode where the other half is the viewer).
+pub fn render_path_line(frame: &mut Frame, area: Rect, state: &AppState, single_pane: Option<ActivePane>) {
     let tab = state.current_tab();
-    let is_left_active = state.ui.active_pane == ActivePane::Left;
-    let is_right_active = state.ui.active_pane == ActivePane::Right;
     let colors = &state.config.display.colors;
-    
-    // Split into two halves
-    let halves = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-    
-    // Left path
-    let left_prefix = if is_left_active { ">" } else { " " };
-    let left_mask = tab.left_pane.file_mask.as_deref()
-        .map(|m| format!(" [{}]", m))
-        .unwrap_or_default();
-    let left_path = format!("{}{}{}", left_prefix, tab.left_pane.current_location.display_path(), left_mask);
-    let left_para = Paragraph::new(Span::raw(left_path))
-        .style(Style::default()
-            .fg(parse_color(&colors.filename_label_foreground_color))
-            .bg(parse_color(&colors.filename_label_background_color)));
-    frame.render_widget(left_para, halves[0]);
+    let style = Style::default()
+        .fg(parse_color(&colors.filename_label_foreground_color))
+        .bg(parse_color(&colors.filename_label_background_color));
 
-    // Right path
-    let right_prefix = if is_right_active { ">" } else { " " };
-    let right_mask = tab.right_pane.file_mask.as_deref()
-        .map(|m| format!(" [{}]", m))
-        .unwrap_or_default();
-    let right_path = format!("{}{}{}", right_prefix, tab.right_pane.current_location.display_path(), right_mask);
-    let right_para = Paragraph::new(Span::raw(right_path))
-        .style(Style::default()
-            .fg(parse_color(&colors.filename_label_foreground_color))
-            .bg(parse_color(&colors.filename_label_background_color)));
-    frame.render_widget(right_para, halves[1]);
+    let render_one = |frame: &mut Frame, rect: Rect, pane: ActivePane| {
+        let is_active = state.ui.active_pane == pane;
+        let pane_model = match pane {
+            ActivePane::Left  => &tab.left_pane,
+            ActivePane::Right => &tab.right_pane,
+        };
+        let prefix = if is_active { ">" } else { " " };
+        let mask = pane_model.file_mask.as_deref()
+            .map(|m| format!(" [{}]", m))
+            .unwrap_or_default();
+        let display_path = pane_model.current_location.display_path();
+        let avail = rect.width.saturating_sub(prefix.len() as u16 + mask.len() as u16) as usize;
+        let shortened = shorten_path(&display_path, avail, "…");
+        frame.render_widget(
+            Paragraph::new(Span::raw(format!("{}{}{}", prefix, shortened, mask))).style(style),
+            rect,
+        );
+    };
+
+    if let Some(pane) = single_pane {
+        render_one(frame, area, pane);
+    } else {
+        let halves = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+        render_one(frame, halves[0], ActivePane::Left);
+        render_one(frame, halves[1], ActivePane::Right);
+    }
 }

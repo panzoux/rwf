@@ -49,14 +49,11 @@ pub struct BackgroundJobManager {
     /// Map from internal JobId to BackgroundJob
     jobs: HashMap<JobId, BackgroundJob>,
     /// Semaphore for concurrency limiting
-    #[allow(dead_code)]  // Not used in Debug impl
     semaphore: Arc<Semaphore>,
     /// Sequential ID counter for display
     next_short_id: u32,
     /// Event channel for job updates
-    #[allow(dead_code)]  // Not used in Debug impl
     event_tx: mpsc::UnboundedSender<BackgroundJobEvent>,
-    #[allow(dead_code)]  // Not used in Debug impl
     event_rx: Option<mpsc::UnboundedReceiver<BackgroundJobEvent>>,
     /// Maximum parallel jobs
     max_parallel: usize,

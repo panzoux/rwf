@@ -33,6 +33,29 @@ use tracing::debug;
 
 use super::{smart_truncate, SmartText, TruncateMode};
 
+/// Result of dialog input handling
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DialogAction {
+    None,
+    Confirm,
+    ConfirmAll,
+    Cancel,
+    NextField,
+    PrevField,
+    PatternChanged,
+    RotateLanguage,
+    DeleteSelected,
+}
+
+fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
+    match fmt {
+        rwf_lib::ArchiveFormat::ZIP => "zip",
+        rwf_lib::ArchiveFormat::SevenZip => "7z",
+        rwf_lib::ArchiveFormat::Tar => "tar",
+        rwf_lib::ArchiveFormat::TarGz => "tgz",
+    }
+}
+
 /// Chunk `text` into at most `max_lines` rows of `width` terminal columns, respecting double-width chars.
 fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'static>> {
     use unicode_width::UnicodeWidthChar;
@@ -58,42 +81,6 @@ fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'stati
         pos = end;
     }
     out
-}
-
-/// Result of dialog input handling
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DialogAction {
-    None,           // Input consumed, no action
-    Confirm,        // User pressed Enter/OK
-    ConfirmAll,     // Shift+Enter: apply to all remaining
-    Cancel,         // User pressed Escape/Cancel
-    NextField,      // Tab pressed
-    PrevField,      // Shift+Tab pressed
-    NavigateUp,     // Arrow up in list
-    NavigateDown,   // Arrow down in list
-    TextInput(char), // Character typed for text input
-    Backspace,      // Backspace in text input
-    PatternChanged,   // PatternRename: text changed, need preview refresh
-    RotateLanguage,   // Help: cycle to next display language
-    DeleteSelected,   // Delete key on a list item
-}
-
-/// Trait for dialog content rendering and input handling
-pub trait DialogContentRenderer {
-    /// Render the content-specific widgets
-    fn render(&self, frame: &mut Frame, area: Rect, focused: bool);
-    
-    /// Handle input, return action
-    fn handle_input(&mut self, key: KeyEvent) -> DialogAction;
-    
-    /// Get number of focusable fields (for Tab navigation)
-    fn field_count(&self) -> usize { 1 }
-    
-    /// Get currently focused field index
-    fn focused_field(&self) -> usize { 0 }
-    
-    /// Set focused field index
-    fn set_focused_field(&mut self, index: usize);
 }
 
 /// Render a dialog overlay centered on screen
@@ -149,6 +136,14 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // list + hint(1) + search(1)
             (folders.len() as u16 + 2).max(6)
         }
+        DialogContent::CustomFunctionSelector { functions, .. } => {
+            // list + hint(1) + filter(1)
+            (functions.len() as u16 + 2).max(6)
+        }
+        DialogContent::ContextMenu { options, .. } => {
+            // options list + hint(1)
+            (options.len() as u16 + 1).max(4)
+        }
         DialogContent::JumpToPath { suggestions, .. } => {
             // input(1) + sep(1) + list(up to 10) + sep(1) + preview(1) + hint(1) = list+5, min 8
             (suggestions.len().min(10) as u16 + 5).max(8)
@@ -181,9 +176,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Use exact minimum height, but ensure it fits on screen
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::HistoryDialog { .. } | DialogContent::DriveSelection { .. } | DialogContent::PatternRename { .. } | DialogContent::Help { .. } | DialogContent::RegisteredFolderSelector { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } | DialogContent::DeleteConfirm { .. } => {
+        DialogContent::HistoryDialog { .. } | DialogContent::DriveSelection { .. } | DialogContent::PatternRename { .. } | DialogContent::Help { .. } | DialogContent::RegisteredFolderSelector { .. } | DialogContent::CustomFunctionSelector { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } | DialogContent::DeleteConfirm { .. } => {
             let percent_height = (screen_height * 80) / 100;
             percent_height.max(min_dialog_height).min(screen_height.saturating_sub(2))
+        }
+        DialogContent::ContextMenu { .. } => {
+            // Exact size for context menu
+            min_dialog_height.min(screen_height.saturating_sub(2))
         }
         DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } => {
             // Use exact minimum height for compact dialogs
@@ -209,6 +208,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }
         DialogContent::DriveSelection { .. } | DialogContent::RegisteredFolderSelector { .. } => {
             60u16.min(screen_width.saturating_sub(2)).max(40)
+        }
+        DialogContent::CustomFunctionSelector { .. } => {
+            ((screen_width * 70) / 100).max(50).min(screen_width.saturating_sub(2))
+        }
+        DialogContent::ContextMenu { options, .. } => {
+            let max_label = options.iter().map(|o| o.label.len()).max().unwrap_or(10);
+            ((max_label as u16 + 6).max(24)).min(screen_width.saturating_sub(2))
         }
         DialogContent::PatternRename { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } => {
             ((screen_width * 80) / 100).max(40).min(screen_width.saturating_sub(2))
@@ -302,6 +308,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }
         DialogContent::RegisteredFolderSelector { folders, selected_index, filter } => {
             render_registered_folder_selector(frame, content_area, folders, *selected_index, filter);
+        }
+        DialogContent::CustomFunctionSelector { functions, selected_index, filter } => {
+            render_custom_function_selector(frame, content_area, functions, *selected_index, filter);
+        }
+        DialogContent::ContextMenu { options, selected_index } => {
+            render_context_menu_dialog(frame, content_area, options, *selected_index);
         }
         DialogContent::JumpToPath { query, cursor_pos, suggestions, selected_index, loading_job_id, .. } => {
             render_jump_to_path_dialog(frame, content_area, query, *cursor_pos, suggestions, *selected_index, loading_job_id.is_some());
@@ -992,6 +1004,125 @@ fn render_registered_folder_selector(
             Paragraph::new(format!(" {}", label)).style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
         );
+    }
+}
+
+fn render_custom_function_selector(
+    frame: &mut Frame,
+    area: Rect,
+    functions: &[rwf_lib::model::dialog::CustomFunction],
+    selected_index: usize,
+    filter: &str,
+) {
+    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+
+    let item_width = area.width.saturating_sub(4) as usize;
+
+    let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
+        functions.iter().collect()
+    } else {
+        let lower = filter.to_lowercase();
+        functions.iter().filter(|f| {
+            f.name.to_lowercase().contains(&lower)
+                || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
+        }).collect()
+    };
+
+    let clamped_sel = selected_index.min(filtered.len().saturating_sub(1));
+
+    let hint_y   = area.y + area.height.saturating_sub(2);
+    let search_y = area.y + area.height.saturating_sub(1);
+
+    frame.render_widget(
+        Paragraph::new("[Enter] Execute  [Esc] Cancel").style(hint_style),
+        Rect::new(area.x + 2, hint_y, item_width as u16, 1),
+    );
+    frame.render_widget(
+        Paragraph::new(format!("/{}", filter)).style(base_style),
+        Rect::new(area.x + 2, search_y, item_width as u16, 1),
+    );
+
+    let list_height = area.height.saturating_sub(2) as usize;
+    let scroll_start = if clamped_sel >= list_height {
+        clamped_sel + 1 - list_height
+    } else {
+        0
+    };
+
+    for row in 0..list_height {
+        let fi = scroll_start + row;
+        if fi >= filtered.len() { break; }
+        let func = filtered[fi];
+        let name_w = item_width.saturating_sub(2);
+        let label = if let Some(desc) = &func.description {
+            let desc_w = name_w.saturating_sub(func.name.len() + 3);
+            if desc_w > 4 {
+                format!("{:<name_w$}", format!("{}  {}", func.name, smart_truncate(desc, desc_w, "…")), name_w = name_w)
+            } else {
+                smart_truncate(&func.name, name_w, "…")
+            }
+        } else {
+            smart_truncate(&func.name, name_w, "…")
+        };
+        let style = if fi == clamped_sel { selected_style } else { base_style };
+        frame.render_widget(
+            Paragraph::new(format!(" {}", label)).style(style),
+            Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
+        );
+    }
+}
+
+fn render_context_menu_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    options: &[rwf_lib::model::dialog::ContextMenuOption],
+    selected_index: usize,
+) {
+    use rwf_lib::model::dialog::ContextMenuAction;
+
+    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+
+    let item_width = area.width.saturating_sub(4) as usize;
+
+    // hint on last row
+    let hint_y = area.y + area.height.saturating_sub(1);
+    frame.render_widget(
+        Paragraph::new("[Enter] Select  [Esc] Cancel").style(hint_style),
+        Rect::new(area.x + 2, hint_y, item_width as u16, 1),
+    );
+
+    let list_height = area.height.saturating_sub(1) as usize;
+    // compute scroll so selected item is visible
+    let scroll_start = if selected_index >= list_height {
+        selected_index + 1 - list_height
+    } else {
+        0
+    };
+
+    for row in 0..list_height {
+        let oi = scroll_start + row;
+        if oi >= options.len() { break; }
+        let opt = &options[oi];
+        let is_sep = matches!(opt.action, ContextMenuAction::Separator);
+        if is_sep {
+            let sep_text = "─".repeat(item_width.saturating_sub(2));
+            frame.render_widget(
+                Paragraph::new(format!(" {}", sep_text)).style(sep_style),
+                Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
+            );
+        } else {
+            let label = smart_truncate(&opt.label, item_width.saturating_sub(2), "…");
+            let style = if oi == selected_index { selected_style } else { base_style };
+            frame.render_widget(
+                Paragraph::new(format!(" {}", label)).style(style),
+                Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
+            );
+        }
     }
 }
 
@@ -2423,6 +2554,105 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         return DialogAction::None;
     }
 
+    // CustomFunctionSelector — incremental search + arrow navigation
+    if let DialogContent::CustomFunctionSelector { functions, selected_index, filter } = &mut dialog.content {
+        use crossterm::event::KeyCode;
+        let filtered_count = if filter.is_empty() {
+            functions.len()
+        } else {
+            let lower = filter.to_lowercase();
+            functions.iter().filter(|f| {
+                f.name.to_lowercase().contains(&lower)
+                    || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
+            }).count()
+        };
+        match key.code {
+            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Enter => return DialogAction::Confirm,
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index > 0 { *selected_index -= 1; }
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index + 1 < filtered_count { *selected_index += 1; }
+            }
+            KeyCode::Home => { *selected_index = 0; }
+            KeyCode::End  => { *selected_index = filtered_count.saturating_sub(1); }
+            KeyCode::Backspace => {
+                if !filter.is_empty() {
+                    let mut chars = filter.chars();
+                    chars.next_back();
+                    *filter = chars.as_str().to_string();
+                    *selected_index = 0;
+                }
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => { filter.clear(); }
+            KeyCode::Char('\x0b') => { filter.clear(); }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
+                              && !key.modifiers.contains(KeyModifiers::ALT)
+                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+                filter.push(c);
+                *selected_index = 0;
+            }
+            _ => {}
+        }
+        return DialogAction::None;
+    }
+
+    // ContextMenu — arrow navigation (skip separators)
+    if let DialogContent::ContextMenu { options, selected_index } = &mut dialog.content {
+        use crossterm::event::KeyCode;
+        use rwf_lib::model::dialog::ContextMenuAction;
+        let selectable_count = options.iter().filter(|o| !matches!(o.action, ContextMenuAction::Separator)).count();
+        let _ = selectable_count;
+        match key.code {
+            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Enter => return DialogAction::Confirm,
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+                // Move up, skip separators
+                let mut idx = *selected_index;
+                loop {
+                    if idx == 0 { break; }
+                    idx -= 1;
+                    if !matches!(options[idx].action, ContextMenuAction::Separator) {
+                        *selected_index = idx;
+                        break;
+                    }
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+                let mut idx = *selected_index;
+                loop {
+                    if idx + 1 >= options.len() { break; }
+                    idx += 1;
+                    if !matches!(options[idx].action, ContextMenuAction::Separator) {
+                        *selected_index = idx;
+                        break;
+                    }
+                }
+            }
+            KeyCode::Home => {
+                // Jump to first selectable
+                for (i, o) in options.iter().enumerate() {
+                    if !matches!(o.action, ContextMenuAction::Separator) {
+                        *selected_index = i;
+                        break;
+                    }
+                }
+            }
+            KeyCode::End => {
+                // Jump to last selectable
+                for (i, o) in options.iter().enumerate().rev() {
+                    if !matches!(o.action, ContextMenuAction::Separator) {
+                        *selected_index = i;
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+        return DialogAction::None;
+    }
+
     // RegisteredFolderSelector — incremental search + arrow navigation
     if let DialogContent::RegisteredFolderSelector { folders, selected_index, filter } = &mut dialog.content {
         use crossterm::event::KeyCode;
@@ -2695,6 +2925,7 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
             selected_format_index,
             selected_compression_index,
             archive_name,
+            format,
             cursor_pos,
             scroll_pos,
             edit_mode,
@@ -2781,8 +3012,27 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
                             }
                         }
                         crossterm::event::KeyCode::Char(' ') => {
-                            // Set selection to current focus position
                             *selected_format_index = *format_focus_index;
+                            // Sync the format enum and update archive_name extension
+                            let new_fmt = compression::ARCHIVE_FORMATS
+                                .get(*format_focus_index)
+                                .map(|(_, f)| *f)
+                                .unwrap_or(rwf_lib::ArchiveFormat::ZIP);
+                            if new_fmt != *format {
+                                let new_ext = archive_ext_for_format(new_fmt);
+                                let old_ext = archive_ext_for_format(*format);
+                                // Handle double extension .tar.gz
+                                let base = if old_ext == "tar" && archive_name.to_lowercase().ends_with(".tar.gz") {
+                                    &archive_name[..archive_name.len() - ".tar.gz".len()]
+                                } else if archive_name.to_lowercase().ends_with(&format!(".{}", old_ext)) {
+                                    &archive_name[..archive_name.len() - old_ext.len() - 1]
+                                } else {
+                                    archive_name.as_str()
+                                };
+                                *archive_name = format!("{}.{}", base, new_ext);
+                                *cursor_pos = archive_name.chars().count();
+                                *format = new_fmt;
+                            }
                         }
                         _ => {}
                     }
@@ -3117,9 +3367,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::Compression { 
-                sources, 
-                archive_name, 
+            DialogContent::Compression {
+                sources,
+                archive_name,
+                format,
                 selected_format_index,
                 compression_level,
                 ..
@@ -3127,11 +3378,18 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 debug!("Compression dialog confirmed: {} sources, archive_name='{}'", sources.len(), archive_name);
                 debug!("Selected format index: {}, compression level: {}", selected_format_index, compression_level);
 
-                // Ensure archive name has .zip extension
-                let archive_name_with_ext = if archive_name.to_lowercase().ends_with(".zip") {
+                // Ensure archive name has the correct extension for the selected format
+                let ext = archive_ext_for_format(*format);
+                let archive_name_with_ext = if archive_name.to_lowercase().ends_with(&format!(".{}", ext)) {
                     archive_name.clone()
                 } else {
-                    format!("{}.zip", archive_name)
+                    // Strip any mismatched extension before adding the correct one
+                    let base = ["zip", "7z", "tar", "tgz"].iter().find_map(|old_ext| {
+                        archive_name.to_lowercase()
+                            .ends_with(&format!(".{}", old_ext))
+                            .then(|| &archive_name[..archive_name.len() - old_ext.len() - 1])
+                    }).unwrap_or(archive_name.as_str());
+                    format!("{}.{}", base, ext)
                 };
                 debug!("Archive name with extension: '{}'", archive_name_with_ext);
 
@@ -3222,6 +3480,117 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 });
                 return Some(job_spec);
             }
+            DialogContent::CustomFunctionSelector { functions, selected_index, filter } => {
+                let lower = filter.to_lowercase();
+                let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
+                    functions.iter().collect()
+                } else {
+                    functions.iter().filter(|f| {
+                        f.name.to_lowercase().contains(&lower)
+                            || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
+                    }).collect()
+                };
+                if let Some(&func) = filtered.get(*selected_index) {
+                    let func = func.clone();
+                    let expander = rwf_lib::macro_expander::MacroExpander::new();
+                    match expander.expand(state, &func) {
+                        Ok(command) => {
+                            let working_dir = state.active_pane().current_location.clone();
+                            let shell = func.shell.clone();
+                            return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                command,
+                                working_dir,
+                                pipe_to_action: func.pipe_to_action.clone(),
+                                shell,
+                            }));
+                        }
+                        Err(_) => {
+                            // Command requires $I user input — show an input dialog
+                            // For now, execute with empty string substitution
+                            let command_with_empty = func.get_command().replace("$I", "");
+                            let expander2 = rwf_lib::macro_expander::MacroExpander::new();
+                            let func2 = rwf_lib::model::dialog::CustomFunction::new("tmp", command_with_empty);
+                            if let Ok(command) = expander2.expand(state, &func2) {
+                                let working_dir = state.active_pane().current_location.clone();
+                                let shell = func.shell.clone();
+                                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                    command,
+                                    working_dir,
+                                    pipe_to_action: None,
+                                    shell,
+                                }));
+                            }
+                        }
+                    }
+                }
+                return None;
+            }
+            DialogContent::ContextMenu { options, selected_index } => {
+                use rwf_lib::model::dialog::ContextMenuAction;
+                if let Some(opt) = options.get(*selected_index) {
+                    match opt.action.clone() {
+                        ContextMenuAction::Copy => {
+                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Copy);
+                            for t in transitions {
+                                let result = rwf_lib::state::update_state(state, t);
+                                if let Some(job) = result.jobs_to_start.into_iter().next() {
+                                    return Some(job);
+                                }
+                            }
+                        }
+                        ContextMenuAction::Move => {
+                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Move);
+                            for t in transitions {
+                                let result = rwf_lib::state::update_state(state, t);
+                                if let Some(job) = result.jobs_to_start.into_iter().next() {
+                                    return Some(job);
+                                }
+                            }
+                        }
+                        ContextMenuAction::Delete => {
+                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Delete);
+                            for t in transitions {
+                                let result = rwf_lib::state::update_state(state, t);
+                                if let Some(job) = result.jobs_to_start.into_iter().next() {
+                                    return Some(job);
+                                }
+                            }
+                        }
+                        ContextMenuAction::Rename => {
+                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Rename);
+                            for t in transitions {
+                                rwf_lib::state::update_state(state, t);
+                            }
+                        }
+                        ContextMenuAction::View => {
+                            if let Some(entry) = state.active_pane().current_entry() {
+                                if !entry.is_dir {
+                                    let loc = entry.location.clone();
+                                    rwf_lib::state::update_state(state, rwf_lib::state::Transition::OpenTextViewer { location: loc });
+                                }
+                            }
+                        }
+                        ContextMenuAction::CustomFunction(name) => {
+                            let func = state.custom_functions.iter().find(|f| f.name == name).cloned();
+                            if let Some(func) = func {
+                                let expander = rwf_lib::macro_expander::MacroExpander::new();
+                                if let Ok(command) = expander.expand(state, &func) {
+                                    let working_dir = state.active_pane().current_location.clone();
+                                    let shell = func.shell.clone();
+                                    return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                        command,
+                                        working_dir,
+                                        pipe_to_action: func.pipe_to_action.clone(),
+                                        shell,
+                                    }));
+                                }
+                            }
+                        }
+                        ContextMenuAction::Separator => {}
+                    }
+                }
+                return None;
+            }
             _ => {
                 debug!("Unknown dialog content type");
             }
@@ -3229,7 +3598,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
     } else {
         debug!("No dialog found");
     }
-    
+
     None
 }
 

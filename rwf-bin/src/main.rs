@@ -1,5 +1,4 @@
 mod app;
-mod performance;
 mod terminal;
 mod ui;
 
@@ -50,8 +49,16 @@ async fn main() -> Result<()> {
     let state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
 
+    // Load key bindings from keybindings.json (falls back to defaults if missing/invalid)
+    let key_bindings = rwf_lib::input::KeyBindings::load_from_file(config_manager.keybindings_path())
+        .unwrap_or_else(|e| {
+            tracing::info!("Using default keybindings ({:?})", e);
+            rwf_lib::KeyBindings::default()
+        });
+    info!("Key bindings loaded");
+
     // Create and run application
-    let mut app = App::with_cwd_flag(state, args.cwd);
+    let mut app = App::with_state_and_keybindings(state, args.cwd, key_bindings);
     app.run(terminal_manager.terminal_mut()).await?;
 
     // Restore terminal state

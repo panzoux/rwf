@@ -713,11 +713,28 @@ impl Default for UIConfig {
     }
 }
 
+/// File type association: maps an extension to an external command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ExtensionAssociation {
+    /// File extension without leading dot, e.g. "pdf", "txt" (case-insensitive match)
+    pub extension: String,
+    /// Command template. Supports macros: $P (dir), $F (filename), $W (stem), $E (ext)
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+}
+
 /// Configuration manager for loading and saving configuration files
 /// **Validates: Requirements 17.1, 17.2, 17.3, 17.9, 38.1, 38.9, 38.10**
 pub struct ConfigManager {
     config_path: std::path::PathBuf,
     keybindings_path: std::path::PathBuf,
+    extension_associations_path: std::path::PathBuf,
+    custom_functions_path: std::path::PathBuf,
+    context_menu_path: std::path::PathBuf,
 }
 
 impl ConfigManager {
@@ -726,16 +743,25 @@ impl ConfigManager {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("rwf");
-        
+
         Self {
             config_path: config_dir.join("config.json"),
             keybindings_path: config_dir.join("keybindings.json"),
+            extension_associations_path: config_dir.join("extension_associations.json"),
+            custom_functions_path: config_dir.join("custom_functions.json"),
+            context_menu_path: config_dir.join("context_menu.json"),
         }
     }
-    
+
     /// Create a ConfigManager with custom paths (for testing)
     pub fn with_paths(config_path: std::path::PathBuf, keybindings_path: std::path::PathBuf) -> Self {
+        let config_dir = config_path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
         Self {
+            extension_associations_path: config_dir.join("extension_associations.json"),
+            custom_functions_path: config_dir.join("custom_functions.json"),
+            context_menu_path: config_dir.join("context_menu.json"),
             config_path,
             keybindings_path,
         }
@@ -816,7 +842,46 @@ impl ConfigManager {
     pub fn config_path(&self) -> &std::path::Path {
         &self.config_path
     }
-    
+
+    /// Get the keybindings file path
+    pub fn keybindings_path(&self) -> &std::path::Path {
+        &self.keybindings_path
+    }
+
+    /// Get the extension_associations.json path
+    pub fn extension_associations_path(&self) -> &std::path::Path {
+        &self.extension_associations_path
+    }
+
+    /// Get the custom_functions.json path
+    pub fn custom_functions_path(&self) -> &std::path::Path {
+        &self.custom_functions_path
+    }
+
+    /// Get the context_menu.json path
+    pub fn context_menu_path(&self) -> &std::path::Path {
+        &self.context_menu_path
+    }
+
+    /// Load extension associations from extension_associations.json.
+    /// Returns an empty list if the file does not exist.
+    pub fn load_extension_associations(&self) -> Vec<ExtensionAssociation> {
+        if !self.extension_associations_path.exists() {
+            return Vec::new();
+        }
+        match std::fs::read_to_string(&self.extension_associations_path) {
+            Ok(content) => serde_json::from_str::<Vec<ExtensionAssociation>>(&content)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to parse extension_associations.json: {}", e);
+                    Vec::new()
+                }),
+            Err(e) => {
+                tracing::warn!("Failed to read extension_associations.json: {}", e);
+                Vec::new()
+            }
+        }
+    }
+
     /// Validate configuration settings
     pub fn validate_config(&self, config: &AppConfig) -> Result<(), ConfigError> {
         // Validate worker pool size
@@ -960,7 +1025,8 @@ mod tests {
                 "CaseSensitive": false,
                 "UseRegex": false,
                 "UseMigemo": false,
-                "MaxResults": 1000
+                "MaxResults": 1000,
+                "SearchDebounceMs": 150
             },
             "Ui": {
                 "RefreshRate": 30,

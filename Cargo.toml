@@ -35,6 +35,10 @@ proptest = "1.5"
 
 # Archive handling
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+sevenz-rust = { version = "0.6", features = ["compress"] }
+tar = "0.4"
+flate2 = "1.0"
+iso9660 = "0.1"
 
 # Command-line argument parsing
 clap = { version = "4.5", features = ["derive"] }

@@ -4,8 +4,9 @@
 //! appropriate backend methods and sends JobEvent updates.
 
 use crate::backend::{FilesystemBackend, ArchiveHandler};
-use crate::job::{JobSpec, JobKind, OpResult, SuccessData, PipeToAction};
+use crate::job::{JobSpec, JobId, JobKind, OpResult, SuccessData, PipeToAction};
 use crate::model::Location;
+use crate::model::viewer::{FileBytes, LineIndex, ViewerBuffer, TextEncoding};
 use crate::worker_pool::JobEvent;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -85,8 +86,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::Search { location, pattern, recursive } => {
                 self.execute_search(location, pattern, *recursive, &spec).await
             }
-            JobKind::LoadFileForViewer { location } => {
-                self.execute_load_file_for_viewer(location, &spec.cancel_token).await
+            JobKind::LoadFileForViewer { location, index_lines } => {
+                self.execute_load_file_for_viewer(job_id, location, *index_lines, &spec.cancel_token).await
             }
             JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
                 self.execute_pattern_rename(targets, find, replace, *use_regex, *case_sensitive, &spec).await
@@ -602,33 +603,97 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         OpResult::Failed("Search not yet implemented".to_string())
     }
     
-    /// Execute a load file for viewer operation
+    /// Open the file memory-mapped and send ViewerReady immediately so the UI
+    /// can render without loading anything into RAM. For text mode, a newline
+    /// index is built asynchronously in 4 MB chunks; hex mode skips it entirely.
     async fn execute_load_file_for_viewer(
         &self,
+        job_id: JobId,
         location: &Location,
+        index_lines: bool,
         cancel_token: &CancellationToken,
     ) -> OpResult {
-        // Check for cancellation
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
-        match location {
-            Location::Local(path) => {
-                match tokio::fs::read(path).await {
-                    Ok(contents) => OpResult::Success(SuccessData::FileContents(contents)),
-                    Err(e) => OpResult::Failed(format!("Failed to read file: {}", e)),
+
+        let path = match location {
+            Location::Local(p) => p.clone(),
+            Location::Archive { .. } =>
+                return OpResult::Failed("Archive file viewing not yet implemented".to_string()),
+            _ =>
+                return OpResult::Failed("Unsupported location type for file viewing".to_string()),
+        };
+
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) => return OpResult::Failed(format!("Failed to open file: {}", e)),
+        };
+        let mmap = match unsafe { memmap2::Mmap::map(&file) } {
+            Ok(m) => m,
+            Err(e) => return OpResult::Failed(format!("Failed to mmap file: {}", e)),
+        };
+
+        let total = mmap.len();
+
+        // Detect encoding from first 16 KB.
+        let sample_len = total.min(16384);
+        let encoding = TextEncoding::detect(&mmap[..sample_len]);
+
+        if !index_lines {
+            // Hex mode: mmap only, no newline scan needed. Mark complete immediately.
+            let mut idx = LineIndex::new();
+            idx.is_complete = true;
+            let buffer = ViewerBuffer::new(FileBytes::Mapped(mmap), idx);
+            let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer, encoding));
+            return OpResult::Success(SuccessData::None);
+        }
+
+        // Text mode: send the buffer first (shows available content immediately),
+        // then build the newline index in chunks.
+        let buffer = ViewerBuffer::new(FileBytes::Mapped(mmap), LineIndex::new());
+        let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer.clone(), encoding));
+
+        if total == 0 {
+            buffer.line_index.lock().unwrap().is_complete = true;
+            return OpResult::Success(SuccessData::None);
+        }
+
+        // Scan 4 MB at a time. Collect offsets locally so the mutex is only
+        // locked for a brief append — not for the entire scan duration.
+        const CHUNK: usize = 4 * 1024 * 1024;
+        let bytes = buffer.bytes.as_bytes();
+        let mut chunk_start = 0usize;
+
+        while chunk_start < total {
+            if cancel_token.is_cancelled() {
+                return OpResult::Cancelled;
+            }
+
+            let chunk_end = (chunk_start + CHUNK).min(total);
+
+            // Scan without holding the lock.
+            let mut local: Vec<u64> = Vec::new();
+            for i in chunk_start..chunk_end {
+                if bytes[i] == b'\n' && i + 1 < total {
+                    local.push((i + 1) as u64);
                 }
             }
-            Location::Archive { archive_path: _, inner_path: _ } => {
-                // For archive files, we need to extract the specific file
-                // This is a placeholder - actual implementation would use the archive backend
-                OpResult::Failed("Archive file viewing not yet implemented".to_string())
+
+            // Lock briefly only to append.
+            if !local.is_empty() {
+                buffer.line_index.lock().unwrap().offsets.extend_from_slice(&local);
             }
-            _ => {
-                OpResult::Failed("Unsupported location type for file viewing".to_string())
-            }
+
+            let _ = self.event_sender.send(JobEvent::Progress(
+                job_id, chunk_end as f64 / total as f64,
+            ));
+            chunk_start = chunk_end;
+            tokio::task::yield_now().await;
         }
+
+        buffer.line_index.lock().unwrap().is_complete = true;
+        OpResult::Success(SuccessData::None)
     }
     
     /// Execute a pattern rename operation

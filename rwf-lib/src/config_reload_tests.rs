@@ -113,6 +113,7 @@ mod tests {
         
         // Simulate application running with some state
         update_state(&mut state, Transition::CreateTab);
+        state.last_tab_created = None;
         update_state(&mut state, Transition::CreateTab);
         
         // Reload config (simulating Shift+Z)

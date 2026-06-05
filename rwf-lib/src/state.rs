@@ -32,12 +32,22 @@ pub struct AppState {
     pub navigation_cache: NavigationStateCache,
     /// File viewer state (when in viewer mode)
     pub viewer: Option<ViewerState>,
+    /// Job ID of the active viewer file-loading job (for cancel on close)
+    pub viewer_job_id: Option<crate::job::JobId>,
+    /// Search query being typed in ViewerSearch mode (not yet committed).
+    pub viewer_search_input: String,
+    /// Command being typed in ViewerCommand mode (line-jump digits).
+    pub viewer_command_input: String,
     /// Session log manager
     pub log_manager: LogManager,
     /// Application configuration
     pub config: AppConfig,
     /// Last time a tab was created, for debouncing
     pub last_tab_created: Option<std::time::Instant>,
+    /// File-type extension associations loaded from extension_associations.json
+    pub extension_associations: Vec<crate::config::ExtensionAssociation>,
+    /// Custom functions loaded from custom_functions.json
+    pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
 }
 
 impl AppState {
@@ -76,6 +86,12 @@ impl AppState {
             }
         }
 
+        let config_manager = crate::config::ConfigManager::new();
+        let extension_associations = config_manager.load_extension_associations();
+        let custom_functions = crate::model::dialog::load_custom_functions(
+            config_manager.custom_functions_path()
+        ).unwrap_or_default();
+
         Self {
             tabs: TabManager::new(),
             jobs: JobManager::new(config.worker_pool_size),
@@ -90,12 +106,64 @@ impl AppState {
             cache: DirectoryCache::new(Duration::from_secs(30)),
             navigation_cache: NavigationStateCache::new(),
             viewer: None,
+            viewer_job_id: None,
+            viewer_search_input: String::new(),
+            viewer_command_input: String::new(),
             log_manager,
             config,
             last_tab_created: None,
+            extension_associations,
+            custom_functions,
         }
     }
     
+    /// Move the current viewer state into the active tab's `tab_viewer` slot
+    /// and reset AppState to "no viewer". Called before switching away from a tab.
+    fn save_viewer_to_current_tab(&mut self) {
+        let idx = self.tabs.active_index;
+        let tv = &mut self.tabs.tabs[idx].tab_viewer;
+        tv.viewer               = self.viewer.take();
+        tv.viewer_job_id        = self.viewer_job_id.take();
+        tv.viewer_layout        = self.ui.layout.viewer_layout;
+        tv.viewer_preferred_layout = self.ui.layout.viewer_preferred_layout;
+        tv.viewer_anchor_pane   = self.ui.layout.viewer_anchor_pane;
+        tv.viewer_was_focused   = matches!(
+            self.ui.mode,
+            crate::model::UIMode::Viewer | crate::model::UIMode::ViewerSearch | crate::model::UIMode::ViewerCommand
+        );
+        tv.viewer_search_input  = std::mem::take(&mut self.viewer_search_input);
+        tv.viewer_command_input = std::mem::take(&mut self.viewer_command_input);
+
+        // Reset global viewer fields to default "no viewer" state.
+        self.ui.layout.viewer_layout           = crate::model::ViewerLayout::FullScreen;
+        self.ui.layout.viewer_preferred_layout = crate::model::ViewerLayout::FullScreen;
+        if matches!(self.ui.mode, crate::model::UIMode::Viewer | crate::model::UIMode::ViewerSearch | crate::model::UIMode::ViewerCommand) {
+            self.ui.mode = crate::model::UIMode::Normal;
+        }
+    }
+
+    /// Restore viewer state from the newly active tab's `tab_viewer` slot into AppState.
+    /// Called after switching to a new tab.
+    fn restore_viewer_from_tab(&mut self) {
+        let idx = self.tabs.active_index;
+        let tv = &mut self.tabs.tabs[idx].tab_viewer;
+        self.viewer               = tv.viewer.take();
+        self.viewer_job_id        = tv.viewer_job_id.take();
+        self.ui.layout.viewer_layout           = tv.viewer_layout;
+        self.ui.layout.viewer_preferred_layout = tv.viewer_preferred_layout;
+        self.ui.layout.viewer_anchor_pane      = tv.viewer_anchor_pane;
+        self.viewer_search_input  = std::mem::take(&mut tv.viewer_search_input);
+        self.viewer_command_input = std::mem::take(&mut tv.viewer_command_input);
+        let was_focused = tv.viewer_was_focused;
+
+        // Reset the slot to default so it's clean for next time.
+        *tv = crate::model::TabViewerState::default();
+
+        if was_focused && self.viewer.is_some() {
+            self.ui.mode = crate::model::UIMode::Viewer;
+        }
+    }
+
     /// Get a reference to the current active tab
     pub fn current_tab(&self) -> &crate::model::TabState {
         &self.tabs.tabs[self.tabs.active_index]
@@ -409,9 +477,25 @@ impl AppState {
                 if *index >= self.tabs.tabs.len() {
                     return Some(StateUpdateResult::none());
                 }
-                
+
                 let tab_id = self.tabs.tabs[*index].id;
-                
+                let is_active = *index == self.tabs.active_index;
+
+                // Cancel any viewer job saved in the tab being closed.
+                if is_active {
+                    // Drop live viewer state (cancel job, reset fields).
+                    if let Some(job_id) = self.viewer_job_id.take() {
+                        self.jobs.request_cancel(job_id);
+                    }
+                    self.viewer = None;
+                    self.ui.layout.viewer_layout = crate::model::ViewerLayout::FullScreen;
+                    if matches!(self.ui.mode, crate::model::UIMode::Viewer | crate::model::UIMode::ViewerSearch | crate::model::UIMode::ViewerCommand) {
+                        self.ui.mode = crate::model::UIMode::Normal;
+                    }
+                } else if let Some(job_id) = self.tabs.tabs[*index].tab_viewer.viewer_job_id {
+                    self.jobs.request_cancel(job_id);
+                }
+
                 // Collect and cancel all active jobs for this tab
                 let active_jobs: Vec<crate::job::JobId> = self.background_jobs
                     .get_active_jobs()
@@ -427,6 +511,9 @@ impl AppState {
                     if self.tabs.active_index >= self.tabs.tabs.len() {
                         self.tabs.active_index = self.tabs.tabs.len().saturating_sub(1);
                     }
+                    if is_active {
+                        self.restore_viewer_from_tab();
+                    }
                     let mut result = StateUpdateResult::with_ui_change();
                     result.jobs_to_cancel = active_jobs;
                     Some(result)
@@ -435,16 +522,22 @@ impl AppState {
                 }
             }
             Transition::NextTab => {
+                self.save_viewer_to_current_tab();
                 self.tabs.switch_to_next();
+                self.restore_viewer_from_tab();
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::PrevTab => {
+                self.save_viewer_to_current_tab();
                 self.tabs.switch_to_prev();
+                self.restore_viewer_from_tab();
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::SwitchTab { index } => {
                 if *index < self.tabs.tabs.len() {
+                    self.save_viewer_to_current_tab();
                     self.tabs.active_index = *index;
+                    self.restore_viewer_from_tab();
                     Some(StateUpdateResult::with_ui_change())
                 } else {
                     Some(StateUpdateResult::none())
@@ -745,9 +838,13 @@ impl AppState {
                             }
                         }
                         crate::job::JobKind::LoadFileForViewer { .. } => {
-                            if let crate::job::OpResult::Success(crate::job::SuccessData::FileContents(contents)) = result {
-                                let viewer_res = update_state(self, Transition::ViewerLoadComplete { contents: contents.clone() });
-                                result_obj.ui_changed = viewer_res.ui_changed;
+                            // Buffer was already delivered via ViewerReady event.
+                            // On final Completed just mark loading as done.
+                            if let crate::job::OpResult::Success(_) = result {
+                                if let Some(ref mut viewer) = self.viewer {
+                                    viewer.is_loading = false;
+                                }
+                                result_obj.ui_changed = true;
                             }
                         }
                         crate::job::JobKind::CompareFiles { .. } => {
@@ -1026,6 +1123,14 @@ impl AppState {
                 self.ui.layout.pane_height = *height;
                 Some(StateUpdateResult::with_ui_change())
             }
+            Transition::UpdatePaneWidth { width } => {
+                self.ui.layout.pane_width = *width;
+                let content_w = width.saturating_sub(10);
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.content_width = content_w;
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::ShowDialog { dialog } => {
                 self.dialogs.push(dialog.clone());
                 Some(StateUpdateResult::with_ui_change())
@@ -1178,7 +1283,40 @@ impl AppState {
                                     let path = self.active_pane().current_location.display_path();
                                     return Some(update_state(self, Transition::RegisterCurrentFolder { name: input, path }));
                                 }
+                            } else if title == "File Mask Filter" {
+                                let mask = if input.is_empty() { None } else { Some(input) };
+                                let pane = self.ui.active_pane;
+                                self.dialogs.pop();
+                                return Some(update_state(self, Transition::SetFileMask { pane, mask }));
                             }
+                        }
+                        crate::model::DialogContent::DeleteConfirm { targets, .. } => {
+                            let jobs_targets: Vec<_> = targets.iter().map(|(loc, _)| loc.clone()).collect();
+                            if !jobs_targets.is_empty() {
+                                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete { targets: jobs_targets });
+                                self.dialogs.pop();
+                                return Some(StateUpdateResult::with_job(job_spec));
+                            }
+                        }
+                        crate::model::DialogContent::SimpleRename { .. } => {
+                            let new_name = self.dialogs.input_buffer.clone();
+                            if !new_name.is_empty() {
+                                if let Some(entry) = self.active_pane().current_entry() {
+                                    let from = entry.location.clone();
+                                    let to = from.parent()
+                                        .unwrap_or_else(|| self.active_pane().current_location.clone())
+                                        .join(&new_name);
+                                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Rename { from, to });
+                                    self.dialogs.pop();
+                                    return Some(StateUpdateResult::with_job(job_spec));
+                                }
+                            }
+                        }
+                        crate::model::DialogContent::FileMask { input, .. } => {
+                            let mask = if input.is_empty() { None } else { Some(input.clone()) };
+                            let pane = self.ui.active_pane;
+                            self.dialogs.pop();
+                            return Some(update_state(self, Transition::SetFileMask { pane, mask }));
                         }
                         crate::model::DialogContent::DriveSelection { drives, selected_index, filter } => {
                             let lower = filter.to_lowercase();
@@ -1221,6 +1359,26 @@ impl AppState {
                 let dialog = crate::model::Dialog::context_menu();
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowCustomFunctionsDialog => {
+                let functions = self.custom_functions.clone();
+                if functions.is_empty() {
+                    tracing::info!("No custom functions loaded (custom_functions.json missing or empty)");
+                    None
+                } else {
+                    let dialog = crate::model::Dialog::custom_function_selector(functions);
+                    self.dialogs.push(dialog);
+                    Some(StateUpdateResult::with_ui_change())
+                }
+            }
+            Transition::ExecuteAssociation { command, working_dir, shell } => {
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                    command: command.clone(),
+                    working_dir: working_dir.clone(),
+                    pipe_to_action: None,
+                    shell: shell.clone(),
+                });
+                Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();
@@ -1533,26 +1691,101 @@ impl AppState {
         match transition {
             Transition::OpenTextViewer { location } => {
                 self.ui.mode = crate::model::UIMode::Viewer;
+                self.ui.layout.viewer_layout = crate::model::ViewerLayout::FullScreen;
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = crate::model::ViewerMode::Text;
                 self.viewer = Some(viewer);
-                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer { location: location.clone() });
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
+                    location: location.clone(), index_lines: true,
+                });
+                self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::OpenHexViewer { location } => {
                 self.ui.mode = crate::model::UIMode::Viewer;
+                self.ui.layout.viewer_layout = crate::model::ViewerLayout::FullScreen;
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = crate::model::ViewerMode::Hex;
                 self.viewer = Some(viewer);
-                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer { location: location.clone() });
+                // Hex mode doesn't need a line index — mmap only.
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
+                    location: location.clone(), index_lines: false,
+                });
+                self.viewer_job_id = Some(job_spec.id);
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::ReloadViewer { location, mode } => {
+                // Cancel the previous loading job.
+                if let Some(job_id) = self.viewer_job_id.take() {
+                    self.jobs.request_cancel(job_id);
+                }
+                let mut viewer = crate::model::ViewerState::new(location.clone());
+                viewer.mode = *mode;
+                self.viewer = Some(viewer);
+                self.viewer_search_input.clear();
+                let index_lines = *mode == crate::model::ViewerMode::Text;
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
+                    location: location.clone(), index_lines,
+                });
+                self.viewer_job_id = Some(job_spec.id);
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::OpenSideBySideViewer { location, mode } => {
+                // File pane keeps focus; viewer appears alongside it.
+                self.ui.mode = crate::model::UIMode::Normal;
+                self.ui.layout.viewer_layout = crate::model::ViewerLayout::SideBySide;
+                self.ui.layout.viewer_preferred_layout = crate::model::ViewerLayout::SideBySide;
+                // Pin the viewer to the opposite side of the current active pane.
+                // This stays fixed for the duration of the SideBySide session.
+                self.ui.layout.viewer_anchor_pane = self.ui.active_pane;
+                let mut viewer = crate::model::ViewerState::new(location.clone());
+                viewer.mode = *mode;
+                self.viewer = Some(viewer);
+                let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
+                    location: location.clone(),
+                    index_lines: *mode == crate::model::ViewerMode::Text,
+                });
+                self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::CloseViewer => {
+                if let Some(job_id) = self.viewer_job_id.take() {
+                    self.jobs.request_cancel(job_id);
+                }
                 self.ui.mode = crate::model::UIMode::Normal;
                 self.viewer = None;
+                self.viewer_search_input.clear();
+                self.ui.layout.viewer_layout = crate::model::ViewerLayout::FullScreen;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerSwitchLayout { layout } => {
+                match layout {
+                    crate::model::ViewerLayout::FullScreen => {
+                        // Viewer takes full focus; remember that user came from SideBySide.
+                        self.ui.mode = crate::model::UIMode::Viewer;
+                        self.ui.layout.viewer_preferred_layout = crate::model::ViewerLayout::SideBySide;
+                    }
+                    crate::model::ViewerLayout::SideBySide => {
+                        // File pane gets focus.
+                        self.ui.mode = crate::model::UIMode::Normal;
+                    }
+                }
+                self.ui.layout.viewer_layout = *layout;
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerReady { buffer, encoding } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.buffer = Some(buffer.clone());
+                    // Only apply detected encoding on first arrival (encoding may have
+                    // been manually changed by the user before the job completes).
+                    if viewer.encoding == crate::model::viewer::TextEncoding::Utf8 {
+                        viewer.encoding = *encoding;
+                    }
+                }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ViewerLoadComplete { contents } => {
+                // Legacy path: used by tests and the ViewerLoadComplete transition.
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.set_contents(contents.clone());
                 }
@@ -1561,6 +1794,16 @@ impl AppState {
             Transition::ViewerCycleEncoding => {
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.cycle_encoding();
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerToggleMode => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.mode = match viewer.mode {
+                        crate::model::ViewerMode::Text => crate::model::ViewerMode::Hex,
+                        crate::model::ViewerMode::Hex => crate::model::ViewerMode::Text,
+                    };
+                    viewer.clear_search();
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -1594,9 +1837,21 @@ impl AppState {
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
-            Transition::ViewerJumpToBottom => {
+            Transition::ViewerJumpToBottom { viewport_height } => {
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.jump_to_bottom(20); // TODO: Get viewport height
+                    viewer.jump_to_bottom(*viewport_height);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerJumpToLine { line_idx, viewport_height } => {
+                if let Some(ref mut viewer) = self.viewer {
+                    let max = if viewer.mode == crate::model::ViewerMode::Hex {
+                        viewer.hex_line_count()
+                    } else {
+                        viewer.line_count()
+                    };
+                    viewer.line_offset = (*line_idx).min(max.saturating_sub(*viewport_height));
+                    viewer.column_offset = 0;
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -1614,19 +1869,20 @@ impl AppState {
             }
             Transition::ViewerStartSearch { query } => {
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.start_search(query.to_string());
+                    let migemo_pat = self.search.get_migemo_regex(query, viewer.case_sensitive);
+                    viewer.start_search(query.to_string(), migemo_pat.as_deref());
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ViewerFindNext => {
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.find_next();
+                    viewer.find_next_in_dir();
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ViewerFindPrev => {
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.find_prev();
+                    viewer.find_prev_in_dir();
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -1634,6 +1890,33 @@ impl AppState {
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.clear_search();
                 }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerToggleCaseSensitive => {
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.case_sensitive = !viewer.case_sensitive;
+                    // Re-run any active search under the new sensitivity.
+                    if let Some(query) = viewer.search_query.clone() {
+                        let migemo_pat = self.search.get_migemo_regex(&query, viewer.case_sensitive);
+                        viewer.start_search(query, migemo_pat.as_deref());
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerScrollLeft { cols } => {
+                if let Some(ref mut viewer) = self.viewer { viewer.scroll_left(*cols); }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerScrollRight { cols } => {
+                if let Some(ref mut viewer) = self.viewer { viewer.scroll_right(*cols); }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerFastScrollUp { lines } => {
+                if let Some(ref mut viewer) = self.viewer { viewer.fast_scroll_up(*lines); }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerFastScrollDown { lines, viewport_height } => {
+                if let Some(ref mut viewer) = self.viewer { viewer.fast_scroll_down(*lines, *viewport_height); }
                 Some(StateUpdateResult::with_ui_change())
             }
             _ => None,
@@ -1988,6 +2271,7 @@ pub enum Transition {
     // UI state
     ChangeUIMode { mode: crate::model::UIMode },
     UpdatePaneHeight { height: usize },
+    UpdatePaneWidth { width: usize },
     ShowDialog { dialog: crate::model::Dialog },
     CloseDialog,
     UpdateDialogInput { input: String },
@@ -1999,6 +2283,9 @@ pub enum Transition {
     ScrollTaskPanelUp,
     ScrollTaskPanelDown,
     ShowContextMenu,
+    ShowCustomFunctionsDialog,
+    /// Execute a command from a file-type extension association (Phase 6.2)
+    ExecuteAssociation { command: String, working_dir: crate::model::Location, shell: Option<String> },
     ShowDriveChangeDialog,
     ShowFileInfo,
     ShowVersion,
@@ -2027,21 +2314,34 @@ pub enum Transition {
     // Viewer
     OpenTextViewer { location: crate::model::Location },
     OpenHexViewer { location: crate::model::Location },
+    OpenSideBySideViewer { location: crate::model::Location, mode: crate::model::ViewerMode },
+    /// Reload viewer content with an explicit mode. Used for auto-preview:
+    /// cursor moves in SideBySide file pane update the viewer live.
+    ReloadViewer { location: crate::model::Location, mode: crate::model::ViewerMode },
     CloseViewer,
+    ViewerSwitchLayout { layout: crate::model::ViewerLayout },
+    ViewerReady { buffer: crate::model::viewer::ViewerBuffer, encoding: crate::model::viewer::TextEncoding },
     ViewerLoadComplete { contents: Vec<u8> },
     ViewerCycleEncoding,
+    ViewerToggleMode,
     ViewerScrollDown { viewport_height: usize },
     ViewerScrollUp,
     ViewerPageDown { viewport_height: usize },
     ViewerPageUp { viewport_height: usize },
     ViewerJumpToTop,
-    ViewerJumpToBottom,
+    ViewerJumpToBottom { viewport_height: usize },
+    ViewerJumpToLine { line_idx: usize, viewport_height: usize },
     ViewerMoveToLineStart,
     ViewerMoveToLineEnd { viewport_width: usize },
     ViewerStartSearch { query: String },
     ViewerFindNext,
     ViewerFindPrev,
     ViewerClearSearch,
+    ViewerToggleCaseSensitive,
+    ViewerScrollLeft { cols: usize },
+    ViewerScrollRight { cols: usize },
+    ViewerFastScrollUp { lines: usize },
+    ViewerFastScrollDown { lines: usize, viewport_height: usize },
     
     // Pattern rename operations
     ShowPatternRenameDialog,
@@ -2237,6 +2537,11 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             if let Ok(new_config) = config_manager.load_config() {
                 state.config = new_config;
             }
+            // Reload dynamic config files too
+            state.extension_associations = config_manager.load_extension_associations();
+            state.custom_functions = crate::model::dialog::load_custom_functions(
+                config_manager.custom_functions_path()
+            ).unwrap_or_default();
             StateUpdateResult::with_ui_change()
         }
         

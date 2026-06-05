@@ -115,19 +115,6 @@ impl TextInput {
         &self.text
     }
 
-    /// Set text and reset cursor
-    pub fn set_text(&mut self, text: String) {
-        self.text = text;
-        self.cursor = self.text.chars().count();
-        self.scroll = 0;
-    }
-
-    /// Clear text
-    pub fn clear(&mut self) {
-        self.text.clear();
-        self.cursor = 0;
-        self.scroll = 0;
-    }
 
     /// Get cursor position (character index)
     pub fn cursor(&self) -> usize {
@@ -150,22 +137,9 @@ impl TextInput {
         self.scroll = scroll;
     }
 
-    /// Check if text is empty
-    pub fn is_empty(&self) -> bool {
-        self.text.is_empty()
-    }
-
     /// Get edit mode
     pub fn mode(&self) -> EditMode {
         self.mode
-    }
-
-    /// Set edit mode
-    pub fn set_mode(&mut self, mode: EditMode) {
-        self.mode = mode;
-        if mode == EditMode::Vi {
-            self.vi_mode = ViMode::Insert;
-        }
     }
 
     /// Toggle between Emacs and Vi mode
@@ -325,13 +299,6 @@ impl TextInput {
             .sum()
     }
 
-    /// Calculate total display width of text
-    fn total_display_width(&self) -> usize {
-        self.text.chars()
-            .map(|c| Self::char_width(c))
-            .sum()
-    }
-
     /// Update scroll offset to keep cursor visible
     fn update_scroll(&mut self) {
         let cursor_x = self.text_width_to_cursor();
@@ -404,7 +371,7 @@ impl TextInput {
     }
 
     /// Build spans with cursor highlighting
-    fn build_spans(&self, visible_text: &str, is_focused: bool) -> Vec<Span> {
+    fn build_spans(&self, visible_text: &str, is_focused: bool) -> Vec<Span<'_>> {
         let mut spans = Vec::new();
 
         // Calculate visible cursor position
@@ -966,53 +933,20 @@ impl TextInput {
     /// Handle motion after operator (c{motion}, d{motion})
     fn handle_vi_operator_motion(&mut self, op: ViOperator, key: &KeyEvent) -> TextInputAction {
         let start = self.cursor;
-        let mut end = self.cursor;
 
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('w'), _) => {
-                end = self.next_word_start(false);
-            }
-            (KeyCode::Char('b'), _) => {
-                // For d{b} or c{b}, we need to go backwards
-                end = self.prev_word_start(false);
-            }
-            (KeyCode::Char('W'), _) => {
-                end = self.next_word_start(true);
-            }
-            (KeyCode::Char('B'), _) => {
-                end = self.prev_word_start(true);
-            }
-            (KeyCode::Char('f'), _) => {
-                // Need another char for f - simplified: just delete to end
-                // In real vi, this would wait for the char
-                end = self.text.chars().count();
-            }
-            (KeyCode::Char('F'), _) => {
-                end = 0;
-            }
-            (KeyCode::Char('$'), _) => {
-                end = self.text.chars().count();
-            }
-            (KeyCode::Char('^'), _) | (KeyCode::Char('0'), _) => {
-                end = 0;
-            }
-            (KeyCode::Char('i'), _) => {
-                // ci, di - inner object (not implemented, just no-op)
-                return TextInputAction::None;
-            }
-            _ => {
-                // Unknown motion, cancel operator
-                return TextInputAction::None;
-            }
-        }
-
-        // Apply the operation
-        let (del_start, del_end) = if start <= end {
-            (start, end)
-        } else {
-            (end, start)
+        let end = match (key.code, key.modifiers) {
+            (KeyCode::Char('w'), _) => self.next_word_start(false),
+            (KeyCode::Char('b'), _) => self.prev_word_start(false),
+            (KeyCode::Char('W'), _) => self.next_word_start(true),
+            (KeyCode::Char('B'), _) => self.prev_word_start(true),
+            (KeyCode::Char('f'), _) => self.text.chars().count(),
+            (KeyCode::Char('F'), _) => 0,
+            (KeyCode::Char('$'), _) => self.text.chars().count(),
+            (KeyCode::Char('^'), _) | (KeyCode::Char('0'), _) => 0,
+            _ => return TextInputAction::None,
         };
 
+        let (del_start, del_end) = if start <= end { (start, end) } else { (end, start) };
         self.delete_range(del_start, del_end);
 
         if op == ViOperator::Change {

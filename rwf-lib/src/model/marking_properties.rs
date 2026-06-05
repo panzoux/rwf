@@ -16,28 +16,6 @@ fn arb_location() -> impl Strategy<Value = Location> {
     ]
 }
 
-/// Strategy for generating FileEntry values
-#[allow(dead_code)]
-fn arb_file_entry() -> impl Strategy<Value = FileEntry> {
-    (arb_location(), "[a-z]{3,10}\\.txt", 0u64..10000, any::<bool>())
-        .prop_map(|(location, name, size, is_dir)| FileEntry {
-            name,
-            location,
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::UNIX_EPOCH,
-            marked: false,
-            calculated_size: None,
-        })
-}
-
-/// Strategy for generating a vector of FileEntry values
-#[allow(dead_code)]
-fn arb_file_entries() -> impl Strategy<Value = Vec<FileEntry>> {
-    prop::collection::vec(arb_file_entry(), 0..20)
-}
-
 proptest! {
     #[test]
     fn prop_mark_toggle_idempotence(location in arb_location()) {

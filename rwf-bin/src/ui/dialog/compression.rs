@@ -2,7 +2,7 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{List, ListItem, Paragraph},
     Frame,
 };
@@ -10,15 +10,15 @@ use rwf_lib::ArchiveFormat;
 use crate::ui::text_input::TextInput;
 
 /// Archive format options (name + format enum)
-const ARCHIVE_FORMATS: &[(&str, ArchiveFormat)] = &[
+pub const ARCHIVE_FORMATS: &[(&str, ArchiveFormat)] = &[
     ("ZIP", ArchiveFormat::ZIP),
-    ("7Z", ArchiveFormat::ZIP),   // Future: SevenZip
-    ("BZ2", ArchiveFormat::ZIP),  // Future: BZ2
-    ("TAR", ArchiveFormat::ZIP),  // Future: TAR
+    ("7Z",  ArchiveFormat::SevenZip),
+    ("TGZ", ArchiveFormat::TarGz),
+    ("TAR", ArchiveFormat::Tar),
     ("LZH", ArchiveFormat::ZIP),  // Future: LZH
     ("CAB", ArchiveFormat::ZIP),  // Future: CAB
-    ("XZ", ArchiveFormat::ZIP),   // Future: XZ
-    ("LZMA", ArchiveFormat::ZIP), // Future: LZMA
+    ("XZ",  ArchiveFormat::ZIP),  // Future: XZ
+    ("LZMA",ArchiveFormat::ZIP),  // Future: LZMA
 ];
 
 /// Compression level options: (level, display name)

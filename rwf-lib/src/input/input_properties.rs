@@ -398,36 +398,22 @@ mod tests {
                 }
             }
             
-            // Show copy dialog
+            // Copy uses CreatePendingFileJob — jobs available immediately
             let transitions = crate::input::action_to_transitions(&state, &crate::input::Action::Copy);
-            
-            // Should create a dialog (entries exist)
             prop_assert_eq!(transitions.len(), 1);
-            
-            // Apply the transition to show the dialog
-            for transition in transitions {
-                update_state(&mut state, transition);
-            }
-            
-            // Confirm the dialog
-            let result = update_state(&mut state, Transition::ConfirmDialog);
-            
+
+            let result = update_state(&mut state, transitions.into_iter().next().unwrap());
+
             // Should create exactly one job
             prop_assert_eq!(result.jobs_to_start.len(), 1);
-            
-            // Job should be Copy
+
             match &result.jobs_to_start[0].kind {
                 crate::job::JobKind::Copy { sources, dest } => {
-                    // Verify sources
                     if use_marked && mark_count > 0 {
-                        // Should use marked files
                         prop_assert_eq!(sources.len(), mark_count.min(10));
                     } else {
-                        // Should use cursor file
                         prop_assert_eq!(sources.len(), 1);
                     }
-                    
-                    // Verify destination is opposite pane location
                     prop_assert_eq!(dest, &state.current_tab().right_pane.current_location);
                 }
                 _ => prop_assert!(false, "Expected Copy job"),
@@ -457,36 +443,21 @@ mod tests {
                 }
             }
             
-            // Show move dialog
+            // Move uses CreatePendingFileJob — jobs available immediately
             let transitions = crate::input::action_to_transitions(&state, &crate::input::Action::Move);
-            
-            // Should create a dialog (entries exist)
             prop_assert_eq!(transitions.len(), 1);
-            
-            // Apply the transition to show the dialog
-            for transition in transitions {
-                update_state(&mut state, transition);
-            }
-            
-            // Confirm the dialog
-            let result = update_state(&mut state, Transition::ConfirmDialog);
-            
-            // Should create exactly one job
+
+            let result = update_state(&mut state, transitions.into_iter().next().unwrap());
+
             prop_assert_eq!(result.jobs_to_start.len(), 1);
-            
-            // Job should be Move
+
             match &result.jobs_to_start[0].kind {
                 crate::job::JobKind::Move { sources, dest } => {
-                    // Verify sources
                     if use_marked && mark_count > 0 {
-                        // Should use marked files
                         prop_assert_eq!(sources.len(), mark_count.min(10));
                     } else {
-                        // Should use cursor file
                         prop_assert_eq!(sources.len(), 1);
                     }
-                    
-                    // Verify destination is opposite pane location
                     prop_assert_eq!(dest, &state.current_tab().right_pane.current_location);
                 }
                 _ => prop_assert!(false, "Expected Move job"),
@@ -1498,8 +1469,9 @@ mod tests {
         
         // Press Enter on the regular file
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
-        
-        // Should not create any transitions (regular files can't be entered)
-        assert_eq!(transitions.len(), 0);
+
+        // Regular files now open in the text viewer
+        assert_eq!(transitions.len(), 1);
+        assert!(matches!(transitions[0], Transition::OpenTextViewer { .. }));
     }
 }

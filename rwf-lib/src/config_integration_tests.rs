@@ -336,7 +336,8 @@ mod tests {
                 "CaseSensitive": false,
                 "UseRegex": false,
                 "UseMigemo": false,
-                "MaxResults": 1000
+                "MaxResults": 1000,
+                "SearchDebounceMs": 150
             },
             "Ui": {
                 "RefreshRate": 30,

@@ -14,7 +14,7 @@ pub mod archive;
 mod local_properties;
 
 pub use local::LocalFilesystemBackend;
-pub use archive::{ArchiveHandler, ZipArchiveHandler};
+pub use archive::{ArchiveHandler, ZipArchiveHandler, SevenZArchiveHandler, TarArchiveHandler, RarArchiveHandler, IsoArchiveHandler, LzhArchiveHandler, MultiFormatArchiveHandler};
 
 #[cfg(test)]
 pub use archive::MockArchiveHandler;

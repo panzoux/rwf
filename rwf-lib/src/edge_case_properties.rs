@@ -549,9 +549,10 @@ mod tests {
             
             // Create multiple tabs
             for _ in 1..initial_tabs {
+                state.last_tab_created = None;
                 let _ = update_state(&mut state, Transition::CreateTab);
             }
-            
+
             prop_assert_eq!(state.tabs.tabs.len(), initial_tabs);
             
             // Close a tab if index is valid
@@ -577,6 +578,7 @@ mod tests {
             
             // Create tabs
             for _ in 1..tab_count {
+                state.last_tab_created = None;
                 let _ = update_state(&mut state, Transition::CreateTab);
             }
             

@@ -308,7 +308,7 @@ mod tests {
         
         // Dialog should be shown even with no drives
         if let Some(dialog) = state.dialogs.current() {
-            assert_eq!(dialog.title, "Drive Selection");
+            assert!(dialog.title.starts_with("Select Drive ["));
         }
         
         // Close dialog should work

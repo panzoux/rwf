@@ -168,7 +168,7 @@ mod tests {
         let tab = state.current_tab();
         let (stack, _) = tab.history.stack_and_pos(crate::model::ui::ActivePane::Left);
         let target_location = stack[1].clone();
-        drop(tab);
+        let _ = tab;
 
         update_state(&mut state, Transition::NavigateToHistoryIndex {
             pane: crate::model::ui::ActivePane::Left,
