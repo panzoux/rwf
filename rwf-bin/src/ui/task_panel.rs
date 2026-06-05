@@ -29,6 +29,8 @@ pub struct TaskPanel {
     spinner_frames: [&'static str; 4],
     /// Current spinner frame index
     spinner_index: usize,
+    /// Last computed max scroll (visual lines), updated by render; used to normalize scroll_up
+    last_max_visual_scroll: std::cell::Cell<usize>,
 }
 
 impl Default for TaskPanel {
@@ -46,6 +48,7 @@ impl TaskPanel {
             scroll_offset: 0,
             spinner_frames: ["|", "/", "-", "\\"],
             spinner_index: 0,
+            last_max_visual_scroll: std::cell::Cell::new(0),
         }
     }
     
@@ -101,14 +104,22 @@ impl TaskPanel {
     
     /// Scroll up
     pub fn scroll_up(&mut self) {
+        // Normalize first: scroll_to_end sets a large sentinel; snap to actual max before decrementing
+        let cached_max = self.last_max_visual_scroll.get();
+        if cached_max > 0 {
+            self.scroll_offset = self.scroll_offset.min(cached_max);
+        }
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
-    
+
     /// Scroll down
     pub fn scroll_down(&mut self, visible_height: usize) {
-        let max_scroll = self.log_entries.len().saturating_sub(visible_height);
+        let max_scroll = {
+            let cached = self.last_max_visual_scroll.get();
+            if cached > 0 { cached } else { self.log_entries.len().saturating_sub(visible_height) }
+        };
         if self.scroll_offset < max_scroll {
             self.scroll_offset += 1;
         }
@@ -134,9 +145,9 @@ impl TaskPanel {
         self.scroll_offset
     }
     
-    /// Get log entry at index (for rendering with scroll)
+    /// Get log entry by absolute index
     pub fn get_log_entry(&self, index: usize) -> Option<&LogEntry> {
-        self.log_entries.get(index + self.scroll_offset)
+        self.log_entries.get(index)
     }
     
     /// Get number of log entries
@@ -315,6 +326,7 @@ pub fn render_task_panel(
 
     // Calculate max scroll to keep content at bottom
     let max_scroll = total_visual_lines.saturating_sub(visible_height);
+    task_panel.last_max_visual_scroll.set(max_scroll);
     let actual_scroll = visual_scroll.min(max_scroll);
 
     // Find starting entry and line offset based on visual scroll
