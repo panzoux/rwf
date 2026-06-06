@@ -109,6 +109,12 @@ pub enum JobKind {
         pipe_to_action: Option<PipeToAction>,
         shell: Option<String>,
     },
+    /// Spawn a program directly (no shell), avoiding cmd.exe quote-mangling.
+    /// `program` is the executable name/path; `args` are its arguments.
+    SpawnProcess {
+        program: String,
+        args: Vec<String>,
+    },
     Search {
         location: Location,
         pattern: String,

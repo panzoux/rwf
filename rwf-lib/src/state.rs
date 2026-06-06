@@ -66,6 +66,17 @@ impl AppState {
         })
     }
 
+    /// Build a SpawnProcess job that opens `file_path` in the configured editor.
+    /// Splits `EditorCommand` on whitespace to support flags like "code --wait".
+    fn editor_job(config: &AppConfig, file_path: String) -> crate::job::JobKind {
+        let cmd = Self::resolve_editor(config);
+        let mut parts = cmd.split_whitespace();
+        let program = parts.next().unwrap_or("notepad").to_string();
+        let mut args: Vec<String> = parts.map(str::to_string).collect();
+        args.push(file_path);
+        crate::job::JobKind::SpawnProcess { program, args }
+    }
+
     pub fn new(config: AppConfig) -> Self {
         let mut registered_folders = crate::model::RegisteredFolderManager::new();
         // Try to load registered folders from default path
@@ -732,6 +743,7 @@ impl AppState {
                             crate::job::JobKind::JoinFiles { .. } => "File join",
                             crate::job::JobKind::CountDown { .. } => "Countdown",
                             crate::job::JobKind::CollectJumpCandidates { .. } => "Collect jump candidates",
+                            crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
                         };
                         let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
                         self.dialogs.push(error_dialog);
@@ -1589,27 +1601,13 @@ impl AppState {
             Transition::LaunchConfigurationProgram => {
                 let config_manager = crate::config::ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
-                let command = format!("{} \"{}\"", Self::resolve_editor(&self.config), config_path);
-                let working_dir = std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                let job_spec = JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                    command,
-                    working_dir: crate::model::Location::Local(working_dir),
-                    pipe_to_action: None,
-                    shell: None,
-                });
+                let job_spec = JobSpec::new(Self::editor_job(
+                    &self.config, config_path,
+                ));
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::OpenWithEditor { path } => {
-                let command = format!("{} \"{}\"", Self::resolve_editor(&self.config), path);
-                let working_dir = std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                let job_spec = JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                    command,
-                    working_dir: crate::model::Location::Local(working_dir),
-                    pipe_to_action: None,
-                    shell: None,
-                });
+                let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone()));
                 Some(StateUpdateResult::with_job(job_spec))
             }
             _ => None,

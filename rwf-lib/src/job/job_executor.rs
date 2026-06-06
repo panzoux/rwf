@@ -83,6 +83,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::ExecuteCustomFunction { command, working_dir, pipe_to_action, shell } => {
                 self.execute_custom_function(command, working_dir, pipe_to_action, &spec, shell.as_deref()).await
             }
+            JobKind::SpawnProcess { program, args } => {
+                self.execute_spawn_process(program, args, &spec).await
+            }
             JobKind::Search { location, pattern, recursive } => {
                 self.execute_search(location, pattern, *recursive, &spec).await
             }
@@ -590,6 +593,17 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
     }
     
+    /// Spawn a program directly without a shell, avoiding cmd.exe quote-mangling on Windows.
+    async fn execute_spawn_process(&self, program: &str, args: &[String], spec: &JobSpec) -> crate::job::OpResult {
+        if spec.cancel_token.is_cancelled() {
+            return crate::job::OpResult::Cancelled;
+        }
+        match tokio::process::Command::new(program).args(args).spawn() {
+            Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
+            Err(e) => crate::job::OpResult::Failed(e.to_string()),
+        }
+    }
+
     /// Execute a search operation
     async fn execute_search(
         &self,
