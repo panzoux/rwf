@@ -148,7 +148,7 @@ impl KeyBindings {
         normal_mode.insert("B".to_string(), Action::RegisterCurrentFolder);
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("M".to_string(), Action::MoveToRegisteredFolder); // Shift+M: navigate/move to registered folder
+        normal_mode.insert("Alt+M".to_string(), Action::MoveToRegisteredFolder); // Alt+Shift+M: navigate/move to registered folder
 
         // Jump navigation
         normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);

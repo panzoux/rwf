@@ -90,7 +90,7 @@
     "B"            : "RegisterCurrentFolder",
     "I"            : "ShowRegisteredFolderDialog",
     "F"            : "ShowRegisteredFolderDialog",
-    "M"            : "MoveToRegisteredFolder",
+    "Alt+M"        : "MoveToRegisteredFolder",
 
     "J"            : "ShowJumpToPathDialog",
     "N"            : "ShowJumpToFileDialog",
