@@ -109,7 +109,7 @@ impl KeyBindings {
         normal_mode.insert("m".to_string(), Action::Move);
         normal_mode.insert("D".to_string(), Action::Delete);
         normal_mode.insert("d".to_string(), Action::Delete);
-        normal_mode.insert("Ctrl+D".to_string(), Action::DeleteForce);
+        normal_mode.insert("Ctrl+d".to_string(), Action::DeleteForce);
         normal_mode.insert("R".to_string(), Action::PatternRename);
         normal_mode.insert("r".to_string(), Action::Rename);
         normal_mode.insert("K".to_string(), Action::CreateDirectory);
@@ -148,7 +148,7 @@ impl KeyBindings {
         normal_mode.insert("B".to_string(), Action::RegisterCurrentFolder);
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("Shift+m".to_string(), Action::MoveToRegisteredFolder);
+        // MoveToRegisteredFolder: Shift+M = "M" conflicts with Move; leave unbound (configure in keybindings.json)
 
         // Jump navigation
         normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);
@@ -169,23 +169,24 @@ impl KeyBindings {
         normal_mode.insert("F1".to_string(), Action::Help);
         // Job management
         normal_mode.insert("Alt+j".to_string(), Action::JobManager);
-        normal_mode.insert("Alt+J".to_string(), Action::JobManager);
         normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
-        normal_mode.insert("Ctrl+J".to_string(), Action::JobManager);
         
         // Test jobs
         normal_mode.insert("9".to_string(), Action::CountDownJob(0));  // 0 = default 180 seconds
         
-        normal_mode.insert("Alt+S".to_string(), Action::CalculateDirectorySize);
+        normal_mode.insert("Alt+s".to_string(), Action::CalculateDirectorySize);
         
         // Pane operations
         normal_mode.insert("O".to_string(), Action::SyncPanes);
-        normal_mode.insert("Shift+o".to_string(), Action::SwapPanes);
-        
+        normal_mode.insert("P".to_string(), Action::SwapPanes);   // Shift+O = "O" conflicts; use P
+
         // Context menu, drive selection, custom functions
         normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
         normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
-        normal_mode.insert("Shift+T".to_string(), Action::ShowCustomFunctionsDialog);
+        normal_mode.insert("W".to_string(), Action::ShowCustomFunctionsDialog);  // Shift+T = "T"; use W
+
+        // Config reload (Shift+Z = "Z")
+        normal_mode.insert("Z".to_string(), Action::ReloadConfig);
 
         // Version / system info (outputs to task panel, not a modal dialog)
         normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
@@ -472,6 +473,7 @@ pub enum Action {
     ShowFileInfoForCursor,
     OpenWithEditor,         // open cursor file with EditorCommand from config
     ShowVersion,
+    ReloadConfig,
     ShowVersionInfo,        // compact version/system info (backtick key)
     ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
     SaveLog,
@@ -1200,6 +1202,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::ShowVersion => {
             // Show version information dialog
             vec![Transition::ShowVersion]
+        }
+        Action::ReloadConfig => {
+            vec![Transition::ReloadConfig]
         }
         Action::ShowVersionInfo | Action::ShowVersionInfoVerbose => {
             // Handled entirely at the app layer (writes to task panel, no state change)

@@ -56,7 +56,7 @@
     "m"            : "Move",
     "D"            : "Delete",
     "d"            : "Delete",
-    "Ctrl+D"       : "DeleteForce",
+    "Ctrl+d"       : "DeleteForce",
     "R"            : "PatternRename",
     "r"            : "Rename",
     "K"            : "CreateDirectory",
@@ -90,7 +90,7 @@
     "B"            : "RegisterCurrentFolder",
     "I"            : "ShowRegisteredFolderDialog",
     "F"            : "ShowRegisteredFolderDialog",
-    "Shift+m"      : "MoveToRegisteredFolder",
+    "_MoveToRegisteredFolder_comment": "Shift+M = 'M' conflicts with Move; unbound by default — add your own key here",
 
     "J"            : "ShowJumpToPathDialog",
     "N"            : "ShowJumpToFileDialog",
@@ -107,18 +107,18 @@
     "F1"           : "Help",
 
     "Alt+j"        : "JobManager",
-    "Alt+J"        : "JobManager",
     "Ctrl+j"       : "JobManager",
-    "Ctrl+J"       : "JobManager",
 
-    "Alt+S"        : "CalculateDirectorySize",
+    "Alt+s"        : "CalculateDirectorySize",
 
     "O"            : "SyncPanes",
-    "Shift+o"      : "SwapPanes",
+    "P"            : "SwapPanes",
 
     "\\"           : "ShowContextMenu",
     "L"            : "ShowDriveChangeDialog",
-    "Shift+T"      : "ShowCustomFunctionsDialog",
+    "W"            : "ShowCustomFunctionsDialog",
+
+    "Z"            : "ReloadConfig",
 
     "`"            : "ShowVersionInfo",
     "F2"           : "ShowVersionInfoVerbose",

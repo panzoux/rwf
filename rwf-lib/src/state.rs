@@ -2567,15 +2567,84 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         
         Transition::ReloadConfig => {
             let config_manager = crate::config::ConfigManager::new();
-            if let Ok(new_config) = config_manager.load_config() {
-                state.config = new_config;
+
+            // Remember settings that require restart to take effect
+            let old_workers = state.config.worker_pool_size;
+            let old_migemo  = state.config.search.dict_path.clone();
+
+            // Reload config.json
+            let config_path = config_manager.config_path().to_path_buf();
+            let config_result = match config_manager.load_config() {
+                Ok(new_config) => {
+                    state.config = new_config;
+                    crate::config::ConfigLoadResult::ok(config_path)
+                }
+                Err(e) => {
+                    let is_not_found = matches!(&e, crate::config::ConfigError::IoError(io) if io.kind() == std::io::ErrorKind::NotFound);
+                    if is_not_found {
+                        crate::config::ConfigLoadResult::skipped(config_path, "file not found")
+                    } else {
+                        crate::config::ConfigLoadResult::error(config_path, format!("{:?}", e))
+                    }
+                }
+            };
+
+            // Reload other config files
+            let (ext_assocs, ext_result) = config_manager.load_extension_associations_with_result();
+            state.extension_associations = ext_assocs;
+
+            let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
+            let (custom_fns, custom_fn_result) = match crate::model::dialog::load_custom_functions(&custom_fn_path) {
+                Ok(fns) => {
+                    let result = if custom_fn_path.exists() {
+                        crate::config::ConfigLoadResult::ok(custom_fn_path)
+                    } else {
+                        crate::config::ConfigLoadResult::skipped(custom_fn_path, "file not found")
+                    };
+                    (fns, result)
+                }
+                Err(e) => (Vec::new(), crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string())),
+            };
+            state.custom_functions = custom_fns;
+
+            let context_menu_result = crate::config::ConfigManager::validate_json_file(
+                config_manager.context_menu_path()
+            );
+
+            // Preserve config.json and keybindings.json results at front (already populated at startup)
+            let prev_results: Vec<_> = state.config_load_results.drain(..2).collect();
+            state.config_load_results = prev_results;
+            state.config_load_results[0] = config_result;
+            // keybindings result (index 1) doesn't change on reload — keybindings.json is not reloaded at runtime
+            state.config_load_results.extend([ext_result, custom_fn_result, context_menu_result]);
+
+            // Build feedback messages
+            use crate::config::ConfigLoadStatus;
+            let mut messages: Vec<String> = Vec::new();
+            messages.push("Configuration reloaded.".to_string());
+
+            // Restart-required notice
+            let mut restart_items: Vec<&str> = Vec::new();
+            if state.config.worker_pool_size != old_workers {
+                restart_items.push("worker thread count");
             }
-            // Reload dynamic config files too
-            state.extension_associations = config_manager.load_extension_associations();
-            state.custom_functions = crate::model::dialog::load_custom_functions(
-                config_manager.custom_functions_path()
-            ).unwrap_or_default();
-            StateUpdateResult::with_ui_change()
+            if state.config.search.dict_path != old_migemo {
+                restart_items.push("Migemo dictionary path");
+            }
+            if !restart_items.is_empty() {
+                messages.push(format!("  Restart required for: {}.", restart_items.join(", ")));
+            }
+
+            // [NG] errors
+            for r in &state.config_load_results {
+                if let ConfigLoadStatus::Error(detail) = &r.status {
+                    messages.push(format!("  [NG] {}: {}", r.path.to_string_lossy(), detail));
+                }
+            }
+
+            let mut result = StateUpdateResult::with_ui_change();
+            result.task_panel_logs = messages;
+            result
         }
         
         Transition::UpdateConfig { config } => {
