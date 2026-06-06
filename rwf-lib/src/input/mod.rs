@@ -197,9 +197,7 @@ impl KeyBindings {
         normal_mode.insert("Shift+Down".to_string(), Action::ScrollTaskPanelDown);
 
         // Archive operations
-        normal_mode.insert("P".to_string(), Action::Compress);
         normal_mode.insert("p".to_string(), Action::Compress);
-        normal_mode.insert("U".to_string(), Action::Extract);
         normal_mode.insert("u".to_string(), Action::Extract);
 
         // Viewer mode bindings
@@ -260,11 +258,18 @@ impl Default for KeyBindings {
 
 impl KeyBindings {
     
-    /// Load key bindings from a JSON file
+    /// Load key bindings from a JSON file, merging over defaults.
+    /// User entries override defaults; defaults fill any gaps so critical
+    /// bindings (e.g. quit) are never lost due to an incomplete config file.
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
-        let bindings: Self = serde_json::from_str(&content)?;
-        Ok(bindings)
+        let user: Self = serde_json::from_str(&content)?;
+        let mut merged = Self::default();
+        merged.normal_mode.extend(user.normal_mode);
+        merged.search_mode.extend(user.search_mode);
+        merged.dialog_mode.extend(user.dialog_mode);
+        merged.viewer_mode.extend(user.viewer_mode);
+        Ok(merged)
     }
     
     /// Save key bindings to a JSON file
