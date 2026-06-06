@@ -46,9 +46,29 @@ impl App {
         let archive_handler = Arc::new(MultiFormatArchiveHandler::new());
         let worker_pool = WorkerPool::new(state.config.worker_pool_size, backend, archive_handler);
         let mut task_panel = TaskPanel::new();
-        for line in Self::build_version_info(&state) {
+
+        // Compact version info at startup
+        for line in Self::build_version_info_compact(&state) {
             task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
         }
+
+        // Warn immediately in the task panel for any config file that failed to parse
+        use rwf_lib::config::ConfigLoadStatus;
+        for r in &state.config_load_results {
+            if let ConfigLoadStatus::Error(detail) = &r.status {
+                let path_str = r.path.to_string_lossy();
+                task_panel.add_log(
+                    format!("[NG] {}: {}", path_str, detail),
+                    crate::ui::task_panel::LogLevel::Fail,
+                );
+            }
+        }
+
+        // Log verbose info to session log so it's always discoverable
+        for line in Self::build_version_info_verbose(&state) {
+            tracing::info!("{}", line);
+        }
+
         task_panel.add_log("No active tasks".to_string(), crate::ui::task_panel::LogLevel::Info);
 
         Self {
@@ -61,35 +81,69 @@ impl App {
         }
     }
     
-    fn build_version_info(state: &AppState) -> Vec<String> {
+    fn build_version_info_compact(state: &AppState) -> Vec<String> {
         let version = env!("CARGO_PKG_VERSION");
+        let git_hash = env!("GIT_HASH");
         let os = std::env::consts::OS;
         let arch = std::env::consts::ARCH;
-
-        let config_path = rwf_lib::config::ConfigManager::new()
-            .config_path().to_string_lossy().into_owned();
         let log_path = state.log_manager.log_path().to_string_lossy().into_owned();
-
-        let migemo = if state.search.is_migemo_dict_loaded() {
-            state.search.migemo_dict_path()
-                .map_or("enabled".to_string(), |p| p.to_string())
-        } else {
-            "no dict".to_string()
-        };
-
         let log_level = state.config.log_level.to_filter_string();
-
+        let migemo = if state.search.is_migemo_dict_loaded() { "available" } else { "unavailable" };
         vec![
-            format!("RWF v{} | {}/{}", version, os, arch),
-            format!("Config: {}", config_path),
-            format!("Log: {}", log_path),
-            format!("LogLevel: {} | Migemo: {}", log_level, migemo),
-            format!("Archives: ZIP · 7Z · TAR · TGZ · ISO"),
+            format!("RWF v{} build {} | {}/{}", version, git_hash, os, arch),
+            format!("Log [{}] {}", log_level, log_path),
+            format!("Archives: ZIP, 7Z, TAR, TGZ, ISO | Migemo: {}", migemo),
         ]
     }
 
+    fn build_version_info_verbose(state: &AppState) -> Vec<String> {
+        let version = env!("CARGO_PKG_VERSION");
+        let git_hash = env!("GIT_HASH");
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+        let log_path = state.log_manager.log_path().to_string_lossy().into_owned();
+        let log_level = state.config.log_level.to_filter_string();
+
+        let migemo_line = if state.search.is_migemo_dict_loaded() {
+            state.search.migemo_dict_path()
+                .map_or("available".to_string(), |p| p.to_string())
+        } else {
+            "unavailable".to_string()
+        };
+
+        let mut lines = vec![
+            format!("RWF v{} build {} | {}/{}", version, git_hash, os, arch),
+            format!("Log: {}", log_path),
+            format!("LogLevel: {} | Migemo: {}", log_level, migemo_line),
+            "Archives: ZIP, 7Z, TAR, TGZ / Extract only: ISO".to_string(),
+            "Config files:".to_string(),
+        ];
+
+        use rwf_lib::config::ConfigLoadStatus;
+        for r in &state.config_load_results {
+            let path_str = r.path.to_string_lossy();
+            match &r.status {
+                ConfigLoadStatus::Ok =>
+                    lines.push(format!(" [OK]      {}", path_str)),
+                ConfigLoadStatus::Skipped(reason) =>
+                    lines.push(format!(" [Skipped] {}  ({})", path_str, reason)),
+                ConfigLoadStatus::Error(detail) => {
+                    lines.push(format!(" [NG]      {}", path_str));
+                    lines.push(format!("           {}", detail));
+                }
+            }
+        }
+        lines
+    }
+
     fn log_version_info(&mut self) {
-        for line in Self::build_version_info(&self.state) {
+        for line in Self::build_version_info_compact(&self.state) {
+            self.task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
+        }
+    }
+
+    fn log_version_info_verbose(&mut self) {
+        for line in Self::build_version_info_verbose(&self.state) {
             self.task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
         }
     }
@@ -852,9 +906,13 @@ impl App {
                 return false;
             }
             tracing::info!("[KEY] action={:?}", action);
-            // ShowVersionInfo: write to task panel, no state change
+            // ShowVersionInfo / ShowVersionInfoVerbose: write to task panel, no state change
             if action == rwf_lib::input::Action::ShowVersionInfo {
                 self.log_version_info();
+                return true;
+            }
+            if action == rwf_lib::input::Action::ShowVersionInfoVerbose {
+                self.log_version_info_verbose();
                 return true;
             }
             // Task panel log scroll — operates on the widget, not app state
@@ -899,8 +957,7 @@ impl App {
         let size = terminal.size()?;
         let tab_h = if self.state.ui.layout.show_tab_bar { 1 } else { 0 };
         let task_h = if self.state.ui.layout.show_task_panel { self.state.ui.layout.task_panel_height as u16 } else { 0 };
-        let stat_h = if self.state.ui.layout.show_status_bar { 1 } else { 0 };
-        let pane_h = size.height.saturating_sub(tab_h + task_h + stat_h + 4) as usize;
+        let pane_h = size.height.saturating_sub(tab_h + task_h + 4) as usize;
         let pane_w = size.width as usize;
 
         if self.state.ui.layout.pane_height != pane_h {

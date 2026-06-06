@@ -40,22 +40,53 @@ async fn main() -> Result<()> {
     // Initialize application state with session restoration
     // Load configuration from file or use defaults
     let config_manager = rwf_lib::config::ConfigManager::new();
-    let config = config_manager.load_config().unwrap_or_else(|e| {
-        tracing::warn!("Failed to load config: {:?}, using defaults", e);
-        rwf_lib::config::AppConfig::default()
-    });
-    info!("Configuration loaded from {:?}", config_manager.config_path());
-    
-    let state = AppState::new_with_session(config);
+    let config_path = config_manager.config_path().to_path_buf();
+    let (config, config_result) = match config_manager.load_config() {
+        Ok(c) => {
+            info!("Configuration loaded from {:?}", config_path);
+            let result = rwf_lib::config::ConfigLoadResult::ok(config_path);
+            (c, result)
+        }
+        Err(e) => {
+            let is_not_found = matches!(&e, rwf_lib::config::ConfigError::IoError(io) if io.kind() == std::io::ErrorKind::NotFound);
+            tracing::warn!("Failed to load config: {:?}, using defaults", e);
+            let result = if is_not_found {
+                rwf_lib::config::ConfigLoadResult::skipped(config_path, "file not found")
+            } else {
+                rwf_lib::config::ConfigLoadResult::error(config_path, format!("{:?}", e))
+            };
+            (rwf_lib::config::AppConfig::default(), result)
+        }
+    };
+
+    let mut state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
 
-    // Load key bindings from keybindings.json (falls back to defaults if missing/invalid)
-    let key_bindings = rwf_lib::input::KeyBindings::load_from_file(config_manager.keybindings_path())
-        .unwrap_or_else(|e| {
-            tracing::info!("Using default keybindings ({:?})", e);
-            rwf_lib::KeyBindings::default()
-        });
+    // Load key bindings from keybindings.json (merges over defaults; falls back entirely on parse error)
+    let kb_path = config_manager.keybindings_path().to_path_buf();
+    let kb_exists = kb_path.exists();
+    let (key_bindings, kb_result) = match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
+        Ok(kb) => {
+            info!("Key bindings loaded from {:?}", kb_path);
+            (kb, rwf_lib::config::ConfigLoadResult::ok(kb_path))
+        }
+        Err(e) => {
+            let result = if kb_exists {
+                tracing::warn!("Failed to parse keybindings.json, using defaults: {:?}", e);
+                rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
+            } else {
+                tracing::info!("No keybindings.json found, using defaults");
+                rwf_lib::config::ConfigLoadResult::skipped(kb_path, "file not found")
+            };
+            (rwf_lib::KeyBindings::default(), result)
+        }
+    };
     info!("Key bindings loaded");
+
+    // Prepend config.json and keybindings.json results so the order is:
+    // config, keybindings, extension_associations, custom_functions, context_menu
+    state.config_load_results.insert(0, kb_result);
+    state.config_load_results.insert(0, config_result);
 
     // Create and run application
     let mut app = App::with_state_and_keybindings(state, args.cwd, key_bindings);

@@ -188,6 +188,7 @@ impl KeyBindings {
 
         // Version / system info (outputs to task panel, not a modal dialog)
         normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
+        normal_mode.insert("F2".to_string(), Action::ShowVersionInfoVerbose);
         
         // Task panel operations
         normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
@@ -469,7 +470,8 @@ pub enum Action {
     // Information dialogs
     ShowFileInfoForCursor,
     ShowVersion,
-    ShowVersionInfo,  // Output version/system info to task panel (backtick key)
+    ShowVersionInfo,        // compact version/system info (backtick key)
+    ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
     SaveLog,
     LaunchConfigurationProgram,
     
@@ -1189,7 +1191,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             // Show version information dialog
             vec![Transition::ShowVersion]
         }
-        Action::ShowVersionInfo => {
+        Action::ShowVersionInfo | Action::ShowVersionInfoVerbose => {
             // Handled entirely at the app layer (writes to task panel, no state change)
             vec![]
         }

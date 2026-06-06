@@ -866,19 +866,42 @@ impl ConfigManager {
     /// Load extension associations from extension_associations.json.
     /// Returns an empty list if the file does not exist.
     pub fn load_extension_associations(&self) -> Vec<ExtensionAssociation> {
-        if !self.extension_associations_path.exists() {
-            return Vec::new();
+        self.load_extension_associations_with_result().0
+    }
+
+    /// Load extension associations and return a `ConfigLoadResult` alongside the data.
+    pub fn load_extension_associations_with_result(&self) -> (Vec<ExtensionAssociation>, ConfigLoadResult) {
+        let path = self.extension_associations_path.clone();
+        if !path.exists() {
+            return (Vec::new(), ConfigLoadResult::skipped(path, "file not found"));
         }
-        match std::fs::read_to_string(&self.extension_associations_path) {
-            Ok(content) => serde_json::from_str::<Vec<ExtensionAssociation>>(&content)
-                .unwrap_or_else(|e| {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<Vec<ExtensionAssociation>>(&content) {
+                Ok(assocs) => (assocs, ConfigLoadResult::ok(path)),
+                Err(e) => {
                     tracing::warn!("Failed to parse extension_associations.json: {}", e);
-                    Vec::new()
-                }),
+                    (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read extension_associations.json: {}", e);
-                Vec::new()
+                (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
             }
+        }
+    }
+
+    /// Validate a JSON file without applying it (for menu files loaded on-the-fly).
+    /// Returns a `ConfigLoadResult` indicating OK, Skipped, or parse Error.
+    pub fn validate_json_file(path: &std::path::Path) -> ConfigLoadResult {
+        if !path.exists() {
+            return ConfigLoadResult::skipped(path.to_path_buf(), "file not found");
+        }
+        match std::fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(_) => ConfigLoadResult::ok(path.to_path_buf()),
+                Err(e) => ConfigLoadResult::error(path.to_path_buf(), e.to_string()),
+            },
+            Err(e) => ConfigLoadResult::error(path.to_path_buf(), e.to_string()),
         }
     }
 
@@ -925,6 +948,33 @@ impl ConfigManager {
 impl Default for ConfigManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Status of a single config file load attempt
+#[derive(Debug, Clone)]
+pub enum ConfigLoadStatus {
+    Ok,
+    Skipped(String),  // file absent; reason e.g. "file not found"
+    Error(String),    // file present but unparseable; brief description
+}
+
+/// Result of attempting to load one config file
+#[derive(Debug, Clone)]
+pub struct ConfigLoadResult {
+    pub path: std::path::PathBuf,
+    pub status: ConfigLoadStatus,
+}
+
+impl ConfigLoadResult {
+    pub fn ok(path: std::path::PathBuf) -> Self {
+        Self { path, status: ConfigLoadStatus::Ok }
+    }
+    pub fn skipped(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
+        Self { path, status: ConfigLoadStatus::Skipped(reason.into()) }
+    }
+    pub fn error(path: std::path::PathBuf, detail: impl Into<String>) -> Self {
+        Self { path, status: ConfigLoadStatus::Error(detail.into()) }
     }
 }
 

@@ -48,6 +48,8 @@ pub struct AppState {
     pub extension_associations: Vec<crate::config::ExtensionAssociation>,
     /// Custom functions loaded from custom_functions.json
     pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
+    /// Load results for all config files, used by the verbose version info display
+    pub config_load_results: Vec<crate::config::ConfigLoadResult>,
 }
 
 impl AppState {
@@ -59,13 +61,17 @@ impl AppState {
             tracing::warn!("Failed to load registered folders: {}", e);
         }
         
-        // Create log manager with configured settings
+        // Create log manager with configured settings.
+        // Normalize path separators so display is consistent on Windows.
         let log_path = if config.log_save_path.starts_with('/') || config.log_save_path.contains(':') {
-            // Absolute path
-            std::path::PathBuf::from(&config.log_save_path)
+            // Absolute path — collect components to normalise separators
+            std::path::Path::new(&config.log_save_path).components().collect::<std::path::PathBuf>()
         } else {
-            // Relative to data directory
-            crate::logging::default_log_dir().parent().unwrap().join(&config.log_save_path)
+            // Relative: join each component individually so '/' in the value doesn't leak through
+            let rel: std::path::PathBuf = std::path::Path::new(&config.log_save_path)
+                .components()
+                .collect();
+            crate::logging::default_log_dir().parent().unwrap().join(rel)
         };
         
         let log_manager = LogManager::new(
@@ -87,10 +93,27 @@ impl AppState {
         }
 
         let config_manager = crate::config::ConfigManager::new();
-        let extension_associations = config_manager.load_extension_associations();
-        let custom_functions = crate::model::dialog::load_custom_functions(
-            config_manager.custom_functions_path()
-        ).unwrap_or_default();
+        let (extension_associations, ext_result) = config_manager.load_extension_associations_with_result();
+
+        let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
+        let (custom_functions, custom_fn_result) = match crate::model::dialog::load_custom_functions(&custom_fn_path) {
+            Ok(fns) if !fns.is_empty() || custom_fn_path.exists() => {
+                let result = if custom_fn_path.exists() {
+                    crate::config::ConfigLoadResult::ok(custom_fn_path)
+                } else {
+                    crate::config::ConfigLoadResult::skipped(custom_fn_path, "file not found")
+                };
+                (fns, result)
+            }
+            Ok(fns) => (fns, crate::config::ConfigLoadResult::skipped(custom_fn_path, "file not found")),
+            Err(e) => (Vec::new(), crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string())),
+        };
+
+        let context_menu_result = crate::config::ConfigManager::validate_json_file(
+            config_manager.context_menu_path()
+        );
+
+        let config_load_results = vec![ext_result, custom_fn_result, context_menu_result];
 
         Self {
             tabs: TabManager::new(),
@@ -114,6 +137,7 @@ impl AppState {
             last_tab_created: None,
             extension_associations,
             custom_functions,
+            config_load_results,
         }
     }
     
