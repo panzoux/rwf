@@ -49,13 +49,13 @@ fn is_archive(location: &crate::model::Location) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyBindings {
     /// Key bindings for normal mode
-    #[serde(rename = "NormalMode")]
+    #[serde(rename = "NormalMode", default)]
     pub normal_mode: HashMap<String, Action>,
     /// Key bindings for search mode
-    #[serde(rename = "SearchMode")]
+    #[serde(rename = "SearchMode", default)]
     pub search_mode: HashMap<String, Action>,
     /// Key bindings for dialog mode
-    #[serde(rename = "DialogMode")]
+    #[serde(rename = "DialogMode", default)]
     pub dialog_mode: HashMap<String, Action>,
     /// Key bindings for viewer mode
     #[serde(rename = "ViewerMode", default)]
