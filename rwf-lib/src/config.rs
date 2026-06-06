@@ -666,7 +666,7 @@ pub struct SearchConfig {
     #[serde(rename = "DictPath")]
     pub dict_path: Option<String>,
     /// Search debounce interval in milliseconds
-    #[serde(rename = "SearchDebounceMs")]
+    #[serde(rename = "SearchDebounceMs", default = "default_search_debounce_ms")]
     pub search_debounce_ms: u64,
     /// Pattern rename preview debounce in milliseconds (0 = update every keystroke)
     #[serde(rename = "PatternRenameDebounceMs", default = "default_pattern_rename_debounce_ms")]
@@ -675,6 +675,7 @@ pub struct SearchConfig {
     pub max_results: usize,
 }
 
+fn default_search_debounce_ms() -> u64 { 150 }
 fn default_pattern_rename_debounce_ms() -> u64 { 150 }
 
 impl Default for SearchConfig {
