@@ -90,7 +90,7 @@
     "B"            : "RegisterCurrentFolder",
     "I"            : "ShowRegisteredFolderDialog",
     "F"            : "ShowRegisteredFolderDialog",
-    "_MoveToRegisteredFolder_comment": "Shift+M = 'M' conflicts with Move; unbound by default — add your own key here",
+    "M"            : "MoveToRegisteredFolder",
 
     "J"            : "ShowJumpToPathDialog",
     "N"            : "ShowJumpToFileDialog",
@@ -111,19 +111,19 @@
 
     "Alt+s"        : "CalculateDirectorySize",
 
-    "O"            : "SyncPanes",
-    "P"            : "SwapPanes",
+    "o"            : "SyncPanes",
+    "O"            : "SwapPanes",
 
     "\\"           : "ShowContextMenu",
     "L"            : "ShowDriveChangeDialog",
-    "W"            : "ShowCustomFunctionsDialog",
+    "T"            : "ShowCustomFunctionsDialog",
 
     "Z"            : "ReloadConfig",
 
     "`"            : "ShowVersionInfo",
     "F2"           : "ShowVersionInfoVerbose",
 
-    "T"            : "ToggleTaskPanel",
+    "t"            : "ToggleTaskPanel",
     "Ctrl+Up"      : "IncreaseTaskPanelHeight",
     "Ctrl+Down"    : "DecreaseTaskPanelHeight",
     "Shift+Up"     : "ScrollTaskPanelUp",

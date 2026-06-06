@@ -2042,13 +2042,23 @@ pub fn filter_jump_to_file_suggestions(candidates: &[String], query: &str) -> Ve
 
 /// Load custom functions from a JSON file
 pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
-    if path.exists() {
-        let content = std::fs::read_to_string(path)?;
-        let functions: Vec<CustomFunction> = serde_json::from_str(&content)?;
-        Ok(functions)
-    } else {
-        Ok(Vec::new())
+    if !path.exists() {
+        return Ok(Vec::new());
     }
+    let content = std::fs::read_to_string(path)?;
+    // Normal case: JSON array
+    if let Ok(functions) = serde_json::from_str::<Vec<CustomFunction>>(&content) {
+        return Ok(functions);
+    }
+    // Common mistake: file contains {} (empty object) instead of [] — treat as empty list
+    if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&content) {
+        if map.is_empty() {
+            return Ok(Vec::new());
+        }
+    }
+    // Surface the original parse error
+    let functions: Vec<CustomFunction> = serde_json::from_str(&content)?;
+    Ok(functions)
 }
 
 // ============================================================================

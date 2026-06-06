@@ -148,7 +148,7 @@ impl KeyBindings {
         normal_mode.insert("B".to_string(), Action::RegisterCurrentFolder);
         normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
         normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
-        // MoveToRegisteredFolder: Shift+M = "M" conflicts with Move; leave unbound (configure in keybindings.json)
+        normal_mode.insert("M".to_string(), Action::MoveToRegisteredFolder); // Shift+M: navigate/move to registered folder
 
         // Jump navigation
         normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);
@@ -177,13 +177,13 @@ impl KeyBindings {
         normal_mode.insert("Alt+s".to_string(), Action::CalculateDirectorySize);
         
         // Pane operations
-        normal_mode.insert("O".to_string(), Action::SyncPanes);
-        normal_mode.insert("P".to_string(), Action::SwapPanes);   // Shift+O = "O" conflicts; use P
+        normal_mode.insert("o".to_string(), Action::SyncPanes);   // sync active pane to match other
+        normal_mode.insert("O".to_string(), Action::SwapPanes);   // Shift+O: swap the two panes
 
         // Context menu, drive selection, custom functions
         normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
         normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
-        normal_mode.insert("W".to_string(), Action::ShowCustomFunctionsDialog);  // Shift+T = "T"; use W
+        normal_mode.insert("T".to_string(), Action::ShowCustomFunctionsDialog); // Shift+T
 
         // Config reload (Shift+Z = "Z")
         normal_mode.insert("Z".to_string(), Action::ReloadConfig);
@@ -193,7 +193,7 @@ impl KeyBindings {
         normal_mode.insert("F2".to_string(), Action::ShowVersionInfoVerbose);
         
         // Task panel operations
-        normal_mode.insert("T".to_string(), Action::ToggleTaskPanel);
+        normal_mode.insert("t".to_string(), Action::ToggleTaskPanel);
         normal_mode.insert("Ctrl+Up".to_string(), Action::IncreaseTaskPanelHeight);
         normal_mode.insert("Ctrl+Down".to_string(), Action::DecreaseTaskPanelHeight);
         normal_mode.insert("Shift+Up".to_string(), Action::ScrollTaskPanelUp);

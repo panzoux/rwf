@@ -74,7 +74,7 @@ impl TaskPanel {
             // Parse log level from message tags
             let level = if message.contains("[OK]") {
                 LogLevel::Ok
-            } else if message.contains("[FAIL]") {
+            } else if message.contains("[FAIL]") || message.contains("[NG]") {
                 LogLevel::Fail
             } else if message.contains("[WARN]") {
                 LogLevel::Warn

@@ -937,7 +937,14 @@ impl App {
                 }
                 if !result.task_panel_logs.is_empty() {
                     for log_msg in result.task_panel_logs {
-                        self.task_panel.add_log(log_msg, crate::ui::task_panel::LogLevel::Info);
+                        let level = if log_msg.contains("[NG]") || log_msg.contains("[FAIL]") {
+                            crate::ui::task_panel::LogLevel::Fail
+                        } else if log_msg.contains("[WARN]") {
+                            crate::ui::task_panel::LogLevel::Warn
+                        } else {
+                            crate::ui::task_panel::LogLevel::Info
+                        };
+                        self.task_panel.add_log(log_msg, level);
                     }
                     let h = self.state.ui.layout.task_panel_height;
                     self.task_panel.scroll_to_end(h);
