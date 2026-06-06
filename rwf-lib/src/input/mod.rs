@@ -160,6 +160,7 @@ impl KeyBindings {
 
         // File info
         normal_mode.insert("i".to_string(), Action::ShowFileInfoForCursor);
+        normal_mode.insert("e".to_string(), Action::OpenWithEditor);
 
         // Miscellaneous
         normal_mode.insert("q".to_string(), Action::Quit);
@@ -469,6 +470,7 @@ pub enum Action {
     
     // Information dialogs
     ShowFileInfoForCursor,
+    OpenWithEditor,         // open cursor file with EditorCommand from config
     ShowVersion,
     ShowVersionInfo,        // compact version/system info (backtick key)
     ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
@@ -1184,8 +1186,16 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::ShowDriveChangeDialog]
         }
         Action::ShowFileInfoForCursor => {
-            // Show file information dialog for current cursor entry
             vec![Transition::ShowFileInfo]
+        }
+        Action::OpenWithEditor => {
+            let pane = state.active_pane();
+            if let Some(entry) = pane.current_entry() {
+                let path = entry.location.display_path();
+                vec![Transition::OpenWithEditor { path }]
+            } else {
+                vec![]
+            }
         }
         Action::ShowVersion => {
             // Show version information dialog

@@ -99,6 +99,7 @@
     "X"            : "OpenHexViewer",
 
     "i"            : "ShowFileInfoForCursor",
+    "e"            : "OpenWithEditor",
 
     "q"            : "Quit",
     "Q"            : "ExitAndChangeDirectory",

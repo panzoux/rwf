@@ -53,6 +53,19 @@ pub struct AppState {
 }
 
 impl AppState {
+    fn resolve_editor(config: &AppConfig) -> String {
+        config.editor_command.clone().unwrap_or_else(|| {
+            #[cfg(target_os = "windows")]
+            { "notepad".to_string() }
+            #[cfg(not(target_os = "windows"))]
+            {
+                std::env::var("EDITOR")
+                    .or_else(|_| std::env::var("VISUAL"))
+                    .unwrap_or_else(|_| "vi".to_string())
+            }
+        })
+    }
+
     pub fn new(config: AppConfig) -> Self {
         let mut registered_folders = crate::model::RegisteredFolderManager::new();
         // Try to load registered folders from default path
@@ -1574,32 +1587,29 @@ impl AppState {
                 Some(StateUpdateResult::none())
             }
             Transition::LaunchConfigurationProgram => {
-                let editor_command = self.config.editor_command.clone()
-                    .unwrap_or_else(|| {
-                        #[cfg(target_os = "windows")]
-                        { "notepad".to_string() }
-                        #[cfg(not(target_os = "windows"))]
-                        {
-                            std::env::var("EDITOR")
-                                .or_else(|_| std::env::var("VISUAL"))
-                                .unwrap_or_else(|_| "vi".to_string())
-                        }
-                    });
-                
                 let config_manager = crate::config::ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
-                let command = format!("{} \"{}\"", editor_command, config_path);
-                
+                let command = format!("{} \"{}\"", Self::resolve_editor(&self.config), config_path);
                 let working_dir = std::env::current_dir()
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                
                 let job_spec = JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
                     command,
                     working_dir: crate::model::Location::Local(working_dir),
                     pipe_to_action: None,
                     shell: None,
                 });
-                
+                Some(StateUpdateResult::with_job(job_spec))
+            }
+            Transition::OpenWithEditor { path } => {
+                let command = format!("{} \"{}\"", Self::resolve_editor(&self.config), path);
+                let working_dir = std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let job_spec = JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                    command,
+                    working_dir: crate::model::Location::Local(working_dir),
+                    pipe_to_action: None,
+                    shell: None,
+                });
                 Some(StateUpdateResult::with_job(job_spec))
             }
             _ => None,
@@ -2316,6 +2326,7 @@ pub enum Transition {
     SaveLog,
     RotateHelpLanguage,
     LaunchConfigurationProgram,
+    OpenWithEditor { path: String },
     ShowRegisteredFolderDialog,
     RegisterCurrentFolder { name: String, path: String },
     ShowJumpToPathDialog,

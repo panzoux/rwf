@@ -12,7 +12,9 @@ use std::collections::HashMap;
 pub struct AppConfig {
     /// Display configuration (colors, CJK width, etc.)
     pub display: DisplayConfig,
-    /// Key bindings configuration
+    /// Key bindings configuration (legacy field — not read from config.json;
+    /// actual key bindings live in keybindings.json)
+    #[serde(skip)]
     pub key_bindings: KeyBindings,
     /// File operation settings
     pub file_operations: FileOpConfig,
