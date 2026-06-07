@@ -390,6 +390,7 @@ pub enum DriveType {
 
 /// Custom function definition with macro expansion support
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct CustomFunction {
     pub name: String,
     pub command: String,
@@ -409,6 +410,7 @@ pub struct CustomFunction {
 
 /// OS-specific configuration for custom functions
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct OsConfig {
     pub command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
