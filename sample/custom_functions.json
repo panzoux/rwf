@@ -1,0 +1,15 @@
+{
+  "Version": "1.0",
+  "Functions": [
+    {
+      "name": "Open in Explorer",
+      "command": "explorer \"$P\"",
+      "description": "Open current directory in Windows Explorer"
+    },
+    {
+      "name": "Open Terminal Here",
+      "command": "wt -d \"$P\"",
+      "description": "Open Windows Terminal in current directory"
+    }
+  ]
+}
