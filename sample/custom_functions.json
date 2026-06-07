@@ -23,6 +23,10 @@
           "Command": "ipconfig /all"
         }
       ]
+    },
+    {
+      "Name": "File Operations",
+      "Menu": "menu_file_operations.json"
     }
   ]
 }

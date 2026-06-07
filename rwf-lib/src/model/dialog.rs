@@ -388,6 +388,16 @@ pub enum DriveType {
     Unknown,
 }
 
+/// Menu content: either an inline list of children or a filename to load from.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum MenuContent {
+    /// Inline children defined directly in this file
+    Inline(Vec<CustomFunction>),
+    /// Path to a separate menu JSON file (relative to the parent file's directory)
+    File(String),
+}
+
 /// Custom function definition with macro expansion support.
 /// Either `Command` (leaf) or `Menu` (submenu) must be present, not both.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -397,9 +407,9 @@ pub struct CustomFunction {
     /// Shell command to execute (leaf entry). Mutually exclusive with Menu.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    /// Nested submenu entries. Mutually exclusive with Command.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub menu: Vec<CustomFunction>,
+    /// Submenu: inline list or filename reference. Resolved to Inline after loading.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub menu: Option<MenuContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -415,8 +425,16 @@ pub struct CustomFunction {
 }
 
 impl CustomFunction {
-    pub fn is_menu(&self) -> bool { !self.menu.is_empty() }
+    pub fn is_menu(&self) -> bool { self.menu.is_some() }
     pub fn is_command(&self) -> bool { self.command.is_some() }
+
+    /// Return the resolved inline children, or empty slice if not a menu.
+    pub fn menu_items(&self) -> &[CustomFunction] {
+        match &self.menu {
+            Some(MenuContent::Inline(items)) => items,
+            _ => &[],
+        }
+    }
 }
 
 /// OS-specific configuration for custom functions
@@ -1196,7 +1214,7 @@ impl CustomFunction {
         Self {
             name: name.into(),
             command: Some(command.into()),
-            menu: Vec::new(),
+            menu: None,
             description: None,
             shell: None,
             working_dir: None,
@@ -2065,24 +2083,60 @@ struct CustomFunctionsFile {
 }
 
 /// Load custom functions from a JSON file.
-/// Accepts both the wrapper format `{"Version":"1.0","Functions":[...]}` and
-/// a bare array `[...]` for backward compatibility.
+/// Accepts the wrapper format `{"Version":"1.0","Functions":[...]}` and a bare
+/// array `[...]`. Menu entries whose `Menu` field is a filename string are loaded
+/// recursively from the same directory as the parent file.
 pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
+    let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
     let content = std::fs::read_to_string(path)?;
+
+    let mut functions = parse_custom_functions(&content)?;
+    resolve_menu_files(&mut functions, base_dir);
+    Ok(functions)
+}
+
+fn parse_custom_functions(content: &str) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
     // Preferred: wrapper object with Version + Functions
-    if let Ok(file) = serde_json::from_str::<CustomFunctionsFile>(&content) {
+    if let Ok(file) = serde_json::from_str::<CustomFunctionsFile>(content) {
         return Ok(file.functions);
     }
-    // Fallback: bare array (old format)
-    if let Ok(functions) = serde_json::from_str::<Vec<CustomFunction>>(&content) {
+    // Fallback: bare array
+    if let Ok(functions) = serde_json::from_str::<Vec<CustomFunction>>(content) {
         return Ok(functions);
     }
-    // Surface the parse error from the wrapper format as the primary error
-    let file: CustomFunctionsFile = serde_json::from_str(&content)?;
+    // Surface error from the wrapper format as primary
+    let file: CustomFunctionsFile = serde_json::from_str(content)?;
     Ok(file.functions)
+}
+
+/// Recursively resolve `Menu: "filename.json"` references into inline children.
+fn resolve_menu_files(functions: &mut Vec<CustomFunction>, base_dir: &std::path::Path) {
+    for func in functions.iter_mut() {
+        match &func.menu {
+            Some(MenuContent::File(filename)) => {
+                let menu_path = base_dir.join(filename);
+                match parse_custom_functions(&std::fs::read_to_string(&menu_path).unwrap_or_default()) {
+                    Ok(mut children) => {
+                        resolve_menu_files(&mut children, base_dir);
+                        func.menu = Some(MenuContent::Inline(children));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load menu file {:?}: {}", menu_path, e);
+                        func.menu = Some(MenuContent::Inline(Vec::new()));
+                    }
+                }
+            }
+            Some(MenuContent::Inline(children)) => {
+                let mut children = children.clone();
+                resolve_menu_files(&mut children, base_dir);
+                func.menu = Some(MenuContent::Inline(children));
+            }
+            None => {}
+        }
+    }
 }
 
 // ============================================================================
@@ -2183,7 +2237,7 @@ mod custom_function_tests {
         let func = CustomFunction {
             name: "Test".to_string(),
             command: Some("default command".to_string()),
-            menu: Vec::new(),
+            menu: None,
             description: None,
             shell: None,
             working_dir: None,
