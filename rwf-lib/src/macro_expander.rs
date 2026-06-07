@@ -18,7 +18,9 @@ impl MacroExpander {
     
     /// Expand all macros in a custom function command
     pub fn expand(&self, state: &AppState, function: &CustomFunction) -> Result<String, String> {
-        let mut command = function.get_command().to_string();
+        let mut command = function.get_command()
+            .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
+            .to_string();
         
         // Check for $I macro first - this requires user input
         if command.contains("$I") {
@@ -137,12 +139,14 @@ impl MacroExpander {
     
     /// Check if a command contains the $I (user input) macro
     pub fn requires_user_input(&self, function: &CustomFunction) -> bool {
-        function.get_command().contains("$I")
+        function.get_command().map_or(false, |c| c.contains("$I"))
     }
-    
+
     /// Expand the $I macro with user-provided input
     pub fn expand_with_user_input(&self, state: &AppState, function: &CustomFunction, user_input: &str) -> Result<String, String> {
-        let mut command = function.get_command().to_string();
+        let mut command = function.get_command()
+            .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
+            .to_string();
         
         // Replace $I with user input
         command = command.replace("$I", user_input);

@@ -388,12 +388,18 @@ pub enum DriveType {
     Unknown,
 }
 
-/// Custom function definition with macro expansion support
+/// Custom function definition with macro expansion support.
+/// Either `Command` (leaf) or `Menu` (submenu) must be present, not both.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct CustomFunction {
     pub name: String,
-    pub command: String,
+    /// Shell command to execute (leaf entry). Mutually exclusive with Menu.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Nested submenu entries. Mutually exclusive with Command.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub menu: Vec<CustomFunction>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -406,6 +412,11 @@ pub struct CustomFunction {
     pub os_specific: HashMap<String, OsConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_binding: Option<String>,
+}
+
+impl CustomFunction {
+    pub fn is_menu(&self) -> bool { !self.menu.is_empty() }
+    pub fn is_command(&self) -> bool { self.command.is_some() }
 }
 
 /// OS-specific configuration for custom functions
@@ -1180,11 +1191,12 @@ impl DialogContent {
 }
 
 impl CustomFunction {
-    /// Create a new custom function
+    /// Create a new leaf custom function with a command
     pub fn new(name: impl Into<String>, command: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            command: command.into(),
+            command: Some(command.into()),
+            menu: Vec::new(),
             description: None,
             shell: None,
             working_dir: None,
@@ -1218,19 +1230,19 @@ impl CustomFunction {
         self
     }
     
-    /// Get the command for the current OS
-    pub fn get_command(&self) -> &str {
+    /// Get the effective command for the current OS, or None for menu entries.
+    pub fn get_command(&self) -> Option<&str> {
         #[cfg(target_os = "windows")]
         let os_key = "windows";
         #[cfg(target_os = "macos")]
         let os_key = "macos";
         #[cfg(target_os = "linux")]
         let os_key = "linux";
-        
+
         if let Some(os_config) = self.os_specific.get(os_key) {
-            &os_config.command
+            Some(&os_config.command)
         } else {
-            &self.command
+            self.command.as_deref()
         }
     }
     
@@ -2154,23 +2166,24 @@ mod custom_function_tests {
     #[test]
     fn test_custom_function_deserialization() {
         let json = r#"{
-            "name": "Test Function",
-            "command": "echo $F",
-            "shell": "bash",
-            "description": "Test description"
+            "Name": "Test Function",
+            "Command": "echo $F",
+            "Shell": "bash",
+            "Description": "Test description"
         }"#;
-        
+
         let func: CustomFunction = serde_json::from_str(json).unwrap();
         assert_eq!(func.name, "Test Function");
-        assert_eq!(func.command, "echo $F");
+        assert_eq!(func.command, Some("echo $F".to_string()));
         assert_eq!(func.shell, Some("bash".to_string()));
     }
-    
+
     #[test]
     fn test_os_specific_command() {
         let func = CustomFunction {
             name: "Test".to_string(),
-            command: "default command".to_string(),
+            command: Some("default command".to_string()),
+            menu: Vec::new(),
             description: None,
             shell: None,
             working_dir: None,
@@ -2185,12 +2198,12 @@ mod custom_function_tests {
             },
             key_binding: None,
         };
-        
+
         #[cfg(target_os = "linux")]
-        assert_eq!(func.get_command(), "linux command");
-        
+        assert_eq!(func.get_command(), Some("linux command"));
+
         #[cfg(not(target_os = "linux"))]
-        assert_eq!(func.get_command(), "default command");
+        assert_eq!(func.get_command(), Some("default command"));
     }
 }
 

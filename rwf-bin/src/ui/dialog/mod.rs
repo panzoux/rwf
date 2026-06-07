@@ -3507,7 +3507,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         Err(_) => {
                             // Command requires $I user input — show an input dialog
                             // For now, execute with empty string substitution
-                            let command_with_empty = func.get_command().replace("$I", "");
+                            let command_with_empty = func.get_command().unwrap_or("").replace("$I", "");
                             let expander2 = rwf_lib::macro_expander::MacroExpander::new();
                             let func2 = rwf_lib::model::dialog::CustomFunction::new("tmp", command_with_empty);
                             if let Ok(command) = expander2.expand(state, &func2) {

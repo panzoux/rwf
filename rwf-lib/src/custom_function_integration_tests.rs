@@ -142,13 +142,13 @@ mod tests {
             });
             function.os_specific = os_specific;
             
-            assert_eq!(function.get_command(), "echo linux");
+            assert_eq!(function.get_command(), Some("echo linux"));
             assert_eq!(function.get_shell(), Some("bash"));
         }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
-            assert_eq!(function.get_command(), "echo default");
+            assert_eq!(function.get_command(), Some("echo default"));
         }
     }
     
@@ -271,10 +271,10 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         let json = r#"[
             {
-                "name": "Test Function",
-                "command": "echo $F",
-                "description": "Test description",
-                "shell": "bash"
+                "Name": "Test Function",
+                "Command": "echo $F",
+                "Description": "Test description",
+                "Shell": "bash"
             }
         ]"#;
         temp_file.write_all(json.as_bytes()).unwrap();
@@ -285,7 +285,7 @@ mod tests {
         
         assert_eq!(functions.len(), 1);
         assert_eq!(functions[0].name, "Test Function");
-        assert_eq!(functions[0].command, "echo $F");
+        assert_eq!(functions[0].command, Some("echo $F".to_string()));
         assert_eq!(functions[0].description, Some("Test description".to_string()));
         assert_eq!(functions[0].shell, Some("bash".to_string()));
     }

@@ -10,6 +10,19 @@
       "Name": "Open Terminal Here",
       "Command": "wt -d \"$P\"",
       "Description": "Open Windows Terminal in current directory"
+    },
+    {
+      "Name": "Tools",
+      "Menu": [
+        {
+          "Name": "Ping localhost",
+          "Command": "ping 127.0.0.1"
+        },
+        {
+          "Name": "Show IP config",
+          "Command": "ipconfig /all"
+        }
+      ]
     }
   ]
 }
