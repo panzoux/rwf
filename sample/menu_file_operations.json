@@ -1,0 +1,13 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    { "Name": "View as Text",       "Action": "ViewFileAsText" },
+    { "Name": "View as Hex",        "Action": "ViewFileAsHex" },
+    { "Name": "-----",              "Action": "" },
+    { "Name": "Copy",               "Action": "Copy" },
+    { "Name": "Move",               "Action": "Move" },
+    { "Name": "Delete",             "Action": "Delete" },
+    { "Name": "-----",              "Action": "" },
+    { "Name": "Reload Config",      "Action": "ReloadConfiguration" }
+  ]
+}
