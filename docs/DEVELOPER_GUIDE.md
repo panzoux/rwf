@@ -1,4 +1,4 @@
-# Two-Pane File Manager - Developer Guide
+# RWF: Reactive Worker Filemanager - Developer Guide
 
 ## Table of Contents
 

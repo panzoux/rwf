@@ -1,78 +1,115 @@
-# Two-Pane File Manager
+# RWF: Reactive Worker Filemanager
 
-A cross-platform, two-pane file manager built in Rust using the Reactive Worker Framework (rwf) pattern.
+A high-performance, cross-platform terminal file manager built in Rust, following the Reactive Worker Framework (RWF) pattern.
 
-## Project Structure
+## Overview
 
-This is a Cargo workspace with two main crates:
+RWF is a modern, two-pane terminal file manager designed for efficiency, reliability, and speed. It provides a non-blocking user interface where file operations run asynchronously in the background, ensuring the UI remains responsive even during heavy tasks like copying large directories or searching through millions of files.
 
-- **rwf-bin**: Main binary application
-- **rwf-lib**: Core library with business logic
+Inspired by the TWF (Two-pane File manager for Windows) philosophy, RWF brings advanced file management capabilities to the terminal with full CJK (Chinese, Japanese, Korean) character support and cross-platform compatibility (Windows, Linux, macOS).
 
-### Architecture
+## Where it is useful
 
-The application follows these core principles:
+- **Keyboard-centric workflows**: Perfect for users who prefer the terminal and want to minimize mouse usage.
+- **Remote Servers**: Lightweight and efficient for managing files over SSH (where terminal-based UIs shine).
+- **Developers & Power Users**: Highly customizable with custom functions, macros, and powerful search capabilities.
+- **Cross-Platform Environments**: Consistent experience across different operating systems.
+- **Multitasking**: Handle multiple background file operations simultaneously without freezing the interface.
 
-1. **Never Block the UI Thread**: All file I/O operations execute as Jobs in the rwf Worker Pool
-2. **Explicit State Transitions**: All state changes occur through the Transition enum
-3. **Pure State Logic**: State transformations are pure functions returning StateUpdateResult
-4. **Event-Driven Architecture**: JobEvents flow from Worker Pool to UI thread via channels
-5. **FIFO Job Ordering**: Strict first-in-first-out job execution
-6. **Cooperative Cancellation**: Jobs check cancellation tokens periodically
+## Key Features
 
-### Key Components
+- **Dual-Pane Interface**: Side-by-side view for intuitive file comparison, copying, and moving.
+- **Tab Management**: Open multiple tabs, each maintaining its own pane states and independent navigation history.
+- **Non-blocking Operations**: All I/O operations (copy, move, delete, archive, etc.) run as background jobs with real-time progress tracking.
+- **Advanced Search & Filtering**:
+  - Incremental search with wildcard and Regex support.
+  - **Migemo** support for efficient Japanese text searching.
+  - File mask filtering to quickly isolate specific file types.
+- **Integrated Viewers**:
+  - High-performance text viewer with support for multiple encodings (UTF-8, Shift-JIS, EUC-JP, etc.).
+  - Hex/Binary viewer for low-level file inspection.
+  - **Side-by-Side Viewer Mode**: Compare files while navigating or viewing.
+- **Archive Support**: Browse and extract archives as if they were local folders (supports `.zip`, `.7z`, `.tar`, `.tgz`, `.iso`).
+- **Customization**:
+  - Fully configurable keybindings (`keybindings.json`).
+  - Custom functions with powerful macro expansion (`$P`, `$F`, `$M`, etc.) for shell integration.
+  - Registered folders for quick jumping to frequent locations.
+- **Robust State Management**: Built on pure state logic and explicit transitions, ensuring predictable behavior and easier debugging.
 
-- **AppState**: Central application state coordinating all components
-- **Transition**: Explicit state change operations
-- **JobManager**: Manages background file operations via rwf Worker Pool
-- **FilesystemBackend**: Abstraction for file I/O operations
-- **TabManager**: Manages multiple tabs with independent pane states
-- **PaneModel**: Represents the state of a single pane
+## Development Status
 
-## Dependencies
+RWF is currently in its **early stages** (Alpha) but is already highly functional.
+- **Current Completion**: Approximately 75% of the planned feature set is implemented.
+- **Phase 6 Completed**: Achieved feature parity with the original TWF C# prototype.
+- **Phase 7 Underway**: Focused on RWF-specific enhancements and user experience refinements.
 
-### Runtime Dependencies
+## Testing & Stability
 
-- **tokio**: Async runtime
-- **ratatui**: Terminal UI framework
-- **crossterm**: Cross-platform terminal manipulation
-- **serde/serde_json**: Serialization
-- **thiserror/anyhow**: Error handling
-- **regex**: Pattern matching
-- **tracing**: Logging and diagnostics
+Quality and reliability are top priorities.
+- **Extensive Test Suite**: Over 800 tests covering unit logic, property-based state transitions, and integration scenarios.
+- **Property-Based Testing**: Utilizes `proptest` to verify state consistency across complex sequences of operations.
+- **Continuous Validation**: Actively tested on Windows, Linux, and macOS.
 
-### Development Dependencies
+*Note: As this is an early-stage project, we recommend cautious use with critical data.*
 
-- **proptest**: Property-based testing
-- **tempfile**: Temporary file utilities for tests
-- **assert_fs**: Filesystem assertions for tests
-- **predicates**: Predicate assertions for tests
+## Future Roadmap
 
-## Building
+RWF is under active development. Planned enhancements focus on improving the core user experience and expanding platform-native integrations:
+
+- **Leap Navigation**: Faster "quick-filter" mode for instant file jumping.
+- **Smart File Opener (Rifle)**: Advanced MIME-based file associations with conditional logic.
+- **Recursive Directory Size Calculation**: Non-blocking background size analysis.
+- **Syntax Highlighting**: Code highlighting for the text viewer.
+- **Smart Trash Support**: Integration with OS-native trash/recycle bin.
+
+See [plan/ROADMAP.md](plan/ROADMAP.md) for the detailed development plan.
+
+## Quick Start
+
+### Prerequisites
+
+- Rust (latest stable version)
+- A terminal with Unicode/TrueColor support
+
+### Building & Running
 
 ```bash
-# Check the project
-cargo check --workspace
+# Clone the repository
+git clone https://github.com/panzoux/rwf.git
+cd rwf
 
 # Build the project
-cargo build --workspace
-
-# Run tests
-cargo test --workspace
+cargo build --release
 
 # Run the application
-cargo run --bin two-pane-fm
+./target/release/rwf
 ```
 
 ## Configuration
 
-The application uses:
-- `keybindings.json` for configurable key mappings (TWF-compatible defaults)
-- `config.json` for application settings
-- Default worker pool size: 4 threads
+Configuration files are automatically created on the first launch:
+- **Windows**: `%APPDATA%\rwf\`
+- **Linux/macOS**: `~/.config/rwf/`
 
-## Development Status
+For detailed configuration options and keybindings, see the [User Guide](docs/USER_GUIDE.md).
 
-This project is currently in Phase 1: Core Infrastructure setup.
+## Technical Architecture
 
-See `.kiro/specs/two-pane-file-manager/tasks.md` for the complete implementation plan.
+RWF is built with a focus on performance and maintainability:
+
+1. **Reactive Worker Pattern**: Separation of UI thread and worker pool.
+2. **Pure State Logic**: All state changes occur through explicit transitions.
+3. **Rust Ecosystem**: Powered by `tokio` (async), `ratatui` (TUI), and `serde` (serialization).
+
+For more details on the architecture and contributing, see the [Developer Guide](docs/DEVELOPER_GUIDE.md).
+
+---
+
+## Documentation Links
+
+- [User Guide](docs/USER_GUIDE.md)
+- [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- [API Reference](docs/API_REFERENCE.md)
+- [Unicode Handling Guide](docs/UNICODE_HANDLING_GUIDE.md)
+
+---

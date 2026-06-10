@@ -1,4 +1,4 @@
-# Unicode Handling Guide for Developers
+# RWF: Reactive Worker Filemanager - Unicode Handling Guide
 
 ## Quick Reference
 

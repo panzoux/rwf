@@ -1,4 +1,4 @@
-# Two-Pane File Manager - API Reference
+# RWF: Reactive Worker Filemanager - API Reference
 
 Complete API documentation for all public types, traits, and functions.
 
