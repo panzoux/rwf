@@ -21,12 +21,16 @@ impl MacroExpander {
         let mut command = function.get_command()
             .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
             .to_string();
-        
+
         // Check for $I macro first - this requires user input
         if command.contains("$I") {
             return Err("Command contains $I macro - user input required".to_string());
         }
-        
+
+        // $V"VARNAME" — cross-platform env var expansion (TWF-compatible)
+        // e.g. $V"APPDATA" → C:\Users\user\AppData\Roaming on Windows
+        command = Self::expand_v_macro(&command);
+
         // Expand pane path macros
         command = self.expand_macro(&command, "$P", || {
             state.active_pane().current_location.display_path()
@@ -96,6 +100,16 @@ impl MacroExpander {
         Ok(command)
     }
     
+    /// Expand `$V"VARNAME"` patterns — cross-platform env var expansion (TWF-compatible).
+    /// `$V"APPDATA"` → value of the APPDATA env var; empty string if not set.
+    fn expand_v_macro(command: &str) -> String {
+        // Pattern: $V"<var_name>" where var_name has no embedded quotes
+        let re = Regex::new(r#"\$V"([^"]+)""#).unwrap();
+        re.replace_all(command, |caps: &regex::Captures| {
+            std::env::var(&caps[1]).unwrap_or_default()
+        }).into_owned()
+    }
+
     /// Expand a single macro in the command
     fn expand_macro<F>(&self, command: &str, macro_name: &str, value_fn: F) -> String
     where
@@ -108,18 +122,25 @@ impl MacroExpander {
         }
     }
     
-    /// Expand environment variables in the command
+    /// Expand environment variables in the command.
+    /// Supports four formats on all platforms:
+    ///   $env:VAR  (PowerShell)   — expanded first to avoid $env matching as bare $VAR
+    ///   ${VAR}    (curly brace)  — expanded before bare $VAR; unambiguous, preferred
+    ///   %VAR%     (Windows batch)
+    ///   $VAR      (Unix-style bare dollar) — NOTE: conflicts with single-letter RWF macros
+    ///             ($P, $O, $L, $R, $F, $W, $E, $M) which are expanded in an earlier pass.
+    ///             Env vars whose names start with those letters are unreachable via bare $VAR.
     fn expand_env_vars(&self, command: &str) -> String {
         let mut result = command.to_string();
-        
-        // Match %VAR% on Windows or $VAR on Unix
-        #[cfg(target_os = "windows")]
-        let pattern = Regex::new(r"%([^%]+)%").unwrap();
-        #[cfg(not(target_os = "windows"))]
-        let pattern = Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
-        
-        // Collect all matches first to avoid borrow issues
-        let matches: Vec<_> = pattern.captures_iter(command)
+        result = Self::replace_env_pattern(&result, Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+        result = Self::replace_env_pattern(&result, Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap());
+        result = Self::replace_env_pattern(&result, Regex::new(r"%([^%]+)%").unwrap());
+        result = Self::replace_env_pattern(&result, Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+        result
+    }
+
+    fn replace_env_pattern(command: &str, re: Regex) -> String {
+        let matches: Vec<_> = re.captures_iter(command)
             .filter_map(|cap| {
                 cap.get(1).and_then(|var_name| {
                     std::env::var(var_name.as_str()).ok().map(|value| {
@@ -128,12 +149,10 @@ impl MacroExpander {
                 })
             })
             .collect();
-        
-        // Replace all matches
-        for (pattern, value) in matches {
-            result = result.replace(&pattern, &value);
+        let mut result = command.to_string();
+        for (full_match, value) in matches {
+            result = result.replace(&full_match, &value);
         }
-        
         result
     }
     
@@ -158,7 +177,10 @@ impl MacroExpander {
     /// Internal implementation of expand that works on a command string
     fn expand_impl(&self, state: &AppState, command: &str) -> Result<String, String> {
         let mut result = command.to_string();
-        
+
+        // $V"VARNAME" — cross-platform env var expansion
+        result = Self::expand_v_macro(&result);
+
         // Expand pane path macros
         result = self.expand_macro(&result, "$P", || {
             state.active_pane().current_location.display_path()
@@ -353,6 +375,57 @@ mod tests {
         assert!(result.contains("hello"));
     }
     
+    #[test]
+    fn test_expand_env_var_formats() {
+        let state = create_test_state();
+        let expander = MacroExpander::new();
+
+        // NOTE: bare $VAR conflicts with single-letter RWF macros ($P, $O, $L, $R, $F, $W, $E, $M).
+        // Those are expanded first, so env vars whose names start with those letters are unreachable
+        // via bare $VAR.  Use ${VAR} or $env:VAR for full reliability.
+        // This test uses a name starting with 'Z' (not an RWF macro letter) to avoid the conflict.
+        std::env::set_var("ZRWF_TEST_VAR", "test_value");
+
+        // %VAR% — Windows batch
+        let f = CustomFunction::new("t", "cmd /c echo %ZRWF_TEST_VAR%");
+        let r = expander.expand(&state, &f).unwrap();
+        assert!(r.contains("test_value"), "%VAR% not expanded: {r}");
+
+        // $VAR — bare dollar; safe when name doesn't start with an RWF macro letter
+        let f = CustomFunction::new("t", "echo $ZRWF_TEST_VAR");
+        let r = expander.expand(&state, &f).unwrap();
+        assert!(r.contains("test_value"), "$VAR not expanded: {r}");
+
+        // ${VAR} — curly brace (unambiguous, preferred)
+        let f = CustomFunction::new("t", "echo ${ZRWF_TEST_VAR}");
+        let r = expander.expand(&state, &f).unwrap();
+        assert!(r.contains("test_value"), "${{VAR}} not expanded: {r}");
+
+        // $env:VAR — PowerShell (unambiguous, preferred)
+        let f = CustomFunction::new("t", "echo $env:ZRWF_TEST_VAR");
+        let r = expander.expand(&state, &f).unwrap();
+        assert!(r.contains("test_value"), "$env:VAR not expanded: {r}");
+
+        std::env::remove_var("ZRWF_TEST_VAR");
+    }
+
+    #[test]
+    fn test_env_var_expansion_order() {
+        // $env:VAR must not be partially consumed as bare $VAR ("env" as a var name)
+        let state = create_test_state();
+        let expander = MacroExpander::new();
+
+        std::env::set_var("RWF_ORDER_VAR", "correct");
+        std::env::remove_var("env"); // ensure "env" env var doesn't exist
+
+        let f = CustomFunction::new("t", "echo $env:RWF_ORDER_VAR");
+        let r = expander.expand(&state, &f).unwrap();
+        assert!(r.contains("correct"), "ordering broken: {r}");
+        assert!(!r.contains("$env:"), "env: prefix left unexpanded: {r}");
+
+        std::env::remove_var("RWF_ORDER_VAR");
+    }
+
     #[test]
     fn test_shell_quote() {
         assert_eq!(shell_quote("simple"), "simple");

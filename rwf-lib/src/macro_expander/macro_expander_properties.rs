@@ -129,12 +129,14 @@ proptest! {
             prop_assert!(!expanded.contains("$I"), "Expanded command contains $I macro");
             
             // If there are files, $F should be expanded
-            if !state.active_pane().entries.is_empty() && function.command.contains("$F") {
+            if !state.active_pane().entries.is_empty()
+                && function.command.as_deref().map_or(false, |c| c.contains("$F"))
+            {
                 prop_assert!(!expanded.contains("$F"), "Expanded command still contains $F macro");
             }
-            
+
             // $# should always be expanded
-            if function.command.contains("$#") {
+            if function.command.as_deref().map_or(false, |c| c.contains("$#")) {
                 prop_assert!(!expanded.contains("$#"), "Expanded command still contains $# macro");
             }
         }
