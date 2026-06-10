@@ -540,36 +540,50 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             return OpResult::Cancelled;
         }
         
-        // Determine shell to use
-        let (shell_cmd, shell_arg) = if let Some(shell_name) = shell {
+        // Determine shell to use.
+        // On Windows, cmd.exe gets /D before /C to disable AutoRun registry entries
+        // (Clink and similar tools hook there; without /D they try to inject into the
+        // non-interactive session and may return a non-zero exit code).
+        #[derive(PartialEq)]
+        enum ShellKind { Cmd, Other }
+        let (shell_cmd, shell_arg, shell_kind) = if let Some(shell_name) = shell {
             match shell_name {
-                "bash" => ("bash", "-c"),
-                "zsh" => ("zsh", "-c"),
-                "powershell" => ("powershell", "-Command"),
-                "cmd" => ("cmd", "/C"),
+                "bash" => ("bash", "-c", ShellKind::Other),
+                "zsh"  => ("zsh",  "-c", ShellKind::Other),
+                "powershell" | "powershell.exe" => ("powershell", "-Command", ShellKind::Other),
+                "cmd"  | "cmd.exe" => ("cmd", "/C", ShellKind::Cmd),
                 _ => {
-                    // Default based on OS
                     #[cfg(target_os = "windows")]
-                    { ("cmd", "/C") }
+                    { ("cmd", "/C", ShellKind::Cmd) }
                     #[cfg(not(target_os = "windows"))]
-                    { ("sh", "-c") }
+                    { ("sh", "-c", ShellKind::Other) }
                 }
             }
         } else {
-            // Default based on OS
             #[cfg(target_os = "windows")]
-            { ("cmd", "/C") }
+            { ("cmd", "/C", ShellKind::Cmd) }
             #[cfg(not(target_os = "windows"))]
-            { ("sh", "-c") }
+            { ("sh", "-c", ShellKind::Other) }
         };
-        
-        // Execute the command
-        let output = tokio::process::Command::new(shell_cmd)
-            .arg(shell_arg)
-            .arg(command)
-            .current_dir(working_path)
-            .output()
-            .await;
+
+        // Execute the command.
+        // For cmd.exe on Windows we use raw_arg instead of arg so that Rust does NOT
+        // apply its own \"-escaping.  cmd.exe has its own quoting rules and treats
+        // backslash-quote as two literal characters, corrupting paths that contain
+        // double-quoted strings.  raw_arg passes the token exactly as given.
+        let mut cmd = tokio::process::Command::new(shell_cmd);
+        #[cfg(target_os = "windows")]
+        {
+            if shell_kind == ShellKind::Cmd {
+                cmd.raw_arg("/D").raw_arg("/C").raw_arg(command);
+            } else {
+                cmd.arg(shell_arg).arg(command);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        cmd.arg(shell_arg).arg(command);
+        cmd.current_dir(working_path);
+        let output = cmd.output().await;
         
         match output {
             Ok(output) => {
@@ -617,9 +631,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         OpResult::Failed("Search not yet implemented".to_string())
     }
     
-    /// Open the file memory-mapped and send ViewerReady immediately so the UI
-    /// can render without loading anything into RAM. For text mode, a newline
-    /// index is built asynchronously in 4 MB chunks; hex mode skips it entirely.
+    /// Read the entire file into memory on the blocking pool and send ViewerReady.
+    /// Using InMemory for all files means the UI thread (Tokio async worker) never
+    /// touches OS file handles or mmap pages — eliminating page-fault stalls that
+    /// occur when another process is concurrently writing to the file.
     async fn execute_load_file_for_viewer(
         &self,
         job_id: JobId,
@@ -639,74 +654,121 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 return OpResult::Failed("Unsupported location type for file viewing".to_string()),
         };
 
-        let file = match std::fs::File::open(&path) {
-            Ok(f) => f,
+        // All file I/O runs on the blocking thread pool so the Tokio async thread
+        // (which drives the UI event loop) is never stalled.
+        //
+        // Files ≤ INMEM_THRESHOLD are read entirely into RAM.  This avoids mmap
+        // page-fault delays that occur when another process (e.g. clink) is
+        // concurrently appending to the same file — each page fault can stall the
+        // Tokio thread and make the viewer unresponsive.  The complete line index is
+        // also built in the same blocking task so ViewerReady arrives with a fully
+        // indexed, stable snapshot.
+        //
+        // Files > INMEM_THRESHOLD are memory-mapped (large log files, binaries) and
+        // the newline index is built in 4 MB chunks on the blocking pool.
+        const INMEM_THRESHOLD: usize = 100 * 1024 * 1024; // 100 MB
+
+        let path_for_open = path.clone();
+        let index_lines_flag = index_lines;
+
+        // Returns (FileBytes, encoding, Option<complete LineIndex>).
+        // The Option is Some for the InMemory path (index built inline).
+        let open_result: std::io::Result<(FileBytes, TextEncoding, Option<LineIndex>)> =
+            tokio::task::spawn_blocking(move || {
+                let meta = std::fs::metadata(&path_for_open)?;
+                let file_size = meta.len() as usize;
+
+                if file_size <= INMEM_THRESHOLD {
+                    let bytes = std::fs::read(&path_for_open)?;
+                    let sample_len = bytes.len().min(16384);
+                    let encoding = TextEncoding::detect(&bytes[..sample_len]);
+
+                    let complete_index = if index_lines_flag {
+                        let total = bytes.len();
+                        let mut offsets: Vec<u64> = vec![0];
+                        for (i, &b) in bytes.iter().enumerate() {
+                            if b == b'\n' && i + 1 < total {
+                                offsets.push((i + 1) as u64);
+                            }
+                        }
+                        Some(LineIndex { offsets, is_complete: true })
+                    } else {
+                        None
+                    };
+
+                    Ok((FileBytes::InMemory(bytes), encoding, complete_index))
+                } else {
+                    // Large file: memory-map.
+                    let file = std::fs::File::open(&path_for_open)?;
+                    // SAFETY: Mmap holds its own OS mapping handle; dropping `file` is safe.
+                    let mmap = unsafe { memmap2::Mmap::map(&file) }?;
+                    let sample_len = mmap.len().min(16384);
+                    let encoding = TextEncoding::detect(&mmap[..sample_len]);
+                    Ok((FileBytes::Mapped(mmap), encoding, None))
+                }
+            })
+            .await
+            .unwrap_or_else(|e| Err(std::io::Error::other(e.to_string())));
+
+        let (file_bytes, encoding, complete_index) = match open_result {
+            Ok(triple) => triple,
             Err(e) => return OpResult::Failed(format!("Failed to open file: {}", e)),
         };
-        let mmap = match unsafe { memmap2::Mmap::map(&file) } {
-            Ok(m) => m,
-            Err(e) => return OpResult::Failed(format!("Failed to mmap file: {}", e)),
-        };
 
-        let total = mmap.len();
-
-        // Detect encoding from first 16 KB.
-        let sample_len = total.min(16384);
-        let encoding = TextEncoding::detect(&mmap[..sample_len]);
-
-        if !index_lines {
-            // Hex mode: mmap only, no newline scan needed. Mark complete immediately.
-            let mut idx = LineIndex::new();
-            idx.is_complete = true;
-            let buffer = ViewerBuffer::new(FileBytes::Mapped(mmap), idx);
+        // Small text-mode files arrive with a complete index, and hex mode needs none.
+        // In both cases we can send ViewerReady immediately and return.
+        if !index_lines || complete_index.is_some() {
+            let idx = complete_index.unwrap_or_else(|| {
+                let mut i = LineIndex::new(); i.is_complete = true; i
+            });
+            let buffer = ViewerBuffer::new(file_bytes, idx);
             let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer, encoding));
             return OpResult::Success(SuccessData::None);
         }
 
-        // Text mode: send the buffer first (shows available content immediately),
-        // then build the newline index in chunks.
-        let buffer = ViewerBuffer::new(FileBytes::Mapped(mmap), LineIndex::new());
+        // Large text-mode file: send the buffer first so the visible viewport renders
+        // before the full index is ready, then build the index in 4 MB chunks on the
+        // blocking pool.
+        let buffer = ViewerBuffer::new(file_bytes, LineIndex::new());
         let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer.clone(), encoding));
 
+        let total = buffer.total_bytes();
         if total == 0 {
             buffer.line_index.lock().unwrap().is_complete = true;
             return OpResult::Success(SuccessData::None);
         }
 
-        // Scan 4 MB at a time. Collect offsets locally so the mutex is only
-        // locked for a brief append — not for the entire scan duration.
-        const CHUNK: usize = 4 * 1024 * 1024;
-        let bytes = buffer.bytes.as_bytes();
-        let mut chunk_start = 0usize;
+        let buffer_for_scan = buffer.clone();
+        let cancel = cancel_token.clone();
+        let event_tx = self.event_sender.clone();
+        tokio::task::spawn_blocking(move || {
+            const CHUNK: usize = 4 * 1024 * 1024;
+            let bytes = buffer_for_scan.bytes.as_bytes();
+            let mut chunk_start = 0usize;
 
-        while chunk_start < total {
-            if cancel_token.is_cancelled() {
-                return OpResult::Cancelled;
-            }
+            while chunk_start < total {
+                if cancel.is_cancelled() { return; }
 
-            let chunk_end = (chunk_start + CHUNK).min(total);
-
-            // Scan without holding the lock.
-            let mut local: Vec<u64> = Vec::new();
-            for i in chunk_start..chunk_end {
-                if bytes[i] == b'\n' && i + 1 < total {
-                    local.push((i + 1) as u64);
+                let chunk_end = (chunk_start + CHUNK).min(total);
+                let mut local: Vec<u64> = Vec::new();
+                for i in chunk_start..chunk_end {
+                    if bytes[i] == b'\n' && i + 1 < total {
+                        local.push((i + 1) as u64);
+                    }
                 }
+                if !local.is_empty() {
+                    buffer_for_scan.line_index.lock().unwrap().offsets.extend_from_slice(&local);
+                }
+                let _ = event_tx.send(JobEvent::Progress(
+                    job_id, chunk_end as f64 / total as f64,
+                ));
+                chunk_start = chunk_end;
             }
+            buffer_for_scan.line_index.lock().unwrap().is_complete = true;
+        })
+        .await
+        .ok();
 
-            // Lock briefly only to append.
-            if !local.is_empty() {
-                buffer.line_index.lock().unwrap().offsets.extend_from_slice(&local);
-            }
-
-            let _ = self.event_sender.send(JobEvent::Progress(
-                job_id, chunk_end as f64 / total as f64,
-            ));
-            chunk_start = chunk_end;
-            tokio::task::yield_now().await;
-        }
-
-        buffer.line_index.lock().unwrap().is_complete = true;
         OpResult::Success(SuccessData::None)
     }
     
