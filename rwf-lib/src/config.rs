@@ -547,7 +547,7 @@ impl Default for KeyBindings {
         normal_mode.insert("Alt+Left".to_string(), Action::HistoryBack);
         normal_mode.insert("Alt+Right".to_string(), Action::HistoryForward);
         normal_mode.insert("Shift+Z".to_string(), Action::ReloadConfig);
-        normal_mode.insert("Y".to_string(), Action::LaunchConfigurationProgram);
+        normal_mode.insert("Y".to_string(), Action::EditConfigFile);
         normal_mode.insert("Ctrl+L".to_string(), Action::SaveLog);
         normal_mode.insert("Q".to_string(), Action::Quit);
         normal_mode.insert("Escape".to_string(), Action::Quit);
@@ -625,7 +625,7 @@ pub enum Action {
     // Application
     Quit,
     ReloadConfig,
-    LaunchConfigurationProgram,
+    EditConfigFile,
     SaveLog,
 }
 

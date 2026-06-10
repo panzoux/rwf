@@ -14,15 +14,15 @@ mod tests {
     use tempfile::TempDir;
     use std::fs;
 
-    /// Test that LaunchConfigurationProgram transition creates an ExecuteCustomFunction job
+    /// Test that EditConfigFile transition creates an ExecuteCustomFunction job
     /// **Validates: Requirements 45.1, 45.2**
     #[test]
     fn test_launch_configuration_program_creates_job() {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
         
-        // Trigger LaunchConfigurationProgram transition
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        // Trigger EditConfigFile transition
+        let result = update_state(&mut state, Transition::EditConfigFile);
         
         // Should create a job
         assert_eq!(result.jobs_to_start.len(), 1);
@@ -61,8 +61,8 @@ mod tests {
         let loaded_config = manager.load_config().unwrap();
         let mut state = AppState::new(loaded_config);
         
-        // Trigger LaunchConfigurationProgram
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        // Trigger EditConfigFile
+        let result = update_state(&mut state, Transition::EditConfigFile);
         
         // Verify the job uses the configured editor
         assert_eq!(result.jobs_to_start.len(), 1);
@@ -91,7 +91,7 @@ mod tests {
         let mut state = AppState::new(config);
         
         // Launch config editor
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         
@@ -125,7 +125,7 @@ mod tests {
         let mut state = AppState::new(config);
         
         // Launch config editor
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
@@ -168,7 +168,7 @@ mod tests {
         let mut state = AppState::new(config.clone());
         
         // Launch config editor
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
@@ -206,7 +206,7 @@ mod tests {
         let mut state = AppState::new(config.clone());
         
         // Launch config editor
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
@@ -252,7 +252,7 @@ mod tests {
         let mut state = AppState::new(config);
         
         // Launch config editor
-        let result = update_state(&mut state, Transition::LaunchConfigurationProgram);
+        let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
@@ -278,7 +278,7 @@ mod tests {
         assert!(state.dialogs.is_empty());
     }
 
-    /// Test that Y key binding triggers LaunchConfigurationProgram
+    /// Test that Y key binding triggers EditConfigFile
     /// **Validates: Requirement 45.1**
     #[test]
     fn test_y_key_binding() {
@@ -286,7 +286,7 @@ mod tests {
         
         let keybindings = KeyBindings::default();
         
-        // Verify Y is bound to LaunchConfigurationProgram
+        // Verify Y is bound to EditConfigFile
         let action = keybindings.normal_mode.get("Y");
         assert!(action.is_some(), "Y key should be bound");
         
