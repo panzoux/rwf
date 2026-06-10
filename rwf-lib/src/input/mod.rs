@@ -262,17 +262,127 @@ impl Default for KeyBindings {
 impl KeyBindings {
     
     /// Load key bindings from a JSON file, merging over defaults.
-    /// User entries override defaults; defaults fill any gaps so critical
-    /// bindings (e.g. quit) are never lost due to an incomplete config file.
+    /// Accepts both the native format (`NormalMode` key) and the TWF-compatible
+    /// format (`bindings` key). Unknown action strings become `InvokeCustomFunction`.
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
-        let user: Self = serde_json::from_str(&content)?;
+        let v: serde_json::Value = serde_json::from_str(&content)?;
+
         let mut merged = Self::default();
-        merged.normal_mode.extend(user.normal_mode);
-        merged.search_mode.extend(user.search_mode);
-        merged.dialog_mode.extend(user.dialog_mode);
-        merged.viewer_mode.extend(user.viewer_mode);
+
+        // TWF format: top-level "bindings" key maps to NormalMode
+        if let Some(bindings) = v.get("bindings").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    let action = Self::parse_action_name(action_str);
+                    merged.normal_mode.insert(key.clone(), action);
+                }
+            }
+        }
+
+        // TWF format: "textViewerBindings" maps to ViewerMode
+        if let Some(bindings) = v.get("textViewerBindings").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    // Strip "TextViewer." prefix if present
+                    let stripped = action_str.strip_prefix("TextViewer.").unwrap_or(action_str);
+                    let action = Self::parse_viewer_action_name(stripped);
+                    merged.viewer_mode.insert(key.clone(), action);
+                }
+            }
+        }
+
+        // Native rwf format: NormalMode / SearchMode / ViewerMode keys with Action enum names
+        if let Some(bindings) = v.get("NormalMode").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    let action = Self::parse_action_name(action_str);
+                    merged.normal_mode.insert(key.clone(), action);
+                }
+            }
+        }
+        if let Some(bindings) = v.get("SearchMode").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    let action = Self::parse_action_name(action_str);
+                    merged.search_mode.insert(key.clone(), action);
+                }
+            }
+        }
+        if let Some(bindings) = v.get("DialogMode").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    let action = Self::parse_action_name(action_str);
+                    merged.dialog_mode.insert(key.clone(), action);
+                }
+            }
+        }
+        if let Some(bindings) = v.get("ViewerMode").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    let action = Self::parse_viewer_action_name(action_str);
+                    merged.viewer_mode.insert(key.clone(), action);
+                }
+            }
+        }
+
         Ok(merged)
+    }
+
+    /// Convert an action name string to an `Action`.
+    /// Handles: exact rwf variant names, TWF alias names, and custom function names.
+    fn parse_action_name(s: &str) -> Action {
+        // 1. Try exact deserialization as an Action enum variant
+        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+            return action;
+        }
+        // 2. Legacy alias table — maps old/variant names to canonical Actions
+        match s {
+            "ReloadConfiguration"               => return Action::ReloadConfig,
+            "LaunchConfigEditor"                => return Action::EditConfigFile,
+            "ViewFile"                          => return Action::OpenTextViewer,
+            "ViewFileAsText"                    => return Action::OpenTextViewer,
+            "ViewFileAsHex"                     => return Action::OpenHexViewer,
+            "ViewFileAsImage" | "OpenImageViewer" => return Action::OpenTextViewer, // fallback until image viewer exists
+            "NavigateToRoot"                    => return Action::CursorHome,
+            "PreviousTab"                       => return Action::PrevTab,
+            "JumpToPath"                        => return Action::ShowJumpToPathDialog,
+            "JumpToFile"                        => return Action::ShowJumpToFileDialog,
+            "ExitApplicationAndChangeDirectory" => return Action::ExitAndChangeDirectory,
+            "ShowJobManager"                    => return Action::JobManager,
+            "RegisterCurrentDirectory"          => return Action::RegisterCurrentFolder,
+            "ToggleMarkAndMoveUp"               => return Action::ToggleMarkUp,
+            "ShowSortDialog"                    => return Action::OpenSortDialog,
+            "MarkRange"                         => return Action::RangeMarking,
+            "FileMask"                          => return Action::FileMaskFilter,
+            "WildcardMark"                      => return Action::WildcardMarking,
+            "ResizeTaskPanelUp" | "ResizeTaskPaneUp"     => return Action::IncreaseTaskPanelHeight,
+            "ResizeTaskPanelDown" | "ResizeTaskPaneDown" => return Action::DecreaseTaskPanelHeight,
+            _ => {}
+        }
+        // 3. Unknown → treated as a custom function name (or menu name)
+        Action::InvokeCustomFunction(s.to_string())
+    }
+
+    /// Convert a viewer action name string to an `Action`.
+    fn parse_viewer_action_name(s: &str) -> Action {
+        match s {
+            "FindNext" | "FindPrevious" => Action::ViewerFindNext,
+            "FindPrev"                  => Action::ViewerFindPrev,
+            "Search"                    => Action::ViewerBeginSearch,
+            "StartForwardSearch"        => Action::ViewerBeginSearch,
+            "StartBackwardSearch"       => Action::ViewerBeginSearchBackward,
+            "GoToFileTop"               => Action::ViewerGoToTop,
+            "GoToFileBottom"            => Action::ViewerGoToBottom,
+            "GoToLineStart"             => Action::ViewerScrollLeft,
+            "GoToLineEnd"               => Action::ViewerScrollRight,
+            "PageUp"                    => Action::ViewerPageUp,
+            "PageDown"                  => Action::ViewerPageDown,
+            "ToggleHexMode"             => Action::ViewerToggleHexMode,
+            "CycleEncoding"             => Action::ViewerCycleEncoding,
+            "Close"                     => Action::ViewerClose,
+            _ => Action::InvokeCustomFunction(s.to_string()),
+        }
     }
     
     /// Save key bindings to a JSON file
@@ -477,7 +587,7 @@ pub enum Action {
     ShowVersionInfo,        // compact version/system info (backtick key)
     ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
     SaveLog,
-    LaunchConfigurationProgram,
+    EditConfigFile,
     
     // Task panel operations
     ToggleTaskPanel,
@@ -495,6 +605,10 @@ pub enum Action {
 
     // Internal
     PendingSequence,
+
+    /// Invoke a custom function (or built-in action) by name resolved at runtime.
+    /// Used when keybindings.json maps a key to a name that isn't a known Action variant.
+    InvokeCustomFunction(String),
 }
 
 /// Format a key event as a string for key binding lookup
@@ -1214,9 +1328,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             // Save the current session log to file
             vec![Transition::SaveLog]
         }
-        Action::LaunchConfigurationProgram => {
+        Action::EditConfigFile => {
             // Launch the configured editor with the configuration file
-            vec![Transition::LaunchConfigurationProgram]
+            vec![Transition::EditConfigFile]
         }
         Action::RegisterCurrentFolder => {
             let pane = state.active_pane();
@@ -1349,6 +1463,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }
         }
         Action::PendingSequence => vec![],
+        Action::InvokeCustomFunction(name) => {
+            vec![Transition::InvokeCustomFunctionByName { name: name.clone() }]
+        }
         _ => vec![],
     }
 }

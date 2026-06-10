@@ -12,20 +12,32 @@
       "Description": "Open Windows Terminal in current directory"
     },
     {
-      "Name": "Tools",
+      "Name": "Ping localhost",
+      "Command": "ping 127.0.0.1",
+      "Description": "Ping local loopback"
+    },
+    {
+      "Name": "Show IP config",
+      "Command": "ipconfig /all",
+      "Description": "Show network IP configuration"
+    },
+    {
+      "Name": "Network Tools",
+      "Description": "Network diagnostics submenu",
       "Menu": [
         {
           "Name": "Ping localhost",
-          "Command": "ping 127.0.0.1"
+          "Action": "Ping localhost"
         },
         {
           "Name": "Show IP config",
-          "Command": "ipconfig /all"
+          "Action": "Show IP config"
         }
       ]
     },
     {
       "Name": "File Operations",
+      "Description": "File operation actions submenu",
       "Menu": "menu_file_operations.json"
     }
   ]

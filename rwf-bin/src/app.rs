@@ -425,6 +425,17 @@ impl App {
             return true;
         }
 
+        // Ctrl+W: emergency viewer escape (hardcoded, works regardless of mode or dialog state).
+        // Cancels any in-progress viewer loading job and closes the viewer immediately.
+        // Useful when the viewer appears stuck or unresponsive.
+        if key.code == crossterm::event::KeyCode::Char('w')
+            && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+            && self.state.viewer.is_some()
+        {
+            rwf_lib::state::update_state(&mut self.state, Transition::CloseViewer);
+            return true;
+        }
+
         let key_string = rwf_lib::input::format_key_event(&key);
         tracing::info!("[KEY] code={:?} modifiers={:?} kind={:?} formatted={:?}", key.code, key.modifiers, key.kind, key_string);
         let now = Instant::now();
@@ -462,10 +473,20 @@ impl App {
                     if let Some(job_id) = loading_job {
                         self.state.jobs.request_cancel(job_id);
                     }
+                    let is_menu_dialog = matches!(&dialog.content, rwf_lib::model::dialog::DialogContent::CustomFunctionMenu { .. });
                     self.state.dialogs.pop();
+                    // Esc on a CustomFunctionMenu closes the whole stack (not just the menu)
+                    if is_menu_dialog {
+                        if let Some(d) = self.state.dialogs.current() {
+                            if matches!(&d.content, rwf_lib::model::dialog::DialogContent::CustomFunctionSelector { .. }) {
+                                self.state.dialogs.pop();
+                            }
+                        }
+                    }
                     return true;
                 }
                 crate::ui::dialog::DialogAction::Confirm => {
+                    let is_function_menu = matches!(&dialog.content, rwf_lib::model::dialog::DialogContent::CustomFunctionMenu { .. });
                     let mut should_pop = true;
                     match &mut dialog.content {
                         rwf_lib::model::dialog::DialogContent::FileConflict { conflicts, current_index, decisions, .. } => {
@@ -499,7 +520,31 @@ impl App {
                                 self.pattern_rename_last_changed = None;
                                 self.pattern_rename_pending = None;
                             }
-                            if let Some(job_spec) = crate::ui::dialog::process_dialog_confirmation(&mut self.state) {
+                            let confirmed_job = crate::ui::dialog::process_dialog_confirmation(&mut self.state);
+                            // Drain staging logs and reload flag written by built-in menu actions
+                            let conf_logs: Vec<String> = self.state.pending_confirmation_logs.drain(..).collect();
+                            if !conf_logs.is_empty() {
+                                for log in conf_logs {
+                                    let level = if log.contains("[NG]") || log.contains("[FAIL]") {
+                                        crate::ui::task_panel::LogLevel::Fail
+                                    } else if log.contains("[Skipped]") {
+                                        crate::ui::task_panel::LogLevel::Warn
+                                    } else {
+                                        crate::ui::task_panel::LogLevel::Info
+                                    };
+                                    self.task_panel.add_log(log, level);
+                                }
+                                let h = self.state.ui.layout.task_panel_height;
+                                self.task_panel.scroll_to_end(h);
+                            }
+                            if self.state.confirmation_needs_keybinding_reload {
+                                self.state.confirmation_needs_keybinding_reload = false;
+                                let kb_path = rwf_lib::config::ConfigManager::new().keybindings_path().to_path_buf();
+                                if let Ok(kb) = rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
+                                    self.key_bindings = kb;
+                                }
+                            }
+                            if let Some(job_spec) = confirmed_job {
                                 // For Delete jobs confirmed via dialog, register background job for task panel logs
                                 if let JobKind::Delete { ref targets } = job_spec.kind {
                                     let job_name = crate::ui::dialog::delete_job_name(targets);
@@ -525,6 +570,14 @@ impl App {
                         }
                     }
                     if should_pop { self.state.dialogs.pop(); }
+                    // Confirming a menu item also closes the underlying CustomFunctionSelector
+                    if is_function_menu {
+                        if let Some(d) = self.state.dialogs.current() {
+                            if matches!(&d.content, rwf_lib::model::dialog::DialogContent::CustomFunctionSelector { .. }) {
+                                self.state.dialogs.pop();
+                            }
+                        }
+                    }
                     return true;
                 }
                 crate::ui::dialog::DialogAction::DeleteSelected => {
@@ -575,6 +628,11 @@ impl App {
                 }
                 crate::ui::dialog::DialogAction::RotateLanguage => {
                     rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::RotateHelpLanguage);
+                    return true;
+                }
+                crate::ui::dialog::DialogAction::OpenMenu { title, items } => {
+                    let menu_dialog = rwf_lib::model::dialog::Dialog::custom_function_menu(title, items);
+                    self.state.dialogs.push(menu_dialog);
                     return true;
                 }
                 _ => return true,
@@ -924,6 +982,32 @@ impl App {
                 let h = self.state.ui.layout.task_panel_height;
                 self.task_panel.scroll_down(h);
                 return true;
+            }
+            let is_reload_config = action == rwf_lib::input::Action::ReloadConfig;
+            // Reload keybindings BEFORE the ReloadConfig transition so the state-generated
+            // log includes the updated keybindings status.
+            if is_reload_config {
+                let kb_path = rwf_lib::config::ConfigManager::new().keybindings_path().to_path_buf();
+                let kb_exists = kb_path.exists();
+                let (new_kb, kb_result) = match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
+                    Ok(kb) => {
+                        tracing::info!("Keybindings reloaded from {:?}", kb_path);
+                        (kb, rwf_lib::config::ConfigLoadResult::ok(kb_path))
+                    }
+                    Err(e) => {
+                        let result = if kb_exists {
+                            tracing::warn!("Failed to reload keybindings.json: {:?}", e);
+                            rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
+                        } else {
+                            rwf_lib::config::ConfigLoadResult::skipped(kb_path, "file not found")
+                        };
+                        (rwf_lib::KeyBindings::default(), result)
+                    }
+                };
+                self.key_bindings = new_kb;
+                if self.state.config_load_results.len() > 1 {
+                    self.state.config_load_results[1] = kb_result;
+                }
             }
             let transitions = rwf_lib::input::action_to_transitions(&self.state, &action);
             tracing::info!("[KEY] transitions={}", transitions.len());

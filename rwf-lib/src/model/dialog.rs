@@ -96,6 +96,11 @@ pub enum DialogContent {
         filter: String,
         selected_index: usize,
     },
+    /// Second-level menu opened when a menu-type custom function is selected
+    CustomFunctionMenu {
+        items: Vec<MenuItem>,
+        selected_index: usize,
+    },
     RegisteredFolderSelector {
         folders: Vec<RegisteredFolder>,
         filter: String,
@@ -388,12 +393,39 @@ pub enum DriveType {
     Unknown,
 }
 
-/// Menu content: either an inline list of children or a filename to load from.
+/// A single item in a menu_xxx.json file.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MenuItem {
+    pub name: String,
+    /// Custom function name or built-in action name. Empty string = separator.
+    #[serde(default)]
+    pub action: String,
+}
+
+impl MenuItem {
+    pub fn is_separator(&self) -> bool {
+        self.name.starts_with("-----") || self.action.is_empty()
+    }
+    pub fn is_selectable(&self) -> bool { !self.is_separator() }
+}
+
+/// Wrapper for the menu_xxx.json file format.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MenuFile {
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub version: String,
+    pub menus: Vec<MenuItem>,
+}
+
+/// Menu content: either a resolved item list or a filename to load from.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum MenuContent {
-    /// Inline children defined directly in this file
-    Inline(Vec<CustomFunction>),
+    /// Resolved list of menu items (after loading)
+    Items(Vec<MenuItem>),
     /// Path to a separate menu JSON file (relative to the parent file's directory)
     File(String),
 }
@@ -407,7 +439,7 @@ pub struct CustomFunction {
     /// Shell command to execute (leaf entry). Mutually exclusive with Menu.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    /// Submenu: inline list or filename reference. Resolved to Inline after loading.
+    /// Submenu: inline item list or filename reference. Resolved to Items after loading.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub menu: Option<MenuContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -428,10 +460,10 @@ impl CustomFunction {
     pub fn is_menu(&self) -> bool { self.menu.is_some() }
     pub fn is_command(&self) -> bool { self.command.is_some() }
 
-    /// Return the resolved inline children, or empty slice if not a menu.
-    pub fn menu_items(&self) -> &[CustomFunction] {
+    /// Return the resolved menu items, or empty slice if not a menu or not yet resolved.
+    pub fn menu_items(&self) -> &[MenuItem] {
         match &self.menu {
-            Some(MenuContent::Inline(items)) => items,
+            Some(MenuContent::Items(items)) => items,
             _ => &[],
         }
     }
@@ -619,6 +651,19 @@ impl Dialog {
                 functions,
                 filter: String::new(),
                 selected_index: 0,
+            },
+        }
+    }
+
+    /// Create a custom function menu dialog (second-level menu from a menu-type entry)
+    pub fn custom_function_menu(title: String, items: Vec<MenuItem>) -> Self {
+        // Initialize selected_index on first selectable item
+        let first_sel = items.iter().position(|i| i.is_selectable()).unwrap_or(0);
+        Self {
+            title,
+            content: DialogContent::CustomFunctionMenu {
+                items,
+                selected_index: first_sel,
             },
         }
     }
@@ -2112,30 +2157,31 @@ fn parse_custom_functions(content: &str) -> Result<Vec<CustomFunction>, Box<dyn 
     Ok(file.functions)
 }
 
-/// Recursively resolve `Menu: "filename.json"` references into inline children.
+/// Resolve `Menu: "filename.json"` references into item lists.
+/// Inline `Items` entries are left as-is (nested menus not supported in 6.6 scope).
 fn resolve_menu_files(functions: &mut Vec<CustomFunction>, base_dir: &std::path::Path) {
     for func in functions.iter_mut() {
-        match &func.menu {
-            Some(MenuContent::File(filename)) => {
-                let menu_path = base_dir.join(filename);
-                match parse_custom_functions(&std::fs::read_to_string(&menu_path).unwrap_or_default()) {
-                    Ok(mut children) => {
-                        resolve_menu_files(&mut children, base_dir);
-                        func.menu = Some(MenuContent::Inline(children));
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to load menu file {:?}: {}", menu_path, e);
-                        func.menu = Some(MenuContent::Inline(Vec::new()));
+        if let Some(MenuContent::File(filename)) = &func.menu {
+            let menu_path = base_dir.join(filename);
+            match std::fs::read_to_string(&menu_path) {
+                Ok(content) => {
+                    match serde_json::from_str::<MenuFile>(&content) {
+                        Ok(menu_file) => {
+                            func.menu = Some(MenuContent::Items(menu_file.menus));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse menu file {:?}: {}", menu_path, e);
+                            func.menu = Some(MenuContent::Items(Vec::new()));
+                        }
                     }
                 }
+                Err(e) => {
+                    tracing::warn!("Failed to read menu file {:?}: {}", menu_path, e);
+                    func.menu = Some(MenuContent::Items(Vec::new()));
+                }
             }
-            Some(MenuContent::Inline(children)) => {
-                let mut children = children.clone();
-                resolve_menu_files(&mut children, base_dir);
-                func.menu = Some(MenuContent::Inline(children));
-            }
-            None => {}
         }
+        // Inline Items stay as-is; no recursive nesting in 6.6
     }
 }
 

@@ -87,6 +87,8 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
         DialogContent::ExtractionConfirm { .. } => vec!["Extract", "Cancel"],
         DialogContent::DeleteConfirm { .. } => vec!["Delete", "Cancel"],
         DialogContent::CloseTabWithActiveJob { .. } => vec!["OK", "Cancel"],
+        // Error dialogs: OK only — Cancel has no distinct meaning
+        DialogContent::Error { .. } => vec!["OK"],
         _ => vec!["OK", "Cancel"],
     }
 }

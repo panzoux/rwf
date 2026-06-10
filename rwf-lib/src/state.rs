@@ -50,6 +50,10 @@ pub struct AppState {
     pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
     /// Load results for all config files, used by the verbose version info display
     pub config_load_results: Vec<crate::config::ConfigLoadResult>,
+    /// Staging: logs produced by dialog-confirmation built-in actions (drained by app.rs each frame)
+    pub pending_confirmation_logs: Vec<String>,
+    /// Staging: set true when a dialog confirmation triggered ReloadConfig (app.rs reloads keybindings)
+    pub confirmation_needs_keybinding_reload: bool,
 }
 
 impl AppState {
@@ -120,6 +124,7 @@ impl AppState {
         let (extension_associations, ext_result) = config_manager.load_extension_associations_with_result();
 
         let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
+        let custom_fn_dir = custom_fn_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
         let (custom_functions, custom_fn_result) = match crate::model::dialog::load_custom_functions(&custom_fn_path) {
             Ok(fns) if !fns.is_empty() || custom_fn_path.exists() => {
                 let result = if custom_fn_path.exists() {
@@ -137,7 +142,29 @@ impl AppState {
             config_manager.context_menu_path()
         );
 
-        let config_load_results = vec![ext_result, custom_fn_result, context_menu_result];
+        // Validate any menu_*.json files in the same directory as custom_functions.json
+        let mut menu_file_results: Vec<crate::config::ConfigLoadResult> = Vec::new();
+        if custom_fn_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(custom_fn_dir) {
+                let mut menu_paths: Vec<std::path::PathBuf> = entries
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| {
+                        p.file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|n| n.starts_with("menu_") && n.ends_with(".json"))
+                            .unwrap_or(false)
+                    })
+                    .collect();
+                menu_paths.sort();
+                for path in menu_paths {
+                    menu_file_results.push(crate::config::ConfigManager::validate_json_file(&path));
+                }
+            }
+        }
+
+        let mut config_load_results = vec![ext_result, custom_fn_result, context_menu_result];
+        config_load_results.extend(menu_file_results);
 
         Self {
             tabs: TabManager::new(),
@@ -162,6 +189,8 @@ impl AppState {
             extension_associations,
             custom_functions,
             config_load_results,
+            pending_confirmation_logs: Vec::new(),
+            confirmation_needs_keybinding_reload: false,
         }
     }
     
@@ -679,6 +708,7 @@ impl AppState {
                         task_panel_logs: vec![log],
                         panes_to_refresh: Vec::new(),
                         ui_changed: true,
+                        reload_keybindings: false,
                     })
                 } else {
                     Some(StateUpdateResult::with_ui_change())
@@ -713,17 +743,30 @@ impl AppState {
                 
                 let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
                     let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-                    let status_tag = match result {
-                        crate::job::OpResult::Success(_) => "[OK]",
-                        crate::job::OpResult::Failed(_) => "[FAIL]",
-                        crate::job::OpResult::Cancelled => "[WARN]",
-                    };
-                    format!("{} [Job {}] [Tab {}] {}: Completed {}",
-                        timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name, status_tag)
+                    match result {
+                        crate::job::OpResult::Success(_) =>
+                            format!("{} [Job {}] [Tab {}] {}: [OK]",
+                                timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name),
+                        crate::job::OpResult::Failed(e) => {
+                            let detail = e.trim();
+                            if detail.is_empty() {
+                                format!("{} [Job {}] [Tab {}] {}: [FAIL]",
+                                    timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name)
+                            } else {
+                                format!("{} [Job {}] [Tab {}] {}: [FAIL] — {}",
+                                    timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name, detail)
+                            }
+                        }
+                        crate::job::OpResult::Cancelled =>
+                            format!("{} [Job {}] [Tab {}] {}: [WARN] Cancelled",
+                                timestamp, bg_job.id.short_id, bg_job.tab_id + 1, bg_job.name),
+                    }
                 });
 
                 if let crate::job::OpResult::Failed(ref error_message) = result {
                     if let Some(ref spec) = job_spec {
+                        // ExecuteCustomFunction failures go to the task panel log only (no modal)
+                        let skip_dialog = matches!(&spec.kind, crate::job::JobKind::ExecuteCustomFunction { .. });
                         let op_name = match &spec.kind {
                             crate::job::JobKind::ReadDirectory { .. } => "Read directory",
                             crate::job::JobKind::Copy { .. } => "Copy",
@@ -745,8 +788,10 @@ impl AppState {
                             crate::job::JobKind::CollectJumpCandidates { .. } => "Collect jump candidates",
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
                         };
-                        let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
-                        self.dialogs.push(error_dialog);
+                        if !skip_dialog {
+                            let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
+                            self.dialogs.push(error_dialog);
+                        }
                     }
                 }
 
@@ -1021,25 +1066,79 @@ impl AppState {
                                 }
                             }
                         }
-                        crate::job::JobKind::ExecuteCustomFunction { command, .. } => {
-                            if let crate::job::OpResult::Success(_) = result {
-                                let config_manager = crate::config::ConfigManager::new();
-                                let config_path = config_manager.config_path().to_string_lossy().to_string();
-
-                                if command.contains(&config_path) {
-                                    let dialog = crate::model::Dialog::confirmation(
-                                        "Configuration Editor Closed",
-                                        "Reload configuration?"
-                                    );
-                                    self.dialogs.push(dialog);
+                        crate::job::JobKind::ExecuteCustomFunction { command, pipe_to_action, .. } => {
+                            match result {
+                                crate::job::OpResult::Failed(ref e) => {
+                                    tracing::info!("[CompleteJob] ExecuteCustomFunction FAILED: cmd={:?} stderr={:?}", command, e.trim());
+                                }
+                                crate::job::OpResult::Success(crate::job::SuccessData::CustomFunctionOutput(ref out)) => {
+                                    tracing::info!("[CompleteJob] ExecuteCustomFunction OK: pipe_to_action={:?} stdout={:?}", pipe_to_action, out.trim());
+                                }
+                                _ => {}
+                            }
+                            if let crate::job::OpResult::Success(crate::job::SuccessData::CustomFunctionOutput(ref stdout)) = result {
+                                // Handle PipeToAction first — the output drives navigation/execution
+                                if let Some(ref action) = pipe_to_action {
+                                    // Strip whitespace then surrounding quotes that cmd.exe echo may leave
+                                    let output = stdout.trim().trim_matches('"');
+                                    tracing::info!("[CompleteJob] PipeToAction={:?} output={:?}", action, output);
+                                    match crate::pipe_to_action::process_pipe_to_action(action, output) {
+                                        Ok(crate::pipe_to_action::PipeToActionResult::JumpToPath(location)) => {
+                                            // Navigate the active pane to the target location
+                                            let pane = self.ui.active_pane;
+                                            let tab = self.current_tab_mut();
+                                            let tab_id = tab.id;
+                                            let pane_model = match pane {
+                                                crate::model::ActivePane::Left  => &mut tab.left_pane,
+                                                crate::model::ActivePane::Right => &mut tab.right_pane,
+                                            };
+                                            pane_model.current_location = location.clone();
+                                            pane_model.entries.clear();
+                                            pane_model.is_loading = true;
+                                            pane_model.cursor = 0;
+                                            pane_model.scroll_offset = 0;
+                                            let job_spec = crate::job::JobSpec::new(
+                                                crate::job::JobKind::ReadDirectory { location }
+                                            ).with_requesting_pane(tab_id, pane);
+                                            result_obj.jobs_to_start.push(job_spec);
+                                            result_obj.ui_changed = true;
+                                        }
+                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFile(path)) => {
+                                            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                                                command: path.to_string_lossy().to_string(),
+                                                working_dir: self.active_pane().current_location.clone(),
+                                                pipe_to_action: None,
+                                                shell: None,
+                                            });
+                                            result_obj.jobs_to_start.push(job_spec);
+                                        }
+                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFileWithEditor(path)) => {
+                                            let kind = Self::editor_job(&self.config, path.to_string_lossy().to_string());
+                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(kind));
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("[CompleteJob] PipeToAction failed: {}", e);
+                                            result_obj.task_panel_logs.push(format!("  PipeToAction error: {}", e));
+                                            result_obj.ui_changed = true;
+                                        }
+                                    }
                                 } else {
-                                    // External commands may change files in unknown ways.
-                                    // Always refresh the active pane rather than requiring the user
-                                    // to declare an explicit refresh scope in config.
-                                    result_obj.panes_to_refresh.push(PaneRefresh {
-                                        tab_id: self.tabs.active_index,
-                                        pane: self.ui.active_pane,
-                                    });
+                                    // No pipe_to_action: check for editor-closed reload prompt,
+                                    // otherwise refresh the active pane.
+                                    let config_manager = crate::config::ConfigManager::new();
+                                    let config_path = config_manager.config_path().to_string_lossy().to_string();
+                                    if command.contains(&config_path) {
+                                        let dialog = crate::model::Dialog::confirmation(
+                                            "Configuration Editor Closed",
+                                            "Reload configuration?"
+                                        );
+                                        self.dialogs.push(dialog);
+                                    } else {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: self.tabs.active_index,
+                                            pane: self.ui.active_pane,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -1420,6 +1519,32 @@ impl AppState {
                     Some(StateUpdateResult::with_ui_change())
                 }
             }
+            Transition::InvokeCustomFunctionByName { name } => {
+                let func = self.custom_functions.iter().find(|f| f.name == *name).cloned();
+                if let Some(func) = func {
+                    if func.is_menu() {
+                        let title = func.name.clone();
+                        let items = func.menu_items().to_vec();
+                        self.dialogs.push(crate::model::Dialog::custom_function_menu(title, items));
+                        Some(StateUpdateResult::with_ui_change())
+                    } else if let Some(_cmd) = func.get_command() {
+                        let expander = crate::macro_expander::MacroExpander::new();
+                        let command = expander.expand(self, &func)
+                            .unwrap_or_else(|_| func.get_command().unwrap_or("").replace("$I", ""));
+                        let working_dir = self.active_pane().current_location.clone();
+                        let shell = func.get_shell().map(|s| s.to_string());
+                        let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                            command, working_dir, pipe_to_action: func.pipe_to_action.clone(), shell,
+                        });
+                        Some(StateUpdateResult::with_job(job_spec))
+                    } else {
+                        None
+                    }
+                } else {
+                    tracing::warn!("InvokeCustomFunctionByName: no function named {:?}", name);
+                    None
+                }
+            }
             Transition::ExecuteAssociation { command, working_dir, shell } => {
                 let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
                     command: command.clone(),
@@ -1598,7 +1723,7 @@ impl AppState {
                 }
                 Some(StateUpdateResult::none())
             }
-            Transition::LaunchConfigurationProgram => {
+            Transition::EditConfigFile => {
                 let config_manager = crate::config::ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
                 let job_spec = JobSpec::new(Self::editor_job(
@@ -2204,6 +2329,7 @@ impl AppState {
                     task_panel_logs: vec![log_msg],
                     panes_to_refresh: Vec::new(),
                     ui_changed: true,
+                    reload_keybindings: false,
                 })
             }
             Transition::CreatePendingFileJob { spec, name, description: _ } => {
@@ -2228,6 +2354,7 @@ impl AppState {
                     task_panel_logs: vec![log_msg],
                     panes_to_refresh: Vec::new(),
                     ui_changed: true,
+                    reload_keybindings: false,
                 })
             }
             _ => None,
@@ -2316,6 +2443,8 @@ pub enum Transition {
     ScrollTaskPanelDown,
     ShowContextMenu,
     ShowCustomFunctionsDialog,
+    /// Invoke a custom function (or menu) by name, resolved from state.custom_functions at runtime.
+    InvokeCustomFunctionByName { name: String },
     /// Execute a command from a file-type extension association (Phase 6.2)
     ExecuteAssociation { command: String, working_dir: crate::model::Location, shell: Option<String> },
     ShowDriveChangeDialog,
@@ -2323,7 +2452,7 @@ pub enum Transition {
     ShowVersion,
     SaveLog,
     RotateHelpLanguage,
-    LaunchConfigurationProgram,
+    EditConfigFile,
     OpenWithEditor { path: String },
     ShowRegisteredFolderDialog,
     RegisterCurrentFolder { name: String, path: String },
@@ -2421,6 +2550,8 @@ pub struct StateUpdateResult {
     pub panes_to_refresh: Vec<PaneRefresh>,
     /// Whether the UI needs to be redrawn
     pub ui_changed: bool,
+    /// Signal to app.rs to reload keybindings from file (set by ReloadConfig)
+    pub reload_keybindings: bool,
 }
 
 impl StateUpdateResult {
@@ -2436,6 +2567,7 @@ impl StateUpdateResult {
             task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: false,
+            reload_keybindings: false,
         }
     }
 
@@ -2451,6 +2583,7 @@ impl StateUpdateResult {
             task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
+            reload_keybindings: false,
         }
     }
 
@@ -2466,6 +2599,7 @@ impl StateUpdateResult {
             task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
+            reload_keybindings: false,
         }
     }
 
@@ -2481,6 +2615,7 @@ impl StateUpdateResult {
             task_panel_logs: Vec::new(),
             panes_to_refresh: vec![PaneRefresh { tab_id, pane }],
             ui_changed: true,
+            reload_keybindings: false,
         }
     }
 
@@ -2496,6 +2631,7 @@ impl StateUpdateResult {
             task_panel_logs: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
+            reload_keybindings: false,
         }
     }
 }
@@ -2611,17 +2747,54 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 config_manager.context_menu_path()
             );
 
-            // Preserve config.json and keybindings.json results at front (already populated at startup)
+            // Scan menu_*.json files in the same directory as custom_functions.json
+            let custom_fn_dir = config_manager.custom_functions_path()
+                .parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+            let mut menu_file_results: Vec<crate::config::ConfigLoadResult> = Vec::new();
+            if custom_fn_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&custom_fn_dir) {
+                    let mut menu_paths: Vec<std::path::PathBuf> = entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.file_name()
+                                .and_then(|n| n.to_str())
+                                .map(|n| n.starts_with("menu_") && n.ends_with(".json"))
+                                .unwrap_or(false)
+                        })
+                        .collect();
+                    menu_paths.sort();
+                    for path in menu_paths {
+                        menu_file_results.push(crate::config::ConfigManager::validate_json_file(&path));
+                    }
+                }
+            }
+
+            // Preserve first 2 slots (config.json [0] and keybindings.json [1]).
+            // keybindings.json is reloaded in app.rs before this transition, so [1] is already current.
             let prev_results: Vec<_> = state.config_load_results.drain(..2).collect();
             state.config_load_results = prev_results;
             state.config_load_results[0] = config_result;
-            // keybindings result (index 1) doesn't change on reload — keybindings.json is not reloaded at runtime
             state.config_load_results.extend([ext_result, custom_fn_result, context_menu_result]);
+            state.config_load_results.extend(menu_file_results);
 
             // Build feedback messages
             use crate::config::ConfigLoadStatus;
             let mut messages: Vec<String> = Vec::new();
-            messages.push("Configuration reloaded.".to_string());
+            messages.push("Configuration reloaded:".to_string());
+
+            // Show status for each config file
+            for r in &state.config_load_results {
+                let filename = r.path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| r.path.to_string_lossy().into_owned());
+                let line = match &r.status {
+                    ConfigLoadStatus::Ok           => format!("  [OK]      {}", filename),
+                    ConfigLoadStatus::Skipped(why) => format!("  [Skipped] {} ({})", filename, why),
+                    ConfigLoadStatus::Error(detail) => format!("  [NG]      {} — {}", filename, detail),
+                };
+                messages.push(line);
+            }
 
             // Restart-required notice
             let mut restart_items: Vec<&str> = Vec::new();
@@ -2632,21 +2805,15 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 restart_items.push("Migemo dictionary path");
             }
             if !restart_items.is_empty() {
-                messages.push(format!("  Restart required for: {}.", restart_items.join(", ")));
-            }
-
-            // [NG] errors
-            for r in &state.config_load_results {
-                if let ConfigLoadStatus::Error(detail) = &r.status {
-                    messages.push(format!("  [NG] {}: {}", r.path.to_string_lossy(), detail));
-                }
+                messages.push(format!("  Note: restart required to apply: {}.", restart_items.join(", ")));
             }
 
             let mut result = StateUpdateResult::with_ui_change();
             result.task_panel_logs = messages;
+            result.reload_keybindings = true;
             result
         }
-        
+
         Transition::UpdateConfig { config } => {
             state.jobs.max_parallel = config.worker_pool_size;
             state.config = *config;
