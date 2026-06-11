@@ -37,6 +37,15 @@ impl DialogStack {
         self.input_buffer.clear();
         self.stack.pop()
     }
+
+    /// Pop the dialog immediately below the top, leaving the top in place.
+    /// Used to silently remove the CustomFunctionSelector that sits under a $I Input dialog.
+    pub fn pop_below_top(&mut self) {
+        if self.stack.len() >= 2 {
+            let idx = self.stack.len() - 2;
+            self.stack.remove(idx);
+        }
+    }
     
     /// Get current dialog
     pub fn current(&self) -> Option<&Dialog> {

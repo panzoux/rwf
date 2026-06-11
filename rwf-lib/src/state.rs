@@ -54,6 +54,12 @@ pub struct AppState {
     pub pending_confirmation_logs: Vec<String>,
     /// Staging: set true when a dialog confirmation triggered ReloadConfig (app.rs reloads keybindings)
     pub confirmation_needs_keybinding_reload: bool,
+    /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
+    /// consumed and cleared when that Input dialog confirms.
+    pub pending_custom_function_input: Option<crate::model::dialog::CustomFunction>,
+    /// Set by process_dialog_confirmation when it pushes a new dialog; tells app.rs not to
+    /// pop the current dialog (it was replaced by the newly pushed one).
+    pub suppress_next_dialog_pop: bool,
 }
 
 impl AppState {
@@ -191,6 +197,8 @@ impl AppState {
             config_load_results,
             pending_confirmation_logs: Vec::new(),
             confirmation_needs_keybinding_reload: false,
+            pending_custom_function_input: None,
+            suppress_next_dialog_pop: false,
         }
     }
     

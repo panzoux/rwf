@@ -3298,6 +3298,24 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 let new_dir_loc = current_location.join(&input);
                 return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Mkdir { location: new_dir_loc }));
             }
+            "Custom Function Input" => {
+                if let Some(func) = state.pending_custom_function_input.take() {
+                    let expander = rwf_lib::macro_expander::MacroExpander::new();
+                    if let Ok(command) = expander.expand_with_user_input(state, &func, &input) {
+                        let working_dir = state.active_pane().current_location.clone();
+                        let shell = func.shell.clone();
+                        // Pop the CustomFunctionSelector sitting below this Input dialog;
+                        // app.rs will pop the Input dialog itself after we return.
+                        state.dialogs.pop_below_top();
+                        return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
+                            command,
+                            working_dir,
+                            pipe_to_action: func.pipe_to_action.clone(),
+                            shell,
+                        }));
+                    }
+                }
+            }
             _ => {}
         }
         return None;
@@ -3620,21 +3638,16 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             }));
                         }
                         Err(_) => {
-                            // Command requires $I user input — show an input dialog
-                            // For now, execute with empty string substitution
-                            let command_with_empty = func.get_command().unwrap_or("").replace("$I", "");
-                            let expander2 = rwf_lib::macro_expander::MacroExpander::new();
-                            let func2 = rwf_lib::model::dialog::CustomFunction::new("tmp", command_with_empty);
-                            if let Ok(command) = expander2.expand(state, &func2) {
-                                let working_dir = state.active_pane().current_location.clone();
-                                let shell = func.shell.clone();
-                                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                    command,
-                                    working_dir,
-                                    pipe_to_action: None,
-                                    shell,
-                                }));
-                            }
+                            // Command requires $I user input — push an Input dialog.
+                            let prompt = rwf_lib::macro_expander::MacroExpander::extract_i_prompt(
+                                func.get_command().unwrap_or("")
+                            ).unwrap_or_else(|| "Enter input".to_string());
+                            state.dialogs.push(rwf_lib::model::Dialog::input(
+                                "Custom Function Input", &prompt, ""
+                            ));
+                            state.pending_custom_function_input = Some(func);
+                            state.suppress_next_dialog_pop = true;
+                            return None;
                         }
                     }
                 }

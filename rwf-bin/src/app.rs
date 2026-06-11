@@ -521,6 +521,11 @@ impl App {
                                 self.pattern_rename_pending = None;
                             }
                             let confirmed_job = crate::ui::dialog::process_dialog_confirmation(&mut self.state);
+                            // If process_dialog_confirmation pushed a new dialog, don't pop the old one.
+                            if self.state.suppress_next_dialog_pop {
+                                self.state.suppress_next_dialog_pop = false;
+                                should_pop = false;
+                            }
                             // Drain staging logs and reload flag written by built-in menu actions
                             let conf_logs: Vec<String> = self.state.pending_confirmation_logs.drain(..).collect();
                             if !conf_logs.is_empty() {

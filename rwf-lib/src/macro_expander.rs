@@ -161,15 +161,24 @@ impl MacroExpander {
         function.get_command().map_or(false, |c| c.contains("$I"))
     }
 
-    /// Expand the $I macro with user-provided input
+    /// Extract the prompt text from a `$I"prompt"` or `$I5"prompt"` pattern.
+    /// Returns None if the command has bare `$I` with no quoted prompt.
+    pub fn extract_i_prompt(command: &str) -> Option<String> {
+        let re = Regex::new(r#"\$I\d?"([^"]*)""#).unwrap();
+        re.captures(command).map(|cap| cap[1].to_string())
+    }
+
+    /// Expand the $I macro with user-provided input.
+    /// Replaces the entire `$I"prompt"` / `$I5"prompt"` / bare `$I` pattern with user_input.
     pub fn expand_with_user_input(&self, state: &AppState, function: &CustomFunction, user_input: &str) -> Result<String, String> {
         let mut command = function.get_command()
             .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
             .to_string();
-        
-        // Replace $I with user input
-        command = command.replace("$I", user_input);
-        
+
+        // Replace $I"prompt", $I5"prompt", or bare $I — the whole token — with user_input.
+        let re = Regex::new(r#"\$I(?:\d?"[^"]*")?"#).unwrap();
+        command = re.replace_all(&command, user_input).into_owned();
+
         // Now expand all other macros
         self.expand_impl(state, &command)
     }
@@ -375,6 +384,38 @@ mod tests {
         assert!(result.contains("hello"));
     }
     
+    #[test]
+    fn test_extract_i_prompt() {
+        assert_eq!(MacroExpander::extract_i_prompt(r#"cmd /c copy "$P\$F" "$I"Destination path""#), Some("Destination path".to_string()));
+        assert_eq!(MacroExpander::extract_i_prompt(r#"cmd /c ren "$P\$F" "$I"New filename""#), Some("New filename".to_string()));
+        assert_eq!(MacroExpander::extract_i_prompt(r#"$I5"Enter path""#), Some("Enter path".to_string()));
+        assert_eq!(MacroExpander::extract_i_prompt(r#"echo $I"#), None);
+        assert_eq!(MacroExpander::extract_i_prompt("echo $P"), None);
+    }
+
+    #[test]
+    fn test_expand_with_user_input_removes_prompt_text() {
+        let state = create_test_state();
+        let expander = MacroExpander::new();
+
+        // $I"prompt" — whole token replaced, prompt text must not appear in result
+        let f = CustomFunction::new("t", r#"cmd /c copy "src" "$I"Destination path""#);
+        let r = expander.expand_with_user_input(&state, &f, r#"C:\dest"#).unwrap();
+        assert!(r.contains(r#"C:\dest"#), "user input missing: {r}");
+        assert!(!r.contains("Destination path"), "prompt text leaked: {r}");
+        assert!(!r.contains("$I"), "$I not replaced: {r}");
+
+        // $I5"prompt" — width variant
+        let f = CustomFunction::new("t", r#"notepad $I5"Enter file""#);
+        let r = expander.expand_with_user_input(&state, &f, "out.txt").unwrap();
+        assert_eq!(r, "notepad out.txt");
+
+        // bare $I — no prompt text
+        let f = CustomFunction::new("t", "echo $I");
+        let r = expander.expand_with_user_input(&state, &f, "hello").unwrap();
+        assert_eq!(r, "echo hello");
+    }
+
     #[test]
     fn test_expand_env_var_formats() {
         let state = create_test_state();

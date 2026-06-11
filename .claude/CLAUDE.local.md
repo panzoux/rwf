@@ -60,8 +60,45 @@ The test suite is highly stable (~99.5% pass rate).
 - `plan/ROADMAP.md` (Japanese) is the source of truth for phase progress.
 - Current Status: **Phase 7** (RWF-specific enhancements).
 
+## Feature Testing Protocol
+
+### The "Real Config" Problem
+Unit tests and sample files in `/sample/` do NOT represent what the user actually has.
+The real installed config lives at `C:\Users\user\AppData\Roaming\rwf\` (Windows).
+**Whenever a feature touches config files or custom functions, always check the real installed files too.**
+
+Lesson learned: `edit keybindings file` custom function used `$APPDATA` (unexpanded on Windows)
+instead of `%APPDATA%` or `${APPDATA}`. Unit tests all passed. Real-world test failed immediately.
+
+### End-to-End Checklist
+For any feature touching keybindings, custom functions, menus, or macros:
+
+1. **Real config check** — Read `%APPDATA%\rwf\custom_functions.json` and `keybindings.json`.
+   Look for issues in the actual user config, not the samples.
+2. **Full flow** — Test the entire user-facing path (key press → dialog → action → result),
+   not just the individual handler.
+3. **Macro collision audit** — Scan commands for bare `$VAR` where the name starts with
+   P/O/L/R/F/W/E/M. These letters are RWF single-letter macros; they expand first and silently
+   corrupt the env var reference. Recommend `${VAR}` or `$env:VAR` instead.
+4. **External program paths** — If the feature spawns an external program, verify the string
+   passed to it is a fully expanded path, not a literal macro or env var.
+5. **Dialog stack** — After any dialog action chain, confirm all dialogs are popped.
+   Ghost dialogs and focus traps are a common failure mode.
+6. **TWF parity** — If the feature existed in the TWF prototype (`specs/twf/`), cross-check
+   the spec to find anything not yet ported to RWF.
+
+### Known Pitfalls Log
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Notepad/editor "path not found" | `$APPDATA` not expanded on Windows | Use `${APPDATA}` or `%APPDATA%` |
+| Command silently gets wrong path | Bare `$VAR` starts with RWF macro letter | Use `${VAR}` or `$env:VAR` |
+| cmd.exe ignores AutoRun skip | Missing `/D` flag | `cmd.exe /D /C ...` |
+| Viewer hangs on large files | mmap page-fault stalls | InMemory ≤100 MB, Mmap above |
+| Feature works in tests, broken live | Only tested against `/sample/`, not `%APPDATA%\rwf\` | Always test real config |
+
 ## Key File Locations
 - **State Logic**: `rwf-lib/src/state.rs`
 - **UI/Rendering**: `rwf-bin/src/ui/`
 - **Config Models**: `rwf-lib/src/config.rs`
 - **Macros ($P, $F)**: `rwf-lib/src/macro_expander.rs`
+- **Real user config**: `C:\Users\user\AppData\Roaming\rwf\`
