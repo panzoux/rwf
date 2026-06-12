@@ -77,9 +77,18 @@ pub struct AppConfig {
     /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
     #[serde(default = "default_polling_interval_ms")]
     pub polling_interval_ms: u32,
+
+    /// Memory threshold for loading files into RAM for viewing.
+    /// Files larger than this (in MB) use Seekable (seek+read) mode instead of
+    /// reading everything into RAM. Reduce on memory-constrained systems.
+    /// Default: 100. Range: 1–4096.
+    #[serde(default = "default_viewer_large_file_threshold_mb")]
+    pub viewer_large_file_threshold_mb: u32,
 }
 
 fn default_polling_interval_ms() -> u32 { 1000 }
+
+fn default_viewer_large_file_threshold_mb() -> u32 { 100 }
 
 /// Configuration for Jump to File / Jump to Directory dialogs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,6 +278,7 @@ impl Default for AppConfig {
             text_input: TextInputConfig::default(),
             jump_nav: JumpNavConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
+            viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             is_creating_tab: false,
         }
     }

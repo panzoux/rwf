@@ -761,4 +761,10 @@ mod tests {
         assert_eq!(colors.get_inactive_background(), "Black");
     }
 
+    #[test]
+    fn test_viewer_large_file_threshold_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.viewer_large_file_threshold_mb, 100);
+    }
+
 }

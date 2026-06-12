@@ -122,8 +122,10 @@ pub enum JobKind {
     },
     LoadFileForViewer {
         location: Location,
-        /// true = text mode (build newline index); false = hex mode (mmap only, no scan)
+        /// true = text mode (build newline index); false = hex mode
         index_lines: bool,
+        /// Files larger than this (in bytes) use Seekable mode instead of InMemory.
+        large_file_threshold: usize,
     },
     PatternRename {
         targets: Vec<Location>,

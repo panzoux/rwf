@@ -89,8 +89,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::Search { location, pattern, recursive } => {
                 self.execute_search(location, pattern, *recursive, &spec).await
             }
-            JobKind::LoadFileForViewer { location, index_lines } => {
-                self.execute_load_file_for_viewer(job_id, location, *index_lines, &spec.cancel_token).await
+            JobKind::LoadFileForViewer { location, index_lines, large_file_threshold } => {
+                self.execute_load_file_for_viewer(job_id, location, *index_lines, *large_file_threshold, &spec.cancel_token).await
             }
             JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
                 self.execute_pattern_rename(targets, find, replace, *use_regex, *case_sensitive, &spec).await
@@ -640,6 +640,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         job_id: JobId,
         location: &Location,
         index_lines: bool,
+        large_file_threshold: usize,
         cancel_token: &CancellationToken,
     ) -> OpResult {
         if cancel_token.is_cancelled() {
@@ -657,16 +658,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         // All file I/O runs on the blocking thread pool so the Tokio async thread
         // (which drives the UI event loop) is never stalled.
         //
-        // Files ≤ INMEM_THRESHOLD are read entirely into RAM.  This avoids mmap
-        // page-fault delays that occur when another process (e.g. clink) is
-        // concurrently appending to the same file — each page fault can stall the
-        // Tokio thread and make the viewer unresponsive.  The complete line index is
-        // also built in the same blocking task so ViewerReady arrives with a fully
-        // indexed, stable snapshot.
+        // Files ≤ inmem_threshold are read entirely into RAM. This avoids page-fault
+        // delays from concurrent writes. The complete line index is also built inline
+        // so ViewerReady arrives with a fully indexed, stable snapshot.
         //
-        // Files > INMEM_THRESHOLD are memory-mapped (large log files, binaries) and
-        // the newline index is built in 4 MB chunks on the blocking pool.
-        const INMEM_THRESHOLD: usize = 100 * 1024 * 1024; // 100 MB
+        // Files > inmem_threshold use SeekableFile (File + Seek + Read, no mmap).
+        let inmem_threshold = large_file_threshold;
 
         let path_for_open = path.clone();
         let index_lines_flag = index_lines;
@@ -678,7 +675,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 let meta = std::fs::metadata(&path_for_open)?;
                 let file_size = meta.len() as usize;
 
-                if file_size <= INMEM_THRESHOLD {
+                if file_size <= inmem_threshold {
                     let bytes = std::fs::read(&path_for_open)?;
                     let sample_len = bytes.len().min(16384);
                     let encoding = TextEncoding::detect(&bytes[..sample_len]);

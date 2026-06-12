@@ -1860,8 +1860,10 @@ impl AppState {
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = crate::model::ViewerMode::Text;
                 self.viewer = Some(viewer);
+                let threshold = (self.config.viewer_large_file_threshold_mb as usize) * 1024 * 1024;
                 let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
                     location: location.clone(), index_lines: true,
+                    large_file_threshold: threshold,
                 });
                 self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
@@ -1872,9 +1874,10 @@ impl AppState {
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = crate::model::ViewerMode::Hex;
                 self.viewer = Some(viewer);
-                // Hex mode doesn't need a line index — mmap only.
+                let threshold = (self.config.viewer_large_file_threshold_mb as usize) * 1024 * 1024;
                 let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
                     location: location.clone(), index_lines: false,
+                    large_file_threshold: threshold,
                 });
                 self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
@@ -1889,8 +1892,10 @@ impl AppState {
                 self.viewer = Some(viewer);
                 self.viewer_search_input.clear();
                 let index_lines = *mode == crate::model::ViewerMode::Text;
+                let threshold = (self.config.viewer_large_file_threshold_mb as usize) * 1024 * 1024;
                 let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
                     location: location.clone(), index_lines,
+                    large_file_threshold: threshold,
                 });
                 self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
@@ -1906,9 +1911,11 @@ impl AppState {
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = *mode;
                 self.viewer = Some(viewer);
+                let threshold = (self.config.viewer_large_file_threshold_mb as usize) * 1024 * 1024;
                 let job_spec = JobSpec::new(crate::job::JobKind::LoadFileForViewer {
                     location: location.clone(),
                     index_lines: *mode == crate::model::ViewerMode::Text,
+                    large_file_threshold: threshold,
                 });
                 self.viewer_job_id = Some(job_spec.id);
                 Some(StateUpdateResult::with_job(job_spec))
