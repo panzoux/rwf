@@ -1,6 +1,6 @@
 //! File viewer state and operations
 //!
-//! Memory-mapped, windowed viewer: the file is never fully loaded into RAM.
+//! Windowed viewer: the file is never fully loaded into RAM for large files.
 //! A background job builds a line-offset index (Vec<u64>) progressively and
 //! stores it behind an Arc<Mutex<LineIndex>> shared with the UI thread.
 //! The renderer only decodes the visible viewport window on each frame.
@@ -10,27 +10,67 @@ use regex::Regex;
 use crate::model::Location;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// FileBytes: mmap or in-memory bytes (for tests)
+// SeekableFile: File + Seek + Read (no mmap). Used for files above threshold.
+// ──────────────────────────────────────────────────────────────────────────────
+
+pub struct SeekableFile {
+    file: Arc<Mutex<std::fs::File>>,
+    pub size: u64,
+}
+
+impl SeekableFile {
+    pub fn new(file: std::fs::File, size: u64) -> Self {
+        Self { file: Arc::new(Mutex::new(file)), size }
+    }
+
+    /// Read `len` bytes starting at `offset`. Returns fewer bytes if near EOF.
+    pub fn read_bytes(&self, offset: u64, len: usize) -> std::io::Result<Vec<u8>> {
+        use std::io::{Read, Seek, SeekFrom};
+        let available = (self.size.saturating_sub(offset)) as usize;
+        let to_read = len.min(available);
+        if to_read == 0 { return Ok(vec![]); }
+        let mut f = self.file.lock().unwrap();
+        f.seek(SeekFrom::Start(offset))?;
+        let mut buf = vec![0u8; to_read];
+        let mut total = 0;
+        while total < to_read {
+            let n = f.read(&mut buf[total..])?;
+            if n == 0 { break; }
+            total += n;
+        }
+        buf.truncate(total);
+        Ok(buf)
+    }
+}
+
+impl std::fmt::Debug for SeekableFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SeekableFile({}B)", self.size)
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// FileBytes: in-memory bytes or seekable file handle
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub enum FileBytes {
-    /// Memory-mapped file — OS pages on demand, no RAM copy.
-    Mapped(memmap2::Mmap),
-    /// Small / test data held in-memory.
+    /// Small files (≤ threshold): entire contents held in RAM. Snapshot is stable.
     InMemory(Vec<u8>),
+    /// Large files (> threshold): seek+read on demand; no mmap page-fault risk.
+    Seekable(SeekableFile),
 }
 
 impl FileBytes {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            FileBytes::Mapped(m) => m,
             FileBytes::InMemory(v) => v,
+            FileBytes::Seekable(_) => unreachable!("Use SeekableFile::read_bytes() for Seekable files"),
         }
     }
     pub fn len(&self) -> usize {
         match self {
-            FileBytes::Mapped(m) => m.len(),
             FileBytes::InMemory(v) => v.len(),
+            FileBytes::Seekable(s) => s.size as usize,
         }
     }
     pub fn is_empty(&self) -> bool { self.len() == 0 }
@@ -167,11 +207,11 @@ impl ViewerState {
     // ── Text access (used by tests, not by renderer) ──────────────────────────
 
     /// Returns the raw file bytes as a UTF-8 str. Only meaningful for InMemory
-    /// buffers (returns None for memory-mapped files).
+    /// buffers (returns None for Seekable files).
     pub fn text(&self) -> Option<&str> {
         match self.buffer.as_ref()?.bytes.as_ref() {
             FileBytes::InMemory(v) => std::str::from_utf8(v).ok(),
-            FileBytes::Mapped(_) => None,
+            FileBytes::Seekable(_) => None,
         }
     }
 
@@ -206,21 +246,22 @@ impl ViewerState {
     pub fn get_line_bytes(&self, line_idx: usize) -> Option<Vec<u8>> {
         const MAX_LINE_BYTES: usize = 65536;
         let buffer = self.buffer.as_ref()?;
-        let bytes = buffer.bytes.as_bytes();
-        let index = buffer.line_index.lock().ok()?;
-        if line_idx >= index.offsets.len() {
-            return None;
-        }
-        let start = index.offsets[line_idx] as usize;
-        let end = if line_idx + 1 < index.offsets.len() {
-            index.offsets[line_idx + 1] as usize
-        } else {
-            bytes.len()
+        // Release the index lock before any file I/O so Seekable reads don't deadlock.
+        let (start, end) = {
+            let index = buffer.line_index.lock().ok()?;
+            if line_idx >= index.offsets.len() { return None; }
+            let start = index.offsets[line_idx] as usize;
+            let end = if line_idx + 1 < index.offsets.len() {
+                index.offsets[line_idx + 1] as usize
+            } else {
+                buffer.bytes.len()
+            };
+            (start, end.min(start + MAX_LINE_BYTES))
         };
-        // Cap to avoid decoding megabytes of binary data as a single "line".
-        let end = end.min(start + MAX_LINE_BYTES);
-        drop(index);
-        let mut raw = bytes[start..end].to_vec();
+        let mut raw = match buffer.bytes.as_ref() {
+            FileBytes::InMemory(v) => v[start..end].to_vec(),
+            FileBytes::Seekable(s) => s.read_bytes(start as u64, end - start).ok()?,
+        };
         while matches!(raw.last(), Some(&b'\n') | Some(&b'\r')) {
             raw.pop();
         }
@@ -238,21 +279,28 @@ impl ViewerState {
     /// Raw bytes for one hex row (up to 16 bytes), for highlight rendering.
     pub fn get_hex_bytes_vec(&self, line_idx: usize) -> Option<(usize, Vec<u8>)> {
         let buffer = self.buffer.as_ref()?;
-        let all = buffer.bytes.as_bytes();
+        let total = buffer.bytes.len();
         let offset = line_idx * 16;
-        if offset >= all.len() { return None; }
-        let end = (offset + 16).min(all.len());
-        Some((offset, all[offset..end].to_vec()))
+        if offset >= total { return None; }
+        let end = (offset + 16).min(total);
+        let bytes = match buffer.bytes.as_ref() {
+            FileBytes::InMemory(v) => v[offset..end].to_vec(),
+            FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
+        };
+        Some((offset, bytes))
     }
 
     pub fn get_hex_line(&self, line_idx: usize) -> Option<(usize, String, String)> {
         let buffer = self.buffer.as_ref()?;
-        let all = buffer.bytes.as_bytes();
-        let total = all.len();
+        let total = buffer.bytes.len();
         let offset = line_idx * 16;
         if offset >= total { return None; }
         let end = (offset + 16).min(total);
-        let bytes = &all[offset..end];
+        let bytes = match buffer.bytes.as_ref() {
+            FileBytes::InMemory(v) => v[offset..end].to_vec(),
+            FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
+        };
+        let bytes = bytes.as_slice();
 
         let mut hex_str = String::new();
         for (i, byte) in bytes.iter().enumerate() {
@@ -389,25 +437,21 @@ impl ViewerState {
             Err(_) => return,
         };
 
-        if let Some(ref buffer) = self.buffer {
-            let bytes = buffer.bytes.as_bytes();
-            let index = buffer.line_index.lock().unwrap();
-            let n = index.offsets.len();
-
-            for line_idx in 0..n {
-                let start = index.offsets[line_idx] as usize;
-                let end = if line_idx + 1 < n {
-                    index.offsets[line_idx + 1] as usize
-                } else {
-                    bytes.len()
-                };
-                let raw = trim_newline(&bytes[start..end.min(start + 65536)]);
-                let line = self.encoding.decode(raw);
-                for m in re.find_iter(&line) {
-                    self.search_matches.push((line_idx, m.start(), m.end()));
-                }
+        // Collect line count without holding the index lock during reads
+        // (Seekable reads also take a lock; holding the index lock would deadlock).
+        let n = self.line_count();
+        let mut new_matches: Vec<(usize, usize, usize)> = Vec::new();
+        for line_idx in 0..n {
+            let raw = match self.get_line_bytes(line_idx) {
+                Some(b) => b,
+                None => continue,
+            };
+            let line = self.encoding.decode(&raw);
+            for m in re.find_iter(&line) {
+                new_matches.push((line_idx, m.start(), m.end()));
             }
         }
+        self.search_matches = new_matches;
 
         if !self.search_matches.is_empty() {
             let start_idx = if self.search_forward {
@@ -423,50 +467,79 @@ impl ViewerState {
     }
 
     /// Hex-mode search: parses query as address, hex byte pattern, or text.
+    /// Works for both InMemory (slice-based) and Seekable (chunked read) files.
     fn start_hex_search(&mut self, query: &str) {
         let buffer = match self.buffer.as_ref() {
             Some(b) => b,
             None => return,
         };
-        let all_bytes = buffer.bytes.clone();
-        let file_bytes = all_bytes.as_bytes();
 
-        let byte_hits: Option<Vec<(usize, usize)>> = match parse_hex_query(query) {
-            HexSearchPattern::Address(addr) => {
-                if addr < file_bytes.len() {
-                    self.line_offset = addr / 16;
-                    // Track so the renderer highlights the matching digit suffix
-                    // in the address label column.
-                    self.address_query = Some(query.to_string());
-                }
-                // Derive a byte pattern from the even-length hex digits so the
-                // matching bytes are highlighted in the hex/ASCII data too.
-                let digits = query.trim()
-                    .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
-                    .unwrap_or(query.trim());
-                if digits.len() >= 2 && digits.len() % 2 == 0
-                    && digits.chars().all(|c| c.is_ascii_hexdigit())
-                {
-                    let needle: Option<Vec<u8>> = (0..digits.len())
-                        .step_by(2)
-                        .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
-                        .collect();
-                    needle.map(|n| find_byte_pattern(file_bytes, &n))
-                } else {
-                    None
+        let file_size = buffer.bytes.len();
+        let bytes_ref = buffer.bytes.clone(); // Arc clone — cheap
+
+        let byte_hits: Option<Vec<(usize, usize)>> = match bytes_ref.as_ref() {
+            // ── InMemory: direct slice search ───────────────────────────────
+            FileBytes::InMemory(v) => {
+                let file_bytes = v.as_slice();
+                match parse_hex_query(query) {
+                    HexSearchPattern::Address(addr) => {
+                        if addr < file_bytes.len() {
+                            self.line_offset = addr / 16;
+                            self.address_query = Some(query.to_string());
+                        }
+                        let digits = query.trim()
+                            .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
+                            .unwrap_or(query.trim());
+                        if digits.len() >= 2 && digits.len() % 2 == 0
+                            && digits.chars().all(|c| c.is_ascii_hexdigit())
+                        {
+                            let needle: Option<Vec<u8>> = (0..digits.len())
+                                .step_by(2)
+                                .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
+                                .collect();
+                            needle.map(|n| find_byte_pattern(file_bytes, &n))
+                        } else { None }
+                    }
+                    HexSearchPattern::Bytes(needle) => Some(find_byte_pattern(file_bytes, &needle)),
+                    HexSearchPattern::Text(needle) => {
+                        let hits = if self.case_sensitive {
+                            find_byte_pattern(file_bytes, &needle)
+                        } else {
+                            let lower: Vec<u8> = needle.iter().map(|b| b.to_ascii_lowercase()).collect();
+                            find_byte_pattern_ci(file_bytes, &lower)
+                        };
+                        Some(hits)
+                    }
                 }
             }
-            HexSearchPattern::Bytes(needle) => {
-                Some(find_byte_pattern(file_bytes, &needle))
-            }
-            HexSearchPattern::Text(needle) => {
-                let hits = if self.case_sensitive {
-                    find_byte_pattern(file_bytes, &needle)
-                } else {
-                    let lower: Vec<u8> = needle.iter().map(|b| b.to_ascii_lowercase()).collect();
-                    find_byte_pattern_ci(file_bytes, &lower)
-                };
-                Some(hits)
+            // ── Seekable: chunked read search ────────────────────────────────
+            FileBytes::Seekable(s) => {
+                match parse_hex_query(query) {
+                    HexSearchPattern::Address(addr) => {
+                        if addr < file_size {
+                            self.line_offset = addr / 16;
+                            self.address_query = Some(query.to_string());
+                        }
+                        let digits = query.trim()
+                            .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
+                            .unwrap_or(query.trim());
+                        if digits.len() >= 2 && digits.len() % 2 == 0
+                            && digits.chars().all(|c| c.is_ascii_hexdigit())
+                        {
+                            let needle: Option<Vec<u8>> = (0..digits.len())
+                                .step_by(2)
+                                .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
+                                .collect();
+                            needle.map(|n| search_seekable_bytes(s, &n, false))
+                        } else { None }
+                    }
+                    HexSearchPattern::Bytes(needle) => {
+                        Some(search_seekable_bytes(s, &needle, false))
+                    }
+                    HexSearchPattern::Text(needle) => {
+                        Some(search_seekable_bytes(s, &needle, !self.case_sensitive))
+                    }
+                }
             }
         };
 
@@ -483,8 +556,7 @@ impl ViewerState {
                         .unwrap_or(self.search_matches.len() - 1)
                 };
                 self.search_match_index = Some(start_idx);
-                // Address searches already set line_offset to the typed address;
-                // don't override it by jumping to the nearest byte match.
+                // Address searches already set line_offset; don't override with byte match jump.
                 if self.address_query.is_none() {
                     self.jump_to_match(start_idx);
                 }
@@ -635,13 +707,6 @@ fn find_byte_pattern_ci(haystack: &[u8], lower_needle: &[u8]) -> Vec<(usize, usi
     result
 }
 
-fn trim_newline(raw: &[u8]) -> &[u8] {
-    let mut end = raw.len();
-    while end > 0 && (raw[end - 1] == b'\n' || raw[end - 1] == b'\r') {
-        end -= 1;
-    }
-    &raw[..end]
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ViewerMode
@@ -855,6 +920,63 @@ fn decode_utf16_be(bytes: &[u8]) -> String {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Seekable byte-pattern search helper
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Chunk-based byte-pattern search for SeekableFile.
+/// Reads the file in 4 MB chunks with a trailing overlap of `needle.len()-1` bytes
+/// so that patterns spanning a chunk boundary are never missed.
+fn search_seekable_bytes(
+    seekable: &SeekableFile,
+    needle: &[u8],
+    case_insensitive: bool,
+) -> Vec<(usize, usize)> {
+    const CHUNK: usize = 4 * 1024 * 1024;
+    let overlap = needle.len().saturating_sub(1);
+    let file_size = seekable.size as usize;
+    let mut results = Vec::new();
+    if needle.is_empty() || file_size == 0 { return results; }
+
+    let lower_needle: Vec<u8> = if case_insensitive {
+        needle.iter().map(|b| b.to_ascii_lowercase()).collect()
+    } else {
+        vec![]
+    };
+
+    let mut chunk_start = 0usize;
+    while chunk_start < file_size {
+        // Re-read `overlap` bytes from end of previous chunk so cross-boundary
+        // patterns are found in the combined window.
+        let read_start = chunk_start.saturating_sub(overlap);
+        let read_end = (chunk_start + CHUNK).min(file_size);
+        let buf = match seekable.read_bytes(read_start as u64, read_end - read_start) {
+            Ok(b) => b,
+            Err(_) => break,
+        };
+        let hits = if case_insensitive {
+            find_byte_pattern_ci(&buf, &lower_needle)
+        } else {
+            find_byte_pattern(&buf, needle)
+        };
+        for (s, e) in hits {
+            let abs_start = read_start + s;
+            let abs_end   = read_start + e;
+            // Include the match if it ends AFTER chunk_start.
+            // Matches with abs_end <= chunk_start were entirely within the previous
+            // iteration's read window and were already recorded there.
+            // Cross-boundary matches (abs_start < chunk_start but abs_end > chunk_start)
+            // could NOT have been found in the previous iteration (bytes past chunk_start
+            // weren't in scope then), so they must be included here.
+            if abs_end > chunk_start {
+                results.push((abs_start, abs_end));
+            }
+        }
+        chunk_start = read_end;
+    }
+    results
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Tests
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -970,5 +1092,142 @@ mod tests {
         assert_eq!(v.line_offset, 1);
         v.jump_to_bottom(5);
         assert_eq!(v.line_offset, 2);
+    }
+
+    // ── SeekableFile tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_seekable_file_read_bytes() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"Hello, World! This is test data.").unwrap();
+        tmp.flush().unwrap();
+        let size = std::fs::metadata(tmp.path()).unwrap().len();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
+
+        assert_eq!(sf.read_bytes(0, 5).unwrap(), b"Hello");
+        assert_eq!(sf.read_bytes(7, 5).unwrap(), b"World");
+        // Read past end: should return what's available
+        assert_eq!(sf.read_bytes(size - 2, 100).unwrap().len(), 2);
+        // Empty read
+        assert_eq!(sf.read_bytes(0, 0).unwrap(), b"");
+    }
+
+    #[test]
+    fn test_filebytes_seekable_len() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"1234567890").unwrap();
+        tmp.flush().unwrap();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), 10);
+        let fb = FileBytes::Seekable(sf);
+        assert_eq!(fb.len(), 10);
+        assert!(!fb.is_empty());
+    }
+
+    #[test]
+    fn test_seekable_text_returns_none() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"hello").unwrap();
+        tmp.flush().unwrap();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), 5);
+        let buffer = ViewerBuffer::new(
+            FileBytes::Seekable(sf),
+            LineIndex { offsets: vec![0], is_complete: true },
+        );
+        let mut vs = ViewerState::new(loc());
+        vs.buffer = Some(buffer);
+        assert_eq!(vs.text(), None);
+    }
+
+    #[test]
+    fn test_get_line_bytes_seekable() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"Line one\nLine two\nLine three\n").unwrap();
+        tmp.flush().unwrap();
+        let size = std::fs::metadata(tmp.path()).unwrap().len();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
+        let buffer = ViewerBuffer::new(
+            FileBytes::Seekable(sf),
+            LineIndex { offsets: vec![0, 9, 18], is_complete: true },
+        );
+        let mut vs = ViewerState::new(loc());
+        vs.buffer = Some(buffer);
+
+        assert_eq!(vs.get_line_bytes(0), Some(b"Line one".to_vec()));
+        assert_eq!(vs.get_line_bytes(1), Some(b"Line two".to_vec()));
+        assert_eq!(vs.get_line_bytes(2), Some(b"Line three".to_vec()));
+        assert_eq!(vs.get_line_bytes(3), None);
+    }
+
+    #[test]
+    fn test_get_hex_bytes_vec_seekable() {
+        use std::io::Write;
+        let data: Vec<u8> = (0u8..32).collect();
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(&data).unwrap();
+        tmp.flush().unwrap();
+        let size = std::fs::metadata(tmp.path()).unwrap().len();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
+        let buffer = ViewerBuffer::new(FileBytes::Seekable(sf), LineIndex::new_complete_empty());
+        let mut vs = ViewerState::new(loc());
+        vs.buffer = Some(buffer);
+
+        let (offset, bytes) = vs.get_hex_bytes_vec(0).unwrap();
+        assert_eq!(offset, 0);
+        assert_eq!(bytes, (0u8..16).collect::<Vec<_>>());
+
+        let (offset, bytes) = vs.get_hex_bytes_vec(1).unwrap();
+        assert_eq!(offset, 16);
+        assert_eq!(bytes, (16u8..32).collect::<Vec<_>>());
+
+        assert!(vs.get_hex_bytes_vec(2).is_none());
+    }
+
+    #[test]
+    fn test_search_on_seekable_file() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"Hello World\nHello Rust\nGoodbye World\n").unwrap();
+        tmp.flush().unwrap();
+        let size = std::fs::metadata(tmp.path()).unwrap().len();
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
+        let buffer = ViewerBuffer::new(
+            FileBytes::Seekable(sf),
+            LineIndex { offsets: vec![0, 12, 23], is_complete: true },
+        );
+        let mut vs = ViewerState::new(loc());
+        vs.buffer = Some(buffer);
+
+        vs.start_search("Hello".to_string(), None);
+        assert_eq!(vs.search_matches.len(), 2);
+        assert_eq!(vs.search_match_index, Some(0));
+        vs.find_next();
+        assert_eq!(vs.search_match_index, Some(1));
+    }
+
+    #[test]
+    fn test_search_seekable_bytes_chunked() {
+        use std::io::Write;
+        // Pattern spanning chunk boundary: write 4MB+4 bytes; needle at boundary.
+        let chunk = 4 * 1024 * 1024;
+        let mut data = vec![0xAAu8; chunk];
+        // Place needle 0xDE 0xAD 0xBE 0xEF crossing the boundary (last 2 bytes of first chunk,
+        // first 2 of second chunk).
+        data[chunk - 2] = 0xDE;
+        data[chunk - 1] = 0xAD;
+        data.extend_from_slice(&[0xBE, 0xEF]);
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(&data).unwrap();
+        tmp.flush().unwrap();
+        let size = data.len() as u64;
+        let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
+        let needle = [0xDE, 0xAD, 0xBE, 0xEF];
+        let hits = search_seekable_bytes(&sf, &needle, false);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, chunk - 2);
+        assert_eq!(hits[0].1, chunk + 2);
     }
 }

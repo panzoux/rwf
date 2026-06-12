@@ -21,7 +21,6 @@ zip = { workspace = true }
 
 # Additional dependencies
 async-trait = "0.1"
-memmap2 = "0.9"
 dirs = "5.0"
 rustmigemo = { workspace = true }
 encoding_rs = "0.8"

@@ -6,7 +6,7 @@
 use crate::backend::{FilesystemBackend, ArchiveHandler};
 use crate::job::{JobSpec, JobId, JobKind, OpResult, SuccessData, PipeToAction};
 use crate::model::Location;
-use crate::model::viewer::{FileBytes, LineIndex, ViewerBuffer, TextEncoding};
+use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, ViewerBuffer, TextEncoding};
 use crate::worker_pool::JobEvent;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -695,13 +695,15 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
                     Ok((FileBytes::InMemory(bytes), encoding, complete_index))
                 } else {
-                    // Large file: memory-map.
+                    // Large file: Seekable (File + Seek + Read, no mmap).
+                    // On Windows, File::open uses FILE_SHARE_READ|FILE_SHARE_WRITE by
+                    // default — concurrent writes (e.g. active log files) are safe.
                     let file = std::fs::File::open(&path_for_open)?;
-                    // SAFETY: Mmap holds its own OS mapping handle; dropping `file` is safe.
-                    let mmap = unsafe { memmap2::Mmap::map(&file) }?;
-                    let sample_len = mmap.len().min(16384);
-                    let encoding = TextEncoding::detect(&mmap[..sample_len]);
-                    Ok((FileBytes::Mapped(mmap), encoding, None))
+                    let size = meta.len();
+                    let seekable = SeekableFile::new(file, size);
+                    let sample = seekable.read_bytes(0, 16384.min(size as usize))?;
+                    let encoding = TextEncoding::detect(&sample);
+                    Ok((FileBytes::Seekable(seekable), encoding, None))
                 }
             })
             .await
@@ -724,8 +726,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
 
         // Large text-mode file: send the buffer first so the visible viewport renders
-        // before the full index is ready, then build the index in 4 MB chunks on the
-        // blocking pool.
+        // before the full index is ready, then build the index on a separate blocking
+        // thread using a dedicated file handle (never contends with SeekableFile render handle).
         let buffer = ViewerBuffer::new(file_bytes, LineIndex::new());
         let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer.clone(), encoding));
 
@@ -738,29 +740,49 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let buffer_for_scan = buffer.clone();
         let cancel = cancel_token.clone();
         let event_tx = self.event_sender.clone();
+        let path_for_index = path.clone();
         tokio::task::spawn_blocking(move || {
+            use std::io::Read;
             const CHUNK: usize = 4 * 1024 * 1024;
-            let bytes = buffer_for_scan.bytes.as_bytes();
-            let mut chunk_start = 0usize;
 
-            while chunk_start < total {
+            // Open a dedicated handle for sequential scanning — never contends
+            // with the SeekableFile render handle (or InMemory's in-memory vec).
+            let mut index_file = match std::fs::File::open(&path_for_index) {
+                Ok(f) => f,
+                Err(_) => {
+                    buffer_for_scan.line_index.lock().unwrap().is_complete = true;
+                    return;
+                }
+            };
+
+            let mut read_buf = vec![0u8; CHUNK];
+            let mut abs_offset = 0u64;
+
+            loop {
                 if cancel.is_cancelled() { return; }
 
-                let chunk_end = (chunk_start + CHUNK).min(total);
+                let n = match index_file.read(&mut read_buf) {
+                    Ok(0) => break,
+                    Ok(n) => n,
+                    Err(_) => break,
+                };
+
                 let mut local: Vec<u64> = Vec::new();
-                for i in chunk_start..chunk_end {
-                    if bytes[i] == b'\n' && i + 1 < total {
-                        local.push((i + 1) as u64);
+                for i in 0..n {
+                    let abs = abs_offset + i as u64;
+                    if read_buf[i] == b'\n' && abs + 1 < total as u64 {
+                        local.push(abs + 1);
                     }
                 }
                 if !local.is_empty() {
                     buffer_for_scan.line_index.lock().unwrap().offsets.extend_from_slice(&local);
                 }
+                abs_offset += n as u64;
                 let _ = event_tx.send(JobEvent::Progress(
-                    job_id, chunk_end as f64 / total as f64,
+                    job_id, abs_offset as f64 / total as f64,
                 ));
-                chunk_start = chunk_end;
             }
+
             buffer_for_scan.line_index.lock().unwrap().is_complete = true;
         })
         .await
