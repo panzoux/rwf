@@ -10,6 +10,7 @@
 use crate::config::AppConfig;
 use crate::job::JobKind;
 use crate::model::{Location, ViewerMode, TextEncoding, UIMode};
+use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, ViewerBuffer};
 use crate::state::{AppState, Transition, update_state};
 use std::path::PathBuf;
 
@@ -319,4 +320,124 @@ fn test_viewer_hex_line_formatting() {
     assert!(hex.contains("48 65 6C 6C")); // "Hell"
     assert!(ascii.contains("Hello"));
     assert!(ascii.contains("World"));
+}
+
+// ── Seekable path e2e tests ───────────────────────────────────────────────────
+
+#[test]
+fn test_viewer_ready_with_seekable_buffer() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let content = b"Alpha line\nBeta line\nGamma line\n";
+    std::fs::write(tmp.path(), content).unwrap();
+
+    let file = std::fs::File::open(tmp.path()).unwrap();
+    let sf = SeekableFile::new(file, content.len() as u64);
+    let buffer = ViewerBuffer::new(
+        FileBytes::Seekable(sf),
+        LineIndex { offsets: vec![0, 11, 21], is_complete: true },
+    );
+
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+    update_state(&mut state, Transition::OpenTextViewer {
+        location: Location::Local(tmp.path().to_path_buf()),
+    });
+    // Simulate ViewerReady arriving from the executor
+    update_state(&mut state, Transition::ViewerReady {
+        buffer,
+        encoding: TextEncoding::Utf8,
+    });
+
+    let viewer = state.viewer.as_ref().unwrap();
+    assert_eq!(viewer.line_count(), 3);
+    assert_eq!(viewer.get_line_str(0), Some("Alpha line".to_string()));
+    assert_eq!(viewer.get_line_str(1), Some("Beta line".to_string()));
+    assert_eq!(viewer.get_line_str(2), Some("Gamma line".to_string()));
+    // text() cannot return &str for Seekable files
+    assert_eq!(viewer.text(), None);
+}
+
+#[test]
+fn test_viewer_seekable_text_search() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let content = b"Hello World\nHello Rust\nGoodbye World\n";
+    std::fs::write(tmp.path(), content).unwrap();
+
+    let file = std::fs::File::open(tmp.path()).unwrap();
+    let sf = SeekableFile::new(file, content.len() as u64);
+    let buffer = ViewerBuffer::new(
+        FileBytes::Seekable(sf),
+        LineIndex { offsets: vec![0, 12, 23], is_complete: true },
+    );
+
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+    update_state(&mut state, Transition::OpenTextViewer {
+        location: Location::Local(tmp.path().to_path_buf()),
+    });
+    update_state(&mut state, Transition::ViewerReady { buffer, encoding: TextEncoding::Utf8 });
+    update_state(&mut state, Transition::ViewerStartSearch { query: "Hello".to_string() });
+
+    let viewer = state.viewer.as_ref().unwrap();
+    assert_eq!(viewer.search_matches.len(), 2);
+    assert_eq!(viewer.search_match_index, Some(0));
+
+    update_state(&mut state, Transition::ViewerFindNext);
+    assert_eq!(state.viewer.as_ref().unwrap().search_match_index, Some(1));
+}
+
+#[test]
+fn test_viewer_seekable_hex_mode() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let data: Vec<u8> = (0u8..32).collect();
+    std::fs::write(tmp.path(), &data).unwrap();
+
+    let file = std::fs::File::open(tmp.path()).unwrap();
+    let sf = SeekableFile::new(file, data.len() as u64);
+    let buffer = ViewerBuffer::new(
+        FileBytes::Seekable(sf),
+        LineIndex::new_complete_empty(),
+    );
+
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+    update_state(&mut state, Transition::OpenHexViewer {
+        location: Location::Local(tmp.path().to_path_buf()),
+    });
+    update_state(&mut state, Transition::ViewerReady { buffer, encoding: TextEncoding::Utf8 });
+
+    let viewer = state.viewer.as_ref().unwrap();
+    assert_eq!(viewer.mode, ViewerMode::Hex);
+    assert_eq!(viewer.hex_line_count(), 2);
+
+    let (offset, hex, _ascii) = viewer.get_hex_line(0).unwrap();
+    assert_eq!(offset, 0);
+    assert!(hex.contains("00 01 02 03"));
+}
+
+#[test]
+fn test_viewer_seekable_hex_search() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    // Write bytes with a known pattern 0xDE 0xAD 0xBE 0xEF at offset 8
+    let mut data = vec![0u8; 32];
+    data[8] = 0xDE; data[9] = 0xAD; data[10] = 0xBE; data[11] = 0xEF;
+    std::fs::write(tmp.path(), &data).unwrap();
+
+    let file = std::fs::File::open(tmp.path()).unwrap();
+    let sf = SeekableFile::new(file, data.len() as u64);
+    let buffer = ViewerBuffer::new(FileBytes::Seekable(sf), LineIndex::new_complete_empty());
+
+    let config = AppConfig::default();
+    let mut state = AppState::new(config);
+    update_state(&mut state, Transition::OpenHexViewer {
+        location: Location::Local(tmp.path().to_path_buf()),
+    });
+    update_state(&mut state, Transition::ViewerReady { buffer, encoding: TextEncoding::Utf8 });
+    // Hex byte pattern search
+    update_state(&mut state, Transition::ViewerStartSearch { query: "DE AD BE EF".to_string() });
+
+    let viewer = state.viewer.as_ref().unwrap();
+    assert_eq!(viewer.search_matches.len(), 1);
+    assert_eq!(viewer.search_matches[0].1, 8);  // byte offset 8
+    assert_eq!(viewer.search_matches[0].2, 12); // byte offset 12
 }

@@ -117,9 +117,9 @@
 | 6.2 | **ファイルタイプ関連付け** | `[x]` | `ExtensionAssociation`構造体、`extension_associations.json`読み込み、Enter時の拡張子マッチ→外部コマンド実行。マクロ展開対応。AppState起動時ロード・Shift+Zでリロード。 |
 | 6.3 | **カスタム関数システム** | `[x]` | `custom_functions.json`読み込み、Shift+T でカスタム関数選択ダイアログ表示・実行。インクリメンタルフィルタ、マクロ展開対応、PipeToAction対応。AppState起動時ロード・Shift+Zでリロード。 |
 | 6.4 | **コンテキストメニューシステム** | `[x]` | `\`キー でコンテキストメニュー表示。デフォルト組み込みアクション(View/Copy/Move/Rename/Delete)+セパレータ対応。カスタム関数呼び出し対応(`ContextMenuAction::CustomFunction`)。上下ナビ（セパレータスキップ）実装。 |
-| 6.5 | **ヘルプ強化（実キーバインドビューア）** | `[~]` | `?`/F1 オンラインヘルプは修正済み（ハードコード表示）。設定変更を即反映する動的キーバインドビューアは未実装。後で対応 |
-| 6.6 | **カスタム関数メニューダイアログ** | `[ ]` | `menu_xxx.json` 対応。メニュー型関数（`Menu` フィールド）を選択時に専用メニューダイアログを表示。`Action` フィールドでカスタム関数名またはビルトインアクション名を解決・実行。セパレータスキップ、文字キージャンプ対応。詳細: `plan/phase-6-6-custom-function-menus.md` |
-| 6.7 | **ビューア大容量ファイルエンジン（LargeFileEngine 方式）** | `[ ]` | mmap を廃止し `File + Seek + Read` + チャンクキャッシュ方式へ移行（twf `LargeFileEngine.cs` 相当）。レンダリング時のページフォルト遅延を根絶。活発に書き込まれるログファイルや将来の SFTP 対応の基盤。対象: `FileBytes::Mapped` → `FileBytes::Seekable` 置き換え（≤ 100 MB の InMemory パスは維持）。詳細: [plan/6.7.viewer-large-file-engine.md](6.7.viewer-large-file-engine.md) |
+| 6.5 | **カスタム関数メニューダイアログ** | `[ ]` | `menu_xxx.json` 対応。メニュー型関数（`Menu` フィールド）を選択時に専用メニューダイアログを表示。`Action` フィールドでカスタム関数名またはビルトインアクション名を解決・実行。セパレータスキップ、文字キージャンプ対応。詳細: `plan/phase-6-6-custom-function-menus.md` |
+| 6.6 | **ビューア大容量ファイルエンジン（LargeFileEngine 方式）** | `[x]` | mmap を廃止し `FileBytes::Seekable(SeekableFile)` へ移行。`File + Seek + Read` でページフォルト遅延を根絶。Hex検索もチャンク読みで対応。InMemoryしきい値は `viewer_large_file_threshold_mb`（デフォルト100MB）で設定可能。memmap2 依存を完全削除。 |
+| 6.7 | **ヘルプ強化（実キーバインドビューア）** | `[~]` | `?`/F1 オンラインヘルプは修正済み（ハードコード表示）。設定変更を即反映する動的キーバインドビューアは未実装。Phase 6 機能セット確定後に対応 |
 
 ---
 
@@ -263,11 +263,11 @@ Phase 7 (随時)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-06-09  
-現在のフェーズ: Phase 6 残タスク（6.6, 6.7）→ Phase 7 へ
-Phase 6完了内容: 6.2(拡張子関連付け) / 6.3(カスタム関数ダイアログ) / 6.4(コンテキストメニュー) 実装
-Phase 6 残タスク: 6.6（カスタム関数メニュー）/ 6.7（LargeFileEngine ビューア）
-次の作業: Phase 6.6 → 6.7 → Phase 7.1（Undo/Redo）
+最終更新: 2026-06-12  
+現在のフェーズ: Phase 6 残タスク（6.5, 6.7）→ Phase 7 へ
+Phase 6完了内容: 6.2(拡張子関連付け) / 6.3(カスタム関数ダイアログ) / 6.4(コンテキストメニュー) / 6.6(LargeFileEngine) 実装
+Phase 6 残タスク: 6.5（カスタム関数メニュー）/ 6.7（ヘルプ強化・動的キーバインドビューア）
+次の作業: Phase 6.5 → 6.7 → Phase 7.1（Undo/Redo）
 Phase 7 準備: 設計ドキュメント作成完了、実装スケジュール確定
 
 ## Phase 7 実装順序（2026-06-04確定）
