@@ -29,6 +29,8 @@ pub enum JobEvent {
     /// the full line index is built. The ViewerBuffer's line_index Arc is
     /// shared with the background indexer — no copy, just Arc::clone.
     ViewerReady(JobId, crate::model::viewer::ViewerBuffer, crate::model::viewer::TextEncoding),
+    /// Background viewer search completed. Contains the match list.
+    ViewerSearchComplete(JobId, Vec<(usize, usize, usize)>),
 }
 
 /// Worker pool managing background job execution

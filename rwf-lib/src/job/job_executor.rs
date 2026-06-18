@@ -92,6 +92,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::LoadFileForViewer { location, index_lines, large_file_threshold } => {
                 self.execute_load_file_for_viewer(job_id, location, *index_lines, *large_file_threshold, &spec.cancel_token).await
             }
+            JobKind::ViewerSearch { location, migemo_pattern, query, is_hex_mode, encoding, case_sensitive, large_file_threshold } => {
+                self.execute_viewer_search(job_id, location, migemo_pattern.as_deref(), query, *is_hex_mode, *encoding, *case_sensitive, *large_file_threshold, &spec.cancel_token).await
+            }
             JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
                 self.execute_pattern_rename(targets, find, replace, *use_regex, *case_sensitive, &spec).await
             }
@@ -790,7 +793,174 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
         OpResult::Success(SuccessData::None)
     }
-    
+
+    /// Execute a background viewer search (hex or text mode).
+    /// Sends ViewerSearchComplete when done; the standard Completed event follows.
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_viewer_search(
+        &self,
+        job_id: JobId,
+        location: &Location,
+        migemo_pattern: Option<&str>,
+        query: &str,
+        is_hex_mode: bool,
+        encoding: TextEncoding,
+        case_sensitive: bool,
+        large_file_threshold: usize,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        let path = match location {
+            Location::Local(p) => p.clone(),
+            _ => return OpResult::Failed("Viewer search only supported for local files".to_string()),
+        };
+        let query = query.to_string();
+        let migemo = migemo_pattern.map(|s| s.to_string());
+        let event_tx = self.event_sender.clone();
+        let cancel = cancel_token.clone();
+
+        let matches: Vec<(usize, usize, usize)> = tokio::task::spawn_blocking(move || {
+            use std::io::{Read, Seek, SeekFrom};
+            use crate::model::viewer::hex_query_has_pattern;
+
+            let meta = match std::fs::metadata(&path) { Ok(m) => m, Err(_) => return vec![] };
+            let file_size = meta.len() as usize;
+
+            if is_hex_mode {
+                // ── Hex search ────────────────────────────────────────────────────────
+                if !hex_query_has_pattern(&query) { return vec![]; }
+
+                let trimmed = query.trim();
+                // Determine the byte needle from the query
+                let needle_opt: Option<Vec<u8>> = if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+                    if rest.len() >= 2 && rest.len() % 2 == 0 && rest.chars().all(|c| c.is_ascii_hexdigit()) {
+                        (0..rest.len()).step_by(2).map(|i| u8::from_str_radix(&rest[i..i+2], 16).ok()).collect()
+                    } else { None }
+                } else if trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len() % 2 == 0 {
+                    (0..trimmed.len()).step_by(2).map(|i| u8::from_str_radix(&trimmed[i..i+2], 16).ok()).collect()
+                } else if trimmed.contains(' ') && trimmed.chars().all(|c| c.is_ascii_hexdigit() || c == ' ') {
+                    let no_space: String = trimmed.chars().filter(|&c| c != ' ').collect();
+                    if no_space.len() >= 2 && no_space.len() % 2 == 0 {
+                        (0..no_space.len()).step_by(2).map(|i| u8::from_str_radix(&no_space[i..i+2], 16).ok()).collect()
+                    } else { None }
+                } else {
+                    Some(trimmed.as_bytes().to_vec())
+                };
+
+                let needle = match needle_opt { Some(n) if !n.is_empty() => n, _ => return vec![] };
+                let ci = !case_sensitive && needle.iter().any(|&b| b.is_ascii_alphabetic());
+                let lower_needle: Vec<u8> = if ci { needle.iter().map(|b| b.to_ascii_lowercase()).collect() } else { vec![] };
+
+                const CHUNK: usize = 4 * 1024 * 1024;
+                let overlap = needle.len().saturating_sub(1);
+                let mut result = Vec::new();
+                let mut file = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return vec![] };
+                let mut chunk_start = 0usize;
+                while chunk_start < file_size {
+                    if cancel.is_cancelled() { return result; }
+                    let read_start = chunk_start.saturating_sub(overlap);
+                    let read_end = (chunk_start + CHUNK).min(file_size);
+                    if file.seek(SeekFrom::Start(read_start as u64)).is_err() { break; }
+                    let mut buf = vec![0u8; read_end - read_start];
+                    let mut pos = 0;
+                    while pos < buf.len() {
+                        match file.read(&mut buf[pos..]) { Ok(0)|Err(_) => break, Ok(n) => pos += n }
+                    }
+                    buf.truncate(pos);
+                    let n = needle.len();
+                    if buf.len() >= n {
+                        for i in 0..=buf.len()-n {
+                            let matched = if ci {
+                                lower_needle.iter().zip(&buf[i..i+n]).all(|(&a,&b)| a==b.to_ascii_lowercase())
+                            } else {
+                                &buf[i..i+n] == needle.as_slice()
+                            };
+                            if matched {
+                                let abs_s = read_start + i;
+                                let abs_e = abs_s + n;
+                                if abs_e > chunk_start {
+                                    result.push((abs_s / 16, abs_s, abs_e));
+                                }
+                            }
+                        }
+                    }
+                    chunk_start = read_end;
+                }
+                result
+            } else {
+                // ── Text search ───────────────────────────────────────────────────────
+                let pattern = if let Some(mp) = migemo.as_deref() {
+                    mp.to_string()
+                } else if case_sensitive {
+                    regex::escape(&query)
+                } else {
+                    format!("(?i){}", regex::escape(&query))
+                };
+                let re = match regex::Regex::new(&pattern) { Ok(r) => r, Err(_) => return vec![] };
+
+                let mut matches: Vec<(usize, usize, usize)> = Vec::new();
+
+                if file_size <= large_file_threshold {
+                    // Small file: read all at once
+                    let bytes = match std::fs::read(&path) { Ok(b) => b, Err(_) => return vec![] };
+                    let mut line_idx = 0usize;
+                    let mut line_start = 0usize;
+                    while line_start <= bytes.len() {
+                        if cancel.is_cancelled() { return matches; }
+                        let line_end = bytes[line_start..].iter().position(|&b| b == b'\n')
+                            .map(|p| line_start + p + 1)
+                            .unwrap_or(bytes.len());
+                        let raw = &bytes[line_start..line_end.min(bytes.len())];
+                        let raw = if raw.last() == Some(&b'\n') { &raw[..raw.len()-1] } else { raw };
+                        let raw = if raw.last() == Some(&b'\r') { &raw[..raw.len()-1] } else { raw };
+                        let decoded = encoding.decode(raw);
+                        for m in re.find_iter(&decoded) {
+                            matches.push((line_idx, m.start(), m.end()));
+                        }
+                        if line_end >= bytes.len() { break; }
+                        line_start = line_end;
+                        line_idx += 1;
+                    }
+                } else {
+                    // Large file: two-pass (build line index, then search)
+                    let mut file = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return vec![] };
+                    const CHUNK: usize = 4 * 1024 * 1024;
+                    let mut line_offsets: Vec<u64> = vec![0];
+                    let mut buf = vec![0u8; CHUNK];
+                    let mut abs = 0u64;
+                    loop {
+                        if cancel.is_cancelled() { return matches; }
+                        let n = match file.read(&mut buf) { Ok(0)|Err(_) => break, Ok(n) => n };
+                        for i in 0..n {
+                            if buf[i] == b'\n' { line_offsets.push(abs + i as u64 + 1); }
+                        }
+                        abs += n as u64;
+                    }
+                    let mut file2 = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return matches };
+                    for (line_idx, &start) in line_offsets.iter().enumerate() {
+                        if cancel.is_cancelled() { return matches; }
+                        let end = line_offsets.get(line_idx + 1).copied().unwrap_or(file_size as u64);
+                        let len = (end - start) as usize;
+                        if len == 0 { continue; }
+                        if file2.seek(SeekFrom::Start(start)).is_err() { break; }
+                        let mut raw = vec![0u8; len.min(65536)];
+                        let mut pos = 0;
+                        while pos < raw.len() { match file2.read(&mut raw[pos..]) { Ok(0)|Err(_) => break, Ok(n) => pos+=n } }
+                        raw.truncate(pos);
+                        while matches!(raw.last(), Some(&b'\n') | Some(&b'\r')) { raw.pop(); }
+                        let decoded = encoding.decode(&raw);
+                        for m in re.find_iter(&decoded) {
+                            matches.push((line_idx, m.start(), m.end()));
+                        }
+                    }
+                }
+                matches
+            }
+        }).await.unwrap_or_default();
+
+        let _ = event_tx.send(JobEvent::ViewerSearchComplete(job_id, matches));
+        OpResult::Success(SuccessData::None)
+    }
+
     /// Execute a pattern rename operation
     async fn execute_pattern_rename(
         &self,

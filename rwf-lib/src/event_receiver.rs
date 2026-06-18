@@ -64,6 +64,9 @@ pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
         JobEvent::ViewerReady(_job_id, buffer, encoding) => {
             Transition::ViewerReady { buffer, encoding }
         }
+        JobEvent::ViewerSearchComplete(job_id, matches) => {
+            Transition::ViewerSearchComplete { job_id, matches }
+        }
     }
 }
 
@@ -97,6 +100,7 @@ pub fn process_pending_events<B: crate::backend::FilesystemBackend + 'static, A:
                 JobEvent::Failed(_, _) => "Failed",
                 JobEvent::Cancelled(_) => "Cancelled",
                 JobEvent::ViewerReady(_, _, _) => "ViewerReady",
+                JobEvent::ViewerSearchComplete(_, _) => "ViewerSearchComplete",
             }
         );
         let transition = map_job_event_to_transition(event);

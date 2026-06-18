@@ -223,6 +223,9 @@ pub fn render_viewer(
 /// Build the right-side string for the filename bar.
 /// Only shows "not found" feedback; count and size live in the block title.
 fn search_bar_status(viewer: &ViewerState) -> String {
+    if viewer.is_searching {
+        return " (searching...) ".to_string();
+    }
     // Address jumps have no byte matches; don't flag them as "not found".
     if viewer.search_matches.is_empty() && viewer.address_query.is_none() {
         if let Some(ref q) = viewer.search_query {

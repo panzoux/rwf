@@ -57,6 +57,7 @@ async fn main() {
                     completed_count += 1;
                 }
                 JobEvent::ViewerReady(_, _, _) => {}
+                JobEvent::ViewerSearchComplete(_, _) => {}
             }
         }
     }

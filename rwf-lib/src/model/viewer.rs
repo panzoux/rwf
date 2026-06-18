@@ -163,6 +163,8 @@ pub struct ViewerState {
     /// Set when the search was an address jump (hex mode). Holds the raw typed query
     /// so the renderer can highlight the matching digit suffix within the address label.
     pub address_query: Option<String>,
+    /// True while a background search job is running.
+    pub is_searching: bool,
 }
 
 impl ViewerState {
@@ -182,6 +184,7 @@ impl ViewerState {
             content_width: 70,
             is_loading: true,
             address_query: None,
+            is_searching: false,
         }
     }
 
@@ -596,7 +599,7 @@ impl ViewerState {
         if self.search_forward { self.find_prev() } else { self.find_next() }
     }
 
-    fn jump_to_match(&mut self, match_idx: usize) {
+    pub fn jump_to_match(&mut self, match_idx: usize) {
         if let Some(&(line, byte_start, byte_end)) = self.search_matches.get(match_idx) {
             self.line_offset = line;
             if self.mode == ViewerMode::Hex { return; } // hex is fixed-width, no horiz scroll
@@ -619,6 +622,29 @@ impl ViewerState {
         self.search_matches.clear();
         self.search_match_index = None;
         self.address_query = None;
+        self.is_searching = false;
+    }
+
+    /// For hex mode: apply the address-jump part of the query immediately (no I/O).
+    /// Call before dispatching the background pattern search.
+    pub fn hex_apply_address_jump(&mut self, query: &str, file_size: usize) {
+        let trimmed = query.trim();
+        let addr_opt: Option<usize> = if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_hexdigit()) {
+                usize::from_str_radix(rest, 16).ok()
+            } else { None }
+        } else if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+            let padded = if trimmed.len() % 2 != 0 { format!("{}0", trimmed) } else { trimmed.to_string() };
+            usize::from_str_radix(&padded, 16).ok()
+        } else {
+            None
+        };
+        if let Some(addr) = addr_opt {
+            if addr < file_size {
+                self.line_offset = addr / 16;
+            }
+            self.address_query = Some(query.to_string());
+        }
     }
 }
 
@@ -649,10 +675,17 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
         }
     }
 
-    // Pure hex digits (no spaces): treat as address
+    // Pure hex digits (no spaces): treat as address.
+    // Odd-length queries are right-padded with '0' so "fff" aligns to the row
+    // boundary 0xFFF0 (same row as "ffff") rather than the unaligned 0xFF0.
     let all_hex = !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit());
     if all_hex {
-        if let Ok(addr) = usize::from_str_radix(trimmed, 16) {
+        let padded = if trimmed.len() % 2 != 0 {
+            format!("{}0", trimmed)
+        } else {
+            trimmed.to_string()
+        };
+        if let Ok(addr) = usize::from_str_radix(&padded, 16) {
             return HexSearchPattern::Address(addr);
         }
     }
@@ -675,6 +708,25 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
 
     // Text: search for raw UTF-8 bytes
     HexSearchPattern::Text(trimmed.as_bytes().to_vec())
+}
+
+/// Returns true if the hex-mode query requires a byte-pattern scan (background job needed).
+/// Address-only queries with odd digit counts are instant jumps with no pattern.
+pub fn hex_query_has_pattern(query: &str) -> bool {
+    let trimmed = query.trim();
+    if trimmed.is_empty() { return false; }
+    // Explicit 0x address with even-length digits → also a byte pattern
+    if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+        if rest.chars().all(|c| c.is_ascii_hexdigit()) {
+            return rest.len() >= 2 && rest.len() % 2 == 0;
+        }
+    }
+    // Pure hex digits: even length = address + pattern, odd = address only
+    if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        return trimmed.len() >= 2 && trimmed.len() % 2 == 0;
+    }
+    // Space-separated hex bytes or plain text → always needs a search
+    true
 }
 
 /// Simple linear byte-pattern search. Returns (start, end) file offsets.
@@ -722,6 +774,29 @@ pub enum ViewerMode {
 // TextEncoding
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Returns the largest prefix of `bytes` that ends on a valid UTF-8 character
+/// boundary. Trims at most 3 trailing bytes (max continuation bytes in one
+/// sequence). Used so a sample truncated at an arbitrary byte offset doesn't
+/// cause a false UTF-8 validity failure.
+fn trim_to_utf8_boundary(bytes: &[u8]) -> usize {
+    let len = bytes.len();
+    // Walk backward at most 3 bytes looking for a non-continuation byte.
+    for back in 1..=3usize {
+        if back > len { break; }
+        let i = len - back;
+        let b = bytes[i];
+        if b & 0xC0 == 0x80 { continue; } // continuation byte, keep looking
+        // b is ASCII or a lead byte. Check if the sequence it starts fits.
+        let seq_len = if b < 0x80 { 1 }
+                      else if b & 0xE0 == 0xC0 { 2 }
+                      else if b & 0xF0 == 0xE0 { 3 }
+                      else if b & 0xF8 == 0xF0 { 4 }
+                      else { 1 }; // invalid — let from_utf8 reject it
+        return if i + seq_len > len { i } else { len };
+    }
+    len
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TextEncoding {
     Utf8, Utf16Le, Utf16Be, ShiftJis, EucJp, Iso8859_1, Windows1252,
@@ -761,8 +836,11 @@ impl TextEncoding {
         let payload = if bytes.starts_with(b"\xEF\xBB\xBF") { &bytes[3..] } else { bytes };
         if bytes.starts_with(b"\xEF\xBB\xBF") { return TextEncoding::Utf8; }
 
-        // Strict UTF-8 check
-        if std::str::from_utf8(payload).is_ok() { return TextEncoding::Utf8; }
+        // Strict UTF-8 check: trim the tail to a valid boundary so a sample
+        // truncated in the middle of a multi-byte sequence (e.g. Japanese UTF-8
+        // cut at 16 KB) doesn't cause a false SJIS detection.
+        let utf8_end = trim_to_utf8_boundary(payload);
+        if std::str::from_utf8(&payload[..utf8_end]).is_ok() { return TextEncoding::Utf8; }
 
         // Statistical analysis for Japanese encodings on a 4 KB sample.
         let sample = &payload[..payload.len().min(4096)];
@@ -1054,6 +1132,24 @@ mod tests {
     fn test_utf8_decoding() {
         let decoded = TextEncoding::Utf8.decode("Hello 世界".as_bytes());
         assert_eq!(decoded, "Hello 世界");
+    }
+
+    #[test]
+    fn test_detect_utf8_truncated_at_multibyte_boundary() {
+        // Simulate ROADMAP.md: valid UTF-8 with Japanese text whose sample
+        // happens to be cut in the middle of a 3-byte sequence. Before the
+        // fix this was misdetected as Shift-JIS.
+        let text = "# ロードマップ\n".repeat(800); // ~16 KB of Japanese UTF-8
+        let bytes = text.as_bytes();
+        // Try every cut point in the last 4 bytes of the 16384-byte sample.
+        for cut in 16380..=16384usize {
+            let sample = &bytes[..cut.min(bytes.len())];
+            assert_eq!(
+                TextEncoding::detect(sample),
+                TextEncoding::Utf8,
+                "detect() returned non-UTF-8 for sample cut at {cut}"
+            );
+        }
     }
 
     #[test]

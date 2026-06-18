@@ -11,6 +11,7 @@ use std::path::PathBuf;
 pub struct TabViewerState {
     pub viewer: Option<crate::model::viewer::ViewerState>,
     pub viewer_job_id: Option<crate::job::JobId>,
+    pub viewer_search_job_id: Option<crate::job::JobId>,
     pub viewer_layout: ViewerLayout,
     pub viewer_preferred_layout: ViewerLayout,
     pub viewer_anchor_pane: ActivePane,

@@ -366,6 +366,12 @@ impl KeyBindings {
 
     /// Convert a viewer action name string to an `Action`.
     fn parse_viewer_action_name(s: &str) -> Action {
+        // Try full enum variant names first (e.g. "ViewerScrollDown", "ViewerClose")
+        // so that keybindings.json can use the same names as the Action enum.
+        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+            return action;
+        }
+        // Then try short TWF-style aliases for backward compatibility.
         match s {
             "FindNext" | "FindPrevious" => Action::ViewerFindNext,
             "FindPrev"                  => Action::ViewerFindPrev,

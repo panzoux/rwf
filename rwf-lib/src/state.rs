@@ -34,6 +34,8 @@ pub struct AppState {
     pub viewer: Option<ViewerState>,
     /// Job ID of the active viewer file-loading job (for cancel on close)
     pub viewer_job_id: Option<crate::job::JobId>,
+    /// Job ID of the active background viewer search (for cancel on new search)
+    pub viewer_search_job_id: Option<crate::job::JobId>,
     /// Search query being typed in ViewerSearch mode (not yet committed).
     pub viewer_search_input: String,
     /// Command being typed in ViewerCommand mode (line-jump digits).
@@ -187,6 +189,7 @@ impl AppState {
             navigation_cache: NavigationStateCache::new(),
             viewer: None,
             viewer_job_id: None,
+            viewer_search_job_id: None,
             viewer_search_input: String::new(),
             viewer_command_input: String::new(),
             log_manager,
@@ -209,6 +212,7 @@ impl AppState {
         let tv = &mut self.tabs.tabs[idx].tab_viewer;
         tv.viewer               = self.viewer.take();
         tv.viewer_job_id        = self.viewer_job_id.take();
+        tv.viewer_search_job_id = self.viewer_search_job_id.take();
         tv.viewer_layout        = self.ui.layout.viewer_layout;
         tv.viewer_preferred_layout = self.ui.layout.viewer_preferred_layout;
         tv.viewer_anchor_pane   = self.ui.layout.viewer_anchor_pane;
@@ -234,6 +238,7 @@ impl AppState {
         let tv = &mut self.tabs.tabs[idx].tab_viewer;
         self.viewer               = tv.viewer.take();
         self.viewer_job_id        = tv.viewer_job_id.take();
+        self.viewer_search_job_id = tv.viewer_search_job_id.take();
         self.ui.layout.viewer_layout           = tv.viewer_layout;
         self.ui.layout.viewer_preferred_layout = tv.viewer_preferred_layout;
         self.ui.layout.viewer_anchor_pane      = tv.viewer_anchor_pane;
@@ -247,6 +252,66 @@ impl AppState {
         if was_focused && self.viewer.is_some() {
             self.ui.mode = crate::model::UIMode::Viewer;
         }
+    }
+
+    /// Cancel the previous search, start a background ViewerSearch job, and return the result.
+    fn start_viewer_search_background(&mut self, query: &str) -> StateUpdateResult {
+        use crate::model::viewer::hex_query_has_pattern;
+        use crate::job::{JobSpec, JobKind};
+
+        let viewer = match self.viewer.as_mut() {
+            Some(v) => v,
+            None => return StateUpdateResult::with_ui_change(),
+        };
+
+        viewer.search_query = Some(query.to_string());
+        viewer.search_matches.clear();
+        viewer.search_match_index = None;
+        viewer.address_query = None;
+        viewer.is_searching = false;
+
+        if query.is_empty() {
+            return StateUpdateResult::with_ui_change();
+        }
+
+        let is_hex = viewer.mode == crate::model::ViewerMode::Hex;
+        let location = viewer.location.clone();
+        let encoding = viewer.encoding;
+        let case_sensitive = viewer.case_sensitive;
+        let threshold = (self.config.viewer_large_file_threshold_mb as usize) * 1024 * 1024;
+
+        if is_hex {
+            // Apply address jump immediately (no I/O).
+            if let Some(ref buf) = self.viewer.as_ref().unwrap().buffer {
+                let file_size = buf.bytes.len();
+                self.viewer.as_mut().unwrap().hex_apply_address_jump(query, file_size);
+            }
+            // If there's no byte pattern to scan, we're done.
+            if !hex_query_has_pattern(query) {
+                return StateUpdateResult::with_ui_change();
+            }
+        }
+
+        let migemo_pat = if !is_hex {
+            self.search.get_migemo_regex(query, case_sensitive)
+        } else {
+            None
+        };
+
+        self.viewer.as_mut().unwrap().is_searching = true;
+        let job = JobSpec::new(JobKind::ViewerSearch {
+            location,
+            migemo_pattern: migemo_pat,
+            query: query.to_string(),
+            is_hex_mode: is_hex,
+            encoding,
+            case_sensitive,
+            large_file_threshold: threshold,
+        });
+        self.viewer_search_job_id = Some(job.id);
+        let mut result = StateUpdateResult::with_ui_change();
+        result.jobs_to_start.push(job);
+        result
     }
 
     /// Get a reference to the current active tab
@@ -572,6 +637,9 @@ impl AppState {
                     if let Some(job_id) = self.viewer_job_id.take() {
                         self.jobs.request_cancel(job_id);
                     }
+                    if let Some(job_id) = self.viewer_search_job_id.take() {
+                        self.jobs.request_cancel(job_id);
+                    }
                     self.viewer = None;
                     self.ui.layout.viewer_layout = crate::model::ViewerLayout::FullScreen;
                     if matches!(self.ui.mode, crate::model::UIMode::Viewer | crate::model::UIMode::ViewerSearch | crate::model::UIMode::ViewerCommand) {
@@ -788,6 +856,7 @@ impl AppState {
                             crate::job::JobKind::ExecuteCustomFunction { .. } => "Execute custom function",
                             crate::job::JobKind::Search { .. } => "Search",
                             crate::job::JobKind::LoadFileForViewer { .. } => "Load file for viewer",
+                            crate::job::JobKind::ViewerSearch { .. } => "Viewer search",
                             crate::job::JobKind::PatternRename { .. } => "Pattern rename",
                             crate::job::JobKind::CompareFiles { .. } => "File comparison",
                             crate::job::JobKind::SplitFile { .. } => "File split",
@@ -948,6 +1017,9 @@ impl AppState {
                                 }
                                 result_obj.ui_changed = true;
                             }
+                        }
+                        crate::job::JobKind::ViewerSearch { .. } => {
+                            // Results delivered via ViewerSearchComplete event; nothing to do.
                         }
                         crate::job::JobKind::CompareFiles { .. } => {
                             if let crate::job::OpResult::Success(crate::job::SuccessData::ComparisonResult(diff)) = result {
@@ -1924,6 +1996,9 @@ impl AppState {
                 if let Some(job_id) = self.viewer_job_id.take() {
                     self.jobs.request_cancel(job_id);
                 }
+                if let Some(job_id) = self.viewer_search_job_id.take() {
+                    self.jobs.request_cancel(job_id);
+                }
                 self.ui.mode = crate::model::UIMode::Normal;
                 self.viewer = None;
                 self.viewer_search_input.clear();
@@ -1960,6 +2035,29 @@ impl AppState {
                 // Legacy path: used by tests and the ViewerLoadComplete transition.
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.set_contents(contents.clone());
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ViewerSearchComplete { job_id, matches } => {
+                // Discard stale results from a superseded search job.
+                if self.viewer_search_job_id != Some(*job_id) {
+                    return Some(StateUpdateResult::none());
+                }
+                self.viewer_search_job_id = None;
+                if let Some(ref mut viewer) = self.viewer {
+                    viewer.is_searching = false;
+                    viewer.search_matches = matches.clone();
+                    if !matches.is_empty() {
+                        let start_idx = if viewer.search_forward {
+                            matches.iter().position(|&(l, _, _)| l >= viewer.line_offset).unwrap_or(0)
+                        } else {
+                            matches.iter().rposition(|&(l, _, _)| l <= viewer.line_offset).unwrap_or(matches.len() - 1)
+                        };
+                        viewer.search_match_index = Some(start_idx);
+                        if viewer.address_query.is_none() {
+                            viewer.jump_to_match(start_idx);
+                        }
+                    }
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -2040,11 +2138,15 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ViewerStartSearch { query } => {
-                if let Some(ref mut viewer) = self.viewer {
-                    let migemo_pat = self.search.get_migemo_regex(query, viewer.case_sensitive);
-                    viewer.start_search(query.to_string(), migemo_pat.as_deref());
+                // Cancel any in-progress search.
+                if let Some(old) = self.viewer_search_job_id.take() {
+                    self.jobs.request_cancel(old);
                 }
-                Some(StateUpdateResult::with_ui_change())
+                if self.viewer.is_none() {
+                    return Some(StateUpdateResult::with_ui_change());
+                }
+                let result = self.start_viewer_search_background(query);
+                Some(result)
             }
             Transition::ViewerFindNext => {
                 if let Some(ref mut viewer) = self.viewer {
@@ -2067,11 +2169,13 @@ impl AppState {
             Transition::ViewerToggleCaseSensitive => {
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.case_sensitive = !viewer.case_sensitive;
-                    // Re-run any active search under the new sensitivity.
-                    if let Some(query) = viewer.search_query.clone() {
-                        let migemo_pat = self.search.get_migemo_regex(&query, viewer.case_sensitive);
-                        viewer.start_search(query, migemo_pat.as_deref());
+                }
+                if let Some(query) = self.viewer.as_ref().and_then(|v| v.search_query.clone()) {
+                    if let Some(old) = self.viewer_search_job_id.take() {
+                        self.jobs.request_cancel(old);
                     }
+                    let result = self.start_viewer_search_background(&query);
+                    return Some(result);
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -2499,6 +2603,7 @@ pub enum Transition {
     ViewerSwitchLayout { layout: crate::model::ViewerLayout },
     ViewerReady { buffer: crate::model::viewer::ViewerBuffer, encoding: crate::model::viewer::TextEncoding },
     ViewerLoadComplete { contents: Vec<u8> },
+    ViewerSearchComplete { job_id: crate::job::JobId, matches: Vec<(usize, usize, usize)> },
     ViewerCycleEncoding,
     ViewerToggleMode,
     ViewerScrollDown { viewport_height: usize },

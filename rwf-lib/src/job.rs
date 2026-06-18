@@ -127,6 +127,17 @@ pub enum JobKind {
         /// Files larger than this (in bytes) use Seekable mode instead of InMemory.
         large_file_threshold: usize,
     },
+    /// Background search over the viewer's file (hex or text mode).
+    ViewerSearch {
+        location: Location,
+        /// Pre-computed migemo regex (text mode only); None = plain query.
+        migemo_pattern: Option<String>,
+        query: String,
+        is_hex_mode: bool,
+        encoding: crate::model::viewer::TextEncoding,
+        case_sensitive: bool,
+        large_file_threshold: usize,
+    },
     PatternRename {
         targets: Vec<Location>,
         find: String,
