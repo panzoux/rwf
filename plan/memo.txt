@@ -26,13 +26,15 @@ Archives: ZIP · 7Z · TAR · TGZ / Extract only: ISO
 Migemo: available
 Migemo-dict: C:\Users\user\AppData\Roaming\rwf\dict\migemo-compact-dict
 Config files:
- C:\Users\user\AppData\Roaming\rwf\config.json
- C:\Users\user\AppData\Roaming\rwf\keybindings.json
- C:\... CustomFunctions.json
- C:\... Menu_xxx.json
+ [OK] C:\Users\user\AppData\Roaming\rwf\config.json
+ [OK] C:\Users\user\AppData\Roaming\rwf\keybindings.json
+ [OK] C:\... CustomFunctions.json
+ [NG] C:\... Menu_xxx.json
+  at line xxx: zzzzzzzzzz
 ```
-we prefer ascii char "," than unicode " · " : readability is not that different
-
+* we prefer ascii char "," than unicode " · " : readability is not that different
+* [OK] means the config file was readable as json, and read
+* [NG] means the config file was unreadable. prints out brief error message and where it occured
 
   ---
   Proposed Plan: config_system_modularization.md
