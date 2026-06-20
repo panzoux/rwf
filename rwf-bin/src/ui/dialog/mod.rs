@@ -162,9 +162,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
         }
-        DialogContent::Help { content, .. } => {
-            // line count + 1 hint line, min 8
-            (content.lines().count() as u16 + 1).max(8)
+        DialogContent::Help { .. } => {
+            // tab bar(1) + search(1) + entries + hint(1), min 8
+            20u16.max(8)
         }
         _ => 8u16, // Default
     };
@@ -373,8 +373,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *preview_mode, *show_all,
             );
         }
-        DialogContent::Help { content, language, scroll_pos } => {
-            render_help_dialog(frame, content_area, content, language, *scroll_pos);
+        DialogContent::Help { entries, query, regex_mode, show_unbound, active_tab, scroll_pos, language, .. } => {
+            render_help_dialog(frame, content_area, area, entries, query, *regex_mode, *show_unbound, active_tab, *scroll_pos, language);
         }
         DialogContent::DeleteConfirm { targets, scroll_offset } => {
             let chunks = Layout::default()
@@ -1646,38 +1646,178 @@ fn render_pattern_rename_dialog(
     }
 }
 
+fn help_filter_entries<'a>(
+    entries: &'a [rwf_lib::model::dialog::HelpEntry],
+    active_tab: &rwf_lib::model::dialog::HelpTab,
+    show_unbound: bool,
+    query: &str,
+    regex_mode: bool,
+) -> Vec<&'a rwf_lib::model::dialog::HelpEntry> {
+    let tab_filtered: Vec<&rwf_lib::model::dialog::HelpEntry> = entries.iter()
+        .filter(|e| e.tab == *active_tab)
+        .filter(|e| show_unbound || !e.keys.is_empty())
+        .collect();
+
+    if query.is_empty() {
+        return tab_filtered;
+    }
+
+    if regex_mode {
+        if let Ok(re) = regex::Regex::new(&format!("(?i){}", query)) {
+            tab_filtered.into_iter().filter(|e| {
+                let haystack = format!("{} {} {}", e.category, e.description, e.keys.join(" "));
+                re.is_match(&haystack)
+            }).collect()
+        } else {
+            tab_filtered
+        }
+    } else {
+        // AND search: each space-separated token must appear in the row text
+        let tokens: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
+        tab_filtered.into_iter().filter(|e| {
+            let haystack = format!("{} {} {}", e.category, e.description, e.keys.join(" ")).to_lowercase();
+            tokens.iter().all(|tok| haystack.contains(tok.as_str()))
+        }).collect()
+    }
+}
+
 fn render_help_dialog(
     frame: &mut Frame,
     area: Rect,
-    content: &str,
-    language: &str,
+    _dialog_area: Rect,
+    entries: &[rwf_lib::model::dialog::HelpEntry],
+    query: &str,
+    regex_mode: bool,
+    show_unbound: bool,
+    active_tab: &rwf_lib::model::dialog::HelpTab,
     scroll_pos: usize,
+    language: &str,
 ) {
+    use unicode_width::UnicodeWidthStr;
+    use rwf_lib::model::dialog::HelpTab;
+
     let base  = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint  = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let w = area.width.saturating_sub(4) as usize;
+    let tab_active  = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let tab_inactive = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let search_style = Style::default().fg(Color::White).bg(Color::DarkGray);
+    let unbound_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
 
-    // Hint line pinned at bottom
-    let hint_y = area.y + area.height.saturating_sub(1);
-    let hint_text = format!("↑↓:scroll  L:language({})  Esc:close", language);
-    frame.render_widget(
-        Paragraph::new(smart_truncate(&hint_text, w, "…")).style(hint),
-        Rect::new(area.x + 2, hint_y, w as u16, 1),
-    );
+    let w = area.width.saturating_sub(2) as usize; // 1-char margin each side
 
-    // Scrollable content area (all rows except hint)
-    let list_height = area.height.saturating_sub(1) as usize;
-    let lines: Vec<&str> = content.lines().collect();
-    let max_scroll = lines.len().saturating_sub(list_height);
-    let effective_scroll = scroll_pos.min(max_scroll);
-
-    for (row, line) in lines.iter().skip(effective_scroll).take(list_height).enumerate() {
-        let y = area.y + row as u16;
+    // ── Row 0: Tab bar ──────────────────────────────────────────────────────
+    if area.height >= 1 {
+        let tabs = [
+            (HelpTab::NormalMode, "1:Normal"),
+            (HelpTab::ViewerMode, "2:Viewer"),
+            (HelpTab::DialogMode, "3:Dialog"),
+            (HelpTab::CustomFunctions, "4:Custom"),
+        ];
+        let mut spans: Vec<Span> = Vec::new();
+        for (i, (tab, label)) in tabs.iter().enumerate() {
+            if i > 0 { spans.push(Span::styled("  ", base)); }
+            if tab == active_tab {
+                spans.push(Span::styled(format!("[{}]", label), tab_active));
+            } else {
+                spans.push(Span::styled(label.to_string(), tab_inactive));
+            }
+        }
         frame.render_widget(
-            Paragraph::new(smart_truncate(line, w, "…")).style(base),
-            Rect::new(area.x + 2, y, w as u16, 1),
+            Paragraph::new(Line::from(spans)).style(base),
+            Rect::new(area.x + 1, area.y, w as u16, 1),
         );
     }
+
+    // ── Row 1: Search field ─────────────────────────────────────────────────
+    if area.height >= 2 {
+        let search_text = if regex_mode {
+            format!("[regex] {}", query)
+        } else {
+            format!("/{}", query)
+        };
+        frame.render_widget(
+            Paragraph::new(smart_truncate(&search_text, w, "…")).style(search_style),
+            Rect::new(area.x + 1, area.y + 1, w as u16, 1),
+        );
+    }
+
+    if area.height < 3 {
+        return;
+    }
+
+    // ── Filter and compute column widths ────────────────────────────────────
+    let filtered = help_filter_entries(entries, active_tab, show_unbound, query, regex_mode);
+    let count = filtered.len();
+
+    // Compute column widths from visible entries (unicode display width)
+    let min_cat_w: usize = 10;
+    let min_desc_w: usize = 20;
+    let min_keys_w: usize = 8;
+
+    let (max_cat_w, _max_desc_w, max_keys_w) = filtered.iter().fold(
+        (min_cat_w, min_desc_w, min_keys_w),
+        |(mc, md, mk), e| {
+            let kw = if e.keys.is_empty() { "(unbound)".len() } else { e.keys.join(", ").len() };
+            (mc.max(UnicodeWidthStr::width(e.category.as_str())),
+             md.max(UnicodeWidthStr::width(e.description.as_str())),
+             mk.max(kw))
+        },
+    );
+
+    // Distribute space: 2 chars separator between columns
+    // Total = cat_w + 2 + desc_w + 2 + keys_w; cap at w
+    let avail = w.saturating_sub(4); // 2 separators of 2 chars each
+    // Keys column is smallest — let description flex, cap category
+    let cat_w  = max_cat_w.min(avail / 4).max(min_cat_w);
+    let keys_w = max_keys_w.min(avail / 4).max(min_keys_w);
+    let desc_w = avail.saturating_sub(cat_w).saturating_sub(keys_w).max(min_desc_w);
+
+    // ── Rows 2..height-2: entry list ─────────────────────────────────────────
+    let list_start_y = area.y + 2;
+    let list_height = area.height.saturating_sub(3) as usize; // -tab -search -hint
+
+    // Clamp scroll so the last entry is always at the bottom (no trailing blank rows)
+    let effective_scroll = if filtered.len() > list_height {
+        scroll_pos.min(filtered.len() - list_height)
+    } else {
+        0
+    };
+
+    for (row, entry) in filtered.iter().skip(effective_scroll).take(list_height).enumerate() {
+        let y = list_start_y + row as u16;
+        if y >= area.y + area.height.saturating_sub(1) { break; }
+
+        let keys_str = if entry.keys.is_empty() { "(unbound)".to_string() } else { entry.keys.join(", ") };
+        let is_unbound = entry.keys.is_empty();
+
+        // Truncate each column to its width
+        let cat_s  = smart_truncate(&entry.category,    cat_w,  "…");
+        let desc_s = smart_truncate(&entry.description, desc_w, "…");
+        let keys_s = smart_truncate(&keys_str,          keys_w, "…");
+
+        let row_style = if is_unbound { unbound_style } else { base };
+
+        let line = Line::from(vec![
+            Span::styled(format!("{:<cat_w$}", cat_s, cat_w = cat_w), row_style),
+            Span::styled("  ", row_style),
+            Span::styled(format!("{:<desc_w$}", desc_s, desc_w = desc_w), row_style),
+            Span::styled("  ", row_style),
+            Span::styled(keys_s, row_style),
+        ]);
+        frame.render_widget(
+            Paragraph::new(line),
+            Rect::new(area.x + 1, y, w as u16, 1),
+        );
+    }
+
+    // ── Last row: hint line ──────────────────────────────────────────────────
+    let hint_y = area.y + area.height.saturating_sub(1);
+    let unbound_indicator = if show_unbound { "u:hide unbound" } else { "u:show unbound" };
+    let hint_text = format!("({})  {}  L:lang({})  Ctrl+R:regex", count, unbound_indicator, language);
+    frame.render_widget(
+        Paragraph::new(smart_truncate(&hint_text, w, "…")).style(hint_style),
+        Rect::new(area.x + 1, hint_y, w as u16, 1),
+    );
 }
 
 fn render_sort_dialog(
@@ -2400,27 +2540,124 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         return DialogAction::None;
     }
 
-    // Help dialog — scroll + language rotation + close
-    if let DialogContent::Help { content, scroll_pos, .. } = &mut dialog.content {
+    // Help dialog — full input handler
+    if let DialogContent::Help {
+        entries, query, regex_mode, show_unbound, active_tab, scroll_pos, ..
+    } = &mut dialog.content {
         use crossterm::event::KeyCode;
-        let line_count = content.lines().count();
+        use rwf_lib::model::dialog::HelpTab;
+
+        // Compute filtered count for scroll clamping
+        let filtered_count = help_filter_entries(entries, active_tab, *show_unbound, query, *regex_mode).len();
+        let list_height_estimate: usize = 20; // conservative; true height used in render
+
         match key.code {
-            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => return DialogAction::Cancel,
-            KeyCode::Char('L') | KeyCode::Char('l') if key.modifiers == KeyModifiers::NONE => {
+            // Close
+            KeyCode::Esc => return DialogAction::Cancel,
+
+            // Tab switching by number key
+            KeyCode::Char('1') if key.modifiers == KeyModifiers::NONE => {
+                *active_tab = HelpTab::NormalMode;
+                *scroll_pos = 0;
+                query.clear();
+            }
+            KeyCode::Char('2') if key.modifiers == KeyModifiers::NONE => {
+                *active_tab = HelpTab::ViewerMode;
+                *scroll_pos = 0;
+                query.clear();
+            }
+            KeyCode::Char('3') if key.modifiers == KeyModifiers::NONE => {
+                *active_tab = HelpTab::DialogMode;
+                *scroll_pos = 0;
+                query.clear();
+            }
+            KeyCode::Char('4') if key.modifiers == KeyModifiers::NONE => {
+                *active_tab = HelpTab::CustomFunctions;
+                *scroll_pos = 0;
+                query.clear();
+            }
+
+            // Tab switching Ctrl+PageUp / Ctrl+PageDown
+            KeyCode::PageUp if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                *active_tab = active_tab.prev();
+                *scroll_pos = 0;
+                query.clear();
+            }
+            KeyCode::PageDown if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                *active_tab = active_tab.next();
+                *scroll_pos = 0;
+                query.clear();
+            }
+
+            // Scroll — Up/Down arrow only (j/k are search input)
+            KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
+                if *scroll_pos > 0 { *scroll_pos -= 1; }
+            }
+            KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
+                let max_scroll = filtered_count.saturating_sub(list_height_estimate);
+                if *scroll_pos < max_scroll { *scroll_pos += 1; }
+            }
+            KeyCode::PageUp => {
+                *scroll_pos = scroll_pos.saturating_sub(list_height_estimate);
+            }
+            KeyCode::PageDown => {
+                let max_scroll = filtered_count.saturating_sub(list_height_estimate);
+                *scroll_pos = (*scroll_pos + list_height_estimate).min(max_scroll);
+            }
+            KeyCode::Home => { *scroll_pos = 0; }
+            KeyCode::End  => { *scroll_pos = filtered_count.saturating_sub(list_height_estimate); }
+
+            // u: toggle show_unbound
+            KeyCode::Char('u') if key.modifiers == KeyModifiers::NONE => {
+                *show_unbound = !*show_unbound;
+                *scroll_pos = 0;
+            }
+
+            // L: switch language
+            KeyCode::Char('L') if key.modifiers == KeyModifiers::NONE
+                                || key.modifiers == KeyModifiers::SHIFT =>
+            {
                 return DialogAction::RotateLanguage;
             }
-            KeyCode::Up   | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
-                *scroll_pos = scroll_pos.saturating_sub(1);
+
+            // Ctrl+R: toggle regex mode
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                *regex_mode = !*regex_mode;
+                *scroll_pos = 0;
             }
-            KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
-                if *scroll_pos + 1 < line_count { *scroll_pos += 1; }
+
+            // Ctrl+K: clear query
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                query.clear();
+                *scroll_pos = 0;
             }
-            KeyCode::PageUp => { *scroll_pos = scroll_pos.saturating_sub(10); }
-            KeyCode::PageDown => {
-                *scroll_pos = (*scroll_pos + 10).min(line_count.saturating_sub(1));
+            KeyCode::Char('\x0b') => {
+                query.clear();
+                *scroll_pos = 0;
             }
-            KeyCode::Home | KeyCode::Char('g') => { *scroll_pos = 0; }
-            KeyCode::End  | KeyCode::Char('G') => { *scroll_pos = line_count.saturating_sub(1); }
+
+            // Backspace: remove last char from query
+            KeyCode::Backspace if key.modifiers == KeyModifiers::NONE => {
+                if !query.is_empty() {
+                    let mut chars = query.chars();
+                    chars.next_back();
+                    *query = chars.as_str().to_string();
+                    *scroll_pos = 0;
+                }
+            }
+
+            // Printable chars: append to query
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::SUPER)
+                // Skip keys we already handled above (1-4)
+                && !matches!(c, '1' | '2' | '3' | '4') =>
+            {
+                query.push(c);
+                *scroll_pos = 0;
+            }
+
             _ => {}
         }
         return DialogAction::None;
@@ -3397,10 +3634,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     ActivePane::Right => (right_entries.as_slice(), *right_selected, ActivePane::Right),
                 };
                 if entries.get(selected_index).is_some() {
-                    rwf_lib::state::update_state(state, rwf_lib::state::Transition::NavigateToHistoryIndex {
+                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::NavigateToHistoryIndex {
                         pane,
                         index: selected_index,
                     });
+                    return result.jobs_to_start.into_iter().next();
                 }
                 return None;
             }

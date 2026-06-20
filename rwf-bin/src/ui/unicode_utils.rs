@@ -126,25 +126,38 @@ pub fn smart_truncate(s: &str, max_width: usize, ellipsis: &str) -> String {
     format!("{}{}{}", &s[..start_byte_pos], ellipsis, &s[end_byte_pos..])
 }
 
-/// Shorten a path to fit within max display width, preserving the last component
+/// Shorten a path to fit within max display width.
+/// Prefers `prefix…\last_component` so both the root and the destination are visible.
 pub fn shorten_path(path: &str, max_width: usize, ellipsis: &str) -> String {
     let current_width = path.width();
-    
+
     if current_width <= max_width {
         return path.to_string();
     }
-    
-    // Try to show the last component (filename/directory)
-    if let Some(last_sep) = path.rfind(|c| c == '/' || c == '\\') {
-        let last_component = &path[last_sep + 1..];
-        let combined_width = ellipsis.width() + last_component.width();
-        
-        if combined_width <= max_width {
+
+    let ell_width = ellipsis.width();
+
+    if let Some(last_sep_byte) = path.rfind(|c| c == '/' || c == '\\') {
+        let sep_char = &path[last_sep_byte..last_sep_byte + 1]; // "/" or "\"
+        let last_component = &path[last_sep_byte + 1..];         // e.g. "plan"
+
+        // Tail = "…\last_component" — always shown when it fits
+        let tail_width = ell_width + 1 /* sep */ + last_component.width();
+
+        if tail_width <= max_width {
+            let remaining = max_width - tail_width;
+            let prefix = truncate_to_width_no_ellipsis(path, remaining);
+            return format!("{}{}{}{}", prefix, ellipsis, sep_char, last_component);
+        }
+
+        // Tail alone too wide — try just "…last_component"
+        let minimal_width = ell_width + last_component.width();
+        if minimal_width <= max_width {
             return format!("{}{}", ellipsis, last_component);
         }
     }
-    
-    // Last component is too long, truncate it
+
+    // Last component is too long to fit at all, truncate from end
     truncate_to_width(path, max_width, ellipsis)
 }
 
