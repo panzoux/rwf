@@ -2,3 +2,4 @@ target/
 debug/
 qwen-code-export-*
 logs/
+sample/
