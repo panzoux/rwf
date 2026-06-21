@@ -554,6 +554,51 @@ std::thread::sleep(Duration::from_secs(1));
 tokio::time::sleep(Duration::from_secs(1)).await;
 ```
 
+### 6. Forgetting to Set `active_job_id` on the Pane
+
+When dispatching a `ReadDirectory` job via `.with_requesting_pane()`, you **must** also store
+the job ID on the pane before returning. The `CompleteJob::ReadDirectory` handler checks
+`pane.active_job_id == Some(job_id)` to reject stale results; if `active_job_id` is `None`
+or a previous ID, the completion is silently discarded and `is_loading` stays `true` forever.
+
+```rust
+// WRONG: pane stuck loading even after job completes
+pane_model.is_loading = true;
+let job_spec = JobSpec::new(JobKind::ReadDirectory { location })
+    .with_requesting_pane(tab_id, pane);
+Some(StateUpdateResult::with_job(job_spec))
+
+// RIGHT: completion handler can find and accept the result
+pane_model.is_loading = true;
+let job_spec = JobSpec::new(JobKind::ReadDirectory { location })
+    .with_requesting_pane(tab_id, pane);
+pane_model.active_job_id = Some(job_spec.id);  // ← required
+Some(StateUpdateResult::with_job(job_spec))
+```
+
+Every place that sets `pane_model.is_loading = true` with a `ReadDirectory` job must also
+set `pane_model.active_job_id`.
+
+### 7. Dialog Confirm Handlers Must Forward Jobs from `update_state`
+
+When `process_dialog_confirmation` calls `update_state()` with a transition that may enqueue
+a job (e.g. any navigation transition), the returned `StateUpdateResult` must be forwarded to
+the app loop. Calling `update_state()` and returning `None` silently drops the job — the pane
+gets `is_loading = true` but nothing ever runs to clear it.
+
+```rust
+// WRONG: job is dropped, pane stuck loading
+rwf_lib::state::update_state(state, Transition::NavigateToHistoryIndex { pane, index });
+return None;
+
+// RIGHT: forward the job so the app loop submits it
+let result = rwf_lib::state::update_state(state, Transition::NavigateToHistoryIndex { pane, index });
+return result.jobs_to_start.into_iter().next();
+```
+
+Reference implementation: `DriveSelection` confirm handler in
+`rwf-bin/src/ui/dialog/mod.rs`.
+
 ---
 
 ## Testing
@@ -710,6 +755,11 @@ StateUpdateResult {
     ..StateUpdateResult::with_ui_change()
 }
 ```
+
+> **Warning**: `update_state()` returns `StateUpdateResult`. If you call it from a dialog
+> confirm handler and discard the return value, any `jobs_to_start` inside are silently lost.
+> Always capture the result and return `result.jobs_to_start.into_iter().next()` when the
+> underlying transition may enqueue a job. See pitfall #7 below.
 
 ### Transition Enum (All Variants)
 

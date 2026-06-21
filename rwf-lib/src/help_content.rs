@@ -1,9 +1,191 @@
 //! Help content loading and management
 //!
-//! This module handles loading help content from language-specific JSON files.
+//! This module handles loading help content from language-specific JSON files,
+//! and provides the dynamic HelpBuilder for the Phase 6.7 help viewer.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+// ── Action description types ────────────────────────────────────────────────
+
+/// One action's description, as read from action_descriptions.*.json
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActionDesc {
+    pub description: String,
+}
+
+/// One category group in the description file
+#[derive(Debug, Clone, Deserialize)]
+pub struct CategoryDesc {
+    pub name: String,
+    pub actions: std::collections::HashMap<String, ActionDesc>,
+}
+
+/// Top-level structure for one mode section in the description file
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModeDesc {
+    pub categories: Vec<CategoryDesc>,
+}
+
+/// Root of action_descriptions.*.json
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActionDescriptions {
+    #[serde(rename = "NormalMode")]
+    pub normal_mode: ModeDesc,
+    #[serde(rename = "ViewerMode")]
+    pub viewer_mode: ModeDesc,
+}
+
+// Embedded English descriptions (always available as fallback)
+const EMBEDDED_EN: &str = include_str!("../resources/action_descriptions.en.json");
+const EMBEDDED_JP: &str = include_str!("../resources/action_descriptions.jp.json");
+
+/// Embedded default custom_functions.json — exported by `--export-config-files`
+pub const DEFAULT_CUSTOM_FUNCTIONS: &str =
+    include_str!("../resources/default_custom_functions.json");
+
+/// Embedded default menu_config.json — exported by `--export-config-files`
+pub const DEFAULT_MENU_CONFIG: &str =
+    include_str!("../resources/default_menu_config.json");
+
+impl ActionDescriptions {
+    /// Load action descriptions for the given language.
+    /// Checks %APPDATA%\rwf\ first, then falls back to embedded.
+    pub fn load(lang: &str) -> Self {
+        // Try user-provided override file first
+        if let Some(config_dir) = dirs::config_dir() {
+            let path = config_dir.join("rwf").join(format!("action_descriptions.{}.json", lang));
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(desc) = serde_json::from_str::<Self>(&content) {
+                    return desc;
+                }
+            }
+        }
+        // Try embedded
+        let embedded = if lang == "jp" { EMBEDDED_JP } else { EMBEDDED_EN };
+        serde_json::from_str(embedded)
+            .expect("embedded action_descriptions.*.json is always valid JSON")
+    }
+
+    pub fn available_languages() -> Vec<String> {
+        let mut langs = vec!["en".to_string()];
+        // Check for user override files
+        if let Some(config_dir) = dirs::config_dir() {
+            let jp = config_dir.join("rwf").join("action_descriptions.jp.json");
+            if jp.exists() && !langs.contains(&"jp".to_string()) {
+                langs.push("jp".to_string());
+            }
+        }
+        // Always include jp since it's embedded
+        if !langs.contains(&"jp".to_string()) {
+            langs.push("jp".to_string());
+        }
+        langs
+    }
+
+    pub fn next_language(current: &str) -> String {
+        let languages = Self::available_languages();
+        let idx = languages.iter().position(|l| l == current).unwrap_or(0);
+        languages[(idx + 1) % languages.len()].clone()
+    }
+}
+
+// ── Help builder ─────────────────────────────────────────────────────────────
+
+/// Build a complete list of `HelpEntry` from runtime key bindings, action descriptions,
+/// and custom functions.
+pub fn build_help_entries(
+    key_bindings: &crate::input::KeyBindings,
+    descriptions: &ActionDescriptions,
+    custom_functions: &[crate::model::dialog::CustomFunction],
+    show_unbound: bool,
+) -> Vec<crate::model::dialog::HelpEntry> {
+    use crate::model::dialog::{HelpEntry, HelpTab};
+
+    let mut entries: Vec<HelpEntry> = Vec::new();
+
+    let normal_map = key_bindings.normal_action_to_keys();
+    let viewer_map = key_bindings.viewer_action_to_keys();
+    let dialog_map = key_bindings.dialog_action_to_keys();
+
+    // Normal mode actions
+    for cat in &descriptions.normal_mode.categories {
+        for (action_name, action_desc) in &cat.actions {
+            let keys = normal_map.get(action_name).cloned().unwrap_or_default();
+            if !show_unbound && keys.is_empty() {
+                continue;
+            }
+            entries.push(HelpEntry {
+                category: cat.name.clone(),
+                description: action_desc.description.clone(),
+                keys,
+                action_name: action_name.clone(),
+                tab: HelpTab::NormalMode,
+            });
+        }
+    }
+
+    // Viewer mode actions
+    for cat in &descriptions.viewer_mode.categories {
+        for (action_name, action_desc) in &cat.actions {
+            let keys = viewer_map.get(action_name).cloned().unwrap_or_default();
+            if !show_unbound && keys.is_empty() {
+                continue;
+            }
+            entries.push(HelpEntry {
+                category: cat.name.clone(),
+                description: action_desc.description.clone(),
+                keys,
+                action_name: action_name.clone(),
+                tab: HelpTab::ViewerMode,
+            });
+        }
+    }
+
+    // Dialog mode actions (use normal_map as dialog_map is typically empty)
+    if !dialog_map.is_empty() {
+        for (action_name, keys) in &dialog_map {
+            entries.push(HelpEntry {
+                category: "Dialog".to_string(),
+                description: action_name.clone(),
+                keys: keys.clone(),
+                action_name: action_name.clone(),
+                tab: HelpTab::DialogMode,
+            });
+        }
+    }
+
+    // Custom functions tab
+    for func in custom_functions {
+        let category = func.category.clone()
+            .unwrap_or_else(|| "Custom Functions".to_string());
+        let description = if func.is_menu() {
+            let menu_name = func.menu.as_ref()
+                .and_then(|m| match m {
+                    crate::model::dialog::MenuContent::File(f) => Some(f.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| func.name.clone());
+            format!("opens menu {}", menu_name)
+        } else {
+            func.description.clone().unwrap_or_else(|| func.name.clone())
+        };
+        // Look up whether this custom function has a bound key
+        let keys = normal_map.get(&func.name).cloned().unwrap_or_default();
+        if !show_unbound && keys.is_empty() {
+            continue;
+        }
+        entries.push(HelpEntry {
+            category,
+            description,
+            keys,
+            action_name: func.name.clone(),
+            tab: HelpTab::CustomFunctions,
+        });
+    }
+
+    entries
+}
 
 /// A key binding entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,26 +340,14 @@ impl HelpContent {
         content
     }
     
-    /// Get list of available languages
+    /// Get list of available languages (delegates to ActionDescriptions)
     pub fn available_languages() -> Vec<String> {
-        let mut languages = vec!["en".to_string()];
-        
-        // Check for other language files
-        if Path::new("help.jp.json").exists() {
-            languages.push("jp".to_string());
-        }
-        
-        languages
+        ActionDescriptions::available_languages()
     }
-    
-    /// Get the next language in rotation
-    /// 
-    /// **Validates: Requirements 48.3**
+
+    /// Get the next language in rotation (delegates to ActionDescriptions)
     pub fn next_language(current: &str) -> String {
-        let languages = Self::available_languages();
-        let current_index = languages.iter().position(|l| l == current).unwrap_or(0);
-        let next_index = (current_index + 1) % languages.len();
-        languages[next_index].clone()
+        ActionDescriptions::next_language(current)
     }
 }
 

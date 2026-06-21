@@ -255,77 +255,91 @@ impl KeyBindings {
 
 impl Default for KeyBindings {
     fn default() -> Self {
-        Self::twf_defaults()
+        Self::embedded_defaults()
     }
 }
 
 impl KeyBindings {
-    
-    /// Load key bindings from a JSON file, merging over defaults.
-    /// Accepts both the native format (`NormalMode` key) and the TWF-compatible
-    /// format (`bindings` key). Unknown action strings become `InvokeCustomFunction`.
-    pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let content = std::fs::read_to_string(path)?;
-        let v: serde_json::Value = serde_json::from_str(&content)?;
+    /// Load built-in defaults from the embedded JSON resource (single source of truth).
+    pub fn embedded_defaults() -> Self {
+        Self::load_from_str(include_str!("../../resources/default_keybindings.json"))
+            .expect("embedded default_keybindings.json is always valid JSON")
+    }
 
-        let mut merged = Self::default();
+    /// Parse key bindings from a JSON string, starting from an empty state.
+    /// Does not merge over any defaults — the string must contain all desired bindings.
+    /// Used by `embedded_defaults()` and for testing.
+    pub fn load_from_str(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let v: serde_json::Value = serde_json::from_str(content)?;
+        let mut result = Self {
+            normal_mode: HashMap::new(),
+            search_mode: HashMap::new(),
+            dialog_mode: HashMap::new(),
+            viewer_mode: HashMap::new(),
+            pending_sequence: None,
+        };
+        Self::apply_from_value(&v, &mut result);
+        Ok(result)
+    }
 
+    /// Apply bindings from a parsed JSON value into `target`, overwriting any existing entries.
+    fn apply_from_value(v: &serde_json::Value, target: &mut Self) {
         // TWF format: top-level "bindings" key maps to NormalMode
         if let Some(bindings) = v.get("bindings").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    let action = Self::parse_action_name(action_str);
-                    merged.normal_mode.insert(key.clone(), action);
+                    target.normal_mode.insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
-
         // TWF format: "textViewerBindings" maps to ViewerMode
         if let Some(bindings) = v.get("textViewerBindings").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    // Strip "TextViewer." prefix if present
                     let stripped = action_str.strip_prefix("TextViewer.").unwrap_or(action_str);
-                    let action = Self::parse_viewer_action_name(stripped);
-                    merged.viewer_mode.insert(key.clone(), action);
+                    target.viewer_mode.insert(key.clone(), Self::parse_viewer_action_name(stripped));
                 }
             }
         }
-
-        // Native rwf format: NormalMode / SearchMode / ViewerMode keys with Action enum names
+        // Native rwf format: NormalMode / SearchMode / DialogMode / ViewerMode
         if let Some(bindings) = v.get("NormalMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    let action = Self::parse_action_name(action_str);
-                    merged.normal_mode.insert(key.clone(), action);
+                    target.normal_mode.insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("SearchMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    let action = Self::parse_action_name(action_str);
-                    merged.search_mode.insert(key.clone(), action);
+                    target.search_mode.insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("DialogMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    let action = Self::parse_action_name(action_str);
-                    merged.dialog_mode.insert(key.clone(), action);
+                    target.dialog_mode.insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("ViewerMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    let action = Self::parse_viewer_action_name(action_str);
-                    merged.viewer_mode.insert(key.clone(), action);
+                    target.viewer_mode.insert(key.clone(), Self::parse_viewer_action_name(action_str));
                 }
             }
         }
+    }
 
+    /// Load key bindings from a JSON file, merging over embedded defaults.
+    /// Accepts both the native format (`NormalMode` key) and the TWF-compatible
+    /// format (`bindings` key). Unknown action strings become `InvokeCustomFunction`.
+    pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let content = std::fs::read_to_string(path)?;
+        let v: serde_json::Value = serde_json::from_str(&content)?;
+        let mut merged = Self::default();  // = embedded_defaults()
+        Self::apply_from_value(&v, &mut merged);
         Ok(merged)
     }
 
@@ -448,6 +462,42 @@ impl KeyBindings {
     /// Clear any pending sequence
     pub fn clear_pending_sequence(&mut self) {
         self.pending_sequence = None;
+    }
+
+    /// Returns action-name → sorted key list for NormalMode.
+    /// `InvokeCustomFunction(name)` entries use the function name as the key.
+    /// `PendingSequence` and `CountDownJob` are excluded.
+    pub fn normal_action_to_keys(&self) -> HashMap<String, Vec<String>> {
+        Self::invert_bindings(&self.normal_mode)
+    }
+
+    /// Returns action-name → sorted key list for ViewerMode.
+    pub fn viewer_action_to_keys(&self) -> HashMap<String, Vec<String>> {
+        Self::invert_bindings(&self.viewer_mode)
+    }
+
+    /// Returns action-name → sorted key list for DialogMode.
+    pub fn dialog_action_to_keys(&self) -> HashMap<String, Vec<String>> {
+        Self::invert_bindings(&self.dialog_mode)
+    }
+
+    fn invert_bindings(mode: &HashMap<String, Action>) -> HashMap<String, Vec<String>> {
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for (key, action) in mode {
+            match action {
+                Action::PendingSequence | Action::CountDownJob(_) => continue,
+                Action::InvokeCustomFunction(name) => {
+                    map.entry(name.clone()).or_default().push(key.clone());
+                }
+                _ => {
+                    map.entry(format!("{:?}", action)).or_default().push(key.clone());
+                }
+            }
+        }
+        for keys in map.values_mut() {
+            keys.sort();
+        }
+        map
     }
 }
 
@@ -667,6 +717,86 @@ pub fn format_key_event(event: &KeyEvent) -> String {
 
     parts.push(&key);
     parts.join("+")
+}
+
+// ── Duplicate key detection ───────────────────────────────────────────────────
+
+/// A serde visitor that deserializes a JSON object but records any key that
+/// appears more than once, along with the first and winning (last) action values.
+/// Because serde_json streams tokens one at a time, `MapAccess::next_key` is
+/// called for every key in the raw JSON — including duplicates — before any
+/// HashMap deduplication occurs.
+///
+/// Each entry is `(key, first_action, winning_action)`.
+struct DupMap(Vec<(String, String, String)>);
+
+impl<'de> serde::Deserialize<'de> for DupMap {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = DupMap;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "a map of key bindings")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<DupMap, A::Error> {
+                let mut seen = std::collections::HashMap::<String, String>::new();
+                let mut dupes = Vec::<(String, String, String)>::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    let value: String = map.next_value()?;
+                    if let Some(first) = seen.get(&key) {
+                        dupes.push((key.clone(), first.clone(), value.clone()));
+                    } else {
+                        seen.insert(key, value);
+                    }
+                }
+                Ok(DupMap(dupes))
+            }
+        }
+        de.deserialize_map(V)
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct KeybindingsForDupCheck {
+    #[serde(rename = "NormalMode")]  normal_mode: Option<DupMap>,
+    #[serde(rename = "ViewerMode")]  viewer_mode: Option<DupMap>,
+    #[serde(rename = "DialogMode")]  dialog_mode: Option<DupMap>,
+    #[serde(rename = "SearchMode")]  search_mode: Option<DupMap>,
+    #[serde(rename = "bindings")]    bindings:    Option<DupMap>,
+}
+
+/// Scan keybindings JSON content for duplicate keys within each mode section.
+/// Returns one warning string per duplicate found; empty when the content is clean.
+pub fn check_keybindings_content_duplicates(content: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let Ok(check) = serde_json::from_str::<KeybindingsForDupCheck>(content) else {
+        return warnings; // JSON syntax errors are reported separately by load_from_file
+    };
+    let sections = [
+        ("NormalMode", check.normal_mode),
+        ("ViewerMode", check.viewer_mode),
+        ("DialogMode", check.dialog_mode),
+        ("SearchMode", check.search_mode),
+        ("bindings",   check.bindings),
+    ];
+    for (name, maybe_map) in sections {
+        if let Some(DupMap(dupes)) = maybe_map {
+            for (key, first, winner) in dupes {
+                warnings.push(format!(
+                    "[WARN] keybindings.json {name}: key '{key}' bound twice \
+                     — '{first}' overridden by '{winner}'"
+                ));
+            }
+        }
+    }
+    warnings
+}
+
+/// Scan a keybindings JSON file for duplicate keys within each mode section.
+pub fn check_keybindings_duplicates(path: &std::path::Path) -> Vec<String> {
+    let Ok(content) = std::fs::read_to_string(path) else { return vec![] };
+    check_keybindings_content_duplicates(&content)
 }
 
 
@@ -1230,11 +1360,22 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::ExitAndChangeDirectory]
         }
         Action::Help => {
-            // Show help dialog with configured language
-            // **Validates: Requirements 48.2, 48.5**
-            vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::help_with_language(&state.config.help_language),
-            }]
+            let lang = &state.config.help_language;
+            let descriptions = crate::help_content::ActionDescriptions::load(lang);
+            let entries = crate::help_content::build_help_entries(
+                &state.config.key_bindings,
+                &descriptions,
+                &state.custom_functions,
+                state.config.help_show_unbound,
+            );
+            let mut dialog = crate::model::Dialog::help_with_language(lang);
+            if let crate::model::DialogContent::Help {
+                entries: ref mut e, show_unbound: ref mut u, ..
+            } = dialog.content {
+                *e = entries;
+                *u = state.config.help_show_unbound;
+            }
+            vec![Transition::ShowDialog { dialog }]
         }
         Action::RotateHelpLanguage => {
             // Rotate through available help languages
@@ -1532,16 +1673,79 @@ mod tests {
     #[test]
     fn test_invalid_sequence() {
         let mut bindings = KeyBindings::default();
-        
+
         // First key in sequence
         let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
         bindings.map_key(&event);
-        
+
         // Invalid second key
         let event = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
         let action = bindings.map_key(&event);
         assert_eq!(action, None);
         assert!(!bindings.has_pending_sequence());
+    }
+
+    #[test]
+    fn test_normal_action_to_keys_inversion() {
+        let bindings = KeyBindings::default();
+        let map = bindings.normal_action_to_keys();
+
+        // CursorUp is bound to "Up" and "k"
+        let cursor_up = map.get("CursorUp").expect("CursorUp must be in map");
+        assert!(cursor_up.contains(&"Up".to_string()));
+        assert!(cursor_up.contains(&"k".to_string()));
+
+        // Copy is bound to "C" and "c"
+        let copy_keys = map.get("Copy").expect("Copy must be in map");
+        assert!(copy_keys.contains(&"C".to_string()));
+        assert!(copy_keys.contains(&"c".to_string()));
+
+        // PendingSequence must NOT appear
+        assert!(!map.contains_key("PendingSequence"));
+        // CountDownJob must NOT appear
+        assert!(!map.iter().any(|(k, _)| k.starts_with("CountDownJob")));
+    }
+
+    #[test]
+    fn test_viewer_action_to_keys_inversion() {
+        let bindings = KeyBindings::default();
+        let map = bindings.viewer_action_to_keys();
+
+        // ViewerScrollDown is bound to "Down" and "j"
+        let keys = map.get("ViewerScrollDown").expect("ViewerScrollDown must be in map");
+        assert!(keys.contains(&"Down".to_string()));
+        assert!(keys.contains(&"j".to_string()));
+    }
+
+    #[test]
+    fn test_action_to_keys_sorted() {
+        let bindings = KeyBindings::default();
+        let map = bindings.normal_action_to_keys();
+
+        // All key lists must be sorted
+        for keys in map.values() {
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(*keys, sorted, "keys for an action must be sorted");
+        }
+    }
+
+    #[test]
+    fn test_embedded_defaults_matches_twf_defaults_tab() {
+        // embedded_defaults() should have "Tab" → SwitchPane in NormalMode
+        let bindings = KeyBindings::embedded_defaults();
+        assert_eq!(bindings.normal_mode.get("Tab"), Some(&Action::SwitchPane));
+        assert_eq!(bindings.normal_mode.get("?"), Some(&Action::Help));
+    }
+
+    #[test]
+    fn test_load_from_str_starts_empty() {
+        // load_from_str with only one binding should have exactly that binding
+        let json = r#"{"NormalMode":{"x":"Quit"}}"#;
+        let bindings = KeyBindings::load_from_str(json).unwrap();
+        assert_eq!(bindings.normal_mode.len(), 1);
+        assert_eq!(bindings.normal_mode.get("x"), Some(&Action::Quit));
+        assert!(bindings.viewer_mode.is_empty());
     }
 }
 

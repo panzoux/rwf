@@ -1,0 +1,171 @@
+{
+  "NormalMode": {
+    "categories": [
+      {
+        "name": "Navigation",
+        "actions": {
+          "SwitchPane":             { "description": "Switch pane" },
+          "CursorUp":               { "description": "Move cursor up" },
+          "CursorDown":             { "description": "Move cursor down" },
+          "MoveCursorToFirst":      { "description": "Jump to first entry" },
+          "MoveCursorToLast":       { "description": "Jump to last entry" },
+          "PageUp":                 { "description": "Page up" },
+          "PageDown":               { "description": "Page down" },
+          "EnterDirectory":         { "description": "Enter directory / open file" },
+          "NavigateToParent":       { "description": "Go to parent directory" },
+          "SwitchToLeftPane":       { "description": "Focus left pane" },
+          "SwitchToRightPane":      { "description": "Focus right pane" },
+          "HistoryBack":            { "description": "Navigate back in history" },
+          "HistoryForward":         { "description": "Navigate forward in history" },
+          "ShowHistoryDialog":      { "description": "Show navigation history" },
+          "ShowJumpToPathDialog":   { "description": "Jump to path (incremental)" },
+          "ShowJumpToFileDialog":   { "description": "Jump to file (recursive search)" }
+        }
+      },
+      {
+        "name": "File Operations",
+        "actions": {
+          "Copy":                   { "description": "Copy selected files" },
+          "Move":                   { "description": "Move selected files" },
+          "Delete":                 { "description": "Delete selected files" },
+          "DeleteForce":            { "description": "Delete without confirmation" },
+          "Rename":                 { "description": "Rename cursor file" },
+          "PatternRename":          { "description": "Pattern rename (regex)" },
+          "CreateDirectory":        { "description": "Create directory" },
+          "Compress":               { "description": "Compress / create archive" },
+          "Extract":                { "description": "Extract archive" },
+          "ShowFileInfoForCursor":  { "description": "Show file info" },
+          "OpenWithEditor":         { "description": "Open with editor" }
+        }
+      },
+      {
+        "name": "Marking",
+        "actions": {
+          "ToggleMark":             { "description": "Toggle mark on cursor entry" },
+          "ToggleMarkUp":           { "description": "Toggle mark and move up" },
+          "MarkAll":                { "description": "Mark all entries" },
+          "UnmarkAll":              { "description": "Unmark all entries" },
+          "ClearMarks":             { "description": "Clear all marks" },
+          "InvertMarks":            { "description": "Invert marks" },
+          "WildcardMarking":        { "description": "Mark by wildcard pattern" },
+          "RangeMarking":           { "description": "Mark range" },
+          "FileMaskFilter":         { "description": "File mask filter / toggle" }
+        }
+      },
+      {
+        "name": "Sorting",
+        "actions": {
+          "SortByName":             { "description": "Sort by name" },
+          "SortBySize":             { "description": "Sort by size" },
+          "SortByDate":             { "description": "Sort by date" },
+          "SortByExtension":        { "description": "Sort by extension" },
+          "ToggleSortOrder":        { "description": "Toggle ascending / descending order" },
+          "OpenSortDialog":         { "description": "Open sort options dialog" }
+        }
+      },
+      {
+        "name": "Search & Filter",
+        "actions": {
+          "StartSearch":            { "description": "Start incremental search" },
+          "ClearSearchFilter":      { "description": "Clear search / filter" }
+        }
+      },
+      {
+        "name": "View",
+        "actions": {
+          "OpenTextViewer":         { "description": "Open text viewer" },
+          "OpenHexViewer":          { "description": "Open hex viewer" },
+          "ToggleHidden":           { "description": "Toggle hidden files" },
+          "Refresh":                { "description": "Refresh pane" },
+          "SyncPanes":              { "description": "Sync other pane to current directory" },
+          "SwapPanes":              { "description": "Swap left and right panes" },
+          "CalculateDirectorySize": { "description": "Calculate directory sizes" }
+        }
+      },
+      {
+        "name": "Tab Management",
+        "actions": {
+          "NewTab":                 { "description": "Open new tab" },
+          "CloseTab":               { "description": "Close current tab" },
+          "NextTab":                { "description": "Switch to next tab" },
+          "PrevTab":                { "description": "Switch to previous tab" },
+          "TabSelector":            { "description": "Open tab selector dialog" }
+        }
+      },
+      {
+        "name": "Registered Folders",
+        "actions": {
+          "RegisterCurrentFolder":      { "description": "Register current folder as bookmark" },
+          "ShowRegisteredFolderDialog": { "description": "Jump to registered folder" },
+          "MoveToRegisteredFolder":     { "description": "Move marked files to registered folder" }
+        }
+      },
+      {
+        "name": "Menus & Functions",
+        "actions": {
+          "ShowContextMenu":            { "description": "Open context menu" },
+          "ShowDriveChangeDialog":      { "description": "Change drive / mount point" },
+          "ShowCustomFunctionsDialog":  { "description": "Open custom functions menu" }
+        }
+      },
+      {
+        "name": "System",
+        "actions": {
+          "Help":                       { "description": "Show this help viewer" },
+          "Quit":                       { "description": "Quit application" },
+          "ExitAndChangeDirectory":     { "description": "Quit and change shell directory (--cwd mode)" },
+          "JobManager":                 { "description": "Open job manager dialog" },
+          "ReloadConfig":               { "description": "Reload configuration files" },
+          "EditConfigFile":             { "description": "Open config file in editor" },
+          "ShowVersionInfo":            { "description": "Show version / system info in task panel" },
+          "ShowVersionInfoVerbose":     { "description": "Show verbose version info in task panel" },
+          "ToggleTaskPanel":            { "description": "Toggle task panel visibility" },
+          "IncreaseTaskPanelHeight":    { "description": "Increase task panel height" },
+          "DecreaseTaskPanelHeight":    { "description": "Decrease task panel height" },
+          "ScrollTaskPanelUp":          { "description": "Scroll task panel up" },
+          "ScrollTaskPanelDown":        { "description": "Scroll task panel down" }
+        }
+      }
+    ]
+  },
+  "ViewerMode": {
+    "categories": [
+      {
+        "name": "Navigation",
+        "actions": {
+          "ViewerScrollUp":         { "description": "Scroll up one line" },
+          "ViewerScrollDown":       { "description": "Scroll down one line" },
+          "ViewerPageUp":           { "description": "Scroll up one page" },
+          "ViewerPageDown":         { "description": "Scroll down one page" },
+          "ViewerGoToTop":          { "description": "Go to beginning of file" },
+          "ViewerGoToBottom":       { "description": "Go to end of file" },
+          "ViewerScrollLeft":       { "description": "Scroll left" },
+          "ViewerScrollRight":      { "description": "Scroll right" },
+          "ViewerFastScrollUp":     { "description": "Fast scroll up" },
+          "ViewerFastScrollDown":   { "description": "Fast scroll down" },
+          "ViewerFastScrollLeft":   { "description": "Fast scroll left" },
+          "ViewerFastScrollRight":  { "description": "Fast scroll right" }
+        }
+      },
+      {
+        "name": "Search",
+        "actions": {
+          "ViewerBeginSearch":          { "description": "Begin forward search" },
+          "ViewerBeginSearchBackward":  { "description": "Begin backward search" },
+          "ViewerFindNext":             { "description": "Find next match" },
+          "ViewerFindPrev":             { "description": "Find previous match" },
+          "ViewerToggleCaseSensitive":  { "description": "Toggle case-sensitive search" },
+          "ViewerClearSearch":          { "description": "Clear search highlight" }
+        }
+      },
+      {
+        "name": "Controls",
+        "actions": {
+          "ViewerClose":            { "description": "Close viewer" },
+          "ViewerToggleHexMode":    { "description": "Toggle hex / text mode" },
+          "ViewerCycleEncoding":    { "description": "Cycle text encoding (UTF-8, Shift-JIS, EUC-JP…)" }
+        }
+      }
+    ]
+  }
+}

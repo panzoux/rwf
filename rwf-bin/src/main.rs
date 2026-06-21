@@ -17,13 +17,35 @@ struct Args {
     /// Enable directory change on exit (outputs final directory to stdout)
     #[arg(long)]
     cwd: bool,
+
+    /// Print the embedded English action description file (action_descriptions.en.json) to stdout
+    /// and exit. Use this as a template for creating custom translation files.
+    #[arg(long)]
+    export_function_list: bool,
+
+    /// Export all default config files to DIR (skips files that already exist).
+    #[arg(long, value_name = "DIR")]
+    export_config_files: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command-line arguments
     let args = Args::parse();
-    
+
+    // Export embedded action descriptions and exit (no UI needed)
+    if args.export_function_list {
+        print!("{}", include_str!("../../rwf-lib/resources/action_descriptions.en.json"));
+        return Ok(());
+    }
+
+    // Export default config files and exit
+    if let Some(dir) = &args.export_config_files {
+        std::fs::create_dir_all(dir)?;
+        export_default_configs(dir)?;
+        return Ok(());
+    }
+
     // Get proper app data directory based on OS
     let log_dir = rwf_lib::logging::default_log_dir();
     
@@ -81,6 +103,7 @@ async fn main() -> Result<()> {
             (rwf_lib::KeyBindings::default(), result)
         }
     };
+    state.config.key_bindings = key_bindings.clone();
     info!("Key bindings loaded");
 
     // Prepend config.json and keybindings.json results so the order is:
@@ -103,5 +126,30 @@ async fn main() -> Result<()> {
         info!("Output exit directory: {}", exit_dir);
     }
     
+    Ok(())
+}
+
+fn write_if_absent(dir: &std::path::Path, name: &str, content: &str) -> Result<()> {
+    let path = dir.join(name);
+    if path.exists() {
+        println!("skipped (exists): {}", path.display());
+        return Ok(());
+    }
+    std::fs::write(&path, content)?;
+    println!("written:          {}", path.display());
+    Ok(())
+}
+
+fn export_default_configs(dir: &std::path::Path) -> Result<()> {
+    write_if_absent(dir, "keybindings.json",
+        include_str!("../../rwf-lib/resources/default_keybindings.json"))?;
+    write_if_absent(dir, "custom_functions.json",
+        rwf_lib::DEFAULT_CUSTOM_FUNCTIONS)?;
+    write_if_absent(dir, "menu_config.json",
+        rwf_lib::DEFAULT_MENU_CONFIG)?;
+    write_if_absent(dir, "action_descriptions.en.json",
+        include_str!("../../rwf-lib/resources/action_descriptions.en.json"))?;
+    let config_json = serde_json::to_string_pretty(&rwf_lib::config::AppConfig::default())?;
+    write_if_absent(dir, "config.json", &config_json)?;
     Ok(())
 }

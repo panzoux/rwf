@@ -1,0 +1,171 @@
+{
+  "NormalMode": {
+    "categories": [
+      {
+        "name": "ナビゲーション",
+        "actions": {
+          "SwitchPane":             { "description": "ペイン切り替え" },
+          "CursorUp":               { "description": "カーソルを上へ移動" },
+          "CursorDown":             { "description": "カーソルを下へ移動" },
+          "MoveCursorToFirst":      { "description": "最初のエントリへジャンプ" },
+          "MoveCursorToLast":       { "description": "最後のエントリへジャンプ" },
+          "PageUp":                 { "description": "ページアップ" },
+          "PageDown":               { "description": "ページダウン" },
+          "EnterDirectory":         { "description": "ディレクトリに入る / ファイルを開く" },
+          "NavigateToParent":       { "description": "親ディレクトリへ移動" },
+          "SwitchToLeftPane":       { "description": "左ペインにフォーカス" },
+          "SwitchToRightPane":      { "description": "右ペインにフォーカス" },
+          "HistoryBack":            { "description": "履歴を戻る" },
+          "HistoryForward":         { "description": "履歴を進む" },
+          "ShowHistoryDialog":      { "description": "ナビゲーション履歴を表示" },
+          "ShowJumpToPathDialog":   { "description": "パスジャンプ（インクリメンタル）" },
+          "ShowJumpToFileDialog":   { "description": "ファイルジャンプ（再帰検索）" }
+        }
+      },
+      {
+        "name": "ファイル操作",
+        "actions": {
+          "Copy":                   { "description": "選択ファイルをコピー" },
+          "Move":                   { "description": "選択ファイルを移動" },
+          "Delete":                 { "description": "選択ファイルを削除" },
+          "DeleteForce":            { "description": "確認なしで強制削除" },
+          "Rename":                 { "description": "カーソルファイルを名前変更" },
+          "PatternRename":          { "description": "パターン名前変更（正規表現）" },
+          "CreateDirectory":        { "description": "ディレクトリ作成" },
+          "Compress":               { "description": "圧縮 / アーカイブ作成" },
+          "Extract":                { "description": "アーカイブを展開" },
+          "ShowFileInfoForCursor":  { "description": "ファイル情報を表示" },
+          "OpenWithEditor":         { "description": "エディタで開く" }
+        }
+      },
+      {
+        "name": "マーキング",
+        "actions": {
+          "ToggleMark":             { "description": "カーソルエントリのマークを切り替え" },
+          "ToggleMarkUp":           { "description": "マーク切り替えして上へ移動" },
+          "MarkAll":                { "description": "すべてのエントリをマーク" },
+          "UnmarkAll":              { "description": "すべてのマークを解除" },
+          "ClearMarks":             { "description": "全マークをクリア" },
+          "InvertMarks":            { "description": "マークを反転" },
+          "WildcardMarking":        { "description": "ワイルドカードパターンでマーク" },
+          "RangeMarking":           { "description": "範囲マーキング" },
+          "FileMaskFilter":         { "description": "ファイルマスクフィルター / 切り替え" }
+        }
+      },
+      {
+        "name": "ソート",
+        "actions": {
+          "SortByName":             { "description": "名前でソート" },
+          "SortBySize":             { "description": "サイズでソート" },
+          "SortByDate":             { "description": "日付でソート" },
+          "SortByExtension":        { "description": "拡張子でソート" },
+          "ToggleSortOrder":        { "description": "昇順 / 降順を切り替え" },
+          "OpenSortDialog":         { "description": "ソートオプションダイアログを開く" }
+        }
+      },
+      {
+        "name": "検索とフィルター",
+        "actions": {
+          "StartSearch":            { "description": "インクリメンタル検索を開始" },
+          "ClearSearchFilter":      { "description": "検索 / フィルターをクリア" }
+        }
+      },
+      {
+        "name": "表示",
+        "actions": {
+          "OpenTextViewer":         { "description": "テキストビューアを開く" },
+          "OpenHexViewer":          { "description": "Hexビューアを開く" },
+          "ToggleHidden":           { "description": "隠しファイルを表示/非表示" },
+          "Refresh":                { "description": "ペインを更新" },
+          "SyncPanes":              { "description": "他のペインを現在のディレクトリに同期" },
+          "SwapPanes":              { "description": "左右ペインを入れ替え" },
+          "CalculateDirectorySize": { "description": "ディレクトリサイズを計算" }
+        }
+      },
+      {
+        "name": "タブ管理",
+        "actions": {
+          "NewTab":                 { "description": "新しいタブを開く" },
+          "CloseTab":               { "description": "現在のタブを閉じる" },
+          "NextTab":                { "description": "次のタブへ切り替え" },
+          "PrevTab":                { "description": "前のタブへ切り替え" },
+          "TabSelector":            { "description": "タブセレクターダイアログを開く" }
+        }
+      },
+      {
+        "name": "登録フォルダ",
+        "actions": {
+          "RegisterCurrentFolder":      { "description": "現在のフォルダをブックマーク登録" },
+          "ShowRegisteredFolderDialog": { "description": "登録フォルダへジャンプ" },
+          "MoveToRegisteredFolder":     { "description": "マーク済みファイルを登録フォルダへ移動" }
+        }
+      },
+      {
+        "name": "メニューと機能",
+        "actions": {
+          "ShowContextMenu":            { "description": "コンテキストメニューを開く" },
+          "ShowDriveChangeDialog":      { "description": "ドライブ / マウントポイントを変更" },
+          "ShowCustomFunctionsDialog":  { "description": "カスタム関数メニューを開く" }
+        }
+      },
+      {
+        "name": "システム",
+        "actions": {
+          "Help":                       { "description": "このヘルプビューアを表示" },
+          "Quit":                       { "description": "アプリケーションを終了" },
+          "ExitAndChangeDirectory":     { "description": "終了してシェルのディレクトリを変更 (--cwdモード)" },
+          "JobManager":                 { "description": "ジョブマネージャーダイアログを開く" },
+          "ReloadConfig":               { "description": "設定ファイルを再読み込み" },
+          "EditConfigFile":             { "description": "設定ファイルをエディタで開く" },
+          "ShowVersionInfo":            { "description": "バージョン / システム情報をタスクパネルに表示" },
+          "ShowVersionInfoVerbose":     { "description": "詳細バージョン情報をタスクパネルに表示" },
+          "ToggleTaskPanel":            { "description": "タスクパネルの表示 / 非表示を切り替え" },
+          "IncreaseTaskPanelHeight":    { "description": "タスクパネルの高さを増やす" },
+          "DecreaseTaskPanelHeight":    { "description": "タスクパネルの高さを減らす" },
+          "ScrollTaskPanelUp":          { "description": "タスクパネルを上にスクロール" },
+          "ScrollTaskPanelDown":        { "description": "タスクパネルを下にスクロール" }
+        }
+      }
+    ]
+  },
+  "ViewerMode": {
+    "categories": [
+      {
+        "name": "ナビゲーション",
+        "actions": {
+          "ViewerScrollUp":         { "description": "1行上にスクロール" },
+          "ViewerScrollDown":       { "description": "1行下にスクロール" },
+          "ViewerPageUp":           { "description": "1ページ上にスクロール" },
+          "ViewerPageDown":         { "description": "1ページ下にスクロール" },
+          "ViewerGoToTop":          { "description": "ファイルの先頭へ移動" },
+          "ViewerGoToBottom":       { "description": "ファイルの末尾へ移動" },
+          "ViewerScrollLeft":       { "description": "左にスクロール" },
+          "ViewerScrollRight":      { "description": "右にスクロール" },
+          "ViewerFastScrollUp":     { "description": "高速スクロール（上）" },
+          "ViewerFastScrollDown":   { "description": "高速スクロール（下）" },
+          "ViewerFastScrollLeft":   { "description": "高速スクロール（左）" },
+          "ViewerFastScrollRight":  { "description": "高速スクロール（右）" }
+        }
+      },
+      {
+        "name": "検索",
+        "actions": {
+          "ViewerBeginSearch":          { "description": "前方検索を開始" },
+          "ViewerBeginSearchBackward":  { "description": "後方検索を開始" },
+          "ViewerFindNext":             { "description": "次の一致へ" },
+          "ViewerFindPrev":             { "description": "前の一致へ" },
+          "ViewerToggleCaseSensitive":  { "description": "大文字 / 小文字の区別を切り替え" },
+          "ViewerClearSearch":          { "description": "検索ハイライトをクリア" }
+        }
+      },
+      {
+        "name": "コントロール",
+        "actions": {
+          "ViewerClose":            { "description": "ビューアを閉じる" },
+          "ViewerToggleHexMode":    { "description": "Hex / テキストモードを切り替え" },
+          "ViewerCycleEncoding":    { "description": "文字エンコーディングを切り替え（UTF-8, Shift-JIS, EUC-JP…）" }
+        }
+      }
+    ]
+  }
+}

@@ -1297,6 +1297,7 @@ impl AppState {
                 };
                 if let Some(location) = location {
                     let cached_entries = self.cache.get(&location);
+                    let tab_id = self.current_tab().id;
                     let tab = self.current_tab_mut();
                     let pane_model = match pane {
                         crate::model::ActivePane::Left => &mut tab.left_pane,
@@ -1313,9 +1314,9 @@ impl AppState {
                     } else {
                         pane_model.entries.clear();
                         pane_model.is_loading = true;
-                        let tab_id = self.current_tab().id;
                         let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location })
                             .with_requesting_pane(tab_id, *pane);
+                        pane_model.active_job_id = Some(job_spec.id);
                         Some(StateUpdateResult::with_job(job_spec))
                     }
                 } else {
@@ -1705,10 +1706,17 @@ impl AppState {
                 let current_lang = &self.config.help_language;
                 let next_lang = crate::help_content::HelpContent::next_language(current_lang);
                 self.config.help_language = next_lang.clone();
-                
+
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if matches!(dialog.content, crate::model::DialogContent::Help { .. }) {
-                        *dialog = crate::model::Dialog::help_with_language(&next_lang);
+                    if let crate::model::DialogContent::Help { ref mut language, ref mut entries, .. } = dialog.content {
+                        *language = next_lang.clone();
+                        let descriptions = crate::help_content::ActionDescriptions::load(&next_lang);
+                        *entries = crate::help_content::build_help_entries(
+                            &self.config.key_bindings,
+                            &descriptions,
+                            &self.custom_functions,
+                            self.config.help_show_unbound,
+                        );
                     }
                 }
                 Some(StateUpdateResult::with_ui_change())

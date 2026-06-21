@@ -65,9 +65,8 @@ fn test_help_dialog_uses_configured_language() {
     let current_dialog = state.dialogs.current().unwrap();
     
     match &current_dialog.content {
-        DialogContent::Help { content, language, .. } => {
+        DialogContent::Help { language, .. } => {
             assert_eq!(language, "en");
-            assert!(content.contains("Navigation:"));
         }
         _ => panic!("Expected Help dialog"),
     }

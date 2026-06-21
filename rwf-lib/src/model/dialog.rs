@@ -5,6 +5,69 @@ pub use crate::job::PipeToAction;
 use crate::model::Location;
 use std::collections::HashMap;
 
+/// Which mode tab is active in the help viewer
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HelpTab {
+    #[default]
+    NormalMode,
+    ViewerMode,
+    DialogMode,
+    CustomFunctions,
+}
+
+impl HelpTab {
+    pub fn label(&self) -> &'static str {
+        match self {
+            HelpTab::NormalMode     => "Normal",
+            HelpTab::ViewerMode     => "Viewer",
+            HelpTab::DialogMode     => "Dialog",
+            HelpTab::CustomFunctions => "Custom Functions",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            HelpTab::NormalMode      => HelpTab::ViewerMode,
+            HelpTab::ViewerMode      => HelpTab::DialogMode,
+            HelpTab::DialogMode      => HelpTab::CustomFunctions,
+            HelpTab::CustomFunctions => HelpTab::NormalMode,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            HelpTab::NormalMode      => HelpTab::CustomFunctions,
+            HelpTab::ViewerMode      => HelpTab::NormalMode,
+            HelpTab::DialogMode      => HelpTab::ViewerMode,
+            HelpTab::CustomFunctions => HelpTab::DialogMode,
+        }
+    }
+
+    pub fn from_index(i: usize) -> Self {
+        match i {
+            0 => HelpTab::NormalMode,
+            1 => HelpTab::ViewerMode,
+            2 => HelpTab::DialogMode,
+            _ => HelpTab::CustomFunctions,
+        }
+    }
+}
+
+/// A single row in the help viewer
+#[derive(Debug, Clone)]
+pub struct HelpEntry {
+    /// Display category (e.g. "Navigation", "File Operations", "Custom Functions")
+    pub category: String,
+    /// Human-readable description of what this action does
+    pub description: String,
+    /// Keys bound to this action (empty = unbound)
+    pub keys: Vec<String>,
+    /// Action/function name (used for searching; not shown directly)
+    pub action_name: String,
+    /// Which tab this entry belongs to
+    pub tab: HelpTab,
+}
+
 /// Dialog stack
 #[derive(Debug)]
 pub struct DialogStack {
@@ -86,9 +149,22 @@ pub enum DialogContent {
         details: String,
     },
     Help {
-        content: String,
-        language: String,
+        /// All built-in + custom function help entries (built at dialog-open time)
+        entries: Vec<HelpEntry>,
+        /// Current search query
+        query: String,
+        /// True when Ctrl+R regex mode is active
+        regex_mode: bool,
+        /// Whether to show actions with no bound keys
+        show_unbound: bool,
+        /// Which tab is currently active
+        active_tab: HelpTab,
+        /// Scroll offset within the filtered list
         scroll_pos: usize,
+        /// Active display language
+        language: String,
+        /// Timestamp of last query change (for debounce)
+        last_query_change: Option<std::time::Instant>,
     },
     JobManager {
         selected_index: usize,
@@ -453,6 +529,9 @@ pub struct CustomFunction {
     pub menu: Option<MenuContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Category for display in the help viewer (default: "Custom Functions" if absent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -634,18 +713,21 @@ impl Dialog {
     pub fn help() -> Self {
         Self::help_with_language("en")
     }
-    
-    /// Create a help dialog with specific language
-    /// 
-    /// **Validates: Requirements 48.1, 48.2, 48.5**
+
+    /// Create a help dialog with specific language.
+    /// Entries are built by the help builder (Step 5); starts empty here.
     pub fn help_with_language(lang: &str) -> Self {
-        let help_content = crate::help_content::HelpContent::load_with_fallback(lang);
         Self {
-            title: help_content.title.clone(),
+            title: "Help".to_string(),
             content: DialogContent::Help {
-                content: help_content.format(),
-                language: lang.to_string(),
+                entries: Vec::new(),
+                query: String::new(),
+                regex_mode: false,
+                show_unbound: true,
+                active_tab: HelpTab::NormalMode,
                 scroll_pos: 0,
+                language: lang.to_string(),
+                last_query_change: None,
             },
         }
     }
@@ -1270,6 +1352,7 @@ impl CustomFunction {
             command: Some(command.into()),
             menu: None,
             description: None,
+            category: None,
             shell: None,
             working_dir: None,
             pipe_to_action: None,
@@ -2294,6 +2377,7 @@ mod custom_function_tests {
             command: Some("default command".to_string()),
             menu: None,
             description: None,
+            category: None,
             shell: None,
             working_dir: None,
             pipe_to_action: None,
