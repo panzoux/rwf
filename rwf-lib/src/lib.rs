@@ -134,17 +134,22 @@ mod tar_integration_tests;
 #[cfg(test)]
 mod archive_format_recognition_tests;
 
+#[cfg(test)]
+mod help_viewer_tests;
+
 pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
 pub use job::{JobManager, JobId, JobSpec, JobKind, Job, JobResult};
 pub use model::{Location, FileEntry, PaneModel, TabState, TabManager, DialogContent};
 pub use worker_pool::{WorkerPool, JobEvent};
 pub use event_receiver::{map_job_event_to_transition, process_pending_events, process_next_event};
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
-pub use input::{KeyBindings, Action, ArchiveFormat, format_key_event, action_to_transitions};
+pub use input::{KeyBindings, Action, ArchiveFormat, format_key_event, action_to_transitions,
+                check_keybindings_duplicates, check_keybindings_content_duplicates};
 pub use logging::{LogLevel, init_logging, default_log_dir};
 pub use log_manager::{LogManager, LogEntry, LogEntryLevel};
 pub use session::{SessionState, SessionError, save_session, restore_tabs, restore_marked_locations};
 pub use macro_expander::MacroExpander;
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
+pub use help_content::{DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_MENU_CONFIG};
 pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
 pub use volume_info::{MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};

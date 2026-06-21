@@ -1708,10 +1708,10 @@ fn render_help_dialog(
     // ── Row 0: Tab bar ──────────────────────────────────────────────────────
     if area.height >= 1 {
         let tabs = [
-            (HelpTab::NormalMode, "1:Normal"),
-            (HelpTab::ViewerMode, "2:Viewer"),
-            (HelpTab::DialogMode, "3:Dialog"),
-            (HelpTab::CustomFunctions, "4:Custom"),
+            (HelpTab::NormalMode, "^1:Normal"),
+            (HelpTab::ViewerMode, "^2:Viewer"),
+            (HelpTab::DialogMode, "^3:Dialog"),
+            (HelpTab::CustomFunctions, "^4:Custom"),
         ];
         let mut spans: Vec<Span> = Vec::new();
         for (i, (tab, label)) in tabs.iter().enumerate() {
@@ -2555,23 +2555,23 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             // Close
             KeyCode::Esc => return DialogAction::Cancel,
 
-            // Tab switching by number key
-            KeyCode::Char('1') if key.modifiers == KeyModifiers::NONE => {
+            // Tab switching by Ctrl+1-4
+            KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 *active_tab = HelpTab::NormalMode;
                 *scroll_pos = 0;
                 query.clear();
             }
-            KeyCode::Char('2') if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 *active_tab = HelpTab::ViewerMode;
                 *scroll_pos = 0;
                 query.clear();
             }
-            KeyCode::Char('3') if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 *active_tab = HelpTab::DialogMode;
                 *scroll_pos = 0;
                 query.clear();
             }
-            KeyCode::Char('4') if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 *active_tab = HelpTab::CustomFunctions;
                 *scroll_pos = 0;
                 query.clear();
@@ -2651,8 +2651,7 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 if !key.modifiers.contains(KeyModifiers::CONTROL)
                 && !key.modifiers.contains(KeyModifiers::ALT)
                 && !key.modifiers.contains(KeyModifiers::SUPER)
-                // Skip keys we already handled above (1-4)
-                && !matches!(c, '1' | '2' | '3' | '4') =>
+                =>
             {
                 query.push(c);
                 *scroll_pos = 0;

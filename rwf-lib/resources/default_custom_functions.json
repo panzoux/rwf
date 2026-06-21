@@ -1,0 +1,29 @@
+{
+  "Version": "1.0",
+  "Functions": [
+    {
+      "Name": "menu_config",
+      "Menu": "menu_config.json",
+      "Description": "Show config menu",
+      "Category": "Config"
+    },
+    {
+      "Name": "edit config file",
+      "Command": "notepad \"%APPDATA%\\rwf\\config.json\"",
+      "Description": "Open config.json in Notepad",
+      "Category": "Config"
+    },
+    {
+      "Name": "edit keybindings file",
+      "Command": "notepad \"%APPDATA%\\rwf\\keybindings.json\"",
+      "Description": "Open keybindings.json in Notepad",
+      "Category": "Config"
+    },
+    {
+      "Name": "edit custom functions file",
+      "Command": "notepad \"%APPDATA%\\rwf\\custom_functions.json\"",
+      "Description": "Open custom_functions.json in Notepad",
+      "Category": "Config"
+    }
+  ]
+}

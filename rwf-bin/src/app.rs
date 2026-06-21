@@ -64,6 +64,15 @@ impl App {
             }
         }
 
+        // Check keybindings.json for duplicate keys
+        {
+            let kb_path = rwf_lib::config::ConfigManager::new().keybindings_path().to_path_buf();
+            for warning in rwf_lib::check_keybindings_duplicates(&kb_path) {
+                tracing::warn!("{}", warning);
+                task_panel.add_log(warning, crate::ui::task_panel::LogLevel::Warn);
+            }
+        }
+
         // Log verbose info to session log so it's always discoverable
         for line in Self::build_version_info_verbose(&state) {
             tracing::info!("{}", line);
@@ -71,14 +80,16 @@ impl App {
 
         task_panel.add_log("No active tasks".to_string(), crate::ui::task_panel::LogLevel::Info);
 
-        Self {
+        let mut app = Self {
             state, key_bindings, should_quit: false, should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
             last_key_press: None, task_panel, last_spinner_update: None, last_cleanup_check: None,
             pending_conflict_job: None, pending_job_submission: Vec::new(),
             last_search_input_time: None, search_dirty: false,
             pattern_rename_dirty: false, pattern_rename_last_changed: None, pattern_rename_pending: None,
-        }
+        };
+        app.state.config.key_bindings = app.key_bindings.clone();
+        app
     }
     
     fn build_version_info_compact(state: &AppState) -> Vec<String> {
@@ -545,8 +556,13 @@ impl App {
                             if self.state.confirmation_needs_keybinding_reload {
                                 self.state.confirmation_needs_keybinding_reload = false;
                                 let kb_path = rwf_lib::config::ConfigManager::new().keybindings_path().to_path_buf();
+                                for warning in rwf_lib::check_keybindings_duplicates(&kb_path) {
+                                    tracing::warn!("{}", warning);
+                                    self.task_panel.add_log(warning, crate::ui::task_panel::LogLevel::Warn);
+                                }
                                 if let Ok(kb) = rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
-                                    self.key_bindings = kb;
+                                    self.key_bindings = kb.clone();
+                                    self.state.config.key_bindings = kb;
                                 }
                             }
                             if let Some(job_spec) = confirmed_job {
@@ -994,6 +1010,10 @@ impl App {
             if is_reload_config {
                 let kb_path = rwf_lib::config::ConfigManager::new().keybindings_path().to_path_buf();
                 let kb_exists = kb_path.exists();
+                for warning in rwf_lib::check_keybindings_duplicates(&kb_path) {
+                    tracing::warn!("{}", warning);
+                    self.task_panel.add_log(warning, crate::ui::task_panel::LogLevel::Warn);
+                }
                 let (new_kb, kb_result) = match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
                     Ok(kb) => {
                         tracing::info!("Keybindings reloaded from {:?}", kb_path);
@@ -1009,7 +1029,8 @@ impl App {
                         (rwf_lib::KeyBindings::default(), result)
                     }
                 };
-                self.key_bindings = new_kb;
+                self.key_bindings = new_kb.clone();
+                self.state.config.key_bindings = new_kb;
                 if self.state.config_load_results.len() > 1 {
                     self.state.config_load_results[1] = kb_result;
                 }

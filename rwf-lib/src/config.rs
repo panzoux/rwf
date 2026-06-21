@@ -12,10 +12,9 @@ use std::collections::HashMap;
 pub struct AppConfig {
     /// Display configuration (colors, CJK width, etc.)
     pub display: DisplayConfig,
-    /// Key bindings configuration (legacy field — not read from config.json;
-    /// actual key bindings live in keybindings.json)
+    /// Runtime key bindings — not serialised; populated at startup and on reload.
     #[serde(skip)]
-    pub key_bindings: KeyBindings,
+    pub key_bindings: crate::input::KeyBindings,
     /// File operation settings
     pub file_operations: FileOpConfig,
     /// Search configuration
@@ -57,6 +56,10 @@ pub struct AppConfig {
     #[serde(rename = "HelpLanguage")]
     pub help_language: String,
 
+    /// Show unbound actions in the help viewer (default: true)
+    #[serde(rename = "HelpShowUnbound", default = "default_help_show_unbound")]
+    pub help_show_unbound: bool,
+
     /// Archive configuration
     #[serde(default)]
     pub archive: ArchiveConfig,
@@ -87,6 +90,7 @@ pub struct AppConfig {
 }
 
 fn default_polling_interval_ms() -> u32 { 1000 }
+fn default_help_show_unbound() -> bool { true }
 
 fn default_viewer_large_file_threshold_mb() -> u32 { 100 }
 
@@ -257,7 +261,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             display: DisplayConfig::default(),
-            key_bindings: KeyBindings::default(),
+            key_bindings: crate::input::KeyBindings::default(),
             file_operations: FileOpConfig::default(),
             search: SearchConfig::default(),
             ui: UIConfig::default(),
@@ -273,6 +277,7 @@ impl Default for AppConfig {
             log_file_progress_threshold_ms: 5000,
             editor_command: None,  // Use system default editor
             help_language: "en".to_string(),
+            help_show_unbound: default_help_show_unbound(),
             archive: ArchiveConfig::default(),
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
