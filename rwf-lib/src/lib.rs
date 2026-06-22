@@ -34,6 +34,7 @@ pub mod pattern_rename;
 pub mod config;
 pub mod volume_info;
 pub mod help_content;
+pub mod leap_filter;
 
 #[cfg(test)]
 mod error_handling_tests;
