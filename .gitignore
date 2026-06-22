@@ -3,3 +3,5 @@ debug/
 qwen-code-export-*
 logs/
 sample/
+.superpowers/
+docs/superpowers/
