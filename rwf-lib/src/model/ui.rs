@@ -110,4 +110,6 @@ pub enum UIMode {
     ViewerSearch,
     /// Viewer with the command line active (line-jump, e.g. "100g").
     ViewerCommand,
+    /// Leap Navigation mode (F3): buffer-as-path-trace filtering.
+    Leap,
 }

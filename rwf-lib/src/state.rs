@@ -62,6 +62,8 @@ pub struct AppState {
     /// Set by process_dialog_confirmation when it pushes a new dialog; tells app.rs not to
     /// pop the current dialog (it was replaced by the newly pushed one).
     pub suppress_next_dialog_pop: bool,
+    /// Leap Navigation state; Some while UIMode::Leap is active.
+    pub leap: Option<crate::model::LeapState>,
 }
 
 impl AppState {
@@ -78,15 +80,46 @@ impl AppState {
         })
     }
 
-    /// Build a SpawnProcess job that opens `file_path` in the configured editor.
-    /// Splits `EditorCommand` on whitespace to support flags like "code --wait".
+    /// Build a job that opens `file_path` in the configured editor.
+    /// If `TerminalEditor` is set, returns `SuspendAndRun` (app suspends, editor owns terminal).
+    /// Otherwise returns `SpawnProcess` via `Editor` (GUI editor, background launch).
     fn editor_job(config: &AppConfig, file_path: String) -> crate::job::JobKind {
+        if let Some(ref cmd) = config.terminal_editor {
+            // Terminal editor: suspend rwf, run synchronously, then resume.
+            // On Windows use cmd /c so .bat/.cmd wrappers (e.g. vim.bat) work.
+            #[cfg(target_os = "windows")]
+            {
+                let mut args = vec!["/c".to_string()];
+                args.extend(cmd.split_whitespace().map(str::to_string));
+                args.push(file_path);
+                return crate::job::JobKind::SuspendAndRun { program: "cmd".to_string(), args };
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut parts = cmd.split_whitespace();
+                let program = parts.next().unwrap_or("vi").to_string();
+                let mut args: Vec<String> = parts.map(str::to_string).collect();
+                args.push(file_path);
+                return crate::job::JobKind::SuspendAndRun { program, args };
+            }
+        }
+        // GUI editor: background launch, rwf keeps running.
         let cmd = Self::resolve_editor(config);
-        let mut parts = cmd.split_whitespace();
-        let program = parts.next().unwrap_or("notepad").to_string();
-        let mut args: Vec<String> = parts.map(str::to_string).collect();
-        args.push(file_path);
-        crate::job::JobKind::SpawnProcess { program, args }
+        #[cfg(target_os = "windows")]
+        {
+            let mut args = vec!["/c".to_string()];
+            args.extend(cmd.split_whitespace().map(str::to_string));
+            args.push(file_path);
+            crate::job::JobKind::SpawnProcess { program: "cmd".to_string(), args }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut parts = cmd.split_whitespace();
+            let program = parts.next().unwrap_or("vi").to_string();
+            let mut args: Vec<String> = parts.map(str::to_string).collect();
+            args.push(file_path);
+            crate::job::JobKind::SpawnProcess { program, args }
+        }
     }
 
     pub fn new(config: AppConfig) -> Self {
@@ -202,6 +235,7 @@ impl AppState {
             confirmation_needs_keybinding_reload: false,
             pending_custom_function_input: None,
             suppress_next_dialog_pop: false,
+            leap: None,
         }
     }
     
@@ -864,6 +898,7 @@ impl AppState {
                             crate::job::JobKind::CountDown { .. } => "Countdown",
                             crate::job::JobKind::CollectJumpCandidates { .. } => "Collect jump candidates",
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
+                            crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
                         };
                         if !skip_dialog {
                             let error_dialog = crate::model::Dialog::from_job_failure(op_name, error_message);
@@ -1716,6 +1751,7 @@ impl AppState {
                             &descriptions,
                             &self.custom_functions,
                             self.config.help_show_unbound,
+                            &self.config,
                         );
                     }
                 }

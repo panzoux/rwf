@@ -14,6 +14,7 @@ pub mod dialog;
 pub mod cache;
 pub mod viewer;
 pub mod navigation_cache;
+pub mod leap;
 
 #[cfg(test)]
 mod location_properties;
@@ -50,3 +51,4 @@ pub use dialog::{
 pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
 pub use viewer::{ViewerState, ViewerMode, TextEncoding, ViewerBuffer, LineIndex, FileBytes};
 pub use navigation_cache::NavigationStateCache;
+pub use leap::{LeapState, BackspaceResult};
