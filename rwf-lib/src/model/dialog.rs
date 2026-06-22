@@ -11,6 +11,7 @@ pub enum HelpTab {
     #[default]
     NormalMode,
     ViewerMode,
+    LeapMode,
     DialogMode,
     CustomFunctions,
 }
@@ -18,9 +19,10 @@ pub enum HelpTab {
 impl HelpTab {
     pub fn label(&self) -> &'static str {
         match self {
-            HelpTab::NormalMode     => "Normal",
-            HelpTab::ViewerMode     => "Viewer",
-            HelpTab::DialogMode     => "Dialog",
+            HelpTab::NormalMode      => "Normal",
+            HelpTab::ViewerMode      => "Viewer",
+            HelpTab::LeapMode        => "Leap",
+            HelpTab::DialogMode      => "Dialog",
             HelpTab::CustomFunctions => "Custom Functions",
         }
     }
@@ -28,7 +30,8 @@ impl HelpTab {
     pub fn next(self) -> Self {
         match self {
             HelpTab::NormalMode      => HelpTab::ViewerMode,
-            HelpTab::ViewerMode      => HelpTab::DialogMode,
+            HelpTab::ViewerMode      => HelpTab::LeapMode,
+            HelpTab::LeapMode        => HelpTab::DialogMode,
             HelpTab::DialogMode      => HelpTab::CustomFunctions,
             HelpTab::CustomFunctions => HelpTab::NormalMode,
         }
@@ -38,7 +41,8 @@ impl HelpTab {
         match self {
             HelpTab::NormalMode      => HelpTab::CustomFunctions,
             HelpTab::ViewerMode      => HelpTab::NormalMode,
-            HelpTab::DialogMode      => HelpTab::ViewerMode,
+            HelpTab::LeapMode        => HelpTab::ViewerMode,
+            HelpTab::DialogMode      => HelpTab::LeapMode,
             HelpTab::CustomFunctions => HelpTab::DialogMode,
         }
     }
@@ -47,7 +51,8 @@ impl HelpTab {
         match i {
             0 => HelpTab::NormalMode,
             1 => HelpTab::ViewerMode,
-            2 => HelpTab::DialogMode,
+            2 => HelpTab::LeapMode,
+            3 => HelpTab::DialogMode,
             _ => HelpTab::CustomFunctions,
         }
     }

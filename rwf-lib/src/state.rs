@@ -3049,8 +3049,17 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         Transition::LeapConfirm => {
             state.leap = None;
             state.ui.mode = crate::model::UIMode::Normal;
+            // Remember which entry was selected so we can restore the cursor after
+            // apply_current_filter() expands entries back to the full list.
+            let selected_location = state.active_pane().current_entry()
+                .map(|e| e.location.clone());
             let pane = state.active_pane_mut();
             pane.apply_current_filter();
+            if let Some(loc) = selected_location {
+                if let Some(idx) = pane.entries.iter().position(|e| e.location == loc) {
+                    pane.cursor = idx;
+                }
+            }
             StateUpdateResult::none()
         }
 

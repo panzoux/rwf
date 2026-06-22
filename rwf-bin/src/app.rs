@@ -38,6 +38,9 @@ pub struct App {
     pattern_rename_last_changed: Option<Instant>,
     /// Cached (find, replace, use_regex, case_sensitive) waiting for debounce flush
     pattern_rename_pending: Option<(String, String, bool, bool)>,
+    // Leap Navigation debounce
+    leap_dirty: bool,
+    last_leap_input_time: Option<Instant>,
 }
 
 impl App {
@@ -87,6 +90,7 @@ impl App {
             pending_conflict_job: None, pending_job_submission: Vec::new(),
             last_search_input_time: None, search_dirty: false,
             pattern_rename_dirty: false, pattern_rename_last_changed: None, pattern_rename_pending: None,
+            leap_dirty: false, last_leap_input_time: None,
         };
         app.state.config.key_bindings = app.key_bindings.clone();
         app
@@ -209,6 +213,15 @@ impl App {
             }
 
             // 1. Process background events from workers
+            let leap_active_pane_was_loading = if self.state.ui.mode == rwf_lib::model::UIMode::Leap {
+                let ap = self.state.ui.active_pane;
+                let tab = self.state.current_tab();
+                match ap {
+                    rwf_lib::model::ActivePane::Left  => tab.left_pane.is_loading,
+                    rwf_lib::model::ActivePane::Right => tab.right_pane.is_loading,
+                }
+            } else { false };
+
             if let Some(ref mut pool) = self.worker_pool {
                 let results = process_pending_events(pool, &mut self.state);
                 if !results.is_empty() {
@@ -241,10 +254,43 @@ impl App {
                 }
             }
 
+            // Re-apply leap filter immediately after active pane finishes loading a directory.
+            if leap_active_pane_was_loading && self.state.ui.mode == rwf_lib::model::UIMode::Leap {
+                let ap = self.state.ui.active_pane;
+                let tab = self.state.current_tab();
+                let now_loading = match ap {
+                    rwf_lib::model::ActivePane::Left  => tab.left_pane.is_loading,
+                    rwf_lib::model::ActivePane::Right => tab.right_pane.is_loading,
+                };
+                if !now_loading {
+                    self.perform_leap_filter();
+                    self.leap_dirty = false;
+                    self.last_leap_input_time = None;
+                    ui_needs_update = true;
+                }
+            }
+
             // 2. Process pending job submissions (from transitions)
             let pending_jobs: Vec<JobSpec> = self.pending_job_submission.drain(..).collect();
             if !pending_jobs.is_empty() { ui_needs_update = true; }
             for job_spec in pending_jobs {
+                // SuspendAndRun: hand the terminal to the editor, then resume.
+                // Must happen on the main thread before any pool interaction.
+                if let JobKind::SuspendAndRun { program, args } = &job_spec.kind {
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = crossterm::execute!(
+                        std::io::stdout(),
+                        crossterm::terminal::LeaveAlternateScreen,
+                    );
+                    let _ = std::process::Command::new(program).args(args).status();
+                    let _ = crossterm::terminal::enable_raw_mode();
+                    let _ = crossterm::execute!(
+                        std::io::stdout(),
+                        crossterm::terminal::EnterAlternateScreen,
+                    );
+                    let _ = terminal.clear();
+                    continue;
+                }
                 if let Some(ref pool) = self.worker_pool {
                     match &job_spec.kind {
                         JobKind::Copy { sources, dest } | JobKind::Move { sources, dest } => {
@@ -335,6 +381,19 @@ impl App {
                 }
             }
 
+            // 5c. Leap Mode Debounce Flush
+            if self.state.ui.mode == rwf_lib::model::UIMode::Leap && self.leap_dirty {
+                if let Some(last_input) = self.last_leap_input_time {
+                    let debounce_ms = self.state.config.jump_nav.leap_debounce_ms;
+                    if last_input.elapsed() >= Duration::from_millis(debounce_ms) {
+                        self.perform_leap_filter();
+                        self.leap_dirty = false;
+                        self.last_leap_input_time = None;
+                        ui_needs_update = true;
+                    }
+                }
+            }
+
             // 6. Cleanup
             if self.last_cleanup_check.map_or(true, |l| l.elapsed() >= Duration::from_secs(5)) {
                 self.state.background_jobs.cleanup_expired_jobs();
@@ -355,6 +414,14 @@ impl App {
                 if let Some(last_changed) = self.pattern_rename_last_changed {
                     let debounce = Duration::from_millis(self.state.config.search.pattern_rename_debounce_ms);
                     next_wakeup = next_wakeup.min(debounce.saturating_sub(last_changed.elapsed()));
+                }
+            }
+
+            if self.leap_dirty {
+                if let Some(last_input) = self.last_leap_input_time {
+                    let debounce_ms = self.state.config.jump_nav.leap_debounce_ms;
+                    let debounce = Duration::from_millis(debounce_ms);
+                    next_wakeup = next_wakeup.min(debounce.saturating_sub(last_input.elapsed()));
                 }
             }
 
@@ -721,7 +788,8 @@ impl App {
                     KeyCode::Backspace => {
                         self.state.viewer_search_input.pop();
                         let query = self.state.viewer_search_input.clone();
-                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        let result = rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        for job in result.jobs_to_start { self.pending_job_submission.push(job); }
                         return true;
                     }
                     // Ctrl+~ or Ctrl+^ toggles case sensitivity while typing
@@ -734,7 +802,8 @@ impl App {
                     KeyCode::Char(c) => {
                         self.state.viewer_search_input.push(c);
                         let query = self.state.viewer_search_input.clone();
-                        rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        let result = rwf_lib::state::update_state(&mut self.state, Transition::ViewerStartSearch { query });
+                        for job in result.jobs_to_start { self.pending_job_submission.push(job); }
                         return true;
                     }
                     _ => return false,
@@ -898,6 +967,218 @@ impl App {
             }
         }
 
+        // 3.7 Leap mode handling
+        if self.state.ui.mode == rwf_lib::model::UIMode::Leap {
+            use crossterm::event::KeyCode;
+            use rwf_lib::input::Action;
+
+            if let Some(action) = self.key_bindings.lookup_leap_action(&key_string) {
+                match action {
+                    Action::LeapConfirm => {
+                        rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapConfirm);
+                        self.leap_dirty = false;
+                        self.last_leap_input_time = None;
+                        return true;
+                    }
+                    Action::LeapCancel => {
+                        if let Some(leap) = self.state.leap.as_ref().cloned() {
+                            let loc = rwf_lib::model::Location::Local(leap.root_dir.clone());
+                            let pane = self.state.ui.active_pane;
+                            let job_result = rwf_lib::state::update_state(
+                                &mut self.state,
+                                rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                            );
+                            for job_spec in job_result.jobs_to_start {
+                                self.pending_job_submission.push(job_spec);
+                            }
+                        }
+                        rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapCancel);
+                        self.leap_dirty = false;
+                        self.last_leap_input_time = None;
+                        return true;
+                    }
+                    Action::LeapGoDeeperOrOpen => {
+                        let entry = self.state.active_pane().current_entry().cloned();
+                        if let Some(entry) = entry {
+                            if entry.is_dir {
+                                let new_dir = self.state.active_pane()
+                                    .current_location.path()
+                                    .map(|p| p.join(&entry.name))
+                                    .unwrap_or_default();
+                                if let Some(ref mut l) = self.state.leap {
+                                    l.push_separator(new_dir.clone());
+                                    l.last_valid_buffer = l.buffer.clone();
+                                }
+                                let loc = rwf_lib::model::Location::Local(new_dir);
+                                let pane = self.state.ui.active_pane;
+                                let job_result = rwf_lib::state::update_state(
+                                    &mut self.state,
+                                    rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                                );
+                                for job_spec in job_result.jobs_to_start {
+                                    self.pending_job_submission.push(job_spec);
+                                }
+                                self.leap_dirty = false;
+                                self.last_leap_input_time = None;
+                            } else {
+                                // Select file and exit leap
+                                rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapConfirm);
+                                self.leap_dirty = false;
+                                self.last_leap_input_time = None;
+                            }
+                        }
+                        return true;
+                    }
+                    Action::LeapOpenFile => {
+                        let entry = self.state.active_pane().current_entry().cloned();
+                        if let Some(entry) = entry {
+                            if entry.is_dir {
+                                let new_dir = self.state.active_pane()
+                                    .current_location.path()
+                                    .map(|p| p.join(&entry.name))
+                                    .unwrap_or_default();
+                                if let Some(ref mut l) = self.state.leap {
+                                    l.push_separator(new_dir.clone());
+                                    l.last_valid_buffer = l.buffer.clone();
+                                }
+                                let loc = rwf_lib::model::Location::Local(new_dir);
+                                let pane = self.state.ui.active_pane;
+                                let job_result = rwf_lib::state::update_state(
+                                    &mut self.state,
+                                    rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                                );
+                                for job_spec in job_result.jobs_to_start {
+                                    self.pending_job_submission.push(job_spec);
+                                }
+                                self.leap_dirty = false;
+                                self.last_leap_input_time = None;
+                            } else {
+                                // Exit leap then trigger EnterDirectory on the selected file
+                                rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapConfirm);
+                                self.leap_dirty = false;
+                                self.last_leap_input_time = None;
+                                let transitions = rwf_lib::input::action_to_transitions(&self.state, &Action::EnterDirectory);
+                                for tr in transitions {
+                                    let result = rwf_lib::state::update_state(&mut self.state, tr);
+                                    for job_spec in result.jobs_to_start {
+                                        self.pending_job_submission.push(job_spec);
+                                    }
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                    Action::LeapGoParent => {
+                        let has_depth = self.state.leap.as_ref()
+                            .map_or(false, |l| l.buffer.contains('/'));
+                        if has_depth {
+                            rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapGoParent);
+                            let parent = self.state.active_pane()
+                                .current_location.path()
+                                .and_then(|p| p.parent())
+                                .map(|p| p.to_path_buf());
+                            if let Some(parent) = parent {
+                                let loc = rwf_lib::model::Location::Local(parent);
+                                let pane = self.state.ui.active_pane;
+                                let job_result = rwf_lib::state::update_state(
+                                    &mut self.state,
+                                    rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                                );
+                                for job_spec in job_result.jobs_to_start {
+                                    self.pending_job_submission.push(job_spec);
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                    Action::LeapCursorUp => {
+                        let pane = self.state.active_pane_mut();
+                        if pane.cursor > 0 { pane.cursor -= 1; }
+                        let h = self.state.ui.layout.pane_height;
+                        self.state.active_pane_mut().update_scroll(h, 3);
+                        return true;
+                    }
+                    Action::LeapCursorDown => {
+                        let len = self.state.active_pane().entries.len();
+                        let pane = self.state.active_pane_mut();
+                        if pane.cursor + 1 < len { pane.cursor += 1; }
+                        let h = self.state.ui.layout.pane_height;
+                        self.state.active_pane_mut().update_scroll(h, 3);
+                        return true;
+                    }
+                    Action::LeapClearLocal => {
+                        if let Some(ref mut l) = self.state.leap { l.clear_local(); }
+                        self.leap_dirty = true;
+                        self.last_leap_input_time = Some(Instant::now());
+                        return true;
+                    }
+                    Action::LeapClearAll => {
+                        let root = self.state.leap.as_ref().map(|l| l.root_dir.clone());
+                        if let Some(ref mut l) = self.state.leap { l.clear_all(); }
+                        if let Some(root) = root {
+                            let loc = rwf_lib::model::Location::Local(root);
+                            let pane = self.state.ui.active_pane;
+                            let job_result = rwf_lib::state::update_state(
+                                &mut self.state,
+                                rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                            );
+                            for job_spec in job_result.jobs_to_start {
+                                self.pending_job_submission.push(job_spec);
+                            }
+                        }
+                        self.leap_dirty = true;
+                        self.last_leap_input_time = Some(Instant::now());
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Backspace and character input
+            match key.code {
+                KeyCode::Backspace => {
+                    let result = self.state.leap.as_mut()
+                        .map(|l| l.backspace())
+                        .unwrap_or(rwf_lib::model::BackspaceResult::Empty);
+                    match result {
+                        rwf_lib::model::BackspaceResult::GoToParent => {
+                            let parent = self.state.active_pane()
+                                .current_location.path()
+                                .and_then(|p| p.parent())
+                                .map(|p| p.to_path_buf());
+                            if let Some(parent) = parent {
+                                let loc = rwf_lib::model::Location::Local(parent);
+                                let pane = self.state.ui.active_pane;
+                                let job_result = rwf_lib::state::update_state(
+                                    &mut self.state,
+                                    rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+                                );
+                                for job_spec in job_result.jobs_to_start {
+                                    self.pending_job_submission.push(job_spec);
+                                }
+                            }
+                            self.leap_dirty = true;
+                            self.last_leap_input_time = Some(Instant::now());
+                        }
+                        rwf_lib::model::BackspaceResult::PopChar => {
+                            self.leap_dirty = true;
+                            self.last_leap_input_time = Some(Instant::now());
+                        }
+                        rwf_lib::model::BackspaceResult::Empty => {}
+                    }
+                    return true;
+                }
+                KeyCode::Char(c) => {
+                    if let Some(ref mut l) = self.state.leap { l.push_char(c); }
+                    self.leap_dirty = true;
+                    self.last_leap_input_time = Some(Instant::now());
+                    return true;
+                }
+                _ => {}
+            }
+            return true; // consume all unhandled keys in leap mode
+        }
+
         // 3.5 SideBySide focus: Tab toggles focus to viewer; Esc closes SideBySide.
         if self.state.ui.mode == rwf_lib::model::UIMode::Normal
             && self.state.viewer.is_some()
@@ -985,6 +1266,20 @@ impl App {
                 return false;
             }
             tracing::info!("[KEY] action={:?}", action);
+            // EnterLeap: enter leap navigation mode
+            if action == Action::EnterLeap {
+                if self.state.config.jump_nav.leap_enabled {
+                    let root_dir = self.state.active_pane().current_location.path()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_default();
+                    let root_cursor = self.state.active_pane().cursor;
+                    rwf_lib::state::update_state(
+                        &mut self.state,
+                        rwf_lib::state::Transition::EnterLeap { root_dir, root_cursor },
+                    );
+                }
+                return true;
+            }
             // ShowVersionInfo / ShowVersionInfoVerbose: write to task panel, no state change
             if action == rwf_lib::input::Action::ShowVersionInfo {
                 self.log_version_info();
@@ -1148,6 +1443,92 @@ impl App {
             "pdf" | "db" | "sqlite" | "sqlite3" | "iso" | "img" | "dmg"
         );
         if is_binary { rwf_lib::model::ViewerMode::Hex } else { rwf_lib::model::ViewerMode::Text }
+    }
+
+    fn perform_leap_filter(&mut self) {
+        let leap = match self.state.leap.as_ref() {
+            Some(l) => l.clone(),
+            None    => return,
+        };
+
+        let local_filter = leap.local_filter().to_string();
+        let raw_entries  = self.state.active_pane().raw_entries.clone();
+
+        let (filtered, cursor) = rwf_lib::leap_filter::apply_leap_filter(
+            &raw_entries,
+            &local_filter,
+            &self.state.search,
+        );
+
+        let filtered_entries: Vec<rwf_lib::model::FileEntry> =
+            filtered.into_iter().cloned().collect();
+
+        if filtered_entries.is_empty() && !local_filter.is_empty() {
+            match self.state.config.jump_nav.no_match_feedback {
+                rwf_lib::config::NoMatchFeedback::TaskPanel => {
+                    let valid = self.state.leap.as_ref()
+                        .map(|l| l.last_valid_buffer.clone())
+                        .unwrap_or_default();
+                    let removed: String = leap.buffer.trim_start_matches(valid.as_str()).to_string();
+                    if let Some(ref mut l) = self.state.leap {
+                        l.buffer = valid;
+                    }
+                    self.task_panel.add_log(
+                        format!("Leap: no match — removed \"{}\"", removed),
+                        crate::ui::task_panel::LogLevel::Warn,
+                    );
+                    // Re-run with the restored buffer
+                    self.perform_leap_filter();
+                }
+                rwf_lib::config::NoMatchFeedback::Inline => {
+                    rwf_lib::state::update_state(
+                        &mut self.state,
+                        rwf_lib::state::Transition::LeapApplyFilter {
+                            filtered_entries: Vec::new(),
+                            cursor: 0,
+                        },
+                    );
+                }
+            }
+            return;
+        }
+
+        // Single-directory auto-enter
+        if filtered_entries.len() == 1 && filtered_entries[0].is_dir && !local_filter.is_empty() {
+            let dir_name = filtered_entries[0].name.clone();
+            let new_dir = self.state.active_pane()
+                .current_location.path()
+                .map(|p| p.join(&dir_name))
+                .unwrap_or_default();
+            if let Some(ref mut l) = self.state.leap {
+                l.push_separator(new_dir.clone());
+                l.last_valid_buffer = l.buffer.clone();
+            }
+            let loc = rwf_lib::model::Location::Local(new_dir);
+            let pane = self.state.ui.active_pane;
+            let job_result = rwf_lib::state::update_state(
+                &mut self.state,
+                rwf_lib::state::Transition::ChangeLocation { pane, location: loc },
+            );
+            for job_spec in job_result.jobs_to_start {
+                self.pending_job_submission.push(job_spec);
+            }
+            return;
+        }
+
+        // Update last_valid_buffer when we have matches
+        if !filtered_entries.is_empty() {
+            let buf = self.state.leap.as_ref().map(|l| l.buffer.clone()).unwrap_or_default();
+            rwf_lib::state::update_state(
+                &mut self.state,
+                rwf_lib::state::Transition::LeapUpdateLastValid { buffer: buf },
+            );
+        }
+
+        rwf_lib::state::update_state(
+            &mut self.state,
+            rwf_lib::state::Transition::LeapApplyFilter { filtered_entries, cursor },
+        );
     }
 
     fn perform_incremental_search(&mut self) {

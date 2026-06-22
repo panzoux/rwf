@@ -35,7 +35,7 @@
           "Compress":               { "description": "圧縮 / アーカイブ作成" },
           "Extract":                { "description": "アーカイブを展開" },
           "ShowFileInfoForCursor":  { "description": "ファイル情報を表示" },
-          "OpenWithEditor":         { "description": "エディタで開く" }
+          "OpenWithEditor":         { "description": "エディタで開く: $ActiveEditor" }
         }
       },
       {
@@ -124,6 +124,35 @@
           "DecreaseTaskPanelHeight":    { "description": "タスクパネルの高さを減らす" },
           "ScrollTaskPanelUp":          { "description": "タスクパネルを上にスクロール" },
           "ScrollTaskPanelDown":        { "description": "タスクパネルを下にスクロール" }
+        }
+      }
+    ]
+  },
+  "LeapMode": {
+    "categories": [
+      {
+        "name": "ナビゲーション",
+        "actions": {
+          "EnterLeap":           { "description": "リープナビゲーションモードに入る (F3)" },
+          "LeapGoDeeperOrOpen":  { "description": "ディレクトリに入る / ファイルを選択してリープ終了" },
+          "LeapGoParent":        { "description": "親ディレクトリへ（ローカルフィルタと/を削除）" },
+          "LeapCursorUp":        { "description": "フィルタリストで上に移動" },
+          "LeapCursorDown":      { "description": "フィルタリストで下に移動" }
+        }
+      },
+      {
+        "name": "バッファ",
+        "actions": {
+          "LeapClearLocal":      { "description": "ローカルフィルタをクリア（現在ディレクトリに留まる）" },
+          "LeapClearAll":        { "description": "すべてクリア — リープルートへ戻る" },
+          "LeapOpenFile":        { "description": "ファイルを開く / ディレクトリに入る" }
+        }
+      },
+      {
+        "name": "コントロール",
+        "actions": {
+          "LeapConfirm":         { "description": "リープを終了（カーソル位置を維持）" },
+          "LeapCancel":          { "description": "リープをキャンセル（元のカーソルとディレクトリに戻る）" }
         }
       }
     ]

@@ -22,7 +22,7 @@ pub struct CategoryDesc {
 }
 
 /// Top-level structure for one mode section in the description file
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct ModeDesc {
     pub categories: Vec<CategoryDesc>,
 }
@@ -32,6 +32,8 @@ pub struct ModeDesc {
 pub struct ActionDescriptions {
     #[serde(rename = "NormalMode")]
     pub normal_mode: ModeDesc,
+    #[serde(rename = "LeapMode", default)]
+    pub leap_mode: ModeDesc,
     #[serde(rename = "ViewerMode")]
     pub viewer_mode: ModeDesc,
 }
@@ -92,13 +94,38 @@ impl ActionDescriptions {
 
 // ── Help builder ─────────────────────────────────────────────────────────────
 
+/// Resolve the effective editor label for display in help entries.
+/// Shows the configured editor name and its mode (terminal/GUI/default).
+fn active_editor_label(config: &crate::config::AppConfig) -> String {
+    if let Some(ref ed) = config.terminal_editor {
+        format!("{} (terminal)", ed)
+    } else if let Some(ref ed) = config.editor_command {
+        format!("{} (GUI)", ed)
+    } else {
+        #[cfg(target_os = "windows")]
+        { "notepad (default)".to_string() }
+        #[cfg(not(target_os = "windows"))]
+        { "$EDITOR (default)".to_string() }
+    }
+}
+
+/// Substitute `$ActiveEditor` in a description string with the effective editor label.
+fn resolve_description(desc: &str, config: &crate::config::AppConfig) -> String {
+    if desc.contains("$ActiveEditor") {
+        desc.replace("$ActiveEditor", &active_editor_label(config))
+    } else {
+        desc.to_string()
+    }
+}
+
 /// Build a complete list of `HelpEntry` from runtime key bindings, action descriptions,
-/// and custom functions.
+/// and custom functions. `config` is used to resolve `$ActiveEditor` in descriptions.
 pub fn build_help_entries(
     key_bindings: &crate::input::KeyBindings,
     descriptions: &ActionDescriptions,
     custom_functions: &[crate::model::dialog::CustomFunction],
     show_unbound: bool,
+    config: &crate::config::AppConfig,
 ) -> Vec<crate::model::dialog::HelpEntry> {
     use crate::model::dialog::{HelpEntry, HelpTab};
 
@@ -107,6 +134,7 @@ pub fn build_help_entries(
     let normal_map = key_bindings.normal_action_to_keys();
     let viewer_map = key_bindings.viewer_action_to_keys();
     let dialog_map = key_bindings.dialog_action_to_keys();
+    let leap_map   = key_bindings.leap_action_to_keys();
 
     // Normal mode actions
     for cat in &descriptions.normal_mode.categories {
@@ -117,7 +145,7 @@ pub fn build_help_entries(
             }
             entries.push(HelpEntry {
                 category: cat.name.clone(),
-                description: action_desc.description.clone(),
+                description: resolve_description(&action_desc.description, config),
                 keys,
                 action_name: action_name.clone(),
                 tab: HelpTab::NormalMode,
@@ -134,10 +162,27 @@ pub fn build_help_entries(
             }
             entries.push(HelpEntry {
                 category: cat.name.clone(),
-                description: action_desc.description.clone(),
+                description: resolve_description(&action_desc.description, config),
                 keys,
                 action_name: action_name.clone(),
                 tab: HelpTab::ViewerMode,
+            });
+        }
+    }
+
+    // Leap mode actions
+    for cat in &descriptions.leap_mode.categories {
+        for (action_name, action_desc) in &cat.actions {
+            let keys = leap_map.get(action_name).cloned().unwrap_or_default();
+            if !show_unbound && keys.is_empty() {
+                continue;
+            }
+            entries.push(HelpEntry {
+                category: cat.name.clone(),
+                description: resolve_description(&action_desc.description, config),
+                keys,
+                action_name: action_name.clone(),
+                tab: HelpTab::LeapMode,
             });
         }
     }

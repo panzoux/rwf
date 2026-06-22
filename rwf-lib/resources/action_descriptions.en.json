@@ -35,7 +35,7 @@
           "Compress":               { "description": "Compress / create archive" },
           "Extract":                { "description": "Extract archive" },
           "ShowFileInfoForCursor":  { "description": "Show file info" },
-          "OpenWithEditor":         { "description": "Open with editor" }
+          "OpenWithEditor":         { "description": "Open with editor: $ActiveEditor" }
         }
       },
       {
@@ -124,6 +124,35 @@
           "DecreaseTaskPanelHeight":    { "description": "Decrease task panel height" },
           "ScrollTaskPanelUp":          { "description": "Scroll task panel up" },
           "ScrollTaskPanelDown":        { "description": "Scroll task panel down" }
+        }
+      }
+    ]
+  },
+  "LeapMode": {
+    "categories": [
+      {
+        "name": "Navigation",
+        "actions": {
+          "EnterLeap":           { "description": "Enter Leap Navigation mode (F3)" },
+          "LeapGoDeeperOrOpen":  { "description": "Enter directory / select file and exit leap" },
+          "LeapGoParent":        { "description": "Go to parent directory (strip local filter and /)" },
+          "LeapCursorUp":        { "description": "Move cursor up in filtered list" },
+          "LeapCursorDown":      { "description": "Move cursor down in filtered list" }
+        }
+      },
+      {
+        "name": "Buffer",
+        "actions": {
+          "LeapClearLocal":      { "description": "Clear local filter (stay in current directory)" },
+          "LeapClearAll":        { "description": "Clear all — return to leap root directory" },
+          "LeapOpenFile":        { "description": "Open file or enter directory" }
+        }
+      },
+      {
+        "name": "Controls",
+        "actions": {
+          "LeapConfirm":         { "description": "Exit leap, keep cursor on current item" },
+          "LeapCancel":          { "description": "Cancel leap, restore pre-leap cursor and directory" }
         }
       }
     ]

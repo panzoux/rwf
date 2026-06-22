@@ -261,6 +261,7 @@ impl KeyBindings {
         leap_mode.insert("Ctrl+u".to_string(),   Action::LeapClearLocal);
         leap_mode.insert("Ctrl+k".to_string(),   Action::LeapClearAll);
         leap_mode.insert("Enter".to_string(),    Action::LeapOpenFile);
+        leap_mode.insert("Ctrl+Enter".to_string(), Action::LeapConfirm);
 
         Self {
             normal_mode,
@@ -520,6 +521,11 @@ impl KeyBindings {
     /// Returns action-name → sorted key list for DialogMode.
     pub fn dialog_action_to_keys(&self) -> HashMap<String, Vec<String>> {
         Self::invert_bindings(&self.dialog_mode)
+    }
+
+    /// Returns action-name → sorted key list for LeapMode.
+    pub fn leap_action_to_keys(&self) -> HashMap<String, Vec<String>> {
+        Self::invert_bindings(&self.leap_mode)
     }
 
     fn invert_bindings(mode: &HashMap<String, Action>) -> HashMap<String, Vec<String>> {

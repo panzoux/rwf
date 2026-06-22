@@ -166,6 +166,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // tab bar(1) + search(1) + entries + hint(1), min 8
             20u16.max(8)
         }
+        DialogContent::Error { message, .. } => {
+            // message lines + blank(1) + buttons(3), min 5
+            (message.lines().count() as u16 + 4).max(5)
+        }
         _ => 8u16, // Default
     };
 
@@ -194,7 +198,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Exact size for context menu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } => {
+        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } | DialogContent::Error { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
@@ -1708,10 +1712,11 @@ fn render_help_dialog(
     // ── Row 0: Tab bar ──────────────────────────────────────────────────────
     if area.height >= 1 {
         let tabs = [
-            (HelpTab::NormalMode, "^1:Normal"),
-            (HelpTab::ViewerMode, "^2:Viewer"),
-            (HelpTab::DialogMode, "^3:Dialog"),
-            (HelpTab::CustomFunctions, "^4:Custom"),
+            (HelpTab::NormalMode,      "^1:Normal"),
+            (HelpTab::ViewerMode,      "^2:Viewer"),
+            (HelpTab::LeapMode,        "^3:Leap"),
+            (HelpTab::DialogMode,      "^4:Dialog"),
+            (HelpTab::CustomFunctions, "^5:Custom"),
         ];
         let mut spans: Vec<Span> = Vec::new();
         for (i, (tab, label)) in tabs.iter().enumerate() {
@@ -1948,6 +1953,25 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
         }
         DialogContent::DeleteConfirm { .. } => {
             // Rendered by the dedicated arm in render_dialog — not reached via render_dialog_content.
+        }
+        DialogContent::Error { message, details, .. } => {
+            use ratatui::text::{Line, Span};
+            use ratatui::widgets::{Paragraph, Wrap};
+            let mut lines: Vec<Line> = message
+                .lines()
+                .map(|l| Line::from(Span::raw(l.to_string())))
+                .collect();
+            if let Some(d) = details {
+                lines.push(Line::default());
+                lines.push(Line::from(Span::styled(
+                    d.as_str(),
+                    Style::default().add_modifier(ratatui::style::Modifier::DIM),
+                )));
+            }
+            frame.render_widget(
+                Paragraph::new(lines).wrap(Wrap { trim: false }),
+                area,
+            );
         }
         _ => {}
     }
@@ -2567,11 +2591,16 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 query.clear();
             }
             KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                *active_tab = HelpTab::DialogMode;
+                *active_tab = HelpTab::LeapMode;
                 *scroll_pos = 0;
                 query.clear();
             }
             KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                *active_tab = HelpTab::DialogMode;
+                *scroll_pos = 0;
+                query.clear();
+            }
+            KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 *active_tab = HelpTab::CustomFunctions;
                 *scroll_pos = 0;
                 query.clear();

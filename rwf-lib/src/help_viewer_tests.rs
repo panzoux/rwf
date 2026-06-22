@@ -85,7 +85,7 @@ fn make_entries(show_unbound: bool) -> Vec<HelpEntry> {
     let kb = KeyBindings::embedded_defaults();
     let desc = ActionDescriptions::load("en");
     let custom: Vec<CustomFunction> = vec![];
-    build_help_entries(&kb, &desc, &custom, show_unbound)
+    build_help_entries(&kb, &desc, &custom, show_unbound, &crate::config::AppConfig::default())
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn test_custom_function_category_defaults() {
             key_binding: None,
         },
     ];
-    let entries = build_help_entries(&kb, &desc, &custom, true);
+    let entries = build_help_entries(&kb, &desc, &custom, true, &crate::config::AppConfig::default());
     let cf: Vec<_> = entries.iter().filter(|e| e.tab == HelpTab::CustomFunctions).collect();
     // The function should appear with default category
     assert!(!cf.is_empty(), "Custom function entry should appear");
@@ -261,7 +261,7 @@ fn test_custom_function_explicit_category() {
             key_binding: None,
         },
     ];
-    let entries = build_help_entries(&kb, &desc, &custom, true);
+    let entries = build_help_entries(&kb, &desc, &custom, true, &crate::config::AppConfig::default());
     let my_func = entries.iter().find(|e| e.action_name == "MyFunc");
     assert!(my_func.is_some());
     if let Some(entry) = my_func {

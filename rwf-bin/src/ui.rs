@@ -9,6 +9,7 @@ mod filename_line;
 mod path_line;
 mod volume_line;
 mod pane_info_line;
+mod leap_bar;
 mod colors;
 mod unicode_utils;
 pub mod dialog;

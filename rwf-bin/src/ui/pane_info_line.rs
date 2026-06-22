@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::{AppState, model::PaneModel, model::UIMode, model::ActivePane};
-use super::parse_color;
+use super::{leap_bar, parse_color};
 
 /// Render the pane info line showing stats for both panes
 pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -24,7 +24,13 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
         .split(area);
     
     // Left pane info
-    if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Left {
+    if state.ui.mode == UIMode::Leap && state.ui.active_pane == ActivePane::Left {
+        if let Some(ref leap) = state.leap {
+            let visible = &tab.left_pane.entries;
+            leap_bar::render_leap_bar(frame, halves[0], leap, visible,
+                &state.config.jump_nav.no_match_feedback);
+        }
+    } else if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Left {
         render_search_bar(frame, halves[0], &state.search.query, colors);
     } else {
         let left_info = calculate_pane_info(&tab.left_pane);
@@ -34,9 +40,15 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
                 .bg(parse_color(colors.get_pane_info_background())));
         frame.render_widget(left_para, halves[0]);
     }
-    
+
     // Right pane info
-    if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Right {
+    if state.ui.mode == UIMode::Leap && state.ui.active_pane == ActivePane::Right {
+        if let Some(ref leap) = state.leap {
+            let visible = &tab.right_pane.entries;
+            leap_bar::render_leap_bar(frame, halves[1], leap, visible,
+                &state.config.jump_nav.no_match_feedback);
+        }
+    } else if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Right {
         render_search_bar(frame, halves[1], &state.search.query, colors);
     } else {
         let right_info = calculate_pane_info(&tab.right_pane);
