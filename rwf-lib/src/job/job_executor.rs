@@ -113,6 +113,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::CollectJumpCandidates { root, include_files, max_results, max_depth } => {
                 self.execute_collect_jump_candidates(root, *include_files, *max_results, *max_depth, &spec.cancel_token).await
             }
+            JobKind::SuspendAndRun { .. } => {
+                // Intercepted in app layer before pool submission — should never arrive here.
+                crate::job::OpResult::Failed("SuspendAndRun reached worker pool unexpectedly".to_string())
+            }
         };
         
         // Send completion event based on result
@@ -617,7 +621,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
         match tokio::process::Command::new(program).args(args).spawn() {
             Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
-            Err(e) => crate::job::OpResult::Failed(e.to_string()),
+            Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
         }
     }
 

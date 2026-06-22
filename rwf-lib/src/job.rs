@@ -115,6 +115,13 @@ pub enum JobKind {
         program: String,
         args: Vec<String>,
     },
+    /// Run a terminal (TUI) program by suspending rwf, handing it the terminal,
+    /// and resuming when the program exits. Intercepted in the app layer — never
+    /// reaches the worker pool.
+    SuspendAndRun {
+        program: String,
+        args: Vec<String>,
+    },
     Search {
         location: Location,
         pattern: String,
