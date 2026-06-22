@@ -2685,6 +2685,16 @@ pub enum Transition {
     // Application control
     Quit,
     ExitAndChangeDirectory,
+
+    // Leap Navigation
+    EnterLeap { root_dir: std::path::PathBuf, root_cursor: usize },
+    LeapApplyFilter { filtered_entries: Vec<crate::model::FileEntry>, cursor: usize },
+    LeapUpdateLastValid { buffer: String },
+    LeapGoParent,
+    LeapClearLocal,
+    LeapClearAll,
+    LeapConfirm,
+    LeapCancel,
 }
 
 /// History navigation direction
@@ -2989,6 +2999,69 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         }
         
         Transition::ExitAndChangeDirectory => {
+            StateUpdateResult::none()
+        }
+
+        // Leap Navigation
+        Transition::EnterLeap { root_dir, root_cursor } => {
+            state.leap = Some(crate::model::LeapState::new(root_dir, root_cursor));
+            state.ui.mode = crate::model::UIMode::Leap;
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapApplyFilter { filtered_entries, cursor } => {
+            let pane = state.active_pane_mut();
+            pane.entries = filtered_entries;
+            pane.cursor = cursor;
+            let height = state.ui.layout.pane_height;
+            state.active_pane_mut().update_scroll(height, 3);
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapUpdateLastValid { buffer } => {
+            if let Some(ref mut leap) = state.leap {
+                leap.last_valid_buffer = buffer;
+            }
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapGoParent => {
+            if let Some(ref mut leap) = state.leap {
+                leap.go_parent();
+            }
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapClearLocal => {
+            if let Some(ref mut leap) = state.leap {
+                leap.clear_local();
+            }
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapClearAll => {
+            if let Some(ref mut leap) = state.leap {
+                leap.clear_all();
+            }
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapConfirm => {
+            state.leap = None;
+            state.ui.mode = crate::model::UIMode::Normal;
+            let pane = state.active_pane_mut();
+            pane.apply_current_filter();
+            StateUpdateResult::none()
+        }
+
+        Transition::LeapCancel => {
+            if let Some(leap) = state.leap.take() {
+                state.ui.mode = crate::model::UIMode::Normal;
+                // Directory restoration handled by caller (app.rs navigates to root_dir first).
+                let pane = state.active_pane_mut();
+                pane.cursor = leap.root_cursor;
+                pane.apply_current_filter();
+            }
             StateUpdateResult::none()
         }
 
