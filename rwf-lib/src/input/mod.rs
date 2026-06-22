@@ -60,6 +60,9 @@ pub struct KeyBindings {
     /// Key bindings for viewer mode
     #[serde(rename = "ViewerMode", default)]
     pub viewer_mode: HashMap<String, Action>,
+    /// Key bindings for Leap Navigation mode (F3).
+    #[serde(rename = "LeapMode", default)]
+    pub leap_mode: HashMap<String, Action>,
     /// Multi-key sequence state
     #[serde(skip)]
     pub pending_sequence: Option<String>,
@@ -191,6 +194,9 @@ impl KeyBindings {
         // Version / system info (outputs to task panel, not a modal dialog)
         normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
         normal_mode.insert("F2".to_string(), Action::ShowVersionInfoVerbose);
+
+        // Leap Navigation
+        normal_mode.insert("F3".to_string(), Action::EnterLeap);
         
         // Task panel operations
         normal_mode.insert("t".to_string(), Action::ToggleTaskPanel);
@@ -243,11 +249,25 @@ impl KeyBindings {
         viewer_mode.insert("Shift+Up".to_string(),    Action::ViewerFastScrollUp);
         viewer_mode.insert("Shift+Down".to_string(),  Action::ViewerFastScrollDown);
 
+        let mut leap_mode = HashMap::new();
+        leap_mode.insert("F3".to_string(),       Action::LeapConfirm);
+        leap_mode.insert("Escape".to_string(),   Action::LeapCancel);
+        leap_mode.insert("Right".to_string(),    Action::LeapGoDeeperOrOpen);
+        leap_mode.insert("Left".to_string(),     Action::LeapGoParent);
+        leap_mode.insert("Up".to_string(),       Action::LeapCursorUp);
+        leap_mode.insert("Down".to_string(),     Action::LeapCursorDown);
+        leap_mode.insert("Ctrl+p".to_string(),   Action::LeapCursorUp);
+        leap_mode.insert("Ctrl+n".to_string(),   Action::LeapCursorDown);
+        leap_mode.insert("Ctrl+u".to_string(),   Action::LeapClearLocal);
+        leap_mode.insert("Ctrl+k".to_string(),   Action::LeapClearAll);
+        leap_mode.insert("Enter".to_string(),    Action::LeapOpenFile);
+
         Self {
             normal_mode,
             search_mode: HashMap::new(),
             dialog_mode: HashMap::new(),
             viewer_mode,
+            leap_mode,
             pending_sequence: None,
         }
     }
@@ -276,6 +296,7 @@ impl KeyBindings {
             search_mode: HashMap::new(),
             dialog_mode: HashMap::new(),
             viewer_mode: HashMap::new(),
+            leap_mode: HashMap::new(),
             pending_sequence: None,
         };
         Self::apply_from_value(&v, &mut result);
@@ -327,6 +348,13 @@ impl KeyBindings {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
                     target.viewer_mode.insert(key.clone(), Self::parse_viewer_action_name(action_str));
+                }
+            }
+        }
+        if let Some(bindings) = v.get("LeapMode").and_then(|b| b.as_object()) {
+            for (key, val) in bindings {
+                if let Some(action_str) = val.as_str() {
+                    target.leap_mode.insert(key.clone(), Self::parse_leap_action_name(action_str));
                 }
             }
         }
@@ -405,6 +433,19 @@ impl KeyBindings {
         }
     }
     
+    /// Convert a leap mode action name string to an `Action`.
+    fn parse_leap_action_name(s: &str) -> Action {
+        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+            return action;
+        }
+        Action::InvokeCustomFunction(s.to_string())
+    }
+
+    /// Look up an action for the given key string in leap mode.
+    pub fn lookup_leap_action(&self, key_string: &str) -> Option<Action> {
+        self.leap_mode.get(key_string).cloned()
+    }
+
     /// Save key bindings to a JSON file
     pub fn save_to_file(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let content = serde_json::to_string_pretty(self)?;
@@ -637,7 +678,7 @@ pub enum Action {
     
     // Information dialogs
     ShowFileInfoForCursor,
-    OpenWithEditor,         // open cursor file with EditorCommand from config
+    OpenWithEditor,         // open cursor file with Editor from config
     ShowVersion,
     ReloadConfig,
     ShowVersionInfo,        // compact version/system info (backtick key)
@@ -658,6 +699,18 @@ pub enum Action {
 
     // Test jobs
     CountDownJob(u32),  // Countdown test job (parameter: duration in seconds, 0 = default 180)
+
+    // Leap Navigation (F3 mode)
+    EnterLeap,
+    LeapGoDeeperOrOpen,  // Right: enter dir (append "/") or select file
+    LeapGoParent,        // Left: go to parent (strip local+"/")
+    LeapCursorUp,
+    LeapCursorDown,
+    LeapClearLocal,      // Ctrl+U: clear local filter
+    LeapClearAll,        // Ctrl+K: clear all, return to leap root
+    LeapConfirm,         // F3 again: exit leap, keep cursor
+    LeapCancel,          // Escape: exit leap, restore pre-leap state
+    LeapOpenFile,        // Enter: open file or enter dir
 
     // Internal
     PendingSequence,
@@ -763,6 +816,7 @@ struct KeybindingsForDupCheck {
     #[serde(rename = "ViewerMode")]  viewer_mode: Option<DupMap>,
     #[serde(rename = "DialogMode")]  dialog_mode: Option<DupMap>,
     #[serde(rename = "SearchMode")]  search_mode: Option<DupMap>,
+    #[serde(rename = "LeapMode")]    leap_mode:   Option<DupMap>,
     #[serde(rename = "bindings")]    bindings:    Option<DupMap>,
 }
 
@@ -778,6 +832,7 @@ pub fn check_keybindings_content_duplicates(content: &str) -> Vec<String> {
         ("ViewerMode", check.viewer_mode),
         ("DialogMode", check.dialog_mode),
         ("SearchMode", check.search_mode),
+        ("LeapMode",   check.leap_mode),
         ("bindings",   check.bindings),
     ];
     for (name, maybe_map) in sections {
@@ -1367,6 +1422,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 &descriptions,
                 &state.custom_functions,
                 state.config.help_show_unbound,
+                &state.config,
             );
             let mut dialog = crate::model::Dialog::help_with_language(lang);
             if let crate::model::DialogContent::Help {
