@@ -354,7 +354,7 @@ mod tests {
             "LogSavePath": "logs/session.log",
             "SaveLogOnExit": true,
             "LogFileProgressThresholdMs": 5000,
-            "EditorCommand": null,
+            "Editor": null,
             "HelpLanguage": "en"
         }"#;
         
@@ -423,5 +423,16 @@ mod tests {
         let result = manager.validate_config(&config);
         
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn leap_config_defaults() {
+        use crate::config::{JumpNavConfig, NoMatchFeedback};
+        let cfg = JumpNavConfig::default();
+        assert!(cfg.leap_enabled);
+        assert!(cfg.leap_migemo_enabled);
+        assert_eq!(cfg.leap_migemo_min_chars, 1);
+        assert_eq!(cfg.leap_debounce_ms, 150);
+        assert_eq!(cfg.no_match_feedback, NoMatchFeedback::TaskPanel);
     }
 }

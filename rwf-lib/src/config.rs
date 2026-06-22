@@ -49,9 +49,15 @@ pub struct AppConfig {
     /// Threshold in milliseconds for logging slow file operations (default: 5000)
     #[serde(rename = "LogFileProgressThresholdMs")]
     pub log_file_progress_threshold_ms: u64,
-    /// Editor command for launching configuration editor (default: system default editor)
-    #[serde(rename = "EditorCommand")]
+    /// GUI editor command (default: notepad on Windows, $EDITOR/$VISUAL/vi elsewhere).
+    /// Launched in the background; rwf stays running. Supports flags, e.g. "code --wait".
+    #[serde(rename = "Editor")]
     pub editor_command: Option<String>,
+    /// Terminal (TUI) editor command, e.g. "vim" or "nano".
+    /// rwf suspends, hands the terminal to the editor, then resumes when it exits.
+    /// Takes priority over Editor when set.
+    #[serde(rename = "TerminalEditor")]
+    pub terminal_editor: Option<String>,
     /// Help language (default: "en")
     #[serde(rename = "HelpLanguage")]
     pub help_language: String,
@@ -94,6 +100,17 @@ fn default_help_show_unbound() -> bool { true }
 
 fn default_viewer_large_file_threshold_mb() -> u32 { 100 }
 
+/// Controls how Leap mode reports a zero-match query.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "PascalCase")]
+pub enum NoMatchFeedback {
+    /// Auto-trim buffer to last valid state; report removed chars in task panel.
+    #[default]
+    TaskPanel,
+    /// Keep buffer; show "(no match)" dim label in LEAP bar; no task panel message.
+    Inline,
+}
+
 /// Configuration for Jump to File / Jump to Directory dialogs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -110,20 +127,44 @@ pub struct JumpNavConfig {
     /// Recursive search depth for Jump to Directory (default: 3)
     #[serde(default = "default_jump_path_max_depth")]
     pub jump_path_max_depth: usize,
+    /// Enable Leap Navigation mode (F3).
+    #[serde(rename = "LeapNavigationEnabled", default = "default_leap_enabled")]
+    pub leap_enabled: bool,
+    /// Enable Migemo (romaji→kana) matching in Leap mode.
+    #[serde(rename = "MigemoEnabled", default = "default_leap_migemo_enabled")]
+    pub leap_migemo_enabled: bool,
+    /// Minimum chars before Migemo kicks in (default: 1).
+    #[serde(rename = "MigemoMinChars", default = "default_leap_migemo_min_chars")]
+    pub leap_migemo_min_chars: usize,
+    /// Debounce interval for Leap filter in ms (default: 150).
+    #[serde(rename = "LeapSearchDebounceMs", default = "default_leap_debounce_ms")]
+    pub leap_debounce_ms: u64,
+    /// Zero-match feedback mode.
+    #[serde(rename = "NoMatchFeedback", default)]
+    pub no_match_feedback: NoMatchFeedback,
 }
 
 fn default_jump_file_max_results() -> usize { 1000 }
 fn default_jump_file_max_depth()   -> usize { 4 }
 fn default_jump_path_max_results() -> usize { 500 }
 fn default_jump_path_max_depth()   -> usize { 3 }
+fn default_leap_enabled()          -> bool  { true }
+fn default_leap_migemo_enabled()   -> bool  { true }
+fn default_leap_migemo_min_chars() -> usize { 1 }
+fn default_leap_debounce_ms()      -> u64   { 150 }
 
 impl Default for JumpNavConfig {
     fn default() -> Self {
         Self {
-            jump_file_max_results: default_jump_file_max_results(),
-            jump_file_max_depth:   default_jump_file_max_depth(),
-            jump_path_max_results: default_jump_path_max_results(),
-            jump_path_max_depth:   default_jump_path_max_depth(),
+            jump_file_max_results:  default_jump_file_max_results(),
+            jump_file_max_depth:    default_jump_file_max_depth(),
+            jump_path_max_results:  default_jump_path_max_results(),
+            jump_path_max_depth:    default_jump_path_max_depth(),
+            leap_enabled:           default_leap_enabled(),
+            leap_migemo_enabled:    default_leap_migemo_enabled(),
+            leap_migemo_min_chars:  default_leap_migemo_min_chars(),
+            leap_debounce_ms:       default_leap_debounce_ms(),
+            no_match_feedback:      NoMatchFeedback::default(),
         }
     }
 }
@@ -275,7 +316,8 @@ impl Default for AppConfig {
             log_save_path: "logs/session.log".to_string(),
             save_log_on_exit: true,
             log_file_progress_threshold_ms: 5000,
-            editor_command: None,  // Use system default editor
+            editor_command: None,
+            terminal_editor: None,
             help_language: "en".to_string(),
             help_show_unbound: default_help_show_unbound(),
             archive: ArchiveConfig::default(),
@@ -1111,7 +1153,7 @@ mod tests {
             "LogSavePath": "logs/session.log",
             "SaveLogOnExit": true,
             "LogFileProgressThresholdMs": 5000,
-            "EditorCommand": null,
+            "Editor": null,
             "HelpLanguage": "en"
         }"#;
         
