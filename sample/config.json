@@ -1,42 +1,25 @@
 {
-  "_comment": [
-    "RWF config.json — full reference with all settings and their defaults.",
-    "You only need to include the keys you want to change.",
-    "",
-    "NOTE: Key bindings are NOT configured here.",
-    "      Use keybindings.json for key bindings (see sample/keybindings.json).",
-    "",
-    "Color names: Black, Red, Green, Yellow, Blue, Magenta, Cyan, Gray, DarkGray,",
-    "             White, BrightRed, BrightGreen, BrightYellow, BrightBlue,",
-    "             BrightMagenta, BrightCyan  — or hex '#rrggbb'.",
-    "LogLevel: None, Error, Warning, Information, Debug, Trace"
-  ],
-
   "Display": {
     "ShowHiddenFiles": false,
     "ShowSystem": false,
     "DateFormat": "%Y-%m-%d %H:%M",
     "TimeFormat": "TwentyFourHour",
     "CjkWidth": 2,
-
     "ForegroundColor": "White",
     "BackgroundColor": "Black",
     "HighlightForegroundColor": "Black",
     "HighlightBackgroundColor": "Cyan",
-
     "FilePaneCursorForegroundColor": null,
     "FilePaneCursorBackgroundColor": null,
     "InactiveFilePaneCursorForegroundColor": "Black",
     "InactiveFilePaneCursorBackgroundColor": "DarkGray",
     "InactiveForegroundColor": "Gray",
     "InactiveBackgroundColor": "Black",
-
     "MarkedFileColor": "Cyan",
     "DirectoryColor": "BrightCyan",
     "DirectoryBackgroundColor": "Black",
     "InactiveDirectoryColor": "Cyan",
     "InactiveDirectoryBackgroundColor": "Black",
-
     "PaneInfoForegroundColor": "Black",
     "PaneInfoBackgroundColor": "DarkGray",
     "FilenameLabelForegroundColor": "White",
@@ -44,20 +27,16 @@
     "PaneBorderColor": "Red",
     "TopSeparatorForegroundColor": "Black",
     "TopSeparatorBackgroundColor": "Gray",
-
     "DialogHelpForegroundColor": "BrightYellow",
     "DialogHelpBackgroundColor": "Blue",
-
     "ActiveTabForegroundColor": "White",
     "ActiveTabBackgroundColor": "Blue",
     "InactiveTabForegroundColor": "Gray",
     "InactiveTabBackgroundColor": "Black",
     "TabbarBackgroundColor": "Black",
-
     "OkColor": "Green",
     "WarningColor": "Yellow",
     "ErrorColor": "Red",
-
     "TextViewerForegroundColor": "White",
     "TextViewerBackgroundColor": "Black",
     "TextViewerStatusForegroundColor": "White",
@@ -65,58 +44,26 @@
     "TextViewerMessageForegroundColor": "White",
     "TextViewerMessageBackgroundColor": "Blue"
   },
-
   "FileOperations": {
     "ConfirmDelete": true,
     "ConfirmOverwrite": true,
     "BufferSize": 8192,
     "PreserveTimestamps": true
   },
-
   "Search": {
     "CaseSensitive": false,
     "UseRegex": false,
     "UseMigemo": false,
     "DictPath": null,
-    "MaxResults": 1000,
     "SearchDebounceMs": 150,
-    "PatternRenameDebounceMs": 150
+    "PatternRenameDebounceMs": 150,
+    "MaxResults": 1000
   },
-
   "Ui": {
     "RefreshRate": 30,
     "ScrollOffset": 3,
     "TabWidth": 4
   },
-
-  "Archive": {
-    "default_format": "ZIP",
-    "compression_level": 6,
-    "last_archive_name": ""
-  },
-
-  "JobManager": {
-    "MaxSimultaneousJobs": 4,
-    "UpdateIntervalMs": 300,
-    "TaskPanelHeight": 10,
-    "TaskPanelRefreshIntervalMs": 500,
-    "MaxTaskPanelLogLines": 1000,
-    "MaxLogFiles": 5,
-    "JobManagerRefreshIntervalMs": 500,
-    "JobRetentionPeriodSecs": 5
-  },
-
-  "TextInput": {
-    "edit_mode": "Emacs"
-  },
-
-  "JumpNav": {
-    "JumpFileMaxResults": 1000,
-    "JumpFileMaxDepth": 4,
-    "JumpPathMaxResults": 500,
-    "JumpPathMaxDepth": 3
-  },
-
   "WorkerPoolSize": 4,
   "LogLevel": "Information",
   "SessionPersistence": true,
@@ -127,8 +74,33 @@
   "LogSavePath": "logs/session.log",
   "SaveLogOnExit": true,
   "LogFileProgressThresholdMs": 5000,
+  "Editor": null,
   "HelpLanguage": "en",
+  "HelpShowUnbound": true,
+  "Archive": {
+    "default_format": "ZIP",
+    "compression_level": 6,
+    "last_archive_name": ""
+  },
+  "JobManager": {
+    "MaxSimultaneousJobs": 4,
+    "UpdateIntervalMs": 300,
+    "TaskPanelHeight": 10,
+    "TaskPanelRefreshIntervalMs": 500,
+    "MaxTaskPanelLogLines": 1000,
+    "MaxLogFiles": 5,
+    "JobManagerRefreshIntervalMs": 500,
+    "JobRetentionPeriodSecs": 5
+  },
+  "TextInput": {
+    "edit_mode": "Emacs"
+  },
+  "JumpNav": {
+    "JumpFileMaxResults": 1000,
+    "JumpFileMaxDepth": 4,
+    "JumpPathMaxResults": 500,
+    "JumpPathMaxDepth": 3
+  },
   "PollingIntervalMs": 1000,
-
-  "EditorCommand": null
+  "ViewerLargeFileThresholdMb": 100
 }

@@ -109,6 +109,7 @@
   "LogSavePath": "logs/session.log",
   "SaveLogOnExit": true,
   "LogFileProgressThresholdMs": 5000,
-  "EditorCommand": null,
+  "Editor": null,
+  "TerminalEditor": null,
   "HelpLanguage": "en"
 }
