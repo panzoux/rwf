@@ -350,6 +350,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             #[cfg(unix)] permissions,
             #[cfg(unix)] owner,
             #[cfg(unix)] group,
+            link_target,
+            link_kind,
             ..
         } => {
             render_file_info_dialog(
@@ -359,6 +361,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 #[cfg(unix)] *permissions,
                 #[cfg(unix)] owner.as_deref(),
                 #[cfg(unix)] group.as_deref(),
+                link_target.as_deref(),
+                link_kind.as_ref(),
             );
         }
         DialogContent::PatternRename {
@@ -1442,25 +1446,41 @@ fn render_file_info_dialog(
     #[cfg(unix)] permissions: Option<u32>,
     #[cfg(unix)] owner: Option<&str>,
     #[cfg(unix)] group: Option<&str>,
+    link_target: Option<&str>,
+    link_kind: Option<&rwf_lib::model::LinkKind>,
 ) {
     let base  = Style::default().fg(Color::Black).bg(Color::Gray);
     let label = Style::default().fg(Color::DarkGray).bg(Color::Gray);
     let hint  = Style::default().fg(Color::DarkGray).bg(Color::Gray);
     let w = area.width.saturating_sub(4) as usize;
 
-    let rows: &[(&str, String)] = &[
+    let type_label = match link_kind {
+        Some(rwf_lib::model::LinkKind::Junction) => "Junction",
+        Some(rwf_lib::model::LinkKind::Symlink)  => "Symlink",
+        None if is_dir => "Directory",
+        None => "File",
+    };
+    let type_str = if is_readonly {
+        format!("{} (Read-only)", type_label)
+    } else {
+        type_label.to_string()
+    };
+
+    let mut rows: Vec<(&str, String)> = vec![
         ("Name",     smart_truncate(file_name, w.saturating_sub(8), "…")),
         ("Path",     smart_truncate(file_path, w.saturating_sub(8), "…")),
         ("Size",     fmt_size(size)),
-        ("Type",     {
-            let t = if is_dir { "Directory" } else { "File" };
-            if is_readonly { format!("{} (Read-only)", t) } else { t.to_string() }
-        }),
-        ("",         String::new()),
-        ("Created",  fmt_time(created)),
-        ("Modified", fmt_time(Some(modified))),
-        ("Accessed", fmt_time(accessed)),
+        ("Type",     type_str),
     ];
+
+    if let Some(target) = link_target {
+        rows.push(("Target", smart_truncate(target, w.saturating_sub(8), "…")));
+    }
+
+    rows.push(("",         String::new()));
+    rows.push(("Created",  fmt_time(created)));
+    rows.push(("Modified", fmt_time(Some(modified))));
+    rows.push(("Accessed", fmt_time(accessed)));
 
     let col_w = 9u16; // label column width ("Modified" = 8 chars + space)
     for (row_i, (lbl, val)) in rows.iter().enumerate() {
