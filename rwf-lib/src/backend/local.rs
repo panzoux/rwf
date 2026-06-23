@@ -67,32 +67,64 @@ impl FilesystemBackend for LocalFilesystemBackend {
                 bail!("Operation cancelled");
             }
 
-            let metadata = entry.metadata().await?;
             let entry_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
 
-            // Derive is_hidden from already-fetched metadata — avoids a second syscall per entry on Windows
+            // symlink_metadata() returns the entry's OWN metadata without following
+            // reparse points — critical on Windows where DirEntry::metadata() also
+            // doesn't follow, but symlink_metadata() lets us call is_symlink() reliably.
+            let sym_meta = tokio::fs::symlink_metadata(&entry_path).await?;
+
             #[cfg(target_os = "windows")]
             let is_hidden = {
                 use std::os::windows::fs::MetadataExt;
                 const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-                (metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN) != 0
+                (sym_meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN) != 0
             };
             #[cfg(not(target_os = "windows"))]
             let is_hidden = name.starts_with('.');
 
+            let (is_dir, size, modified, is_symlink, link_target, link_kind) =
+                if sym_meta.file_type().is_symlink() {
+                    // Follow the link to get the target's real metadata for display.
+                    // If the target is missing (broken link), fall back to symlink's own values.
+                    let followed = tokio::fs::metadata(&entry_path).await.ok();
+                    let is_dir = followed.as_ref().map_or(false, |m| m.is_dir());
+                    let size = followed.as_ref().map_or(sym_meta.len(), |m| m.len());
+                    let modified = followed
+                        .as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .or_else(|| sym_meta.modified().ok())
+                        .unwrap_or_else(SystemTime::now);
+
+                    let raw_target = tokio::fs::read_link(&entry_path).await.ok();
+                    let link_kind = Some(
+                        raw_target
+                            .as_deref()
+                            .map(crate::model::LinkKind::from_link_target)
+                            .unwrap_or(crate::model::LinkKind::Symlink),
+                    );
+
+                    (is_dir, size, modified, true, raw_target, link_kind)
+                } else {
+                    let is_dir = sym_meta.is_dir();
+                    let size = sym_meta.len();
+                    let modified = sym_meta.modified().unwrap_or_else(|_| SystemTime::now());
+                    (is_dir, size, modified, false, None, None)
+                };
+
             let file_entry = FileEntry {
                 name,
                 location: Location::Local(entry_path),
-                size: metadata.len(),
-                is_dir: metadata.is_dir(),
+                size,
+                is_dir,
                 is_hidden,
-                modified: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+                modified,
                 marked: false,
                 calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
+                is_symlink,
+                link_target,
+                link_kind,
             };
 
             entries.push(file_entry);
@@ -807,7 +839,7 @@ mod tests {
             assert!(updates[i].1 >= updates[i - 1].1, "Size should be increasing");
         }
     }
-    
+
     #[tokio::test]
     async fn test_cancellation() {
         let temp_dir = TempDir::new().unwrap();
@@ -826,5 +858,89 @@ mod tests {
         let result = backend.read_file_content(&location, &cancel_token).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cancelled"));
+    }
+}
+
+#[cfg(test)]
+mod symlink_tests {
+    #[allow(unused_imports)]
+    use super::*;
+    #[allow(unused_imports)]
+    use crate::backend::FilesystemBackend;
+    #[allow(unused_imports)]
+    use crate::model::{Location, LinkKind};
+    #[allow(unused_imports)]
+    use tokio_util::sync::CancellationToken;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_regular_file_is_not_symlink() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("plain.txt"), "hi").unwrap();
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(&Location::Local(dir.path().to_path_buf()), &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "plain.txt").unwrap();
+        assert!(!e.is_symlink);
+        assert_eq!(e.link_kind, None);
+        assert_eq!(e.link_target, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_to_file_detected() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, "content").unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join("link.txt")).unwrap();
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(&Location::Local(dir.path().to_path_buf()), &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "link.txt").unwrap();
+        assert!(e.is_symlink);
+        assert_eq!(e.link_kind, Some(LinkKind::Symlink));
+        assert!(e.link_target.is_some());
+        assert!(!e.is_dir, "symlink to file should not be is_dir");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_to_dir_is_navigable() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let real = dir.path().join("real_dir");
+        std::fs::create_dir(&real).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("link_dir")).unwrap();
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(&Location::Local(dir.path().to_path_buf()), &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "link_dir").unwrap();
+        assert!(e.is_symlink);
+        assert!(e.is_dir, "symlink to directory must have is_dir=true for navigation");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_broken_symlink_not_navigable() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::os::unix::fs::symlink("/nonexistent/path", dir.path().join("broken")).unwrap();
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(&Location::Local(dir.path().to_path_buf()), &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "broken").unwrap();
+        assert!(e.is_symlink);
+        assert!(!e.is_dir, "broken symlink must not be navigable");
+        assert!(e.link_target.is_some(), "broken symlink should still store its target path");
     }
 }
