@@ -861,18 +861,13 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod symlink_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use crate::backend::FilesystemBackend;
-    #[allow(unused_imports)]
     use crate::model::{Location, LinkKind};
-    #[allow(unused_imports)]
     use tokio_util::sync::CancellationToken;
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn test_regular_file_is_not_symlink() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -889,7 +884,6 @@ mod symlink_tests {
         assert_eq!(e.link_target, None);
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn test_symlink_to_file_detected() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -909,7 +903,6 @@ mod symlink_tests {
         assert!(!e.is_dir, "symlink to file should not be is_dir");
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn test_symlink_to_dir_is_navigable() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -927,7 +920,6 @@ mod symlink_tests {
         assert!(e.is_dir, "symlink to directory must have is_dir=true for navigation");
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn test_broken_symlink_not_navigable() {
         let dir = tempfile::TempDir::new().unwrap();
