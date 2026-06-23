@@ -313,7 +313,94 @@ fn test_file_info_dialog_does_not_require_input() {
 #[test]
 fn test_version_dialog_does_not_require_input() {
     let dialog = Dialog::version();
-    
+
     // Version dialog should not require input
     assert!(!dialog.content.requires_input());
+}
+
+#[cfg(test)]
+mod link_info_tests {
+    use crate::model::{Dialog, DialogContent, FileEntry, Location, LinkKind};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    #[test]
+    fn test_file_info_symlink_fields_populated() {
+        let entry = FileEntry {
+            name: "_vimrc".to_string(),
+            location: Location::Local(PathBuf::from("/home/user/_vimrc")),
+            size: 0,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: true,
+            link_target: Some(PathBuf::from("./.vimrc")),
+            link_kind: Some(LinkKind::Symlink),
+        };
+
+        let dialog = Dialog::file_info(&entry);
+
+        match dialog.content {
+            DialogContent::FileInfo { link_target, link_kind, .. } => {
+                assert_eq!(link_target, Some("./.vimrc".to_string()));
+                assert!(matches!(link_kind, Some(LinkKind::Symlink)));
+            }
+            _ => panic!("Expected FileInfo dialog content"),
+        }
+    }
+
+    #[test]
+    fn test_file_info_regular_file_no_link_fields() {
+        let entry = FileEntry {
+            name: "file.txt".to_string(),
+            location: Location::Local(PathBuf::from("/home/user/file.txt")),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        };
+
+        let dialog = Dialog::file_info(&entry);
+
+        match dialog.content {
+            DialogContent::FileInfo { link_target, link_kind, .. } => {
+                assert_eq!(link_target, None);
+                assert_eq!(link_kind, None);
+            }
+            _ => panic!("Expected FileInfo dialog content"),
+        }
+    }
+
+    #[test]
+    fn test_file_info_junction_strips_nt_prefix() {
+        let entry = FileEntry {
+            name: "Application Data".to_string(),
+            location: Location::Local(PathBuf::from(r"C:\Users\user\Application Data")),
+            size: 0,
+            is_dir: true,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: true,
+            link_target: Some(PathBuf::from(r"\??\C:\ProgramData")),
+            link_kind: Some(LinkKind::Junction),
+        };
+
+        let dialog = Dialog::file_info(&entry);
+
+        match dialog.content {
+            DialogContent::FileInfo { link_target, .. } => {
+                assert_eq!(link_target, Some(r"C:\ProgramData".to_string()));
+            }
+            _ => panic!("Expected FileInfo dialog content"),
+        }
+    }
 }

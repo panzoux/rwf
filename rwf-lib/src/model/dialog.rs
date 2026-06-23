@@ -260,6 +260,8 @@ pub enum DialogContent {
         owner: Option<String>,
         #[cfg(unix)]
         group: Option<String>,
+        link_target: Option<String>,
+        link_kind: Option<crate::model::LinkKind>,
     },
     FileConflict {
         conflicts: Vec<ConflictPair>,
@@ -908,7 +910,16 @@ impl Dialog {
         } else {
             false
         };
-        
+
+        let link_target = entry.link_target.as_ref().map(|p| {
+            let s = p.to_string_lossy().into_owned();
+            if let Some(stripped) = s.strip_prefix(r"\??\") {
+                stripped.to_string()
+            } else {
+                s
+            }
+        });
+
         Self {
             title: "File Information".to_string(),
             content: DialogContent::FileInfo {
@@ -926,6 +937,8 @@ impl Dialog {
                 owner,
                 #[cfg(unix)]
                 group,
+                link_target,
+                link_kind: entry.link_kind.clone(),
             },
         }
     }

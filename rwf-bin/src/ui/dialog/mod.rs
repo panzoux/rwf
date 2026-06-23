@@ -157,7 +157,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::JumpToFile { suggestions, .. } => {
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
-        DialogContent::FileInfo { .. } => 11u16,  // name+path+size+type+3×datetime + hint
+        DialogContent::FileInfo { link_target, .. } => if link_target.is_some() { 12u16 } else { 11u16 },  // name+path+size+type+3×datetime + hint (+1 for link row)
         DialogContent::PatternRename { preview, .. } => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
@@ -350,6 +350,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             #[cfg(unix)] permissions,
             #[cfg(unix)] owner,
             #[cfg(unix)] group,
+            ..
         } => {
             render_file_info_dialog(
                 frame, content_area,
