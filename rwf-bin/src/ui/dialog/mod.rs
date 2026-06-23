@@ -4075,6 +4075,9 @@ mod conflict_tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         let dst = FileEntry {
             name: dst_name.to_string(),
@@ -4085,6 +4088,9 @@ mod conflict_tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         ConflictPair {
             source: src.clone(),
