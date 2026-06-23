@@ -100,6 +100,8 @@ fn default_help_show_unbound() -> bool { true }
 
 fn default_viewer_large_file_threshold_mb() -> u32 { 100 }
 
+fn default_symlink_separator() -> String { "->".to_string() }
+
 /// Controls how Leap mode reports a zero-match query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
@@ -349,6 +351,10 @@ pub struct DisplayConfig {
     /// Color scheme (flattened into Display for TWF compatibility)
     #[serde(flatten)]
     pub colors: ColorScheme,
+    /// Appended to entry names and used as separator in the filename bar for symlinks/junctions.
+    /// Default "->" (the ">" character is illegal in Windows filenames, ensuring no ambiguity).
+    #[serde(default = "default_symlink_separator")]
+    pub symlink_separator: String,
 }
 
 impl Default for DisplayConfig {
@@ -360,6 +366,7 @@ impl Default for DisplayConfig {
             time_format: TimeFormat::TwentyFourHour,
             cjk_width: 2,
             colors: ColorScheme::default(),
+            symlink_separator: default_symlink_separator(),
         }
     }
 }
