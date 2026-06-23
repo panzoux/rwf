@@ -18,9 +18,24 @@ pub fn render_filename_line(frame: &mut Frame, area: Rect, state: &AppState) {
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
     
+    let symlink_sep = &state.config.display.symlink_separator;
+
     // Get the current entry (at cursor position)
     let filename = if let Some(entry) = active_pane.current_entry() {
-        entry.name.clone()
+        if entry.is_symlink {
+            if let Some(target) = &entry.link_target {
+                let target_str = target.to_string_lossy().into_owned();
+                let display_target = target_str
+                    .strip_prefix(r"\??\")
+                    .unwrap_or(&target_str)
+                    .to_owned();
+                format!("{}{}{}", entry.name, symlink_sep, display_target)
+            } else {
+                entry.name.clone()
+            }
+        } else {
+            entry.name.clone()
+        }
     } else {
         String::new()
     };
