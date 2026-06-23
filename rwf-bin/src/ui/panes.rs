@@ -17,11 +17,12 @@ pub fn render_active_pane_only(frame: &mut Frame, area: Rect, state: &AppState, 
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
+    let symlink_sep = &state.config.display.symlink_separator;
     let (pane, marking) = match anchor {
         ActivePane::Left  => (&tab.left_pane,  &tab.left_pane.marking),
         ActivePane::Right => (&tab.right_pane, &tab.right_pane.marking),
     };
-    render_pane(frame, area, pane, true, marking, colors, ellipsis);
+    render_pane(frame, area, pane, true, marking, colors, ellipsis, symlink_sep);
 }
 
 /// Render both panes side by side
@@ -35,6 +36,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
+    let symlink_sep = &state.config.display.symlink_separator;
 
     // Render left pane
     render_pane(
@@ -45,6 +47,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         &tab.left_pane.marking,
         colors,
         ellipsis,
+        symlink_sep,
     );
 
     // Render right pane
@@ -56,6 +59,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
         &tab.right_pane.marking,
         colors,
         ellipsis,
+        symlink_sep,
     );
 }
 
@@ -68,6 +72,7 @@ fn render_pane(
     marking: &rwf_lib::model::MarkingModel,
     colors: &ColorScheme,
     ellipsis: &str,
+    symlink_sep: &str,
 ) {
     // NO BORDERS - render directly to area
     
@@ -93,16 +98,16 @@ fn render_pane(
     // Render based on display mode
     match pane.display_mode {
         rwf_lib::model::DisplayMode::Detailed => {
-            render_detailed_mode(frame, area, pane, marking, colors, is_active, ellipsis);
+            render_detailed_mode(frame, area, pane, marking, colors, is_active, ellipsis, symlink_sep);
         }
         rwf_lib::model::DisplayMode::Columns(cols) => {
-            render_column_mode(frame, area, pane, marking, cols, colors, is_active, ellipsis);
+            render_column_mode(frame, area, pane, marking, cols, colors, is_active, ellipsis, symlink_sep);
         }
     }
 }
 
 /// Create a list item for a file entry with selection indicator
-fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool, name_width: usize, ellipsis: &str) -> ListItem<'static> {
+fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool, name_width: usize, ellipsis: &str, symlink_sep: &str) -> ListItem<'static> {
     // Set base colors based on active state
     let mut style = if is_active {
         Style::default()
@@ -170,6 +175,11 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
     } else {
         entry.name.clone()
     };
+    let name = if entry.is_symlink {
+        format!("{}{}", name, symlink_sep)
+    } else {
+        name
+    };
 
     let size = if entry.is_dir {
         "<DIR>".to_string()
@@ -202,6 +212,7 @@ fn render_detailed_mode(
     colors: &ColorScheme,
     is_active: bool,
     ellipsis: &str,
+    symlink_sep: &str,
 ) {
     // Calculate visible range
     let visible_height = area.height as usize;
@@ -221,7 +232,7 @@ fn render_detailed_mode(
             let is_cursor = global_idx == pane.cursor;
             let is_marked = marking.is_marked(&entry.location);
 
-            create_list_item(entry, is_cursor, is_marked, colors, is_active, name_width, ellipsis)
+            create_list_item(entry, is_cursor, is_marked, colors, is_active, name_width, ellipsis, symlink_sep)
         })
         .collect();
 
@@ -240,6 +251,7 @@ fn render_column_mode(
     colors: &ColorScheme,
     is_active: bool,
     ellipsis: &str,
+    symlink_sep: &str,
 ) {
     let columns = columns.clamp(1, 8) as usize;
     
@@ -336,7 +348,12 @@ fn render_column_mode(
                 } else {
                     entry.name.clone()
                 };
-                
+                let name = if entry.is_symlink {
+                    format!("{}{}", name, symlink_sep)
+                } else {
+                    name
+                };
+
                 let truncated = smart_truncate(&name, col_width.saturating_sub(2), ellipsis);
                 let combined = format!("{}{}", indicator, truncated);
                 let padded = pad_to_width(&combined, col_width);
