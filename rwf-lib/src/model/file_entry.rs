@@ -20,7 +20,7 @@ impl LinkKind {
         #[cfg(windows)]
         {
             let s = target.to_string_lossy();
-            if s.starts_with(r"\??\") || s.starts_with(r"\\?\Volume{") {
+            if s.starts_with(r"\??\") {
                 return LinkKind::Junction;
             }
         }

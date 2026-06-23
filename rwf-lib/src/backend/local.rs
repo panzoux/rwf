@@ -90,9 +90,9 @@ impl FilesystemBackend for LocalFilesystemBackend {
                 modified: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             };
 
             entries.push(file_entry);
