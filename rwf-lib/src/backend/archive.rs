@@ -222,6 +222,9 @@ impl ZipArchiveHandler {
                     modified: SystemTime::now(), // TODO: Extract proper timestamp from zip
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 };
                 
                 entries.push(entry);
@@ -655,6 +658,9 @@ impl SevenZArchiveHandler {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             });
         }
 
@@ -1004,6 +1010,9 @@ fn collect_tar_direct_children<R: std::io::Read>(
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         });
     }
 
@@ -1401,6 +1410,9 @@ fn list_iso_entries(
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         });
     }
     Ok(entries)

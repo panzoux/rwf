@@ -22,6 +22,9 @@ fn test_show_file_info_transition() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     };
     
     state.current_tab_mut().left_pane.entries = vec![entry];
@@ -82,6 +85,9 @@ fn test_show_file_info_directory() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: Some(4096),
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     };
     
     state.current_tab_mut().left_pane.entries = vec![entry];
@@ -152,6 +158,9 @@ fn test_file_info_dialog_creation() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     };
     
     // Create file info dialog
@@ -206,6 +215,9 @@ fn test_file_info_dialog_dismissal() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     };
     
     state.current_tab_mut().left_pane.entries = vec![entry];
@@ -254,6 +266,9 @@ fn test_file_info_with_calculated_size() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: Some(1048576), // 1 MB
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
     
     state.current_tab_mut().left_pane.entries = vec![entry];
@@ -284,6 +299,9 @@ fn test_file_info_dialog_does_not_require_input() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     };
     
     let dialog = Dialog::file_info(&entry);

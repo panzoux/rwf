@@ -33,6 +33,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![dir_entry.clone()];
@@ -92,6 +95,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "dir2".to_string(),
@@ -102,6 +108,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "dir3".to_string(),
@@ -112,6 +121,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         
@@ -181,6 +193,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![dir_entry];
@@ -234,6 +249,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![dir_entry.clone()];
@@ -278,6 +296,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![dir_entry];
@@ -337,6 +358,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![file_entry];

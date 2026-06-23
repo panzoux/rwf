@@ -3403,6 +3403,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "file2.txt".to_string(),
@@ -3413,6 +3416,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.active_pane_mut().entries = entries;
@@ -3458,6 +3464,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "other.doc".to_string(),
@@ -3468,6 +3477,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.active_pane_mut().entries = entries;
@@ -3497,6 +3509,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "f2.txt".to_string(),
@@ -3507,6 +3522,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "f3.txt".to_string(),
@@ -3517,6 +3535,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.active_pane_mut().entries = entries;
@@ -3545,6 +3566,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "f2.txt".to_string(),
@@ -3555,6 +3579,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.active_pane_mut().entries = entries;

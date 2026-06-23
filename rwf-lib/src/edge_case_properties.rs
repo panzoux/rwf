@@ -71,6 +71,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }];
             
             for op in operations {
@@ -115,6 +118,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;
@@ -157,6 +163,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;
@@ -371,6 +380,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;
@@ -423,6 +435,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;
@@ -491,6 +506,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries.clone();
@@ -639,6 +657,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;
@@ -673,6 +694,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries.clone();
@@ -871,6 +895,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }).collect();
             
             state.current_tab_mut().left_pane.entries = entries;

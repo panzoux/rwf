@@ -19,6 +19,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "Test.rs".to_string(),
@@ -29,6 +32,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "example.md".to_string(),
@@ -39,6 +45,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "data.json".to_string(),
@@ -49,6 +58,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "README.txt".to_string(),
@@ -59,6 +71,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ]
     }
@@ -341,6 +356,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "file+txt".to_string(),
@@ -351,6 +369,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
 
@@ -424,6 +445,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "nihon.txt".to_string(),
@@ -434,6 +458,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "test.txt".to_string(),
@@ -444,6 +471,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
             ];
 

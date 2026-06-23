@@ -16,6 +16,9 @@ fn make_entry(name: &str, path: &str) -> FileEntry {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
     }
 }
 

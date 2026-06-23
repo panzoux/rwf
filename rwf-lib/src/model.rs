@@ -35,7 +35,7 @@ mod registered_folder_properties;
 mod cache_properties;
 
 pub use location::Location;
-pub use file_entry::{FileEntry, format_size};
+pub use file_entry::{FileEntry, format_size, LinkKind};
 pub use pane::{PaneModel, SortMode, SortOrder, DisplayMode};
 pub use tab::{TabState, TabManager, TabViewerState};
 pub use search::SearchModel;

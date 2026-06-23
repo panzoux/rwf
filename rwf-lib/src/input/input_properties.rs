@@ -21,6 +21,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         }
     }
 
@@ -607,6 +610,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 }
             }).collect();
             
@@ -816,6 +822,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "dir1".to_string(),
@@ -826,6 +835,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "file2.rs".to_string(),
@@ -836,6 +848,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "dir2".to_string(),
@@ -846,6 +861,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "file3.md".to_string(),
@@ -856,6 +874,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
             ];
             
@@ -933,6 +954,9 @@ mod tests {
                     modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "apple.rs".to_string(),
@@ -943,6 +967,9 @@ mod tests {
                     modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(3000),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "banana.md".to_string(),
@@ -953,6 +980,9 @@ mod tests {
                     modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
                 FileEntry {
                     name: "dir1".to_string(),
@@ -963,6 +993,9 @@ mod tests {
                     modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1500),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 },
             ];
             
@@ -1053,6 +1086,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "small.txt".to_string(),
@@ -1063,6 +1099,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "medium.txt".to_string(),
@@ -1073,6 +1112,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             create_test_entry("dir1", true),
         ];
@@ -1113,6 +1155,9 @@ mod tests {
                 modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(3000),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "oldest.txt".to_string(),
@@ -1123,6 +1168,9 @@ mod tests {
                 modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "middle.txt".to_string(),
@@ -1133,6 +1181,9 @@ mod tests {
                 modified: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             create_test_entry("dir1", true),
         ];
@@ -1247,6 +1298,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![archive_entry];
@@ -1328,6 +1382,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         
@@ -1401,6 +1458,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![dir_entry];
@@ -1462,6 +1522,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         };
         
         state.current_tab_mut().left_pane.entries = vec![file_entry];

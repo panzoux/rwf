@@ -234,6 +234,9 @@ proptest! {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             state1.current_tab_mut().left_pane.entries.push(entry.clone());
             state1.current_tab_mut().right_pane.entries.push(entry.clone());
@@ -311,6 +314,9 @@ proptest! {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             state1.current_tab_mut().left_pane.entries.push(entry.clone());
             state1.current_tab_mut().right_pane.entries.push(entry.clone());
@@ -367,6 +373,9 @@ proptest! {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             state1.current_tab_mut().left_pane.entries.push(entry.clone());
             state1.current_tab_mut().right_pane.entries.push(entry.clone());
@@ -433,6 +442,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             state1.current_tab_mut().left_pane.entries.push(entry.clone());
             state2.current_tab_mut().left_pane.entries.push(entry);
@@ -487,6 +499,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             state1.current_tab_mut().left_pane.entries.push(entry.clone());
             state2.current_tab_mut().left_pane.entries.push(entry);

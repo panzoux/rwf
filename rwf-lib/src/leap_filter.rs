@@ -141,6 +141,9 @@ mod tests {
             modified: SystemTime::UNIX_EPOCH,
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         }
     }
 

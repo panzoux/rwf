@@ -37,6 +37,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "left_file2.txt".to_string(),
@@ -47,6 +50,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.current_tab_mut().left_pane.cursor = 1;
@@ -64,6 +70,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "right_file2.txt".to_string(),
@@ -74,6 +83,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "right_file3.txt".to_string(),
@@ -84,6 +96,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         state.current_tab_mut().right_pane.cursor = 2;

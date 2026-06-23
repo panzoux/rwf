@@ -28,6 +28,9 @@ mod tests {
             modified: SystemTime::now(),
             marked,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         }
     }
 

@@ -76,6 +76,9 @@ fn file_entry() -> impl Strategy<Value = FileEntry> {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             }
         })
 }
@@ -410,6 +413,9 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         pane.cursor = 0;
@@ -431,6 +437,9 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         pane.cursor = 0;

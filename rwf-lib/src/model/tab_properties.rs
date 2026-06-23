@@ -128,6 +128,9 @@ proptest! {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 };
                 tab.left_pane.entries.push(entry.clone());
                 tab.right_pane.entries.push(entry);
@@ -212,6 +215,9 @@ proptest! {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 };
                 tab.left_pane.entries.push(entry.clone());
                 tab.right_pane.entries.push(entry);
@@ -297,6 +303,9 @@ proptest! {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
                 };
                 tab.left_pane.entries.push(entry.clone());
                 tab.right_pane.entries.push(entry);
@@ -373,6 +382,9 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             manager.tabs[0].left_pane.entries.push(entry.clone());
             manager.tabs[1].left_pane.entries.push(entry);
@@ -401,6 +413,9 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             };
             manager.tabs[0].left_pane.entries.push(entry.clone());
             manager.tabs[1].left_pane.entries.push(entry);

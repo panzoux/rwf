@@ -38,6 +38,9 @@ fn arb_app_state() -> impl Strategy<Value = AppState> {
                 modified: SystemTime::now(),
                 marked: i % 2 == 0,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             });
         }
         
@@ -163,6 +166,9 @@ mod unit_tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         });
         
         let expander = MacroExpander::new();
@@ -273,6 +279,9 @@ mod custom_function_job_tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         });
         
         let expander = MacroExpander::new();

@@ -60,6 +60,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             FileEntry {
                 name: "file2.txt".to_string(),
@@ -70,6 +73,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         
@@ -94,6 +100,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         
@@ -135,6 +144,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         

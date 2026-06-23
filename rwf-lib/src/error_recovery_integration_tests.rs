@@ -377,6 +377,9 @@ mod tests {
             modified: SystemTime::now(),
             marked: false,
             calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
         }];
         state.current_tab_mut().left_pane.cursor = 999; // Invalid cursor position
 

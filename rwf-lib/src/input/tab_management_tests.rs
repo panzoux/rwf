@@ -387,6 +387,9 @@ mod tests {
                 modified: std::time::SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
             crate::model::FileEntry {
                 name: "file2.txt".to_string(),
@@ -397,6 +400,9 @@ mod tests {
                 modified: std::time::SystemTime::now(),
                 marked: false,
                 calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
             },
         ];
         
