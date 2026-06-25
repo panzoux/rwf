@@ -1022,7 +1022,8 @@ impl Default for ConfigManager {
 #[derive(Debug, Clone)]
 pub enum ConfigLoadStatus {
     Ok,
-    Skipped(String),  // file absent; reason e.g. "file not found"
+    Default(String),  // file absent; built-in defaults are active
+    Skipped(String),  // file absent; feature simply not configured
     Error(String),    // file present but unparseable; brief description
 }
 
@@ -1036,6 +1037,9 @@ pub struct ConfigLoadResult {
 impl ConfigLoadResult {
     pub fn ok(path: std::path::PathBuf) -> Self {
         Self { path, status: ConfigLoadStatus::Ok }
+    }
+    pub fn default_fallback(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
+        Self { path, status: ConfigLoadStatus::Default(reason.into()) }
     }
     pub fn skipped(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
         Self { path, status: ConfigLoadStatus::Skipped(reason.into()) }

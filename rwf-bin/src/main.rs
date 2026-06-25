@@ -89,22 +89,22 @@ async fn main() -> Result<()> {
     let kb_exists = kb_path.exists();
     let (key_bindings, kb_result) = match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
         Ok(kb) => {
-            info!("Key bindings loaded from {:?}", kb_path);
+            info!("Keybindings loaded from {:?}", kb_path);
             (kb, rwf_lib::config::ConfigLoadResult::ok(kb_path))
         }
         Err(e) => {
             let result = if kb_exists {
-                tracing::warn!("Failed to parse keybindings.json, using defaults: {:?}", e);
+                tracing::warn!("Failed to parse {:?}, using built-in defaults: {:?}", kb_path, e);
                 rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
             } else {
-                tracing::info!("No keybindings.json found, using defaults");
-                rwf_lib::config::ConfigLoadResult::skipped(kb_path, "file not found")
+                tracing::info!("Keybindings file not found at {:?}, using built-in defaults", kb_path);
+                rwf_lib::config::ConfigLoadResult::default_fallback(kb_path, "built-in defaults")
             };
             (rwf_lib::KeyBindings::default(), result)
         }
     };
     state.config.key_bindings = key_bindings.clone();
-    info!("Key bindings loaded");
+    info!("Key bindings ready");
 
     // Prepend config.json and keybindings.json results so the order is:
     // config, keybindings, extension_associations, custom_functions, context_menu

@@ -2963,9 +2963,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| r.path.to_string_lossy().into_owned());
                 let line = match &r.status {
-                    ConfigLoadStatus::Ok           => format!("  [OK]      {}", filename),
-                    ConfigLoadStatus::Skipped(why) => format!("  [Skipped] {} ({})", filename, why),
-                    ConfigLoadStatus::Error(detail) => format!("  [NG]      {} — {}", filename, detail),
+                    ConfigLoadStatus::Ok              => format!("  [OK]      {}", filename),
+                    ConfigLoadStatus::Default(why)    => format!("  [OK]      {} ({})", filename, why),
+                    ConfigLoadStatus::Skipped(why)    => format!("  [Skipped] {} ({})", filename, why),
+                    ConfigLoadStatus::Error(detail)   => format!("  [NG]      {} — {}", filename, detail),
                 };
                 messages.push(line);
             }

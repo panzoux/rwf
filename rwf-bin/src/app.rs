@@ -140,6 +140,8 @@ impl App {
             match &r.status {
                 ConfigLoadStatus::Ok =>
                     lines.push(format!(" [OK]      {}", path_str)),
+                ConfigLoadStatus::Default(reason) =>
+                    lines.push(format!(" [OK]      {}  ({})", path_str, reason)),
                 ConfigLoadStatus::Skipped(reason) =>
                     lines.push(format!(" [Skipped] {}  ({})", path_str, reason)),
                 ConfigLoadStatus::Error(detail) => {
@@ -1316,10 +1318,11 @@ impl App {
                     }
                     Err(e) => {
                         let result = if kb_exists {
-                            tracing::warn!("Failed to reload keybindings.json: {:?}", e);
+                            tracing::warn!("Failed to reload {:?}, using built-in defaults: {:?}", kb_path, e);
                             rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
                         } else {
-                            rwf_lib::config::ConfigLoadResult::skipped(kb_path, "file not found")
+                            tracing::info!("Keybindings file not found at {:?}, using built-in defaults", kb_path);
+                            rwf_lib::config::ConfigLoadResult::default_fallback(kb_path, "built-in defaults")
                         };
                         (rwf_lib::KeyBindings::default(), result)
                     }
