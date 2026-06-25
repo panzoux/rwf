@@ -37,14 +37,27 @@ pub use dialog::render_dialog;
 pub use smart_text::{SmartText, TruncateMode};
 
 /// Main UI rendering function
+/// Minimum visible file-listing rows (path+volume+pane_info+filename take the other 4).
+const FILE_PANE_MIN: u16 = 3;
+/// Fixed 1-line sections surrounding the file pane: path, volume, pane_info, filename.
+const CONTENT_FIXED_LINES: u16 = 4;
+
 pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let size = frame.area();
 
-    let task_panel_height = if state.ui.layout.show_task_panel {
+    let tab_bar_h = if state.ui.layout.show_tab_bar { 1u16 } else { 0 };
+
+    // Compute how much the task panel can actually use without hiding pane_info / filename.
+    let desired_task_h = if state.ui.layout.show_task_panel {
         state.ui.layout.task_panel_height as u16
     } else {
         0
     };
+    let available_below_fixed = size.height
+        .saturating_sub(tab_bar_h)
+        .saturating_sub(CONTENT_FIXED_LINES)
+        .saturating_sub(FILE_PANE_MIN);
+    let task_panel_height = desired_task_h.min(available_below_fixed);
 
     let is_viewer_active = state.ui.mode == UIMode::Viewer
         || state.ui.mode == UIMode::ViewerSearch
@@ -63,12 +76,11 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     }
 
     // Outer vertical layout: [tab bar] / [content] / [task panel]
-    let tab_bar_h = if state.ui.layout.show_tab_bar { 1 } else { 0 };
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(tab_bar_h),
-            Constraint::Min(10),
+            Constraint::Min(FILE_PANE_MIN + CONTENT_FIXED_LINES),
             Constraint::Length(task_panel_height),
         ])
         .split(size);
@@ -102,9 +114,9 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
         let pane_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Path line
-                Constraint::Length(1), // Volume line
-                Constraint::Min(5),    // File pane (single pane, full width)
+                Constraint::Length(1),            // Path line
+                Constraint::Length(1),            // Volume line
+                Constraint::Min(FILE_PANE_MIN),   // File pane (single pane, full width)
                 Constraint::Length(1), // Pane info line
                 Constraint::Length(1), // Filename line
             ])
@@ -172,11 +184,11 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Path line (left | right)
-            Constraint::Length(1), // Volume name line (left | right)
-            Constraint::Min(10),   // File panes (NO BORDERS)
-            Constraint::Length(1), // Pane info line (left | right)
-            Constraint::Length(1), // Selected filename line
+            Constraint::Length(1),            // Path line (left | right)
+            Constraint::Length(1),            // Volume name line (left | right)
+            Constraint::Min(FILE_PANE_MIN),   // File panes (NO BORDERS)
+            Constraint::Length(1),            // Pane info line (left | right)
+            Constraint::Length(1),            // Selected filename line
         ])
         .split(content_area);
 
