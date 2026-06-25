@@ -1,5 +1,6 @@
 //! LEAP bar — rendered in place of the pane summary line while in UIMode::Leap.
 
+use std::time::{SystemTime, UNIX_EPOCH};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -16,7 +17,10 @@ const NO_MATCH_STR: &str = " (no match)";
 // Cursor block: one styled space shown at the typing position
 const CURSOR_BLOCK: &str = " ";
 
+const SPINNER_FRAMES: &[&str] = &["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+
 const COL_LABEL:     Color = Color::Rgb(243, 139, 168); // catppuccin red
+const COL_SPINNER:   Color = Color::Rgb(249, 226, 175); // yellow — matches local filter
 const COL_TRAIL:     Color = Color::Rgb(88,  91,  112); // dim gray
 const COL_SEP:       Color = Color::Rgb(108, 112, 134); // mid gray
 const COL_LOCAL:     Color = Color::Rgb(249, 226, 175); // yellow
@@ -24,18 +28,39 @@ const COL_CURSOR_FG: Color = Color::Rgb(30,  30,  46);  // dark bg (cursor text)
 const COL_NO_MATCH:  Color = Color::Rgb(108, 112, 134); // mid gray
 
 /// Render the LEAP bar into `area`.
+///
+/// When `is_loading` is true a braille spinner is appended to the label to
+/// indicate that a `ReadDirectory` job is in progress.
 pub fn render_leap_bar(
     frame: &mut Frame,
     area: Rect,
     leap: &LeapState,
     visible_entries: &[FileEntry],
     no_match_feedback: &NoMatchFeedback,
+    is_loading: bool,
 ) {
     let width = area.width as usize;
     if width < 8 { return; }
 
-    // "LEAP " = 5 chars
-    let label_width = LABEL.len() + 1;
+    // Spinner frame derived from wall-clock milliseconds (100 ms per frame).
+    // `any_pane_loading` triggers a 50 ms poll in app.rs so animation is smooth.
+    let spinner_char = if is_loading {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_millis();
+        SPINNER_FRAMES[(ms / 100) as usize % SPINNER_FRAMES.len()]
+    } else {
+        ""
+    };
+
+    // "LEAP " = 5 chars; when loading we add one spinner char → 6 total for label zone.
+    let label_content = if is_loading {
+        format!("{} {} ", LABEL, spinner_char)
+    } else {
+        format!("{} ", LABEL)
+    };
+    let label_width = label_content.chars().count();
 
     // Right anchor: "(no match)" when Inline feedback and empty result
     let right_str: Option<String> = match no_match_feedback {
@@ -62,6 +87,7 @@ pub fn render_leap_bar(
 
     // Build spans
     let label_style   = Style::default().fg(COL_LABEL).add_modifier(Modifier::BOLD);
+    let spinner_style = Style::default().fg(COL_SPINNER).add_modifier(Modifier::BOLD);
     let trail_style   = Style::default().fg(COL_TRAIL);
     let sep_style     = Style::default().fg(COL_SEP);
     let local_style   = Style::default().fg(COL_LOCAL);
@@ -69,7 +95,13 @@ pub fn render_leap_bar(
     let no_match_style= Style::default().fg(COL_NO_MATCH);
 
     let mut spans: Vec<Span> = Vec::new();
-    spans.push(Span::styled(format!("{} ", LABEL), label_style));
+
+    if is_loading {
+        spans.push(Span::styled(format!("{} ", LABEL), label_style));
+        spans.push(Span::styled(format!("{} ", spinner_char), spinner_style));
+    } else {
+        spans.push(Span::styled(format!("{} ", LABEL), label_style));
+    }
 
     if scrolled {
         spans.push(Span::styled(SCROLL_IND, trail_style));
@@ -78,13 +110,10 @@ pub fn render_leap_bar(
     }
 
     // Render the visible portion of the buffer with per-character coloring.
-    // We walk the full_buf and skip the first `visible_start` chars, then emit
-    // styled spans based on position relative to trail boundary.
     let trail_len = trail.chars().count();
     let local_len = local.chars().count();
-    // total = trail_len + local_len + 1 (cursor)
 
-    let mut _char_idx = 0usize; // position in full_buf (used by future loop tracking)
+    let mut _char_idx = 0usize;
     let mut trail_span = String::new();
     let mut sep_span   = String::new();
     let mut local_span = String::new();

@@ -28,7 +28,7 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
         if let Some(ref leap) = state.leap {
             let visible = &tab.left_pane.entries;
             leap_bar::render_leap_bar(frame, halves[0], leap, visible,
-                &state.config.jump_nav.no_match_feedback);
+                &state.config.jump_nav.no_match_feedback, tab.left_pane.is_loading);
         }
     } else if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Left {
         render_search_bar(frame, halves[0], &state.search.query, colors);
@@ -46,7 +46,7 @@ pub fn render_pane_info_line(frame: &mut Frame, area: Rect, state: &AppState) {
         if let Some(ref leap) = state.leap {
             let visible = &tab.right_pane.entries;
             leap_bar::render_leap_bar(frame, halves[1], leap, visible,
-                &state.config.jump_nav.no_match_feedback);
+                &state.config.jump_nav.no_match_feedback, tab.right_pane.is_loading);
         }
     } else if state.ui.mode == UIMode::Search && state.ui.active_pane == ActivePane::Right {
         render_search_bar(frame, halves[1], &state.search.query, colors);
