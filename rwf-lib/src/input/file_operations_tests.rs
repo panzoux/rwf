@@ -175,7 +175,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Create Directory");
                 match &dialog.content {
-                    crate::model::DialogContent::Input { prompt, default_value } => {
+                    crate::model::DialogContent::Input { prompt, default_value, .. } => {
                         assert_eq!(prompt, "Directory name:");
                         assert_eq!(default_value, "");
                     }

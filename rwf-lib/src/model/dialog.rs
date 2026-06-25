@@ -147,6 +147,9 @@ pub enum DialogContent {
     Input {
         prompt: String,
         default_value: String,
+        input: String,
+        cursor_pos: usize,
+        scroll_pos: usize,
     },
     Progress {
         operation: String,
@@ -633,11 +636,16 @@ impl Dialog {
 
     /// Create an input dialog
     pub fn input(title: impl Into<String>, prompt: impl Into<String>, default_value: impl Into<String>) -> Self {
+        let dv: String = default_value.into();
+        let initial_cursor = dv.chars().count();
         Self {
             title: title.into(),
             content: DialogContent::Input {
                 prompt: prompt.into(),
-                default_value: default_value.into(),
+                default_value: dv.clone(),
+                input: dv,
+                cursor_pos: initial_cursor,
+                scroll_pos: 0,
             },
         }
     }

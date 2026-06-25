@@ -107,20 +107,22 @@ impl SearchModel {
         possible_paths.push(PathBuf::from("/opt/homebrew/share/migemo/utf-8/migemo-dict"));
 
         for path in possible_paths {
-            if path.exists() && path.is_file() {
+            let exists = path.exists() && path.is_file();
+            tracing::info!("Migemo: checking {:?} — {}", path, if exists { "found" } else { "not found" });
+            if exists {
                 match self.load_migemo_dict(&path) {
                     Ok(_) => {
                         tracing::info!("Migemo dictionary loaded from {:?}", path);
                         return Ok(());
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to load migemo dictionary from {:?}: {}", path, e);
+                        tracing::warn!("Migemo: failed to load {:?}: {}", path, e);
                     }
                 }
             }
         }
-        
-        Err("Migemo dictionary not found in common paths".to_string())
+
+        Err("Migemo dictionary not found in any of the searched paths".to_string())
     }
 
     /// Check if migemo library is available

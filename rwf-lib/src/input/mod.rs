@@ -1328,13 +1328,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::CreateDirectory => {
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog {
-                    title: "Create Directory".to_string(),
-                    content: crate::model::DialogContent::Input {
-                        prompt: "Directory name:".to_string(),
-                        default_value: String::new(),
-                    },
-                },
+                dialog: crate::model::Dialog::input("Create Directory", "Directory name:", ""),
             }]
         }
         Action::StartSearch => {

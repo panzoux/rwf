@@ -170,6 +170,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // message lines + blank(1) + buttons(3), min 5
             (message.lines().count() as u16 + 4).max(5)
         }
+        DialogContent::Input { .. } => {
+            // prompt(1) + textbox(1) + hint(1) = 3
+            3u16
+        }
         _ => 8u16, // Default
     };
 
@@ -198,7 +202,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Exact size for context menu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } | DialogContent::Error { .. } => {
+        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } | DialogContent::Error { .. } | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
@@ -462,6 +466,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
 
             // Buttons (chunks[3])
             render_dialog_buttons(frame, chunks[3], &dialog.content, 0);
+        }
+        DialogContent::Input { .. } => {
+            // No separate button row; Enter/Esc are the controls
+            render_dialog_content(frame, &dialog.content, content_area, true);
         }
         _ => {
             // Split content area for buttons (generic layout)
@@ -1994,6 +2002,37 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
                 area,
             );
         }
+        DialogContent::Input { prompt, input, cursor_pos, scroll_pos, .. } => {
+            use ratatui::layout::Alignment;
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // prompt label
+                    Constraint::Length(1), // textbox
+                    Constraint::Length(1), // hint
+                ])
+                .split(area);
+            let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+            let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+            let item_width = area.width.saturating_sub(4);
+            frame.render_widget(
+                Paragraph::new(prompt.as_str()).style(base_style),
+                Rect::new(area.x + 2, chunks[0].y, item_width, 1),
+            );
+            {
+                use crate::ui::text_input::TextInput;
+                let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
+                ti.set_original_text(input.clone());
+                ti.set_cursor(*cursor_pos);
+                ti.set_scroll(*scroll_pos);
+                ti.set_width(item_width);
+                ti.render(frame, Rect::new(area.x + 2, chunks[1].y, item_width, 1), focused);
+            }
+            frame.render_widget(
+                Paragraph::new("(Enter to confirm, Esc to cancel)").style(hint_style).alignment(Alignment::Left),
+                Rect::new(area.x + 2, chunks[2].y, item_width, 1),
+            );
+        }
         _ => {}
     }
 }
@@ -2408,6 +2447,31 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             }
         }
         return DialogAction::None;
+    }
+
+    // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
+    if let DialogContent::Input { input, cursor_pos, scroll_pos, .. } = &mut dialog.content {
+        use crossterm::event::KeyCode;
+        use crate::ui::text_input::{TextInput, TextInputAction};
+        if key.code == KeyCode::Esc {
+            return DialogAction::Cancel;
+        }
+        if key.code == KeyCode::Enter {
+            return DialogAction::Confirm;
+        }
+        let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
+        ti.set_original_text(input.clone());
+        ti.set_cursor(*cursor_pos);
+        ti.set_scroll(*scroll_pos);
+        let action = ti.handle_input(&key);
+        *input = ti.text().to_string();
+        *cursor_pos = ti.cursor();
+        *scroll_pos = ti.scroll();
+        match action {
+            TextInputAction::Confirm => return DialogAction::Confirm,
+            TextInputAction::Cancel  => return DialogAction::Cancel,
+            _ => return DialogAction::None,
+        }
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
@@ -3566,14 +3630,20 @@ pub fn delete_job_name(targets: &[rwf_lib::Location]) -> String {
 pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_lib::job::JobSpec> {
     debug!("process_dialog_confirmation called");
 
-    // Input dialogs: extract title first so the borrow on state.dialogs ends before we
-    // access state.dialogs.input_buffer or call update_state.
-    let input_dialog_title: Option<String> = state.dialogs.current()
+    // Input dialogs: extract title and embedded input first so the borrow on state.dialogs ends
+    // before we call update_state.
+    let input_dialog_info: Option<(String, String)> = state.dialogs.current()
         .filter(|d| matches!(d.content, DialogContent::Input { .. }))
-        .map(|d| d.title.clone());
+        .map(|d| {
+            let embedded = if let DialogContent::Input { input, .. } = &d.content {
+                input.clone()
+            } else {
+                String::new()
+            };
+            (d.title.clone(), embedded)
+        });
 
-    if let Some(title) = input_dialog_title {
-        let input = state.dialogs.input_buffer.clone();
+    if let Some((title, input)) = input_dialog_info {
         match title.as_str() {
             "Register Folder" if !input.is_empty() => {
                 let path = state.active_pane().current_location.display_path();
