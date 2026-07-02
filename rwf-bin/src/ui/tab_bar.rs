@@ -10,10 +10,14 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::AppState;
-use super::{parse_color, shorten_path};
+use super::{parse_color, shorten_path, spinner};
 
 /// Render the tab bar with spinner animation for busy tabs
-pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState, spinner: &str) {
+pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+    let spinner = spinner::current_frame(
+        &state.config.display.spinner_frames,
+        state.config.display.spinner_frame_ms,
+    );
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
     let mut spans = Vec::new();

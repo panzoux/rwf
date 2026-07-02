@@ -240,6 +240,10 @@ pub struct JobManagerConfig {
     /// How long to keep completed/cancelled jobs in seconds (default: 5)
     #[serde(default = "default_job_retention_period_secs")]
     pub job_retention_period_secs: u64,
+    /// How often to poll for job completion while a pane is loading (ms).
+    /// Lower = more responsive but higher CPU on slow machines. Default: 50.
+    #[serde(default = "default_loading_poll_interval_ms")]
+    pub loading_poll_interval_ms: u64,
 }
 
 fn default_max_simultaneous_jobs() -> usize { 4 }
@@ -250,6 +254,7 @@ fn default_max_task_panel_log_lines() -> usize { 1000 }
 fn default_max_log_files() -> usize { 5 }
 fn default_job_manager_refresh_interval_ms() -> u64 { 500 }
 fn default_job_retention_period_secs() -> u64 { 5 }
+fn default_loading_poll_interval_ms() -> u64 { 50 }
 
 impl Default for JobManagerConfig {
     fn default() -> Self {
@@ -262,6 +267,7 @@ impl Default for JobManagerConfig {
             max_log_files: default_max_log_files(),
             job_manager_refresh_interval_ms: default_job_manager_refresh_interval_ms(),
             job_retention_period_secs: default_job_retention_period_secs(),
+            loading_poll_interval_ms: default_loading_poll_interval_ms(),
         }
     }
 }
@@ -355,7 +361,20 @@ pub struct DisplayConfig {
     /// Default "->" (the ">" character is illegal in Windows filenames, ensuring no ambiguity).
     #[serde(default = "default_symlink_separator")]
     pub symlink_separator: String,
+    /// Spinner animation frames shown during loading/busy state.
+    /// Default: ASCII "|/-\" for maximum terminal compatibility.
+    /// Braille alternative: ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+    #[serde(rename = "SpinnerFrames", default = "default_spinner_frames")]
+    pub spinner_frames: Vec<String>,
+    /// Duration of each spinner frame in milliseconds.
+    #[serde(rename = "SpinnerFrameMs", default = "default_spinner_frame_ms")]
+    pub spinner_frame_ms: u64,
 }
+
+fn default_spinner_frames() -> Vec<String> {
+    ["|", "/", "-", "\\"].iter().map(|s| s.to_string()).collect()
+}
+fn default_spinner_frame_ms() -> u64 { 150 }
 
 impl Default for DisplayConfig {
     fn default() -> Self {
@@ -367,6 +386,8 @@ impl Default for DisplayConfig {
             cjk_width: 2,
             colors: ColorScheme::default(),
             symlink_separator: default_symlink_separator(),
+            spinner_frames: default_spinner_frames(),
+            spinner_frame_ms: default_spinner_frame_ms(),
         }
     }
 }

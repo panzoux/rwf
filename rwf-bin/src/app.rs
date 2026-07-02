@@ -26,7 +26,6 @@ pub struct App {
     worker_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
     task_panel: TaskPanel,
-    last_spinner_update: Option<Instant>,
     last_cleanup_check: Option<Instant>,
     pending_conflict_job: Option<(JobSpec, Vec<ConflictPair>, String, String)>,
     pending_job_submission: Vec<JobSpec>,
@@ -86,7 +85,7 @@ impl App {
         let mut app = Self {
             state, key_bindings, should_quit: false, should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
-            last_key_press: None, task_panel, last_spinner_update: None, last_cleanup_check: None,
+            last_key_press: None, task_panel, last_cleanup_check: None,
             pending_conflict_job: None, pending_job_submission: Vec::new(),
             last_search_input_time: None, search_dirty: false,
             pattern_rename_dirty: false, pattern_rename_last_changed: None, pattern_rename_pending: None,
@@ -340,14 +339,9 @@ impl App {
                 ui_needs_update = true;
             }
 
-            // 4. Intelligent Ticking (Spinner)
+            // 4. Redraw while jobs are active so the spinner (wall-clock based) animates
             if self.has_active_jobs() {
-                let interval = Duration::from_millis(self.state.config.job_manager.task_panel_refresh_interval_ms);
-                if self.last_spinner_update.map_or(true, |l| l.elapsed() >= interval) {
-                    self.task_panel.tick();
-                    self.last_spinner_update = Some(Instant::now());
-                    ui_needs_update = true;
-                }
+                ui_needs_update = true;
             }
 
             // 5. Search Mode Timer-Only Trigger
@@ -427,21 +421,13 @@ impl App {
                 }
             }
 
-            if self.has_active_jobs() {
-                let interval = Duration::from_millis(self.state.config.job_manager.task_panel_refresh_interval_ms);
-                if let Some(last_tick) = self.last_spinner_update {
-                    next_wakeup = next_wakeup.min(interval.saturating_sub(last_tick.elapsed()));
-                } else {
-                    next_wakeup = next_wakeup.min(Duration::from_millis(0));
-                }
-            }
-
             // Poll frequently while any pane is still loading so completion events
-            // are picked up promptly rather than waiting for the full spinner interval.
+            // are picked up promptly. Interval is configurable for slow machines.
             let any_pane_loading = self.state.tabs.tabs.iter()
                 .any(|t| t.left_pane.is_loading || t.right_pane.is_loading);
             if any_pane_loading {
-                next_wakeup = next_wakeup.min(Duration::from_millis(50));
+                let poll_ms = self.state.config.job_manager.loading_poll_interval_ms;
+                next_wakeup = next_wakeup.min(Duration::from_millis(poll_ms));
             }
 
             // If UI needs update, render immediately without blocking

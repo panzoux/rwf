@@ -25,10 +25,6 @@ pub struct TaskPanel {
     pending_logs: Vec<String>,
     /// Scroll offset in visual lines (not log entries)
     scroll_offset: usize,
-    /// Spinner animation frames (TWF reference: "|", "/", "-", "\\")
-    spinner_frames: [&'static str; 4],
-    /// Current spinner frame index
-    spinner_index: usize,
     /// Last computed max scroll (visual lines), updated by render; used to normalize scroll_up
     last_max_visual_scroll: std::cell::Cell<usize>,
 }
@@ -46,8 +42,6 @@ impl TaskPanel {
             log_entries: Vec::with_capacity(256),
             pending_logs: Vec::new(),
             scroll_offset: 0,
-            spinner_frames: ["|", "/", "-", "\\"],
-            spinner_index: 0,
             last_max_visual_scroll: std::cell::Cell::new(0),
         }
     }
@@ -128,16 +122,6 @@ impl TaskPanel {
     /// Scroll to end (sets offset to a large value; rendering will clamp it)
     pub fn scroll_to_end(&mut self, _visible_height: usize) {
         self.scroll_offset = usize::MAX;
-    }
-    
-    /// Advance spinner animation (TWF Tick() equivalent)
-    pub fn tick(&mut self) {
-        self.spinner_index = (self.spinner_index + 1) % self.spinner_frames.len();
-    }
-    
-    /// Get current spinner frame
-    pub fn current_spinner(&self) -> &'static str {
-        self.spinner_frames[self.spinner_index]
     }
     
     /// Get scroll offset (for rendering)

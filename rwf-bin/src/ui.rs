@@ -10,6 +10,7 @@ mod path_line;
 mod volume_line;
 mod pane_info_line;
 mod leap_bar;
+mod spinner;
 mod colors;
 mod unicode_utils;
 pub mod dialog;
@@ -86,7 +87,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
         .split(size);
 
     if state.ui.layout.show_tab_bar {
-        render_tab_bar(frame, outer[0], state, task_panel.current_spinner());
+        render_tab_bar(frame, outer[0], state);
     }
 
     let content_area = outer[1];
