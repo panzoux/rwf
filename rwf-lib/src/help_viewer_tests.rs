@@ -274,8 +274,12 @@ fn test_custom_function_explicit_category() {
 
 #[test]
 fn test_help_tab_next_cycles() {
+    // LeapMode was inserted between ViewerMode and DialogMode when Leap
+    // Navigation default keybindings were wired up (see HelpTab in
+    // model/dialog.rs), extending the tab cycle to 5 tabs.
     assert_eq!(HelpTab::NormalMode.next(), HelpTab::ViewerMode);
-    assert_eq!(HelpTab::ViewerMode.next(), HelpTab::DialogMode);
+    assert_eq!(HelpTab::ViewerMode.next(), HelpTab::LeapMode);
+    assert_eq!(HelpTab::LeapMode.next(), HelpTab::DialogMode);
     assert_eq!(HelpTab::DialogMode.next(), HelpTab::CustomFunctions);
     assert_eq!(HelpTab::CustomFunctions.next(), HelpTab::NormalMode);
 }
@@ -290,7 +294,8 @@ fn test_help_tab_prev_cycles() {
 fn test_help_tab_from_index() {
     assert_eq!(HelpTab::from_index(0), HelpTab::NormalMode);
     assert_eq!(HelpTab::from_index(1), HelpTab::ViewerMode);
-    assert_eq!(HelpTab::from_index(2), HelpTab::DialogMode);
-    assert_eq!(HelpTab::from_index(3), HelpTab::CustomFunctions);
+    assert_eq!(HelpTab::from_index(2), HelpTab::LeapMode);
+    assert_eq!(HelpTab::from_index(3), HelpTab::DialogMode);
+    assert_eq!(HelpTab::from_index(4), HelpTab::CustomFunctions);
     assert_eq!(HelpTab::from_index(99), HelpTab::CustomFunctions);
 }

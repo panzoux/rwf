@@ -208,7 +208,11 @@ mod tests {
         
         // Verify help dialog was created
         if let Some(dialog) = state.dialogs.current() {
-            assert_eq!(dialog.title, "Help - Key Bindings");
+            // Dynamic help viewer (Phase 6.7) uses short Dialog titles
+            // consistently across all dialog kinds (e.g. "Job Manager",
+            // "Custom Functions"); "Help - Key Bindings" was the title of
+            // the legacy static HelpContent struct, not Dialog::title.
+            assert_eq!(dialog.title, "Help");
             
             if let DialogContent::Help { language, .. } = &dialog.content {
                 let initial_language = language.clone();

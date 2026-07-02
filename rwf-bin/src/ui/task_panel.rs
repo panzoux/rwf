@@ -195,24 +195,10 @@ mod tests {
         assert_eq!(panel.scroll_offset(), usize::MAX);  // Sets to max; rendering clamps it
     }
     
-    #[test]
-    fn test_task_panel_spinner() {
-        let mut panel = TaskPanel::new();
-        assert_eq!(panel.current_spinner(), "|");
-        
-        panel.tick();
-        assert_eq!(panel.current_spinner(), "/");
-        
-        panel.tick();
-        assert_eq!(panel.current_spinner(), "-");
-        
-        panel.tick();
-        assert_eq!(panel.current_spinner(), "\\");
-        
-        panel.tick();
-        assert_eq!(panel.current_spinner(), "|");  // Wraps around
-    }
-    
+    // Spinner animation was removed from TaskPanel in the wall-clock spinner
+    // consolidation (see rwf-bin/src/ui/spinner.rs). TaskPanel no longer owns
+    // any tick state; spinner behavior is covered by spinner::tests instead.
+
     #[test]
     fn test_task_panel_max_lines() {
         let mut panel = TaskPanel::new();

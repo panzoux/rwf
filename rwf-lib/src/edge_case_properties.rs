@@ -273,8 +273,9 @@ mod tests {
                 marking.mark(location.clone());
             }
             
-            // Count should match
-            prop_assert_eq!(marking.count(), paths.len());
+            // Count should match unique paths (marking is a set; duplicates collapse)
+            let unique_count = paths.iter().collect::<std::collections::HashSet<_>>().len();
+            prop_assert_eq!(marking.count(), unique_count);
             
             // Unmark all
             marking.unmark_all();

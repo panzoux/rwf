@@ -224,13 +224,29 @@ fn test_viewer_search() {
         contents: b"Hello World\nHello Rust\nGoodbye World".to_vec(),
     });
     
-    // Start search for "Hello"
-    update_state(&mut state, Transition::ViewerStartSearch {
+    // Start search for "Hello". Search runs as a background job (see
+    // feat(viewer): background async viewer search with cancellation);
+    // starting it only queues the job and marks is_searching, it does not
+    // populate search_matches synchronously.
+    let start_result = update_state(&mut state, Transition::ViewerStartSearch {
         query: "Hello".to_string(),
     });
-    
+    assert_eq!(start_result.jobs_to_start.len(), 1);
+    let job_id = start_result.jobs_to_start[0].id;
+
     let viewer = state.viewer.as_ref().unwrap();
     assert_eq!(viewer.search_query, Some("Hello".to_string()));
+    assert!(viewer.is_searching);
+
+    // Simulate the background job completing with matches for "Hello" on
+    // line 0 ("Hello World") and line 1 ("Hello Rust").
+    update_state(&mut state, Transition::ViewerSearchComplete {
+        job_id,
+        matches: vec![(0, 0, 5), (1, 0, 5)],
+    });
+
+    let viewer = state.viewer.as_ref().unwrap();
+    assert!(!viewer.is_searching);
     assert_eq!(viewer.search_matches.len(), 2);
     assert_eq!(viewer.search_match_index, Some(0));
     
@@ -376,7 +392,17 @@ fn test_viewer_seekable_text_search() {
         location: Location::Local(tmp.path().to_path_buf()),
     });
     update_state(&mut state, Transition::ViewerReady { buffer, encoding: TextEncoding::Utf8 });
-    update_state(&mut state, Transition::ViewerStartSearch { query: "Hello".to_string() });
+    // Search runs as a background job; starting it only queues the job.
+    let start_result = update_state(&mut state, Transition::ViewerStartSearch { query: "Hello".to_string() });
+    assert_eq!(start_result.jobs_to_start.len(), 1);
+    let job_id = start_result.jobs_to_start[0].id;
+
+    // Simulate the background job completing with matches for "Hello" on
+    // line 0 ("Hello World") and line 1 ("Hello Rust").
+    update_state(&mut state, Transition::ViewerSearchComplete {
+        job_id,
+        matches: vec![(0, 0, 5), (1, 0, 5)],
+    });
 
     let viewer = state.viewer.as_ref().unwrap();
     assert_eq!(viewer.search_matches.len(), 2);
@@ -433,8 +459,18 @@ fn test_viewer_seekable_hex_search() {
         location: Location::Local(tmp.path().to_path_buf()),
     });
     update_state(&mut state, Transition::ViewerReady { buffer, encoding: TextEncoding::Utf8 });
-    // Hex byte pattern search
-    update_state(&mut state, Transition::ViewerStartSearch { query: "DE AD BE EF".to_string() });
+    // Hex byte pattern search runs as a background job; starting it only
+    // queues the job (see feat(viewer): background async viewer search).
+    let start_result = update_state(&mut state, Transition::ViewerStartSearch { query: "DE AD BE EF".to_string() });
+    assert_eq!(start_result.jobs_to_start.len(), 1);
+    let job_id = start_result.jobs_to_start[0].id;
+
+    // Simulate the background job completing with the byte-pattern match at
+    // offset 8..12 (line = byte_offset / 16 = 0).
+    update_state(&mut state, Transition::ViewerSearchComplete {
+        job_id,
+        matches: vec![(0, 8, 12)],
+    });
 
     let viewer = state.viewer.as_ref().unwrap();
     assert_eq!(viewer.search_matches.len(), 1);

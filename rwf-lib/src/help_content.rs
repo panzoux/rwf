@@ -429,14 +429,14 @@ mod tests {
     
     #[test]
     fn test_next_language_rotation() {
-        // Test rotation with single language
-        assert_eq!(HelpContent::next_language("en"), "en");
-        
-        // If jp file exists, test rotation
-        if Path::new("help.jp.json").exists() {
-            assert_eq!(HelpContent::next_language("en"), "jp");
-            assert_eq!(HelpContent::next_language("jp"), "en");
-        }
+        // "jp" is an embedded default resource (action_descriptions.jp.json,
+        // added in the dynamic help viewer work) and is always available
+        // alongside "en", regardless of any on-disk override files. So
+        // rotation always cycles en -> jp -> en; see also
+        // help_viewer_tests::test_next_language_cycles for the same
+        // assertion via ActionDescriptions::next_language.
+        assert_eq!(HelpContent::next_language("en"), "jp");
+        assert_eq!(HelpContent::next_language("jp"), "en");
     }
     
     #[test]

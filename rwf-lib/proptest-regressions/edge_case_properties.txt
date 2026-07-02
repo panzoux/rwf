@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 85dc89722c03a3814521f362c647e8d7dd0d3bd59582f89ad321db93af1c7455 # shrinks to entry_count = 7, up_operations = 0
 cc 28e8b62d12b1a666012fbcc7ed04c1640946a32845ee094af683eeee1d40917b # shrinks to operations = [9, 4]
+cc e608e7cacfb895a0cf9e57024e2dd58f44483c81f33a3722741b5200e231513a # shrinks to paths = ["glm", "glm"]
