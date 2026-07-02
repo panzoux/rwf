@@ -43,10 +43,10 @@
 
 ## Phase 2 — ジャンプ・ナビゲーション
 
-| # | 機能 | 詳細 | テスト方針 |
-|---|------|------|-----------|
-| 2.1 | **Jump to Path ダイアログ** | 複数キーワードAND絞り込み、非同期補完 | パス補完・AND検索のユニットテスト | `[x]` |
-| 2.2 | **Jump to File ダイアログ** | 再帰検索、ignoreリスト対応 | 実FS上の統合テスト (tempfile) | `[x]` |
+| # | 機能 | 状態 | 詳細 | テスト方針 |
+|---|------|------|------|-----------|
+| 2.1 | **Jump to Path ダイアログ** | `[x]` | 複数キーワードAND絞り込み、非同期補完 | パス補完・AND検索のユニットテスト |
+| 2.2 | **Jump to File ダイアログ** | `[x]` | 再帰検索、ignoreリスト対応 | 実FS上の統合テスト (tempfile) |
 
 **推定規模**: 各800〜1200行  
 **リスク**: 中（再帰検索の非同期キャンセル処理）
@@ -173,8 +173,8 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | 機構 | フェーズ | 状態 |
 |------|---------|------|
 | Layer 1: 内部ジョブ後リフレッシュ | Phase 1〜5 | 既存 ✅ |
-| Layer 1: 外部コマンド後アクティブペインリフレッシュ | Phase 6.2 | `[ ]` |
-| Layer 2: バックグラウンドポーリング | Phase 7 | `[ ]` |
+| Layer 1: 外部コマンド後アクティブペインリフレッシュ | Phase 1.4.1 | 実装済み ✅ |
+| Layer 2: バックグラウンドポーリング | Phase 7.5 | `[ ]` |
 
 ---
 
@@ -182,30 +182,22 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 
 > CJK表示はすでに rwf の強み。さらに差別化できる機能。
 
-### 推奨実装優先度（2026-06-04更新）
+### 推奨実装優先度（2026-07-02 番号再割当・状態更新）
 
-| # | 機能 | 詳細 | 優先度 | 工期 |
-|---|------|------|--------|------|
-| 7.1 | **Undo/Redo（トランザクション・ロールバック）** | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.1.undo_redo.md](7.1.undo_redo.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
-| 7.2 | **Leap ナビゲーション（高速フィルタ移動）** | 'l' キーで "Quick-Filter Mode" 起動。入力でリアルタイムフィルタ、単一match でオートエンター。nnn 風。詳細は [7.2.leap_navigation.md](7.2.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 2週間 |
-| 7.3 | **スマート・ファイルオープナー（Rifle システム）** | Phase 6.2 (ExtensionAssociations) の発展形。MIME型ベース、条件付きロジック、複数オプション選択メニュー。詳細は [7.3.rifle_system.md](7.3.rifle_system.md) 参照 | ⭐⭐⭐⭐ | 2週間 |
-| 7.4 | **バックグラウンド・ディレクトリサイズ計算** | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
-| 7.5 | **バックグラウンドポーリング（Layer 2）** | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
-| 7.6 | **シンタックスハイライト（ビューア）** | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張 | ⭐⭐⭐ | 2週間 |
-| 7.7 | **スマート・トラッシュ（ゴミ箱）管理** | Windows/macOS/Linux 各OS標準への対応。削除ではなくゴミ箱へ移動、復元サポート。詳細は [7.7.smart_trash.md](7.7.smart_trash.md) 参照 | ⭐⭐⭐ | 2週間 |
-| 7.8 | **SSH/SFTP対応**（将来） | リモートファイルシステム（大規模追加） | ⭐⭐ | TBD |
+> **番号再割当について**: 旧表の 7.1(Undo)/7.2(Leap) は、plan/ 配下の実ファイル名
+> （`7.6.transactional_rollback.md`・`7.8.leap_navigation.md`）およびコミット履歴（`feat(7.8)` = Leap）と
+> 不一致だったため、**ファイル名側を正として再割当**した。7.1・7.2 は欠番。
 
-### 実装前フェーズ（Phase 6 完了後）
-
-**推奨スケジュール**:
-```
-Week 1-3  → 7.1 Undo/Redo (最高インパクト)
-Week 3-5  → 7.2 Leap Nav (UX game-changer)
-Week 5-7  → 7.3 Rifle System (daily driver必須)
-Week 7-10 → 7.4 Size Calc (便利機能)
-```
-
-並列実装可能: 7.2 と 7.3 は独立しているため並列化可能 (7.2, 7.3: week 3-7)
+| # | 機能 | 状態 | 詳細 | 優先度 | 工期 |
+|---|------|------|------|--------|------|
+| 7.3 | **スマート・ファイルオープナー（Rifle システム）** | `[ ]` | Phase 6.2 (ExtensionAssociations) の発展形。MIME型ベース、条件付きロジック、複数オプション選択メニュー。**詳細md未作成（着手時に設計から）** | ⭐⭐⭐⭐ | 2週間 |
+| 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[ ]` | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
+| 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
+| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
+| 7.7 | **スマート・トラッシュ（ゴミ箱）管理** | `[ ]` | Windows/macOS/Linux 各OS標準への対応。削除ではなくゴミ箱へ移動、復元サポート。詳細は [7.7.smart_trash.md](7.7.smart_trash.md) 参照 | ⭐⭐⭐ | 2週間 |
+| 7.8 | **Leap ナビゲーション（高速フィルタ移動）** | `[x]` | **実装完了（2026-06〜07、705a392〜c8ff3e4）**。F3 で Leap モード起動、AND セグメント + prefix/substring/Migemo union フィルタ、LEAP バー + スピナー、デフォルトキーバインド配線・キー衝突解消済み。詳細は [7.8.leap_navigation.md](7.8.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
+| 7.9 | **シンタックスハイライト（ビューア）** | `[ ]` | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張（旧7.6） | ⭐⭐⭐ | 2週間 |
+| 7.10 | **SSH/SFTP対応**（将来） | `[ ]` | リモートファイルシステム（大規模追加）（旧7.8） | ⭐⭐ | TBD |
 
 ---
 
@@ -236,7 +228,10 @@ Week 7-10 → 7.4 Size Calc (便利機能)
 プロパティ:      proptest による状態遷移の網羅テスト（既存パターン踏襲）
 ```
 
-### 現状テスト数: 815件（単体 + プロパティ + 統合）
+### 現状テスト数: 1043件（rwf-lib 単体 + プロパティ + 統合、2026-07-02 実測）＋ rwf-bin UI テスト
+
+> 実行時間の目安: rwf-lib 全件を `--test-threads=1` で約37分。通常はテスト名フィルタで対象のみ実行すること
+> （実行手順の規約は `.claude/CLAUDE.local.md` を参照）。
 
 ---
 
@@ -264,21 +259,29 @@ Phase 7 (随時)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-06-12  
-現在のフェーズ: Phase 6 残タスク（6.5, 6.7）→ Phase 7 へ
-Phase 6完了内容: 6.2(拡張子関連付け) / 6.3(カスタム関数ダイアログ) / 6.4(コンテキストメニュー) / 6.6(LargeFileEngine) 実装
-Phase 6 残タスク: 6.5（カスタム関数メニュー）/ 6.7（ヘルプ強化・動的キーバインドビューア）
-次の作業: Phase 6.5 → 6.7 → Phase 7.1（Undo/Redo）
-Phase 7 準備: 設計ドキュメント作成完了、実装スケジュール確定
+最終更新: 2026-07-02（総合棚卸で全面同期）  
+現在のフェーズ: **Phase 7**（7.8 Leap Navigation 完了）
+Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
+次の作業候補（優先順）:
+1. **Phase 8.7 コマンドパレット** — ヘルプビューアに Enter ディスパッチを足すだけで完成する小規模・高価値タスク
+2. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
+3. **7.3 Rifle System** — 詳細md未作成のため設計から
 
-## Phase 7 実装順序（2026-06-04確定）
+## Phase 7 実装順序（2026-07-02 更新）
 
-1. **7.1 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.1.undo_redo.md
-2. **7.2 Leap Navigation** — 'l' キー Quick-Filter Mode。詳細: 7.2.leap_navigation.md
-3. **7.3 Rifle System** — Phase 6.2 の発展。詳細: 7.3.rifle_system.md
-4. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md（NEW）
+1. ~~**7.8 Leap Navigation**~~ — **完了**（705a392〜c8ff3e4）
+2. **7.6 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.6.transactional_rollback.md
+3. **7.3 Rifle System** — Phase 6.2 の発展。詳細md未作成
+4. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md
 
-並列実装可能: 7.2 と 7.3 は独立 → week 3-7 で同時進行推奨
+## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
+
+- **シンボリックリンク/ジャンクション対応** — `LinkKind` enum、`symlink_metadata` による検出、一覧での `->` サフィックス表示、ファイル名バーの `name->target` 表示、File Information ダイアログの Type/Target 行（b414944〜fa2e5c1）
+- **SuspendAndRun ジョブ** — ターミナルエディタ（vim 等）起動のための TUI サスペンド対応（ee3011b）
+- **動的ヘルプビューア + `--export-config-files` + キーバインド衝突検出**（e406672、Phase 6.7 として完了扱い）
+- **config status 表示の改善** — keybindings の「ファイル無し」とエラーの区別（6978949）
+- **Input ダイアログのテキスト編集実装**（d87a383）
+- **タスクパネル縮小順序の修正・スピナー共通化・LEAP バースピナー**（9e500c8, 13c7189, cad6bd7）
 
 ## 4.6 実装内訳（2026-05-30）
 - `ViewerLayout` enum（`FullScreen` / `SideBySide`）を `model/ui.rs` に追加
@@ -405,5 +408,4 @@ Phase 7 準備: 設計ドキュメント作成完了、実装スケジュール�
 - 全7テスト合格
 
 ## 備考
-- テストのOOM問題: `cargo test`でテストバイナリのメモリ不足が既存。`cargo build`は問題なし。
-  テストは単体ファイル限定(`--lib --test`)での実行を推奨。
+- テスト実行の規約（OOM 対策・推奨コマンド）は `.claude/CLAUDE.local.md` の「Test Suite Status」を参照。

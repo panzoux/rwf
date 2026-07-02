@@ -51,14 +51,23 @@ RWF is built for perfect CJK alignment.
 ## Development Status
 
 ### 1. Test Suite Status
-The test suite is highly stable (~99.5% pass rate).
-- **Baseline Failures**: Exactly **5 failures** exist in `rwf-lib` related to `config_launch_integration_tests`. These are legacy issues with external process simulation.
+Re-baselined 2026-07-02 (dev-environment inventory).
+- **Baseline Failures**: Exactly **5 failures** in `rwf-lib`, all in `config_launch_integration_tests` (legacy issues with external process simulation).
 - **Regressions**: Any failure *outside* of these 5 is a new regression.
-- **Execution**: Run tests with `--test-threads=1` to avoid filesystem race conditions.
+- **Counts** (2026-07-02): rwf-lib 1043 tests, rwf-bin 51 tests.
+- **Execution rules**:
+  - Always `--test-threads=1` (filesystem race conditions).
+  - The full rwf-lib suite takes **~37 min** single-threaded. During development run name-filtered
+    subsets: `cargo test -p rwf-lib <filter> -- --test-threads=1`.
+  - Historical OOM: parallel workspace-wide `cargo test` has run out of memory; prefer per-package
+    runs (`-p rwf-lib` / `-p rwf`). `cargo build` is unaffected.
+  - After refactors that remove/rename methods, run `cargo test -p rwf --no-run` — stale references
+    in rwf-bin UI tests have broken the whole workspace test build before (2026-06/07).
 
 ### 2. Roadmap & Context
 - `plan/ROADMAP.md` (Japanese) is the source of truth for phase progress.
-- Current Status: **Phase 7** (RWF-specific enhancements).
+- Current Status: **Phase 7** — 7.8 Leap Navigation complete (2026-07). Phase 7 numbering follows
+  the plan/ file names (7.6 = Undo/Redo, 7.8 = Leap; 7.1/7.2 are retired numbers).
 
 ## Feature Testing Protocol
 

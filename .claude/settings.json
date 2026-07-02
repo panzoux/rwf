@@ -1,11 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-Content \"c:\\\\Users\\\\user\\\\source\\\\repos\\\\panzoux\\\\rwf\\\\logs\\\\session.log\")",
-      "Bash(Select-Object -Last 150)",
-      "PowerShell($configPath = [System.IO.Path]::Combine\\($env:APPDATA, \"rwf\", \"keybindings.json\"\\); if \\(Test-Path $configPath\\) { Get-Content $configPath | Select-Object -First 30 } else { Write-Output \"NOT FOUND\" })",
-      "Bash(ls \"C:/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/iso9660-0.1.1/src/\")",
-      "Read(//c/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/iso9660-0.1.1/src/**)"
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "PowerShell(cargo build *)",
+      "PowerShell(cargo test *)",
+      "PowerShell(cargo check *)",
+      "PowerShell(cargo clippy *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Select-Object *)"
     ]
   }
 }
