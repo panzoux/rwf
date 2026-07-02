@@ -68,212 +68,6 @@ pub struct KeyBindings {
     pub pending_sequence: Option<String>,
 }
 
-impl KeyBindings {
-    /// Create default TWF-compatible key bindings
-    pub fn twf_defaults() -> Self {
-        let mut normal_mode = HashMap::new();
-        
-        // Navigation
-        normal_mode.insert("Tab".to_string(), Action::SwitchPane);
-        normal_mode.insert("Up".to_string(), Action::CursorUp);
-        normal_mode.insert("Down".to_string(), Action::CursorDown);
-        normal_mode.insert("k".to_string(), Action::CursorUp);
-        normal_mode.insert("j".to_string(), Action::CursorDown);
-        normal_mode.insert("^".to_string(), Action::MoveCursorToFirst);
-        normal_mode.insert("$".to_string(), Action::MoveCursorToLast);
-        normal_mode.insert("g".to_string(), Action::MoveCursorToFirst);
-        normal_mode.insert("G".to_string(), Action::MoveCursorToLast);
-        normal_mode.insert("PageUp".to_string(), Action::PageUp);
-        normal_mode.insert("PageDown".to_string(), Action::PageDown);
-        normal_mode.insert("Enter".to_string(), Action::EnterDirectory);
-        normal_mode.insert("Backspace".to_string(), Action::NavigateToParent);
-        normal_mode.insert("Left".to_string(), Action::SwitchToLeftPane);
-        normal_mode.insert("Right".to_string(), Action::SwitchToRightPane);
-        normal_mode.insert("h".to_string(), Action::SwitchToLeftPane);
-        normal_mode.insert("Alt+Left".to_string(), Action::HistoryBack);
-        normal_mode.insert("Alt+Right".to_string(), Action::HistoryForward);
-        normal_mode.insert("H".to_string(), Action::ShowHistoryDialog);
-        
-        // Marking
-        normal_mode.insert("Space".to_string(), Action::ToggleMark);
-        normal_mode.insert("Shift+Space".to_string(), Action::ToggleMarkUp);
-        normal_mode.insert("*".to_string(), Action::FileMaskFilter);
-        normal_mode.insert("A".to_string(), Action::MarkAll);
-        normal_mode.insert("Ctrl+u".to_string(), Action::UnmarkAll);
-        normal_mode.insert("@".to_string(), Action::WildcardMarking);
-        normal_mode.insert("Ctrl+Space".to_string(), Action::RangeMarking);
-        normal_mode.insert("Home".to_string(), Action::InvertMarks);
-        normal_mode.insert("End".to_string(), Action::ClearMarks);
-        
-        // File operations
-        normal_mode.insert("C".to_string(), Action::Copy);
-        normal_mode.insert("c".to_string(), Action::Copy);
-        normal_mode.insert("M".to_string(), Action::Move);
-        normal_mode.insert("m".to_string(), Action::Move);
-        normal_mode.insert("D".to_string(), Action::Delete);
-        normal_mode.insert("d".to_string(), Action::Delete);
-        normal_mode.insert("Ctrl+d".to_string(), Action::DeleteForce);
-        normal_mode.insert("R".to_string(), Action::PatternRename);
-        normal_mode.insert("r".to_string(), Action::Rename);
-        normal_mode.insert("K".to_string(), Action::CreateDirectory);
-        
-        // Sorting
-        normal_mode.insert("s+n".to_string(), Action::SortByName);
-        normal_mode.insert("s+s".to_string(), Action::SortBySize);
-        normal_mode.insert("s+d".to_string(), Action::SortByDate);
-        normal_mode.insert("s+e".to_string(), Action::SortByExtension);
-        normal_mode.insert("s+o".to_string(), Action::ToggleSortOrder);
-        
-        // Search and filter
-        normal_mode.insert("/".to_string(), Action::StartSearch);
-        normal_mode.insert("Ctrl+f".to_string(), Action::StartSearch);
-        normal_mode.insert("f".to_string(), Action::FileMaskFilter);
-        normal_mode.insert("Ctrl+k".to_string(), Action::ClearSearchFilter);
-        normal_mode.insert("Escape".to_string(), Action::Quit);
-        
-        // Refresh
-        normal_mode.insert("F5".to_string(), Action::Refresh);
-        
-        // Tab management
-        normal_mode.insert("Ctrl+n".to_string(), Action::NewTab);
-        normal_mode.insert("Alt+z".to_string(), Action::NewTab);
-        normal_mode.insert("Ctrl+t".to_string(), Action::TabSelector);
-        normal_mode.insert("Ctrl+w".to_string(), Action::CloseTab);
-        normal_mode.insert("Ctrl+Right".to_string(), Action::NextTab);
-        normal_mode.insert("Ctrl+PageDown".to_string(), Action::NextTab);
-        normal_mode.insert("Alt+l".to_string(), Action::NextTab);
-        normal_mode.insert("Ctrl+Left".to_string(), Action::PrevTab);
-        normal_mode.insert("Ctrl+PageUp".to_string(), Action::PrevTab);
-        normal_mode.insert("Alt+h".to_string(), Action::PrevTab);
-        normal_mode.insert("Ctrl+b".to_string(), Action::TabSelector);
-        
-        // Registered folders
-        normal_mode.insert("B".to_string(), Action::RegisterCurrentFolder);
-        normal_mode.insert("I".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("F".to_string(), Action::ShowRegisteredFolderDialog);
-        normal_mode.insert("Alt+M".to_string(), Action::MoveToRegisteredFolder); // Alt+Shift+M: navigate/move to registered folder
-
-        // Jump navigation
-        normal_mode.insert("J".to_string(), Action::ShowJumpToPathDialog);
-        normal_mode.insert("N".to_string(), Action::ShowJumpToFileDialog);
-
-        // Viewer
-        normal_mode.insert("v".to_string(), Action::OpenTextViewer);
-        normal_mode.insert("X".to_string(), Action::OpenHexViewer);
-
-        // File info
-        normal_mode.insert("i".to_string(), Action::ShowFileInfoForCursor);
-        normal_mode.insert("e".to_string(), Action::OpenWithEditor);
-
-        // Miscellaneous
-        normal_mode.insert("q".to_string(), Action::Quit);
-        normal_mode.insert("Q".to_string(), Action::ExitAndChangeDirectory);
-        normal_mode.insert("?".to_string(), Action::Help);
-        normal_mode.insert("F1".to_string(), Action::Help);
-        // Job management
-        normal_mode.insert("Alt+j".to_string(), Action::JobManager);
-        normal_mode.insert("Ctrl+j".to_string(), Action::JobManager);
-        
-        // Test jobs
-        normal_mode.insert("9".to_string(), Action::CountDownJob(0));  // 0 = default 180 seconds
-        
-        normal_mode.insert("Alt+s".to_string(), Action::CalculateDirectorySize);
-        
-        // Pane operations
-        normal_mode.insert("o".to_string(), Action::SyncPanes);   // sync active pane to match other
-        normal_mode.insert("O".to_string(), Action::SwapPanes);   // Shift+O: swap the two panes
-
-        // Context menu, drive selection, custom functions
-        normal_mode.insert("\\".to_string(), Action::ShowContextMenu);
-        normal_mode.insert("L".to_string(), Action::ShowDriveChangeDialog);
-        normal_mode.insert("T".to_string(), Action::ShowCustomFunctionsDialog); // Shift+T
-
-        // Config reload (Shift+Z = "Z")
-        normal_mode.insert("Z".to_string(), Action::ReloadConfig);
-
-        // Version / system info (outputs to task panel, not a modal dialog)
-        normal_mode.insert("`".to_string(), Action::ShowVersionInfo);
-        normal_mode.insert("F2".to_string(), Action::ShowVersionInfoVerbose);
-
-        // Leap Navigation
-        normal_mode.insert("F3".to_string(), Action::EnterLeap);
-        
-        // Task panel operations
-        normal_mode.insert("t".to_string(), Action::ToggleTaskPanel);
-        normal_mode.insert("Ctrl+Up".to_string(), Action::IncreaseTaskPanelHeight);
-        normal_mode.insert("Ctrl+Down".to_string(), Action::DecreaseTaskPanelHeight);
-        normal_mode.insert("Shift+Up".to_string(), Action::ScrollTaskPanelUp);
-        normal_mode.insert("Shift+Down".to_string(), Action::ScrollTaskPanelDown);
-
-        // Archive operations
-        normal_mode.insert("p".to_string(), Action::Compress);
-        normal_mode.insert("u".to_string(), Action::Extract);
-
-        // Viewer mode bindings
-        let mut viewer_mode = HashMap::new();
-        viewer_mode.insert("Escape".to_string(), Action::ViewerClose);
-        viewer_mode.insert("q".to_string(), Action::ViewerClose);
-        viewer_mode.insert("b".to_string(), Action::ViewerToggleHexMode);
-        viewer_mode.insert("F8".to_string(), Action::ViewerToggleHexMode);
-        viewer_mode.insert("j".to_string(), Action::ViewerScrollDown);
-        viewer_mode.insert("Down".to_string(), Action::ViewerScrollDown);
-        viewer_mode.insert("k".to_string(), Action::ViewerScrollUp);
-        viewer_mode.insert("Up".to_string(), Action::ViewerScrollUp);
-        viewer_mode.insert("PageDown".to_string(), Action::ViewerPageDown);
-        viewer_mode.insert("PageUp".to_string(), Action::ViewerPageUp);
-        viewer_mode.insert("Ctrl+f".to_string(), Action::ViewerPageDown);
-        viewer_mode.insert("Space".to_string(), Action::ViewerPageDown);
-        viewer_mode.insert("Ctrl+b".to_string(), Action::ViewerPageUp);
-        viewer_mode.insert("F5".to_string(), Action::ViewerGoToTop);
-        viewer_mode.insert("g".to_string(), Action::ViewerGoToTop);
-        viewer_mode.insert("<".to_string(), Action::ViewerGoToTop);
-        viewer_mode.insert("Home".to_string(), Action::ViewerGoToTop);
-        viewer_mode.insert("F6".to_string(), Action::ViewerGoToBottom);
-        viewer_mode.insert("G".to_string(), Action::ViewerGoToBottom);
-        viewer_mode.insert(">".to_string(), Action::ViewerGoToBottom);
-        viewer_mode.insert("End".to_string(), Action::ViewerGoToBottom);
-        viewer_mode.insert("e".to_string(), Action::ViewerCycleEncoding);
-        viewer_mode.insert("/".to_string(), Action::ViewerBeginSearch);
-        viewer_mode.insert("?".to_string(), Action::ViewerBeginSearchBackward);
-        viewer_mode.insert("F3".to_string(), Action::ViewerFindNext);
-        viewer_mode.insert("Shift+F3".to_string(), Action::ViewerFindPrev);
-        viewer_mode.insert("n".to_string(), Action::ViewerFindNext);
-        viewer_mode.insert("N".to_string(), Action::ViewerFindPrev);
-        viewer_mode.insert("Ctrl+~".to_string(), Action::ViewerToggleCaseSensitive);
-        viewer_mode.insert("Ctrl+^".to_string(), Action::ViewerToggleCaseSensitive);
-        viewer_mode.insert("Ctrl+u".to_string(), Action::ViewerClearSearch);
-        viewer_mode.insert("Left".to_string(),       Action::ViewerScrollLeft);
-        viewer_mode.insert("Right".to_string(),      Action::ViewerScrollRight);
-        viewer_mode.insert("Shift+Left".to_string(),  Action::ViewerFastScrollLeft);
-        viewer_mode.insert("Shift+Right".to_string(), Action::ViewerFastScrollRight);
-        viewer_mode.insert("Shift+Up".to_string(),    Action::ViewerFastScrollUp);
-        viewer_mode.insert("Shift+Down".to_string(),  Action::ViewerFastScrollDown);
-
-        let mut leap_mode = HashMap::new();
-        leap_mode.insert("F3".to_string(),       Action::LeapConfirm);
-        leap_mode.insert("Escape".to_string(),   Action::LeapCancel);
-        leap_mode.insert("Right".to_string(),    Action::LeapGoDeeperOrOpen);
-        leap_mode.insert("Left".to_string(),     Action::LeapGoParent);
-        leap_mode.insert("Up".to_string(),       Action::LeapCursorUp);
-        leap_mode.insert("Down".to_string(),     Action::LeapCursorDown);
-        leap_mode.insert("Ctrl+p".to_string(),   Action::LeapCursorUp);
-        leap_mode.insert("Ctrl+n".to_string(),   Action::LeapCursorDown);
-        leap_mode.insert("Ctrl+u".to_string(),   Action::LeapClearLocal);
-        leap_mode.insert("Ctrl+k".to_string(),   Action::LeapClearAll);
-        leap_mode.insert("Enter".to_string(),    Action::LeapOpenFile);
-        leap_mode.insert("Ctrl+Enter".to_string(), Action::LeapConfirm);
-
-        Self {
-            normal_mode,
-            search_mode: HashMap::new(),
-            dialog_mode: HashMap::new(),
-            viewer_mode,
-            leap_mode,
-            pending_sequence: None,
-        }
-    }
-}
-
 impl Default for KeyBindings {
     fn default() -> Self {
         Self::embedded_defaults()
@@ -1787,11 +1581,27 @@ mod tests {
     }
 
     #[test]
-    fn test_embedded_defaults_matches_twf_defaults_tab() {
+    fn test_embedded_defaults_has_basic_normal_mode_bindings() {
         // embedded_defaults() should have "Tab" → SwitchPane in NormalMode
         let bindings = KeyBindings::embedded_defaults();
         assert_eq!(bindings.normal_mode.get("Tab"), Some(&Action::SwitchPane));
         assert_eq!(bindings.normal_mode.get("?"), Some(&Action::Help));
+    }
+
+    #[test]
+    fn test_embedded_defaults_has_leap_mode_bindings() {
+        // F3 must enter Leap mode, and LeapMode must have its own bindings,
+        // otherwise Leap Navigation is unreachable by default.
+        let bindings = KeyBindings::embedded_defaults();
+        assert_eq!(bindings.normal_mode.get("F3"), Some(&Action::EnterLeap));
+        assert_eq!(bindings.leap_mode.get("F3"), Some(&Action::LeapConfirm));
+        assert_eq!(bindings.leap_mode.get("Escape"), Some(&Action::LeapCancel));
+        assert_eq!(bindings.leap_mode.get("Right"), Some(&Action::LeapGoDeeperOrOpen));
+        assert_eq!(bindings.leap_mode.get("Left"), Some(&Action::LeapGoParent));
+        assert_eq!(bindings.leap_mode.get("/"), Some(&Action::LeapGoParent));
+        assert_eq!(bindings.leap_mode.get("Ctrl+u"), Some(&Action::LeapClearLocal));
+        assert_eq!(bindings.leap_mode.get("Ctrl+k"), Some(&Action::LeapClearAll));
+        assert_eq!(bindings.leap_mode.get("Enter"), Some(&Action::LeapOpenFile));
     }
 
     #[test]

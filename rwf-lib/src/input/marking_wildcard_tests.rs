@@ -28,9 +28,9 @@ mod tests {
     // ---- Key binding --------------------------------------------------------
 
     #[test]
-    fn test_wildcard_marking_key_at() {
+    fn test_wildcard_marking_key_star() {
         let mut bindings = KeyBindings::default();
-        let key = KeyEvent::new(KeyCode::Char('@'), KeyModifiers::NONE);
+        let key = KeyEvent::new(KeyCode::Char('*'), KeyModifiers::NONE);
         let action = bindings.map_key(&key);
         assert_eq!(action, Some(Action::WildcardMarking));
     }

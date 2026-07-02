@@ -13,10 +13,10 @@ mod tests {
     // ---- Key bindings -------------------------------------------------------
 
     #[test]
-    fn test_key_n_opens_jump_to_file_dialog() {
+    fn test_key_at_opens_jump_to_file_dialog() {
         let mut bindings = KeyBindings::default();
         let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('N'),
+            crossterm::event::KeyCode::Char('@'),
             crossterm::event::KeyModifiers::NONE,
         );
         let action = bindings.map_key(&key);

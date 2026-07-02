@@ -17,21 +17,10 @@ mod tests {
     // ---- Key bindings -------------------------------------------------------
 
     #[test]
-    fn test_key_f_opens_registered_folder_dialog() {
+    fn test_key_b_opens_registered_folder_dialog() {
         let mut bindings = KeyBindings::default();
         let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('F'),
-            crossterm::event::KeyModifiers::NONE,
-        );
-        let action = bindings.map_key(&key);
-        assert_eq!(action, Some(Action::ShowRegisteredFolderDialog));
-    }
-
-    #[test]
-    fn test_key_i_opens_registered_folder_dialog() {
-        let mut bindings = KeyBindings::default();
-        let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('I'),
+            crossterm::event::KeyCode::Char('b'),
             crossterm::event::KeyModifiers::NONE,
         );
         let action = bindings.map_key(&key);
