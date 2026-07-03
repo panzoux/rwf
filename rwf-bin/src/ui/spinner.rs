@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Current spinner frame, derived from wall-clock time.
 /// No external tick state needed — just call on every render.
-pub fn current_frame<'a>(frames: &'a [String], frame_ms: u64) -> &'a str {
+pub fn current_frame(frames: &[String], frame_ms: u64) -> &str {
     if frames.is_empty() { return ""; }
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)

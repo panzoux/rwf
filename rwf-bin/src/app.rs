@@ -391,7 +391,7 @@ impl App {
             }
 
             // 6. Cleanup
-            if self.last_cleanup_check.map_or(true, |l| l.elapsed() >= Duration::from_secs(5)) {
+            if self.last_cleanup_check.is_none_or(|l| l.elapsed() >= Duration::from_secs(5)) {
                 self.state.background_jobs.cleanup_expired_jobs();
                 self.last_cleanup_check = Some(Instant::now());
             }
@@ -462,9 +462,8 @@ impl App {
                 let ev = event::read()?;
                 match ev {
                     Event::Key(key) => {
-                        if key.kind == crossterm::event::KeyEventKind::Press {
-                            if self.handle_key_event(key) { any_event = true; }
-                        }
+                        if key.kind == crossterm::event::KeyEventKind::Press
+                            && self.handle_key_event(key) { any_event = true; }
                     }
                     Event::Resize(_, _) => {
                         // Recalculate task panel view on terminal resize
@@ -869,7 +868,6 @@ impl App {
             }
 
             // Remaining normal viewer actions (keybinding lookup)
-            let vp_height = vp_height;
             if let Some(action) = self.key_bindings.viewer_mode.get(&key_string).cloned() {
                 use rwf_lib::input::Action;
                 let tr = match action {
@@ -1058,7 +1056,7 @@ impl App {
                     }
                     Action::LeapGoParent => {
                         let has_depth = self.state.leap.as_ref()
-                            .map_or(false, |l| l.buffer.contains('/'));
+                            .is_some_and(|l| l.buffer.contains('/'));
                         if has_depth {
                             rwf_lib::state::update_state(&mut self.state, rwf_lib::state::Transition::LeapGoParent);
                             let parent = self.state.active_pane()

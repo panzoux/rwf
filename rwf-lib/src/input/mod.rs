@@ -15,18 +15,15 @@ use crate::backend::ArchiveHandler;
 
 /// Archive format for compression operations
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ArchiveFormat {
+    #[default]
     ZIP,
     SevenZip,
     Tar,
     TarGz,
 }
 
-impl Default for ArchiveFormat {
-    fn default() -> Self {
-        Self::ZIP
-    }
-}
 
 /// Check if a location is an archive file (by name suffix).
 /// Uses suffix matching rather than Path::extension() to support double

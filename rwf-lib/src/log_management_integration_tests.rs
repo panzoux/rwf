@@ -16,12 +16,14 @@ mod tests {
     use std::time::Duration;
 
     fn create_test_state_with_log_config(temp_dir: &TempDir) -> AppState {
-        let mut config = AppConfig::default();
-        config.max_log_lines_in_memory = 10;
-        config.log_save_path = temp_dir.path().join("session.log").to_string_lossy().to_string();
-        config.save_log_on_exit = true;
-        config.log_file_progress_threshold_ms = 100; // Low threshold for testing
-        
+        let config = AppConfig {
+            max_log_lines_in_memory: 10,
+            log_save_path: temp_dir.path().join("session.log").to_string_lossy().to_string(),
+            save_log_on_exit: true,
+            log_file_progress_threshold_ms: 100, // Low threshold for testing
+            ..Default::default()
+        };
+
         AppState::new(config)
     }
 
@@ -227,9 +229,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let custom_path = temp_dir.path().join("custom").join("my_session.log");
         
-        let mut config = AppConfig::default();
-        config.log_save_path = custom_path.to_string_lossy().to_string();
-        
+        let config = AppConfig {
+            log_save_path: custom_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+
         let mut state = AppState::new(config);
         state.log_manager.info("Test message".to_string());
         

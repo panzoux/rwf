@@ -94,6 +94,12 @@ pub struct LineIndex {
     pub is_complete: bool,
 }
 
+impl Default for LineIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LineIndex {
     pub fn new() -> Self {
         Self { offsets: vec![0], is_complete: false }
@@ -493,7 +499,7 @@ impl ViewerState {
                         let digits = query.trim()
                             .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
                             .unwrap_or(query.trim());
-                        if digits.len() >= 2 && digits.len() % 2 == 0
+                        if digits.len() >= 2 && digits.len().is_multiple_of(2)
                             && digits.chars().all(|c| c.is_ascii_hexdigit())
                         {
                             let needle: Option<Vec<u8>> = (0..digits.len())
@@ -526,7 +532,7 @@ impl ViewerState {
                         let digits = query.trim()
                             .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
                             .unwrap_or(query.trim());
-                        if digits.len() >= 2 && digits.len() % 2 == 0
+                        if digits.len() >= 2 && digits.len().is_multiple_of(2)
                             && digits.chars().all(|c| c.is_ascii_hexdigit())
                         {
                             let needle: Option<Vec<u8>> = (0..digits.len())
@@ -634,7 +640,7 @@ impl ViewerState {
                 usize::from_str_radix(rest, 16).ok()
             } else { None }
         } else if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-            let padded = if trimmed.len() % 2 != 0 { format!("{}0", trimmed) } else { trimmed.to_string() };
+            let padded = if !trimmed.len().is_multiple_of(2) { format!("{}0", trimmed) } else { trimmed.to_string() };
             usize::from_str_radix(&padded, 16).ok()
         } else {
             None
@@ -680,7 +686,7 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
     // boundary 0xFFF0 (same row as "ffff") rather than the unaligned 0xFF0.
     let all_hex = !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit());
     if all_hex {
-        let padded = if trimmed.len() % 2 != 0 {
+        let padded = if !trimmed.len().is_multiple_of(2) {
             format!("{}0", trimmed)
         } else {
             trimmed.to_string()
@@ -695,7 +701,7 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
     let all_hex_space = trimmed.chars().all(|c| c.is_ascii_hexdigit() || c == ' ');
     if all_hex_space && has_space && !trimmed.is_empty() {
         let no_space: String = trimmed.chars().filter(|&c| c != ' ').collect();
-        if no_space.len() >= 2 && no_space.len() % 2 == 0 {
+        if no_space.len() >= 2 && no_space.len().is_multiple_of(2) {
             let bytes: Option<Vec<u8>> = (0..no_space.len())
                 .step_by(2)
                 .map(|i| u8::from_str_radix(&no_space[i..i + 2], 16).ok())
@@ -723,7 +729,7 @@ pub fn hex_query_has_pattern(query: &str) -> bool {
     }
     // Pure hex digits: even length = address + pattern, odd = address only
     if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-        return trimmed.len() >= 2 && trimmed.len() % 2 == 0;
+        return trimmed.len() >= 2 && trimmed.len().is_multiple_of(2);
     }
     // Space-separated hex bytes or plain text → always needs a search
     true
@@ -850,17 +856,17 @@ impl TextEncoding {
         while i < sample.len() {
             let b = sample[i];
             // Shift-JIS lead bytes: 0x81–0x9F or 0xE0–0xFC
-            if (b >= 0x81 && b <= 0x9F) || (b >= 0xE0 && b <= 0xFC) {
+            if (0x81..=0x9F).contains(&b) || (0xE0..=0xFC).contains(&b) {
                 if i + 1 < sample.len() {
                     let b2 = sample[i + 1];
-                    if (b2 >= 0x40 && b2 <= 0x7E) || (b2 >= 0x80 && b2 <= 0xFC) {
+                    if (0x40..=0x7E).contains(&b2) || (0x80..=0xFC).contains(&b2) {
                         sjis += 2; i += 2; continue;
                     }
                 }
                 sjis -= 1;
             }
             // EUC-JP lead bytes: 0xA1–0xFE (and SS2 0x8E, SS3 0x8F)
-            if b >= 0xA1 && b <= 0xFE {
+            if (0xA1..=0xFE).contains(&b) {
                 if i + 1 < sample.len() && sample[i + 1] >= 0xA1 && sample[i + 1] <= 0xFE {
                     eucjp += 2; i += 2; continue;
                 }
@@ -912,6 +918,10 @@ impl TextEncoding {
             let (raw_ch, consumed) = match self {
                 TextEncoding::Utf8 => {
                     let b = bytes[i];
+                    // Branches for `b < 0x80` (ASCII byte) and `b < 0xC0` (orphan/invalid
+                    // continuation byte) both yield seq_len 1, but represent distinct UTF-8
+                    // cases per the spec; kept separate for clarity/correctness, not merged.
+                    #[allow(clippy::if_same_then_else)]
                     let seq_len = if b < 0x80 { 1 }
                         else if b < 0xC0 { 1 }
                         else if b < 0xE0 { 2 }
@@ -942,7 +952,7 @@ impl TextEncoding {
                 }
                 TextEncoding::ShiftJis => {
                     let b = bytes[i];
-                    let is_lead = (b >= 0x81 && b <= 0x9F) || (b >= 0xE0 && b <= 0xFC);
+                    let is_lead = (0x81..=0x9F).contains(&b) || (0xE0..=0xFC).contains(&b);
                     if is_lead && i + 1 < bytes.len() {
                         let (s, _) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(&bytes[i..i + 2]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 2)
@@ -957,6 +967,11 @@ impl TextEncoding {
                 }
                 TextEncoding::EucJp => {
                     let b = bytes[i];
+                    // The `(0xA1..=0xFE)` and `b == 0x8E` branches both decode a 2-byte
+                    // EUC-JP sequence and look identical, but they match distinct lead-byte
+                    // ranges (JIS X 0208 vs. half-width katakana via SS2); kept separate to
+                    // mirror the EUC-JP spec rather than merged for brevity.
+                    #[allow(clippy::if_same_then_else)]
                     if (0xA1..=0xFE).contains(&b) && i + 1 < bytes.len() {
                         let (s, _) = encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 2]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 2)

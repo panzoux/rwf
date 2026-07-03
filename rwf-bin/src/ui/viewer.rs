@@ -22,6 +22,7 @@ use super::{pad_to_width, smart_truncate};
 /// Render the file viewer.
 /// `sbs_focused`: true when this is a SideBySide viewer that currently has
 /// keyboard focus — shows `[Mode]` title brackets and focus border style.
+#[allow(clippy::too_many_arguments)]
 pub fn render_viewer(
     frame: &mut Frame,
     area: Rect,
@@ -479,6 +480,7 @@ fn compute_addr_highlight(query: &str, offset: usize) -> Option<(usize, usize)> 
 
 /// Build a full hex-viewer row Line with per-byte match highlighting.
 /// `match_ranges` and `current_match` are file byte offsets (absolute).
+#[allow(clippy::too_many_arguments)]
 fn hex_row_spans(
     offset: usize,
     bytes: &[u8],
@@ -497,7 +499,7 @@ fn hex_row_spans(
     addr_highlight: Option<(usize, usize)>,
 ) -> Line<'static> {
     let byte_styles = |abs: usize| -> (Style, Style) {
-        if current_match.map_or(false, |(s, e)| abs >= s && abs < e) {
+        if current_match.is_some_and(|(s, e)| abs >= s && abs < e) {
             (hex_current_style, ascii_current_style)
         } else if match_ranges.iter().any(|&(s, e)| abs >= s && abs < e) {
             (hex_match_style, ascii_match_style)
@@ -549,7 +551,7 @@ fn hex_row_spans(
     for (ch, byte_start, byte_end) in ascii_chars {
         let abs_start = offset + byte_start;
         let abs_end = offset + byte_end;
-        let as_ = if current_match.map_or(false, |(ms, me)| ms < abs_end && me > abs_start) {
+        let as_ = if current_match.is_some_and(|(ms, me)| ms < abs_end && me > abs_start) {
             ascii_current_style
         } else if match_ranges.iter().any(|&(ms, me)| ms < abs_end && me > abs_start) {
             ascii_match_style
@@ -622,6 +624,7 @@ fn sanitize_for_display(s: &str) -> String {
 /// `current_match` is the active match byte range (rendered differently).
 /// Characters in [column_offset, column_offset+max_cols) display columns are
 /// included; the rest are clipped.
+#[allow(clippy::too_many_arguments)]
 fn highlight_spans(
     decoded: &str,
     match_ranges: &[(usize, usize)],
@@ -640,7 +643,7 @@ fn highlight_spans(
     let mut byte_pos = 0usize;
 
     let style_for = |bp: usize| -> Style {
-        if current_match.map_or(false, |(s, e)| bp >= s && bp < e) {
+        if current_match.is_some_and(|(s, e)| bp >= s && bp < e) {
             current_style
         } else if match_ranges.iter().any(|&(s, e)| bp >= s && bp < e) {
             match_style

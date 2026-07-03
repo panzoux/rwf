@@ -44,12 +44,10 @@ pub fn apply_rename_pattern(
             Ok(re) => re.replacen(filename, 1, normalized.as_str()).to_string(),
             Err(_) => filename.to_string(),
         }
+    } else if case_sensitive {
+        filename.replace(find, replace)
     } else {
-        if case_sensitive {
-            filename.replace(find, replace)
-        } else {
-            case_insensitive_replace_all(filename, find, replace)
-        }
+        case_insensitive_replace_all(filename, find, replace)
     }
 }
 

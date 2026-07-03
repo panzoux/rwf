@@ -927,7 +927,7 @@ mod tests {
             match event {
                 crate::worker_pool::JobEvent::Progress(_, progress) => {
                     received_progress = true;
-                    assert!(progress >= 0.0 && progress <= 1.0, "Progress should be between 0 and 1");
+                    assert!((0.0..=1.0).contains(&progress), "Progress should be between 0 and 1");
                 }
                 crate::worker_pool::JobEvent::Completed(_, _) => {
                     received_completed = true;
@@ -990,7 +990,7 @@ mod tests {
             match event {
                 crate::worker_pool::JobEvent::Progress(_, progress) => {
                     progress_count += 1;
-                    assert!(progress >= 0.0 && progress <= 1.0, "Progress should be between 0 and 1");
+                    assert!((0.0..=1.0).contains(&progress), "Progress should be between 0 and 1");
                 }
                 crate::worker_pool::JobEvent::Completed(_, _) => {
                     received_completed = true;

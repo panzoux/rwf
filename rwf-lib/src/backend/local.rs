@@ -89,7 +89,7 @@ impl FilesystemBackend for LocalFilesystemBackend {
                     // Follow the link to get the target's real metadata for display.
                     // If the target is missing (broken link), fall back to symlink's own values.
                     let followed = tokio::fs::metadata(&entry_path).await.ok();
-                    let is_dir = followed.as_ref().map_or(false, |m| m.is_dir());
+                    let is_dir = followed.as_ref().is_some_and(|m| m.is_dir());
                     let size = followed.as_ref().map_or(sym_meta.len(), |m| m.len());
                     let modified = followed
                         .as_ref()

@@ -145,78 +145,6 @@ impl TaskPanel {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_task_panel_new() {
-        let panel = TaskPanel::new();
-        assert_eq!(panel.log_count(), 0);
-    }
-
-    #[test]
-    fn test_task_panel_add_log() {
-        let mut panel = TaskPanel::new();
-        panel.add_log("Test message".to_string(), LogLevel::Info);
-        assert_eq!(panel.log_count(), 1);
-    }
-    
-    #[test]
-    fn test_task_panel_pending_logs() {
-        let mut panel = TaskPanel::new();
-        panel.add_pending_log("Pending [OK]".to_string());
-        panel.add_pending_log("Pending [FAIL]".to_string());
-        assert_eq!(panel.log_count(), 0);
-        
-        panel.process_pending_logs(1000);
-        assert_eq!(panel.log_count(), 2);
-    }
-    
-    #[test]
-    fn test_task_panel_scroll() {
-        let mut panel = TaskPanel::new();
-        
-        // Add some logs
-        for i in 0..20 {
-            panel.add_log(format!("Log {}", i), LogLevel::Info);
-        }
-        
-        // Scroll up
-        panel.scroll_up();
-        assert_eq!(panel.scroll_offset(), 0);  // Can't scroll up from 0
-        
-        // Scroll down
-        panel.scroll_down(10);
-        assert_eq!(panel.scroll_offset(), 1);
-        
-        // Scroll to end
-        panel.scroll_to_end(10);
-        assert_eq!(panel.scroll_offset(), usize::MAX);  // Sets to max; rendering clamps it
-    }
-    
-    // Spinner animation was removed from TaskPanel in the wall-clock spinner
-    // consolidation (see rwf-bin/src/ui/spinner.rs). TaskPanel no longer owns
-    // any tick state; spinner behavior is covered by spinner::tests instead.
-
-    #[test]
-    fn test_task_panel_max_lines() {
-        let mut panel = TaskPanel::new();
-        
-        // Add 15 logs with max of 10
-        for i in 0..15 {
-            panel.add_log(format!("Log {}", i), LogLevel::Info);
-        }
-        
-        panel.process_pending_logs(10);
-        assert_eq!(panel.log_count(), 10);
-        
-        // Oldest logs should be removed
-        assert_eq!(panel.get_log_entry(0).map(|e| e.message.as_str()), Some("Log 5"));
-        assert_eq!(panel.get_log_entry(9).map(|e| e.message.as_str()), Some("Log 14"));
-    }
-}
-
 // ============================================================================
 // Rendering
 // ============================================================================
@@ -347,4 +275,76 @@ pub fn render_task_panel(
 
     let list = List::new(items);
     frame.render_widget(list, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_task_panel_new() {
+        let panel = TaskPanel::new();
+        assert_eq!(panel.log_count(), 0);
+    }
+
+    #[test]
+    fn test_task_panel_add_log() {
+        let mut panel = TaskPanel::new();
+        panel.add_log("Test message".to_string(), LogLevel::Info);
+        assert_eq!(panel.log_count(), 1);
+    }
+    
+    #[test]
+    fn test_task_panel_pending_logs() {
+        let mut panel = TaskPanel::new();
+        panel.add_pending_log("Pending [OK]".to_string());
+        panel.add_pending_log("Pending [FAIL]".to_string());
+        assert_eq!(panel.log_count(), 0);
+        
+        panel.process_pending_logs(1000);
+        assert_eq!(panel.log_count(), 2);
+    }
+    
+    #[test]
+    fn test_task_panel_scroll() {
+        let mut panel = TaskPanel::new();
+        
+        // Add some logs
+        for i in 0..20 {
+            panel.add_log(format!("Log {}", i), LogLevel::Info);
+        }
+        
+        // Scroll up
+        panel.scroll_up();
+        assert_eq!(panel.scroll_offset(), 0);  // Can't scroll up from 0
+        
+        // Scroll down
+        panel.scroll_down(10);
+        assert_eq!(panel.scroll_offset(), 1);
+        
+        // Scroll to end
+        panel.scroll_to_end(10);
+        assert_eq!(panel.scroll_offset(), usize::MAX);  // Sets to max; rendering clamps it
+    }
+    
+    // Spinner animation was removed from TaskPanel in the wall-clock spinner
+    // consolidation (see rwf-bin/src/ui/spinner.rs). TaskPanel no longer owns
+    // any tick state; spinner behavior is covered by spinner::tests instead.
+
+    #[test]
+    fn test_task_panel_max_lines() {
+        let mut panel = TaskPanel::new();
+        
+        // Add 15 logs with max of 10
+        for i in 0..15 {
+            panel.add_log(format!("Log {}", i), LogLevel::Info);
+        }
+        
+        panel.process_pending_logs(10);
+        assert_eq!(panel.log_count(), 10);
+        
+        // Oldest logs should be removed
+        assert_eq!(panel.get_log_entry(0).map(|e| e.message.as_str()), Some("Log 5"));
+        assert_eq!(panel.get_log_entry(9).map(|e| e.message.as_str()), Some("Log 14"));
+    }
 }

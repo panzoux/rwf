@@ -164,7 +164,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }
         DialogContent::Help { .. } => {
             // tab bar(1) + search(1) + entries + hint(1), min 8
-            20u16.max(8)
+            20u16
         }
         DialogContent::Error { message, .. } => {
             // message lines + blank(1) + buttons(3), min 5
@@ -489,6 +489,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
 }
 
 /// Render File Conflict dialog (compact layout with vertical buttons)
+#[allow(clippy::too_many_arguments)]
 fn render_file_conflict_dialog(
     frame: &mut Frame,
     area: Rect,
@@ -1234,7 +1235,7 @@ fn render_jump_to_path_dialog(
     // Horizontal scroll: show the end of the query when cursor is near it
     let q_chars: Vec<char> = query.chars().collect();
     let visible_chars = input_width as usize;
-    let scroll = if cursor_pos > visible_chars { cursor_pos - visible_chars } else { 0 };
+    let scroll = cursor_pos.saturating_sub(visible_chars);
     let visible_query: String = q_chars.iter().skip(scroll).take(visible_chars).collect();
     let input_text = format!("{:<width$}", visible_query, width = visible_chars);
     frame.render_widget(
@@ -1335,7 +1336,7 @@ fn render_jump_to_file_dialog(
     let input_width = area.width.saturating_sub(status_width + 3).max(4);
     let q_chars: Vec<char> = query.chars().collect();
     let visible_chars = input_width as usize;
-    let scroll = if cursor_pos > visible_chars { cursor_pos - visible_chars } else { 0 };
+    let scroll = cursor_pos.saturating_sub(visible_chars);
     let visible_query: String = q_chars.iter().skip(scroll).take(visible_chars).collect();
     let input_text = format!("{:<width$}", visible_query, width = visible_chars);
     frame.render_widget(
@@ -1440,6 +1441,7 @@ fn fmt_time(t: Option<std::time::SystemTime>) -> String {
 }
 
 #[allow(unused_variables, unused_mut)]
+#[allow(clippy::too_many_arguments)]
 fn render_file_info_dialog(
     frame: &mut Frame,
     area: Rect,
@@ -1513,6 +1515,7 @@ fn render_file_info_dialog(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_pattern_rename_dialog(
     frame: &mut Frame,
     area: Rect,
@@ -1602,13 +1605,13 @@ fn render_pattern_rename_dialog(
 
     // Row 4: horizontal separator — highlighted when filelist (focused_field==2) has focus
     let (sep_style, sep_line) = if focused_field == 2 {
-        let dashes: String = std::iter::repeat('─').take(w.saturating_sub(9)).collect();
+        let dashes: String = std::iter::repeat_n('─', w.saturating_sub(9)).collect();
         (
             Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD),
             format!("▶ LIST {}", dashes),
         )
     } else {
-        (hint, std::iter::repeat('─').take(w).collect())
+        (hint, std::iter::repeat_n('─', w).collect())
     };
     frame.render_widget(
         Paragraph::new(sep_line).style(sep_style),
@@ -1714,6 +1717,7 @@ fn help_filter_entries<'a>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_help_dialog(
     frame: &mut Frame,
     area: Rect,
@@ -2083,8 +2087,9 @@ fn validate_filename(rename_text: &str, original_name: &str) -> Option<String> {
 
 /// Handle File Conflict dialog input with TextInput widget
 /// Focus fields: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename button, 4=Textbox, 5=Cancel
+#[allow(clippy::too_many_arguments)]
 fn handle_file_conflict_input(
-    conflicts: &mut Vec<rwf_lib::model::dialog::ConflictPair>,
+    conflicts: &mut [rwf_lib::model::dialog::ConflictPair],
     current_index: &mut usize,
     focused_button: &mut usize,
     rename_text: &mut String,
@@ -3381,7 +3386,7 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
                     _ => {}
                 }
             }
-            return DialogAction::None;
+            DialogAction::None
         }
         DialogContent::Compression {
             focused_field,

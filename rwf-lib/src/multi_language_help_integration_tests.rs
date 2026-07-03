@@ -51,15 +51,17 @@ fn test_help_content_fallback_to_english() {
 #[test]
 fn test_help_dialog_uses_configured_language() {
     // **Validates: Requirements 48.2, 48.5**
-    let mut config = AppConfig::default();
-    config.help_language = "en".to_string();
-    
+    let config = AppConfig {
+        help_language: "en".to_string(),
+        ..Default::default()
+    };
+
     let mut state = AppState::new(config);
-    
+
     // Show help dialog
     let dialog = Dialog::help_with_language(&state.config.help_language);
     state.dialogs.push(dialog);
-    
+
     // Verify dialog is shown with correct language
     assert!(!state.dialogs.is_empty());
     let current_dialog = state.dialogs.current().unwrap();
@@ -75,15 +77,17 @@ fn test_help_dialog_uses_configured_language() {
 #[test]
 fn test_language_rotation() {
     // **Validates: Requirements 48.3**
-    let mut config = AppConfig::default();
-    config.help_language = "en".to_string();
-    
+    let config = AppConfig {
+        help_language: "en".to_string(),
+        ..Default::default()
+    };
+
     let mut state = AppState::new(config);
-    
+
     // Show help dialog
     let dialog = Dialog::help_with_language(&state.config.help_language);
     state.dialogs.push(dialog);
-    
+
     // Get initial language
     let initial_lang = if let Some(dialog) = state.dialogs.current() {
         if let DialogContent::Help { language, .. } = &dialog.content {
@@ -151,18 +155,20 @@ fn test_language_rotation_cycles_through_all_languages() {
 #[test]
 fn test_language_persistence() {
     // **Validates: Requirements 48.6**
-    let mut config = AppConfig::default();
-    config.help_language = "en".to_string();
-    
+    let config = AppConfig {
+        help_language: "en".to_string(),
+        ..Default::default()
+    };
+
     let mut state = AppState::new(config);
-    
+
     // Show help dialog
     let dialog = Dialog::help_with_language(&state.config.help_language);
     state.dialogs.push(dialog);
-    
+
     // Rotate language
     update_state(&mut state, Transition::RotateHelpLanguage);
-    
+
     // Verify config was updated
     let new_lang = state.config.help_language.clone();
     assert!(!new_lang.is_empty());
@@ -229,11 +235,13 @@ fn test_help_dialog_shows_language_rotation_key() {
 #[test]
 fn test_multiple_language_rotations() {
     // **Validates: Requirements 48.3**
-    let mut config = AppConfig::default();
-    config.help_language = "en".to_string();
-    
+    let config = AppConfig {
+        help_language: "en".to_string(),
+        ..Default::default()
+    };
+
     let mut state = AppState::new(config);
-    
+
     // Show help dialog
     let dialog = Dialog::help_with_language(&state.config.help_language);
     state.dialogs.push(dialog);

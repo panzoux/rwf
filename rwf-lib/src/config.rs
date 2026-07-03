@@ -1101,7 +1101,7 @@ mod tests {
         let config = manager.load_config().unwrap();
         
         assert_eq!(config.worker_pool_size, 4);
-        assert_eq!(config.session_persistence, true);
+        assert!(config.session_persistence);
     }
     
     #[test]
@@ -1195,8 +1195,8 @@ mod tests {
         let config = manager.load_config().unwrap();
         
         assert_eq!(config.worker_pool_size, 8);
-        assert_eq!(config.session_persistence, false);
-        assert_eq!(config.display.show_hidden, true);
+        assert!(!config.session_persistence);
+        assert!(config.display.show_hidden);
     }
     
     #[test]
@@ -1221,12 +1221,14 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 0;
-        
+        let config = AppConfig {
+            worker_pool_size: 0,
+            ..Default::default()
+        };
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let result = manager.validate_config(&config);
-        
+
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ConfigError::ValidationError(_)));
     }
@@ -1254,15 +1256,17 @@ mod tests {
         
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 6;
-        config.session_persistence = false;
-        
+        let config = AppConfig {
+            worker_pool_size: 6,
+            session_persistence: false,
+            ..Default::default()
+        };
+
         manager.save_config(&config).unwrap();
         
         let loaded_config = manager.load_config().unwrap();
         assert_eq!(loaded_config.worker_pool_size, 6);
-        assert_eq!(loaded_config.session_persistence, false);
+        assert!(!loaded_config.session_persistence);
     }
     
     #[test]

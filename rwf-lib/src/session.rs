@@ -589,10 +589,10 @@ mod tests {
         let restored_tabs = restore_tabs(&session);
         assert_eq!(restored_tabs.len(), 5);
 
-        for i in 0..5 {
-            assert_eq!(restored_tabs[i].id, i);
-            assert_eq!(restored_tabs[i].left_pane.cursor, i * 2);
-            assert_eq!(restored_tabs[i].right_pane.cursor, i * 3);
+        for (i, tab) in restored_tabs.iter().enumerate().take(5) {
+            assert_eq!(tab.id, i);
+            assert_eq!(tab.left_pane.cursor, i * 2);
+            assert_eq!(tab.right_pane.cursor, i * 3);
         }
     }
 }

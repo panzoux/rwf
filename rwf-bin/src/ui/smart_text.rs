@@ -84,7 +84,7 @@ impl<'a> SmartText<'a> {
             remaining = &remaining[split_idx..];
             
             // Skip leading separators on new lines if they were at the split point
-            if (remaining.starts_with('/') || remaining.starts_with('\\')) && lines.last().map_or(false, |l| !l.is_empty()) {
+            if (remaining.starts_with('/') || remaining.starts_with('\\')) && lines.last().is_some_and(|l| !l.is_empty()) {
                 // Optional: keep separator on the previous line or move to next
                 // For paths, keeping separator as part of the next component is often clearer
             }

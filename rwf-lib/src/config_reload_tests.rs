@@ -23,17 +23,19 @@ mod tests {
         
         assert_eq!(state.config.worker_pool_size, 4);
         
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
-        new_config.session_persistence = false;
-        
+        let new_config = AppConfig {
+            worker_pool_size: 8,
+            session_persistence: false,
+            ..Default::default()
+        };
+
         let result = update_state(&mut state, Transition::UpdateConfig {
             config: Box::new(new_config.clone()),
         });
         
         assert!(result.ui_changed);
         assert_eq!(state.config.worker_pool_size, 8);
-        assert_eq!(state.config.session_persistence, false);
+        assert!(!state.config.session_persistence);
     }
     
     #[test]
@@ -43,13 +45,15 @@ mod tests {
         
         assert_eq!(state.jobs.max_parallel, 4);
         
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 6;
-        
+        let new_config = AppConfig {
+            worker_pool_size: 6,
+            ..Default::default()
+        };
+
         update_state(&mut state, Transition::UpdateConfig {
             config: Box::new(new_config),
         });
-        
+
         assert_eq!(state.jobs.max_parallel, 6);
     }
     
@@ -62,8 +66,10 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         
         // Save initial config
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         manager.save_config(&config).unwrap();
         
         // Create state with initial config
@@ -71,8 +77,10 @@ mod tests {
         assert_eq!(state.config.worker_pool_size, 4);
         
         // Modify config file
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
+        let new_config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
         manager.save_config(&new_config).unwrap();
         
         // Reload config
@@ -94,13 +102,15 @@ mod tests {
         assert_eq!(state.tabs.tabs.len(), 2);
         
         // Reload config
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 6;
-        
+        let new_config = AppConfig {
+            worker_pool_size: 6,
+            ..Default::default()
+        };
+
         update_state(&mut state, Transition::UpdateConfig {
             config: Box::new(new_config),
         });
-        
+
         // Verify state is preserved
         assert_eq!(state.tabs.tabs.len(), 2);
         assert_eq!(state.config.worker_pool_size, 6);
@@ -117,8 +127,10 @@ mod tests {
         update_state(&mut state, Transition::CreateTab);
         
         // Reload config (simulating Shift+Z)
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
+        let mut new_config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
         new_config.display.show_hidden = true;
         
         update_state(&mut state, Transition::UpdateConfig {
@@ -128,6 +140,6 @@ mod tests {
         // Verify config updated without losing state
         assert_eq!(state.tabs.tabs.len(), 3);
         assert_eq!(state.config.worker_pool_size, 8);
-        assert_eq!(state.config.display.show_hidden, true);
+        assert!(state.config.display.show_hidden);
     }
 }

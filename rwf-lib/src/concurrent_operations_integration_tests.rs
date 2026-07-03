@@ -4,6 +4,7 @@
 //! - Multiple jobs running simultaneously
 //! - Job cancellation during concurrent operations
 //! - UI responsiveness during heavy load
+//!
 //! **Validates: Requirements 15.11, 15.12, 21.1-21.8**
 
 #[cfg(test)]
@@ -18,8 +19,10 @@ mod tests {
     /// **Validates: Requirements 15.11, 15.12, 21.7**
     #[test]
     fn test_multiple_concurrent_jobs() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4; // Allow 4 concurrent jobs
+        let config = AppConfig {
+            worker_pool_size: 4, // Allow 4 concurrent jobs
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create multiple jobs
@@ -61,7 +64,7 @@ mod tests {
 
         // Verify jobs are running concurrently (up to max_parallel limit)
         assert!(state.jobs.active.len() <= state.jobs.max_parallel);
-        assert!(state.jobs.active.len() > 0);
+        assert!(!state.jobs.active.is_empty());
 
         // Complete jobs one by one
         for job_id in job_ids {
@@ -78,15 +81,17 @@ mod tests {
 
         // Verify all jobs completed
         assert_eq!(state.jobs.active.len(), 0);
-        assert!(state.jobs.completed.len() > 0);
+        assert!(!state.jobs.completed.is_empty());
     }
 
     /// Test job cancellation during concurrent operations
     /// **Validates: Requirements 15.5-15.7, 21.5**
     #[test]
     fn test_cancel_during_concurrent_operations() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 3;
+        let config = AppConfig {
+            worker_pool_size: 3,
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create and enqueue multiple jobs
@@ -117,7 +122,7 @@ mod tests {
         update_state(&mut state, Transition::StartNextJob);
 
         // Verify jobs are running
-        assert!(state.jobs.active.len() > 0);
+        assert!(!state.jobs.active.is_empty());
 
         // Cancel the first job
         let job_to_cancel = job_ids[0];
@@ -158,8 +163,10 @@ mod tests {
     /// **Validates: Requirements 21.1-21.6, 21.8**
     #[test]
     fn test_ui_responsiveness_during_heavy_load() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create many jobs to simulate heavy load
@@ -211,8 +218,10 @@ mod tests {
     /// **Validates: Requirements 15.11**
     #[test]
     fn test_fifo_job_ordering() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 2; // Only 2 concurrent jobs
+        let config = AppConfig {
+            worker_pool_size: 2, // Only 2 concurrent jobs
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create 5 jobs
@@ -234,7 +243,7 @@ mod tests {
         assert_eq!(state.jobs.queue.len(), 3);
 
         // Complete first job
-        let first_job_id = state.jobs.active.keys().next().unwrap().clone();
+        let first_job_id = *state.jobs.active.keys().next().unwrap();
         update_state(
             &mut state,
             Transition::CompleteJob {
@@ -255,8 +264,10 @@ mod tests {
     /// **Validates: Requirements 15.4, 21.8**
     #[test]
     fn test_progress_updates_during_concurrent_operations() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 3;
+        let config = AppConfig {
+            worker_pool_size: 3,
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create and start 3 jobs
@@ -300,8 +311,10 @@ mod tests {
     /// **Validates: Requirements 15.12**
     #[test]
     fn test_max_parallel_job_limit() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 2; // Strict limit of 2 concurrent jobs
+        let config = AppConfig {
+            worker_pool_size: 2, // Strict limit of 2 concurrent jobs
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create 10 jobs
@@ -322,7 +335,7 @@ mod tests {
         assert_eq!(state.jobs.queue.len(), 8);
 
         // Complete one job
-        let job_id = state.jobs.active.keys().next().unwrap().clone();
+        let job_id = *state.jobs.active.keys().next().unwrap();
         update_state(
             &mut state,
             Transition::CompleteJob {
@@ -343,8 +356,10 @@ mod tests {
     /// **Validates: Requirements 37.7**
     #[test]
     fn test_concurrent_directory_size_calculations() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create multiple directory size calculation jobs
@@ -385,8 +400,10 @@ mod tests {
     /// **Validates: Requirements 21.7**
     #[test]
     fn test_mixed_concurrent_job_types() {
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         let mut state = AppState::new(config);
 
         // Create different types of jobs

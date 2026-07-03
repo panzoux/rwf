@@ -4,6 +4,7 @@
 //! - Recovery from file operation failures
 //! - Recovery from invalid configuration
 //! - Recovery from corrupted session state
+//!
 //! **Validates: Requirements 19.1-19.5**
 
 #[cfg(test)]
@@ -285,8 +286,10 @@ mod tests {
     #[test]
     fn test_recovery_from_invalid_configuration() {
         // Create config with very small worker pool size
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 1; // Minimum viable value
+        let config = AppConfig {
+            worker_pool_size: 1, // Minimum viable value
+            ..Default::default()
+        };
 
         // Application should handle this gracefully
         let state = AppState::new(config);
@@ -297,7 +300,7 @@ mod tests {
 
         // Verify application is still functional with minimal config
         // Can still enqueue and process jobs one at a time
-        assert!(state.jobs.can_start_job() == false); // No jobs queued yet
+        assert!(!state.jobs.can_start_job()); // No jobs queued yet
     }
 
     /// Test recovery from corrupted session state

@@ -134,8 +134,7 @@ mod unit_tests {
         assert!(model.is_marked(&loc2));
         
         // Even if we check with a different entry list
-        let _different_entries = vec![
-            FileEntry {
+        let _different_entries = [FileEntry {
                 name: "other.txt".to_string(),
                 location: Location::Local(PathBuf::from("/dir2/other.txt")),
                 size: 100,
@@ -147,8 +146,7 @@ mod unit_tests {
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            },
-        ];
+            }];
         
         // Original marks still exist
         assert!(model.is_marked(&loc1));

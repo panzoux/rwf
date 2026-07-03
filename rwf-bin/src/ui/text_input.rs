@@ -295,7 +295,7 @@ impl TextInput {
     fn text_width_to_cursor(&self) -> usize {
         self.text.chars()
             .take(self.cursor)
-            .map(|c| Self::char_width(c))
+            .map(Self::char_width)
             .sum()
     }
 
@@ -408,7 +408,7 @@ impl TextInput {
 
         // If cursor is at end, add cursor block
         let total_visible_width: usize = visible_text.chars()
-            .map(|c| Self::char_width(c))
+            .map(Self::char_width)
             .sum();
         if visible_cursor >= total_visible_width && is_focused {
             spans.push(Span::styled(
@@ -992,8 +992,8 @@ impl TextInput {
                 }
             }
         } else {
-            for i in (from + 1)..chars.len() {
-                if chars[i] == c {
+            for (i, &ch) in chars.iter().enumerate().skip(from + 1) {
+                if ch == c {
                     return i;
                 }
             }
@@ -1103,7 +1103,7 @@ impl TextInput {
         if word_boundary {
             // WORD: whitespace and '.' delimited
             // Move back one position first
-            if i > 0 { i -= 1; }
+            i = i.saturating_sub(1);
             // Skip whitespace backwards
             while i > 0 && chars[i].is_whitespace() {
                 i -= 1;
@@ -1121,7 +1121,7 @@ impl TextInput {
         } else {
             // word: alphanumeric + underscore delimited
             // Move back one position first
-            if i > 0 { i -= 1; }
+            i = i.saturating_sub(1);
             // Skip whitespace/non-word chars backwards
             while i > 0 && (!Self::is_word_char(chars[i]) || chars[i].is_whitespace()) {
                 i -= 1;

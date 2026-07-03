@@ -29,7 +29,7 @@ fn test_action_to_keys_no_pending_sequence() {
     let kb = KeyBindings::embedded_defaults();
     let map = kb.normal_action_to_keys();
     // PendingSequence and CountDownJob should not appear as keys
-    for (action, _) in &map {
+    for action in map.keys() {
         assert!(!action.contains("PendingSequence"), "PendingSequence should not appear in action name: {}", action);
     }
 }

@@ -9,8 +9,8 @@ mod tests {
     fn test_default_display_config() {
         let config = DisplayConfig::default();
         
-        assert_eq!(config.show_hidden, false);
-        assert_eq!(config.show_system, false);
+        assert!(!config.show_hidden);
+        assert!(!config.show_system);
         assert_eq!(config.date_format, "%Y-%m-%d %H:%M");
         assert_eq!(config.cjk_width, 2);
         assert!(matches!(config.time_format, TimeFormat::TwentyFourHour));
@@ -31,10 +31,12 @@ mod tests {
     
     #[test]
     fn test_cjk_width_configuration() {
-        let mut config = DisplayConfig::default();
-        
+        let mut config = DisplayConfig {
+            cjk_width: 1,
+            ..Default::default()
+        };
+
         // Test valid CJK widths
-        config.cjk_width = 1;
         assert_eq!(config.cjk_width, 1);
         
         config.cjk_width = 2;
@@ -43,12 +45,13 @@ mod tests {
     
     #[test]
     fn test_custom_color_scheme() {
-        let mut colors = ColorScheme::default();
-        
-        colors.foreground_color = "Green".to_string();
-        colors.background_color = "Blue".to_string();
-        colors.directory_color = "Yellow".to_string();
-        
+        let colors = ColorScheme {
+            foreground_color: "Green".to_string(),
+            background_color: "Blue".to_string(),
+            directory_color: "Yellow".to_string(),
+            ..Default::default()
+        };
+
         assert_eq!(colors.foreground_color, "Green");
         assert_eq!(colors.background_color, "Blue");
         assert_eq!(colors.directory_color, "Yellow");
@@ -56,9 +59,11 @@ mod tests {
     
     #[test]
     fn test_time_format_options() {
-        let mut config = DisplayConfig::default();
-        
-        config.time_format = TimeFormat::TwelveHour;
+        let mut config = DisplayConfig {
+            time_format: TimeFormat::TwelveHour,
+            ..Default::default()
+        };
+
         assert!(matches!(config.time_format, TimeFormat::TwelveHour));
         
         config.time_format = TimeFormat::TwentyFourHour;
@@ -67,9 +72,11 @@ mod tests {
     
     #[test]
     fn test_date_format_customization() {
-        let mut config = DisplayConfig::default();
-        
-        config.date_format = "%d/%m/%Y".to_string();
+        let mut config = DisplayConfig {
+            date_format: "%d/%m/%Y".to_string(),
+            ..Default::default()
+        };
+
         assert_eq!(config.date_format, "%d/%m/%Y");
         
         config.date_format = "%Y-%m-%d %H:%M:%S".to_string();
@@ -80,20 +87,20 @@ mod tests {
     fn test_show_hidden_files() {
         let mut config = DisplayConfig::default();
         
-        assert_eq!(config.show_hidden, false);
+        assert!(!config.show_hidden);
         
         config.show_hidden = true;
-        assert_eq!(config.show_hidden, true);
+        assert!(config.show_hidden);
     }
     
     #[test]
     fn test_show_system_files() {
         let mut config = DisplayConfig::default();
         
-        assert_eq!(config.show_system, false);
+        assert!(!config.show_system);
         
         config.show_system = true;
-        assert_eq!(config.show_system, true);
+        assert!(config.show_system);
     }
     
     #[test]
@@ -137,7 +144,7 @@ mod tests {
     fn test_display_config_in_app_config() {
         let config = AppConfig::default();
         
-        assert_eq!(config.display.show_hidden, false);
+        assert!(!config.display.show_hidden);
         assert_eq!(config.display.cjk_width, 2);
         assert_eq!(config.display.colors.foreground_color, "White");
     }
@@ -224,7 +231,7 @@ mod tests {
         assert_eq!(config.colors.foreground_color, "White");
         assert_eq!(config.colors.background_color, "Black");
         assert_eq!(config.colors.pane_info_background_color, Some("Gray".to_string()));
-        assert_eq!(config.show_hidden, false);
+        assert!(!config.show_hidden);
         assert_eq!(config.cjk_width, 2);
     }
     

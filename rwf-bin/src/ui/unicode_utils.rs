@@ -137,7 +137,7 @@ pub fn shorten_path(path: &str, max_width: usize, ellipsis: &str) -> String {
 
     let ell_width = ellipsis.width();
 
-    if let Some(last_sep_byte) = path.rfind(|c| c == '/' || c == '\\') {
+    if let Some(last_sep_byte) = path.rfind(['/', '\\']) {
         let sep_char = &path[last_sep_byte..last_sep_byte + 1]; // "/" or "\"
         let last_component = &path[last_sep_byte + 1..];         // e.g. "plan"
 

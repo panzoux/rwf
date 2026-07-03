@@ -206,7 +206,7 @@ mod tests {
         let log_path = temp_dir.path().join("test.log");
         
         let mut writer = RotatingFileWriter::new(log_path.clone()).unwrap();
-        writer.write(b"Test log entry\n").unwrap();
+        writer.write_all(b"Test log entry\n").unwrap();
         writer.flush().unwrap();
 
         let mut content = String::new();
@@ -225,7 +225,7 @@ mod tests {
 
         // Write enough data to trigger rotation
         for _ in 0..20 {
-            writer.write(b"Test log entry that is long enough\n").unwrap();
+            writer.write_all(b"Test log entry that is long enough\n").unwrap();
         }
         writer.flush().unwrap();
 

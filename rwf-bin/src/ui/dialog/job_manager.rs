@@ -200,7 +200,11 @@ fn render_job_list(
         }
     }
     
-    // Fill remaining space with gray background
+    // Fill remaining space with gray background.
+    // `y_offset` is only used here as a row counter for positioning, not to
+    // shrink the loop range (the range bound is captured once at loop start,
+    // so mutating `y_offset` inside does not change the iteration count).
+    #[allow(clippy::mut_range_bound)]
     for _ in y_offset..area.height {
         let blank = Line::from(Span::styled(
             " ".repeat(area.width as usize),

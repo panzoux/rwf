@@ -28,6 +28,7 @@ const COL_NO_MATCH:  Color = Color::Rgb(108, 112, 134); // mid gray
 ///
 /// When `is_loading` is true, the current spinner frame (from config) is shown
 /// after the label to indicate that a `ReadDirectory` job is in progress.
+#[allow(clippy::too_many_arguments)]
 pub fn render_leap_bar(
     frame: &mut Frame,
     area: Rect,

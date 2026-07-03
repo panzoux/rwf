@@ -186,7 +186,7 @@ mod tests {
             
             // Cursor should be at 0 after enough up operations (usize can't be negative)
             let tab = state.current_tab();
-            prop_assert!(tab.left_pane.cursor <= entry_count - 1, 
+            prop_assert!(tab.left_pane.cursor < entry_count, 
                 "Cursor {} should be within bounds (0..{})", tab.left_pane.cursor, entry_count);
             
             // If we did more up operations than the entry count, cursor should be at 0
@@ -223,8 +223,8 @@ mod tests {
             
             // First cancellation should succeed, rest should fail
             prop_assert!(results[0], "First cancellation should succeed");
-            for i in 1..cancel_count {
-                prop_assert!(!results[i], "Subsequent cancellations should fail");
+            for result in results.iter().take(cancel_count).skip(1) {
+                prop_assert!(!result, "Subsequent cancellations should fail");
             }
         });
     }
@@ -951,7 +951,7 @@ mod tests {
             }
             
             // Verify basic invariants
-            prop_assert!(state.tabs.tabs.len() >= 1, "Should have at least one tab");
+            prop_assert!(!state.tabs.tabs.is_empty(), "Should have at least one tab");
             prop_assert!(state.tabs.active_index < state.tabs.tabs.len(), 
                 "Active tab index should be valid");
             

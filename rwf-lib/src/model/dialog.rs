@@ -470,7 +470,7 @@ impl DriveInfo {
             DriveType::Removable => "Removable",
             _                    => "Unknown",
         };
-        let path_trimmed = self.path.trim_end_matches(|c| c == '/' || c == '\\');
+        let path_trimmed = self.path.trim_end_matches(['/', '\\']);
         if self.label.is_empty() {
             format!("{} ({})", path_trimmed, type_str)
         } else {
@@ -2155,6 +2155,7 @@ impl PatternRenameDialog {
 
 impl DialogContent {
     /// Get pattern rename fields: (find, replace, use_regex, case_sensitive, preview)
+    #[allow(clippy::type_complexity)] // tuple mirrors PatternRename's fields; a type alias would obscure the field-order mapping used at call sites
     pub fn as_pattern_rename(&self) -> Option<(&str, &str, bool, bool, &[(String, String)])> {
         match self {
             DialogContent::PatternRename { find, replace, use_regex, case_sensitive, preview, .. } => {
@@ -2165,6 +2166,7 @@ impl DialogContent {
     }
 
     /// Get mutable pattern rename fields
+    #[allow(clippy::type_complexity)] // tuple mirrors PatternRename's fields; a type alias would obscure the field-order mapping used at call sites
     pub fn as_pattern_rename_mut(
         &mut self,
     ) -> Option<(&mut String, &mut String, &mut bool, &mut bool, &mut Vec<(String, String)>)> {
@@ -2277,7 +2279,7 @@ fn parse_custom_functions(content: &str) -> Result<Vec<CustomFunction>, Box<dyn 
 
 /// Resolve `Menu: "filename.json"` references into item lists.
 /// Inline `Items` entries are left as-is (nested menus not supported in 6.6 scope).
-fn resolve_menu_files(functions: &mut Vec<CustomFunction>, base_dir: &std::path::Path) {
+fn resolve_menu_files(functions: &mut [CustomFunction], base_dir: &std::path::Path) {
     for func in functions.iter_mut() {
         if let Some(MenuContent::File(filename)) = &func.menu {
             let menu_path = base_dir.join(filename);

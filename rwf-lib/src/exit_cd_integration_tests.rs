@@ -1,11 +1,11 @@
-/// Integration tests for exit and change directory functionality
-/// 
-/// Tests cover:
-/// - Directory output on exit with -cwd flag
-/// - Shift+Q key binding for ExitAndChangeDirectory
-/// - Directory output format
-/// 
-/// **Validates: Requirement 46.1, 46.3, 46.4**
+//! Integration tests for exit and change directory functionality
+//!
+//! Tests cover:
+//! - Directory output on exit with -cwd flag
+//! - Shift+Q key binding for ExitAndChangeDirectory
+//! - Directory output format
+//!
+//! **Validates: Requirement 46.1, 46.3, 46.4**
 
 #[cfg(test)]
 mod tests {
@@ -31,8 +31,11 @@ mod tests {
         let result = update_state(&mut state, Transition::ExitAndChangeDirectory);
         
         // The transition should be recognized (even if it doesn't change state)
-        // In the actual app, this will trigger the exit flag
-        assert!(!result.ui_changed || result.ui_changed); // Transition is valid
+        // In the actual app, this will trigger the exit flag.
+        // This is a smoke test: the real assertion is that update_state above
+        // returned without panicking on the ExitAndChangeDirectory transition,
+        // producing a well-formed TransitionResult (`result`).
+        let _ = result;
     }
 
     /// Test that active pane directory can be retrieved

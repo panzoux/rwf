@@ -28,7 +28,7 @@ fn arb_job_kind() -> impl Strategy<Value = JobKind> {
 
 /// Strategy for generating JobSpec values
 fn arb_job_spec() -> impl Strategy<Value = JobSpec> {
-    arb_job_kind().prop_map(|kind| JobSpec::new(kind))
+    arb_job_kind().prop_map(JobSpec::new)
 }
 
 proptest! {

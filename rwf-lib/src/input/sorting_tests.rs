@@ -415,22 +415,22 @@ mod tests {
             
             if let Some(first_file_idx) = first_file_idx {
                 // All entries before first_file_idx should be directories
-                for i in 0..first_file_idx {
+                for (i, entry) in sorted.iter().enumerate().take(first_file_idx) {
                     prop_assert!(
-                        sorted[i].is_dir,
+                        entry.is_dir,
                         "Entry at index {} should be a directory but is a file: {}",
                         i,
-                        sorted[i].name
+                        entry.name
                     );
                 }
-                
+
                 // All entries from first_file_idx onwards should be files
-                for i in first_file_idx..sorted.len() {
+                for (i, entry) in sorted.iter().enumerate().skip(first_file_idx) {
                     prop_assert!(
-                        !sorted[i].is_dir,
+                        !entry.is_dir,
                         "Entry at index {} should be a file but is a directory: {}",
                         i,
-                        sorted[i].name
+                        entry.name
                     );
                 }
             } else {

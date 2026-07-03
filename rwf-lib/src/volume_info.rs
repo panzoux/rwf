@@ -144,9 +144,9 @@ fn get_windows_volume_name(path: &Path) -> String {
     let path_str = path.to_string_lossy();
     
     // Check for network path (\\server\share)
-    if path_str.starts_with("\\\\") {
-        if let Some(server_end) = path_str[2..].find('\\') {
-            let server = &path_str[2..2 + server_end];
+    if let Some(stripped) = path_str.strip_prefix("\\\\") {
+        if let Some(server_end) = stripped.find('\\') {
+            let server = &stripped[..server_end];
             return format!("\\\\{}", server);
         }
         return path_str.to_string();

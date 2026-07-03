@@ -182,7 +182,7 @@ proptest! {
         );
         
         prop_assert!(
-            pane.cursor <= len - 1,
+            pane.cursor < len,
             "After {} down moves, cursor {} should be <= {}",
             moves,
             pane.cursor,
@@ -316,7 +316,7 @@ proptest! {
         );
         
         prop_assert!(
-            pane.cursor <= len - 1,
+            pane.cursor < len,
             "Cursor {} should be <= {}",
             pane.cursor,
             len - 1

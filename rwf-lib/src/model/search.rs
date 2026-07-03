@@ -254,8 +254,8 @@ impl SearchModel {
             (Some(self.query.as_str()), None)
         };
         
-        let include_match = include.map_or(true, |p| p.is_empty() || self.matches_pattern(entry, p));
-        let exclude_match = exclude.map_or(false, |p| !p.is_empty() && self.matches_pattern(entry, p));
+        let include_match = include.is_none_or(|p| p.is_empty() || self.matches_pattern(entry, p));
+        let exclude_match = exclude.is_some_and(|p| !p.is_empty() && self.matches_pattern(entry, p));
         include_match && !exclude_match
     }
     
@@ -300,20 +300,17 @@ impl SearchModel {
                 format!("(?i){}", migemo_pattern)
             };
 
-            match Regex::new(&final_pattern) {
-                Ok(re) => {
-                    let gen_elapsed = t0.elapsed();
-                    if gen_elapsed.as_millis() > 50 {
-                        debug!("migemo regex generation for \"{}\" took {} ms", pattern, gen_elapsed.as_millis());
-                    }
-                    if cache.len() >= 100 {
-                        if let Some(key) = cache.keys().next().cloned() { cache.remove(&key); }
-                    }
-                    let res = re.is_match(&entry.name);
-                    cache.insert(cache_key, re);
-                    return res;
+            if let Ok(re) = Regex::new(&final_pattern) {
+                let gen_elapsed = t0.elapsed();
+                if gen_elapsed.as_millis() > 50 {
+                    debug!("migemo regex generation for \"{}\" took {} ms", pattern, gen_elapsed.as_millis());
                 }
-                Err(_) => {}
+                if cache.len() >= 100 {
+                    if let Some(key) = cache.keys().next().cloned() { cache.remove(&key); }
+                }
+                let res = re.is_match(&entry.name);
+                cache.insert(cache_key, re);
+                return res;
             }
         }
 
@@ -323,7 +320,7 @@ impl SearchModel {
     
     fn matches_regex(&self, entry: &FileEntry, pattern: &str, case_insensitive: bool) -> bool {
         let regex_str = if case_insensitive { format!("(?i){}", pattern) } else { pattern.to_string() };
-        Regex::new(&regex_str).map_or(false, |re| re.is_match(&entry.name))
+        Regex::new(&regex_str).is_ok_and(|re| re.is_match(&entry.name))
     }
     
     fn matches_wildcard(&self, entry: &FileEntry, pattern: &str) -> bool {
@@ -334,7 +331,7 @@ impl SearchModel {
             } else {
                 Regex::new(&format!("(?i){}", anchored))
             };
-            re.map_or(false, |re| re.is_match(&entry.name))
+            re.is_ok_and(|re| re.is_match(&entry.name))
         } else if self.case_sensitive {
             entry.name.contains(pattern)
         } else {
@@ -345,7 +342,7 @@ impl SearchModel {
     pub fn filter_entries(&mut self, entries: &[FileEntry]) {
         self.results = entries.iter().filter(|e| self.matches(e)).cloned().collect();
         if self.results.is_empty() { self.current_index = None; }
-        else if self.current_index.map_or(true, |idx| idx >= self.results.len()) { self.current_index = Some(0); }
+        else if self.current_index.is_none_or(|idx| idx >= self.results.len()) { self.current_index = Some(0); }
     }
 
     /// Filter a list of path strings with AND-token matching, using migemo when enabled.

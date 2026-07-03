@@ -64,6 +64,7 @@ pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 /// Render a single pane
+#[allow(clippy::too_many_arguments)]
 fn render_pane(
     frame: &mut Frame,
     area: Rect,
@@ -107,6 +108,7 @@ fn render_pane(
 }
 
 /// Create a list item for a file entry with selection indicator
+#[allow(clippy::too_many_arguments)]
 fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool, name_width: usize, ellipsis: &str, symlink_sep: &str) -> ListItem<'static> {
     // Set base colors based on active state
     let mut style = if is_active {
@@ -132,8 +134,8 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
             colors.get_inactive_file_pane_cursor_foreground()
         };
         style = style
-            .bg(parse_color(&bg_color))
-            .fg(parse_color(&fg_color));
+            .bg(parse_color(bg_color))
+            .fg(parse_color(fg_color));
     }
 
     // Apply directory coloring
@@ -144,7 +146,7 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
             } else {
                 colors.get_inactive_file_pane_cursor_foreground()
             };
-            parse_color(&fg_color)
+            parse_color(fg_color)
         } else if is_active {
             parse_color(&colors.directory_color)
         } else {
@@ -160,7 +162,7 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
             } else {
                 colors.get_inactive_file_pane_cursor_foreground()
             };
-            parse_color(&fg_color)
+            parse_color(fg_color)
         } else {
             parse_color(&colors.marked_file_color)
         });
@@ -204,6 +206,7 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
 }
 
 /// Render detailed mode (full metadata)
+#[allow(clippy::too_many_arguments)]
 fn render_detailed_mode(
     frame: &mut Frame,
     area: Rect,
@@ -242,6 +245,7 @@ fn render_detailed_mode(
 }
 
 /// Render column mode (1-8 columns)
+#[allow(clippy::too_many_arguments)]
 fn render_column_mode(
     frame: &mut Frame,
     area: Rect,
@@ -305,8 +309,8 @@ fn render_column_mode(
                         colors.get_inactive_file_pane_cursor_foreground()
                     };
                     style = style
-                        .bg(parse_color(&bg_color))
-                        .fg(parse_color(&fg_color));
+                        .bg(parse_color(bg_color))
+                        .fg(parse_color(fg_color));
                 }
                 
                 // Apply directory coloring
@@ -317,7 +321,7 @@ fn render_column_mode(
                         } else {
                             colors.get_inactive_file_pane_cursor_foreground()
                         };
-                        parse_color(&fg_color)
+                        parse_color(fg_color)
                     } else if is_active {
                         parse_color(&colors.directory_color)
                     } else {
@@ -333,7 +337,7 @@ fn render_column_mode(
                         } else {
                             colors.get_inactive_file_pane_cursor_foreground()
                         };
-                        parse_color(&fg_color)
+                        parse_color(fg_color)
                     } else {
                         parse_color(&colors.marked_file_color)
                     });

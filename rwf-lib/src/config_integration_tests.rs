@@ -20,7 +20,7 @@ mod tests {
         // Load config when file doesn't exist - should return defaults
         let config = manager.load_config().unwrap();
         assert_eq!(config.worker_pool_size, 4);
-        assert_eq!(config.session_persistence, true);
+        assert!(config.session_persistence);
     }
     
     #[test]
@@ -31,17 +31,19 @@ mod tests {
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
         // Create a config file
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 8;
-        config.session_persistence = false;
-        
+        let config = AppConfig {
+            worker_pool_size: 8,
+            session_persistence: false,
+            ..Default::default()
+        };
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         manager.save_config(&config).unwrap();
         
         // Load config
         let loaded_config = manager.load_config().unwrap();
         assert_eq!(loaded_config.worker_pool_size, 8);
-        assert_eq!(loaded_config.session_persistence, false);
+        assert!(!loaded_config.session_persistence);
     }
     
     #[test]
@@ -77,7 +79,7 @@ mod tests {
         manager.save_config(&config).unwrap();
         
         let loaded_config = manager.load_config().unwrap();
-        assert_eq!(loaded_config.display.show_hidden, true);
+        assert!(loaded_config.display.show_hidden);
         assert_eq!(loaded_config.display.cjk_width, 1);
     }
     
@@ -107,16 +109,18 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 8;
-        
+        let config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         manager.save_config(&config).unwrap();
-        
+
         let loaded_config = manager.load_config().unwrap();
         assert_eq!(loaded_config.worker_pool_size, 8);
     }
-    
+
     #[test]
     fn test_malformed_config_error() {
         // Test Requirement 17.9, 38.10: Display error for malformed config
@@ -141,11 +145,13 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 0; // Invalid
-        
+        let config = AppConfig {
+            worker_pool_size: 0, // Invalid
+            ..Default::default()
+        };
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
-        
+
         // Validation should fail
         let result = manager.validate_config(&config);
         assert!(result.is_err());
@@ -161,16 +167,20 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         
         // Initial config
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         manager.save_config(&config).unwrap();
-        
+
         let mut state = AppState::new(config);
         assert_eq!(state.config.worker_pool_size, 4);
-        
+
         // Modify config file
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
+        let new_config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
         manager.save_config(&new_config).unwrap();
         
         // Reload config (simulating Shift+Z)
@@ -240,8 +250,10 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path.clone());
         
         // 1. Create and save config
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 6;
+        let mut config = AppConfig {
+            worker_pool_size: 6,
+            ..Default::default()
+        };
         config.display.show_hidden = true;
         config.display.cjk_width = 1;
         manager.save_config(&config).unwrap();
@@ -249,7 +261,7 @@ mod tests {
         // 2. Load config
         let loaded_config = manager.load_config().unwrap();
         assert_eq!(loaded_config.worker_pool_size, 6);
-        assert_eq!(loaded_config.display.show_hidden, true);
+        assert!(loaded_config.display.show_hidden);
         assert_eq!(loaded_config.display.cjk_width, 1);
         
         // 3. Create state with config
@@ -257,8 +269,10 @@ mod tests {
         assert_eq!(state.config.worker_pool_size, 6);
         
         // 4. Modify and reload config
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
+        let new_config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
         manager.save_config(&new_config).unwrap();
         
         let reloaded_config = manager.load_config().unwrap();

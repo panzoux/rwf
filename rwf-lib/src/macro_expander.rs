@@ -158,7 +158,7 @@ impl MacroExpander {
     
     /// Check if a command contains the $I (user input) macro
     pub fn requires_user_input(&self, function: &CustomFunction) -> bool {
-        function.get_command().map_or(false, |c| c.contains("$I"))
+        function.get_command().is_some_and(|c| c.contains("$I"))
     }
 
     /// Extract the prompt text from a `$I"prompt"` or `$I5"prompt"` pattern.
