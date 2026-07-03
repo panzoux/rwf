@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Shrink proptest from the 256-case default so CI stays fast.
+  # Full-depth property testing remains a local concern.
+  PROPTEST_CASES: "16"
+
+jobs:
+  lint:
+    name: clippy (windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: test (windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # rwf-bin UI tests: fast, catches stale test references after refactors.
+      - run: cargo test -p rwf -- --test-threads=1
+      # rwf-lib: single-threaded (filesystem races). Baseline is zero failures
+      # (see .claude/CLAUDE.local.md "Test Suite Status").
+      - run: cargo test -p rwf-lib -- --test-threads=1

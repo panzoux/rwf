@@ -51,10 +51,13 @@ RWF is built for perfect CJK alignment.
 ## Development Status
 
 ### 1. Test Suite Status
-Re-baselined 2026-07-02 (dev-environment inventory).
-- **Baseline Failures**: Exactly **5 failures** in `rwf-lib`, all in `config_launch_integration_tests` (legacy issues with external process simulation).
-- **Regressions**: Any failure *outside* of these 5 is a new regression.
-- **Counts** (2026-07-02): rwf-lib 1043 tests, rwf-bin 51 tests.
+Re-baselined 2026-07-03 (dev-environment inventory + SpawnProcess `wait` fix).
+- **Baseline Failures**: **Zero.** The former "5 known config_launch_integration_tests failures" turned
+  out to be a real regression (reload prompt lost when the config-editor launch moved to fire-and-forget
+  `SpawnProcess`) and were fixed by adding `wait: bool` to `JobKind::SpawnProcess`.
+- **Regressions**: Any test failure is a new regression. Don't dismiss "known failing" tests without
+  tracing the root cause — these 5 encoded genuinely broken product behavior for weeks.
+- **Counts** (2026-07-03): rwf-lib ~1043 tests, rwf-bin 51 tests.
 - **Execution rules**:
   - Always `--test-threads=1` (filesystem race conditions).
   - The full rwf-lib suite takes **~37 min** single-threaded. During development run name-filtered
