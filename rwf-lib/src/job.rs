@@ -21,6 +21,12 @@ impl JobId {
     }
 }
 
+impl Default for JobId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Job specification submitted to the worker pool
 #[derive(Debug, Clone)]
 pub struct JobSpec {
@@ -111,9 +117,12 @@ pub enum JobKind {
     },
     /// Spawn a program directly (no shell), avoiding cmd.exe quote-mangling.
     /// `program` is the executable name/path; `args` are its arguments.
+    /// `wait`: if true, the job stays active until the spawned process exits
+    /// (used for the config editor so the reload prompt appears when it closes).
     SpawnProcess {
         program: String,
         args: Vec<String>,
+        wait: bool,
     },
     /// Run a terminal (TUI) program by suspending rwf, handing it the terminal,
     /// and resuming when the program exits. Intercepted in the app layer — never

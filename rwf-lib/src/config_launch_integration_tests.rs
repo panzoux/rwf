@@ -1,10 +1,10 @@
-/// Integration tests for configuration program launch feature (Requirement 45)
-/// 
-/// Tests cover:
-/// - Editor launch with configured editor command
-/// - Reload prompt after editor closes
-/// - Configuration validation and fallback
-/// - Key binding for config launch (Y)
+//! Integration tests for configuration program launch feature (Requirement 45)
+//!
+//! Tests cover:
+//! - Editor launch with configured editor command
+//! - Reload prompt after editor closes
+//! - Configuration validation and fallback
+//! - Key binding for config launch (Y)
 
 #[cfg(test)]
 mod tests {
@@ -27,18 +27,19 @@ mod tests {
         // Should create a job
         assert_eq!(result.jobs_to_start.len(), 1);
         
-        // Verify it's an ExecuteCustomFunction job
+        // Verify it's a SpawnProcess job that waits for the editor to close
         let job = &result.jobs_to_start[0];
         match &job.kind {
-            JobKind::ExecuteCustomFunction { command, .. } => {
-                // Command should contain the config path
+            JobKind::SpawnProcess { args, wait, .. } => {
+                assert!(*wait, "Config editor job must wait for the editor to close");
+                // Args should contain the config path
                 let config_manager = ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
-                assert!(command.contains(&config_path), 
-                    "Command should contain config path. Command: {}, Path: {}", 
-                    command, config_path);
+                assert!(args.iter().any(|a| a == &config_path),
+                    "Args should contain config path. Args: {:?}, Path: {}",
+                    args, config_path);
             }
-            _ => panic!("Expected ExecuteCustomFunction job, got {:?}", job.kind),
+            _ => panic!("Expected SpawnProcess job, got {:?}", job.kind),
         }
     }
 
@@ -51,9 +52,11 @@ mod tests {
         let keybindings_path = temp_dir.path().join("keybindings.json");
         
         // Create config with custom editor
-        let mut config = AppConfig::default();
-        config.editor_command = Some("nano".to_string());
-        
+        let config = AppConfig {
+            editor_command: Some("nano".to_string()),
+            ..Default::default()
+        };
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         manager.save_config(&config).unwrap();
         
@@ -68,11 +71,11 @@ mod tests {
         assert_eq!(result.jobs_to_start.len(), 1);
         let job = &result.jobs_to_start[0];
         match &job.kind {
-            JobKind::ExecuteCustomFunction { command, .. } => {
-                assert!(command.starts_with("nano"), 
-                    "Command should start with 'nano', got: {}", command);
+            JobKind::SpawnProcess { args, .. } => {
+                assert!(args.iter().any(|a| a == "nano"),
+                    "Args should contain 'nano', got: {:?}", args);
             }
-            _ => panic!("Expected ExecuteCustomFunction job"),
+            _ => panic!("Expected SpawnProcess job"),
         }
     }
 
@@ -102,7 +105,7 @@ mod tests {
         // Simulate job completion
         let _result = update_state(&mut state, Transition::CompleteJob {
             job_id,
-            result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
+            result: OpResult::Success(SuccessData::None),
         });
         
         // Should show reload prompt dialog
@@ -134,7 +137,7 @@ mod tests {
         // Simulate job completion (editor closed)
         update_state(&mut state, Transition::CompleteJob {
             job_id,
-            result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
+            result: OpResult::Success(SuccessData::None),
         });
         
         // Verify reload prompt is shown
@@ -161,10 +164,12 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         
         // Create initial valid config
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         manager.save_config(&config).unwrap();
-        
+
         let mut state = AppState::new(config.clone());
         
         // Launch config editor
@@ -177,7 +182,7 @@ mod tests {
         // Simulate job completion
         update_state(&mut state, Transition::CompleteJob {
             job_id,
-            result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
+            result: OpResult::Success(SuccessData::None),
         });
         
         // Write invalid JSON to config file
@@ -201,8 +206,10 @@ mod tests {
         // This test verifies that validation errors are caught and previous config is kept
         // We test this by verifying the error handling flow
         
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         let mut state = AppState::new(config.clone());
         
         // Launch config editor
@@ -215,7 +222,7 @@ mod tests {
         // Simulate job completion
         update_state(&mut state, Transition::CompleteJob {
             job_id,
-            result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
+            result: OpResult::Success(SuccessData::None),
         });
         
         // Verify reload prompt is shown
@@ -245,10 +252,12 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         
         // Create initial config
-        let mut config = AppConfig::default();
-        config.worker_pool_size = 4;
+        let config = AppConfig {
+            worker_pool_size: 4,
+            ..Default::default()
+        };
         manager.save_config(&config).unwrap();
-        
+
         let mut state = AppState::new(config);
         
         // Launch config editor
@@ -261,12 +270,14 @@ mod tests {
         // Simulate job completion
         update_state(&mut state, Transition::CompleteJob {
             job_id,
-            result: OpResult::Success(SuccessData::CustomFunctionOutput(String::new())),
+            result: OpResult::Success(SuccessData::None),
         });
         
         // Modify config file
-        let mut new_config = AppConfig::default();
-        new_config.worker_pool_size = 8;
+        let new_config = AppConfig {
+            worker_pool_size: 8,
+            ..Default::default()
+        };
         manager.save_config(&new_config).unwrap();
         
         // User cancels reload

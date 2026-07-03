@@ -82,8 +82,10 @@ impl AppState {
 
     /// Build a job that opens `file_path` in the configured editor.
     /// If `TerminalEditor` is set, returns `SuspendAndRun` (app suspends, editor owns terminal).
-    /// Otherwise returns `SpawnProcess` via `Editor` (GUI editor, background launch).
-    fn editor_job(config: &AppConfig, file_path: String) -> crate::job::JobKind {
+    /// Otherwise returns `SpawnProcess` via `Editor` (GUI editor).
+    /// `wait_for_exit`: when true, the job doesn't complete until the editor closes
+    /// (needed so callers can react to editor-closed, e.g. the config reload prompt).
+    fn editor_job(config: &AppConfig, file_path: String, wait_for_exit: bool) -> crate::job::JobKind {
         if let Some(ref cmd) = config.terminal_editor {
             // Terminal editor: suspend rwf, run synchronously, then resume.
             // On Windows use cmd /c so .bat/.cmd wrappers (e.g. vim.bat) work.
@@ -103,14 +105,14 @@ impl AppState {
                 return crate::job::JobKind::SuspendAndRun { program, args };
             }
         }
-        // GUI editor: background launch, rwf keeps running.
+        // GUI editor: launch via cmd (Windows) / directly (Unix), no shell string parsing.
         let cmd = Self::resolve_editor(config);
         #[cfg(target_os = "windows")]
         {
             let mut args = vec!["/c".to_string()];
             args.extend(cmd.split_whitespace().map(str::to_string));
             args.push(file_path);
-            crate::job::JobKind::SpawnProcess { program: "cmd".to_string(), args }
+            crate::job::JobKind::SpawnProcess { program: "cmd".to_string(), args, wait: wait_for_exit }
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -118,7 +120,7 @@ impl AppState {
             let program = parts.next().unwrap_or("vi").to_string();
             let mut args: Vec<String> = parts.map(str::to_string).collect();
             args.push(file_path);
-            crate::job::JobKind::SpawnProcess { program, args }
+            crate::job::JobKind::SpawnProcess { program, args, wait: wait_for_exit }
         }
     }
 
@@ -1228,7 +1230,7 @@ impl AppState {
                                             result_obj.jobs_to_start.push(job_spec);
                                         }
                                         Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFileWithEditor(path)) => {
-                                            let kind = Self::editor_job(&self.config, path.to_string_lossy().to_string());
+                                            let kind = Self::editor_job(&self.config, path.to_string_lossy().to_string(), false);
                                             result_obj.jobs_to_start.push(crate::job::JobSpec::new(kind));
                                         }
                                         Err(e) => {
@@ -1254,6 +1256,22 @@ impl AppState {
                                             pane: self.ui.active_pane,
                                         });
                                     }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::SpawnProcess { args, wait: true, .. } => {
+                            // GUI editor launched with wait_for_exit=true (config editor): the job
+                            // only completes once the editor process exits, so a Success here means
+                            // "editor closed" — show the reload prompt if it was the config file.
+                            if let crate::job::OpResult::Success(_) = result {
+                                let config_manager = crate::config::ConfigManager::new();
+                                let config_path = config_manager.config_path().to_string_lossy().to_string();
+                                if args.iter().any(|a| a == &config_path) {
+                                    let dialog = crate::model::Dialog::confirmation(
+                                        "Configuration Editor Closed",
+                                        "Reload configuration?"
+                                    );
+                                    self.dialogs.push(dialog);
                                 }
                             }
                         }
@@ -1851,12 +1869,12 @@ impl AppState {
                 let config_manager = crate::config::ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
                 let job_spec = JobSpec::new(Self::editor_job(
-                    &self.config, config_path,
+                    &self.config, config_path, true,
                 ));
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::OpenWithEditor { path } => {
-                let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone()));
+                let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone(), false));
                 Some(StateUpdateResult::with_job(job_spec))
             }
             _ => None,

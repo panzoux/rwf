@@ -83,8 +83,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::ExecuteCustomFunction { command, working_dir, pipe_to_action, shell } => {
                 self.execute_custom_function(command, working_dir, pipe_to_action, &spec, shell.as_deref()).await
             }
-            JobKind::SpawnProcess { program, args } => {
-                self.execute_spawn_process(program, args, &spec).await
+            JobKind::SpawnProcess { program, args, wait } => {
+                self.execute_spawn_process(program, args, *wait, &spec).await
             }
             JobKind::Search { location, pattern, recursive } => {
                 self.execute_search(location, pattern, *recursive, &spec).await
@@ -615,13 +615,22 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     }
     
     /// Spawn a program directly without a shell, avoiding cmd.exe quote-mangling on Windows.
-    async fn execute_spawn_process(&self, program: &str, args: &[String], spec: &JobSpec) -> crate::job::OpResult {
+    async fn execute_spawn_process(&self, program: &str, args: &[String], wait: bool, spec: &JobSpec) -> crate::job::OpResult {
         if spec.cancel_token.is_cancelled() {
             return crate::job::OpResult::Cancelled;
         }
-        match tokio::process::Command::new(program).args(args).spawn() {
-            Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
-            Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
+        if wait {
+            // Block this job (not the UI thread) until the child exits, so callers
+            // can react to "editor closed" via the normal job-completion event.
+            match tokio::process::Command::new(program).args(args).status().await {
+                Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
+                Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
+            }
+        } else {
+            match tokio::process::Command::new(program).args(args).spawn() {
+                Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
+                Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
+            }
         }
     }
 
@@ -775,9 +784,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 };
 
                 let mut local: Vec<u64> = Vec::new();
-                for i in 0..n {
+                for (i, &byte) in read_buf.iter().enumerate().take(n) {
                     let abs = abs_offset + i as u64;
-                    if read_buf[i] == b'\n' && abs + 1 < total as u64 {
+                    if byte == b'\n' && abs + 1 < total as u64 {
                         local.push(abs + 1);
                     }
                 }
@@ -839,11 +848,11 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     if rest.len() >= 2 && rest.len() % 2 == 0 && rest.chars().all(|c| c.is_ascii_hexdigit()) {
                         (0..rest.len()).step_by(2).map(|i| u8::from_str_radix(&rest[i..i+2], 16).ok()).collect()
                     } else { None }
-                } else if trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len() % 2 == 0 {
+                } else if trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len().is_multiple_of(2) {
                     (0..trimmed.len()).step_by(2).map(|i| u8::from_str_radix(&trimmed[i..i+2], 16).ok()).collect()
                 } else if trimmed.contains(' ') && trimmed.chars().all(|c| c.is_ascii_hexdigit() || c == ' ') {
                     let no_space: String = trimmed.chars().filter(|&c| c != ' ').collect();
-                    if no_space.len() >= 2 && no_space.len() % 2 == 0 {
+                    if no_space.len() >= 2 && no_space.len().is_multiple_of(2) {
                         (0..no_space.len()).step_by(2).map(|i| u8::from_str_radix(&no_space[i..i+2], 16).ok()).collect()
                     } else { None }
                 } else {
@@ -934,8 +943,8 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     loop {
                         if cancel.is_cancelled() { return matches; }
                         let n = match file.read(&mut buf) { Ok(0)|Err(_) => break, Ok(n) => n };
-                        for i in 0..n {
-                            if buf[i] == b'\n' { line_offsets.push(abs + i as u64 + 1); }
+                        for (i, &byte) in buf.iter().enumerate().take(n) {
+                            if byte == b'\n' { line_offsets.push(abs + i as u64 + 1); }
                         }
                         abs += n as u64;
                     }
@@ -1495,6 +1504,99 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     }
 }
 
+// ============================================================================
+// Conflict Detection Helper Function
+// ============================================================================
+
+/// Detect file conflicts between source files and destination
+///
+/// Returns a list of file conflicts (directories are logged and skipped)
+pub async fn detect_conflicts(
+    sources: &[Location],
+    dest: &Location,
+    backend: &dyn FilesystemBackend,
+    job_id: crate::job::JobId,
+    tab_id: usize,
+) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
+    use chrono::Local;
+
+    debug!("detect_conflicts: Checking {} sources against dest {:?}", sources.len(), dest);
+    let mut conflicts = Vec::new();
+
+    for source in sources {
+        // Calculate destination path
+        let dest_location = calculate_destination_path(source, dest);
+        debug!("detect_conflicts: Source {:?} -> Dest {:?}", source, dest_location);
+
+        // Check if destination exists
+        match backend.get_entry(&dest_location).await {
+            Ok(dest_entry) => {
+                debug!("detect_conflicts: Destination exists: {:?}", dest_location);
+                // Source entry for comparison
+                let source_entry = match backend.get_entry(source).await {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        debug!("detect_conflicts: Failed to read source {:?}: {}", source, e);
+                        continue; // Skip if can't read source
+                    }
+                };
+
+                let conflict = crate::model::dialog::ConflictPair {
+                    source: source_entry.clone(),
+                    dest: dest_entry,
+                    source_path: source.clone(),
+                    dest_path: dest_location.clone(),
+                    is_directory: source_entry.is_dir,
+                };
+
+                if conflict.is_directory {
+                    // Log directory conflict to task pane and skip
+                    let timestamp = Local::now().format("[%H:%M:%S]");
+                    let _log_msg = format!(
+                        "{} [Job {}] [Tab {}] Copy: \"{}\" conflicts. Skipping",
+                        timestamp,
+                        &job_id.0.to_string()[..8],
+                        tab_id + 1,
+                        dest_location.display_path()
+                    );
+                    // Note: This log needs to be passed back via StateUpdateResult
+                    // For now, we just skip directories
+                } else {
+                    debug!("detect_conflicts: Adding file conflict for {:?}", dest_location);
+                    conflicts.push(conflict);
+                }
+            }
+            Err(e) => {
+                debug!("detect_conflicts: Destination does not exist: {:?} ({})", dest_location, e);
+                // No conflict - destination doesn't exist
+            }
+        }
+    }
+
+    debug!("detect_conflicts: Found {} conflicts", conflicts.len());
+    Ok(conflicts)
+}
+
+/// Helper function to calculate destination path for a source file
+fn calculate_destination_path(source: &Location, dest: &Location) -> Location {
+    match (source, dest) {
+        (Location::Local(src_path), Location::Local(dest_path)) => {
+            if dest_path.is_dir() {
+                // Destination is a directory, append source filename
+                if let Some(filename) = src_path.file_name() {
+                    Location::Local(dest_path.join(filename))
+                } else {
+                    dest.clone()
+                }
+            } else {
+                // Destination is a file, use as-is
+                dest.clone()
+            }
+        }
+        _ => dest.clone(), // For non-local locations, use dest as-is
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1623,98 +1725,5 @@ mod tests {
         // Then a cancelled event
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Cancelled(_))));
-    }
-}
-
-// ============================================================================
-// Conflict Detection Helper Function
-// ============================================================================
-
-/// Detect file conflicts between source files and destination
-///
-/// Returns a list of file conflicts (directories are logged and skipped)
-pub async fn detect_conflicts(
-    sources: &[Location],
-    dest: &Location,
-    backend: &dyn FilesystemBackend,
-    job_id: crate::job::JobId,
-    tab_id: usize,
-) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
-    use chrono::Local;
-
-    debug!("detect_conflicts: Checking {} sources against dest {:?}", sources.len(), dest);
-    let mut conflicts = Vec::new();
-
-    for source in sources {
-        // Calculate destination path
-        let dest_location = calculate_destination_path(source, dest);
-        debug!("detect_conflicts: Source {:?} -> Dest {:?}", source, dest_location);
-
-        // Check if destination exists
-        match backend.get_entry(&dest_location).await {
-            Ok(dest_entry) => {
-                debug!("detect_conflicts: Destination exists: {:?}", dest_location);
-                // Source entry for comparison
-                let source_entry = match backend.get_entry(source).await {
-                    Ok(entry) => entry,
-                    Err(e) => {
-                        debug!("detect_conflicts: Failed to read source {:?}: {}", source, e);
-                        continue; // Skip if can't read source
-                    }
-                };
-
-                let conflict = crate::model::dialog::ConflictPair {
-                    source: source_entry.clone(),
-                    dest: dest_entry,
-                    source_path: source.clone(),
-                    dest_path: dest_location.clone(),
-                    is_directory: source_entry.is_dir,
-                };
-
-                if conflict.is_directory {
-                    // Log directory conflict to task pane and skip
-                    let timestamp = Local::now().format("[%H:%M:%S]");
-                    let _log_msg = format!(
-                        "{} [Job {}] [Tab {}] Copy: \"{}\" conflicts. Skipping",
-                        timestamp,
-                        &job_id.0.to_string()[..8],
-                        tab_id + 1,
-                        dest_location.display_path()
-                    );
-                    // Note: This log needs to be passed back via StateUpdateResult
-                    // For now, we just skip directories
-                } else {
-                    debug!("detect_conflicts: Adding file conflict for {:?}", dest_location);
-                    conflicts.push(conflict);
-                }
-            }
-            Err(e) => {
-                debug!("detect_conflicts: Destination does not exist: {:?} ({})", dest_location, e);
-                // No conflict - destination doesn't exist
-            }
-        }
-    }
-
-    debug!("detect_conflicts: Found {} conflicts", conflicts.len());
-    Ok(conflicts)
-}
-
-/// Helper function to calculate destination path for a source file
-fn calculate_destination_path(source: &Location, dest: &Location) -> Location {
-    match (source, dest) {
-        (Location::Local(src_path), Location::Local(dest_path)) => {
-            if dest_path.is_dir() {
-                // Destination is a directory, append source filename
-                if let Some(filename) = src_path.file_name() {
-                    Location::Local(dest_path.join(filename))
-                } else {
-                    dest.clone()
-                }
-            } else {
-                // Destination is a file, use as-is
-                dest.clone()
-            }
-        }
-        _ => dest.clone(), // For non-local locations, use dest as-is
     }
 }
