@@ -11,14 +11,20 @@ env:
   # Full-depth property testing remains a local concern.
   PROPTEST_CASES: "16"
 
+# Toolchain is pinned to the version the zero-warning clippy baseline was
+# verified against (matches the local dev toolchain). @stable would pull the
+# newest release, whose new lints break -D warnings unpredictably.
+# To bump: update the local toolchain (rustup update), fix any new lints,
+# then raise this pin in the same commit.
+
 jobs:
   lint:
     name: clippy (windows)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -29,8 +35,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
       # rwf-bin UI tests: fast, catches stale test references after refactors.
       - run: cargo test -p rwf -- --test-threads=1
