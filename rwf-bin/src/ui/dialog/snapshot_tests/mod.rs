@@ -79,6 +79,11 @@ pub fn render_dialog_to_string(
 pub fn snapshot_dialog(name: &str, dialog: &Dialog, state: &AppState) {
     insta::with_settings!({filters => vec![
         (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "[TIMESTAMP]"),
+        (r"\d{2}:\d{2}:\d{2}", "[TIME]"),
+        (
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            "[UUID]",
+        ),
     ]}, {
         for (suffix, width, height) in SIZES {
             insta::assert_snapshot!(
