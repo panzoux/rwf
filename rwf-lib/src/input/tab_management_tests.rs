@@ -4,14 +4,10 @@
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::DialogContent;
-    use crate::state::{update_state, AppConfig, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use crate::AppState;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    fn create_test_state() -> AppState {
-        let config = AppConfig::default();
-        AppState::new(config)
-    }
 
     fn create_tab(state: &mut AppState) {
         state.last_tab_created = None;
@@ -85,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_new_tab_action_creates_transition() {
-        let state = create_test_state();
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::NewTab);
 
         assert_eq!(transitions.len(), 1);
@@ -94,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_close_tab_action_creates_transition() {
-        let state = create_test_state();
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::CloseTab);
 
         assert_eq!(transitions.len(), 1);
@@ -103,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_next_tab_action_creates_transition() {
-        let state = create_test_state();
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::NextTab);
 
         assert_eq!(transitions.len(), 1);
@@ -112,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_prev_tab_action_creates_transition() {
-        let state = create_test_state();
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::PrevTab);
 
         assert_eq!(transitions.len(), 1);
@@ -121,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_tab_selector_action_shows_dialog() {
-        let state = create_test_state();
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::TabSelector);
 
         assert_eq!(transitions.len(), 1);
@@ -141,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_tab_selector_shows_multiple_tabs() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create additional tabs
         create_tab(&mut state);
@@ -164,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_tab_management_workflow() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Initially should have 1 tab
         assert_eq!(state.tabs.tabs.len(), 1);
@@ -209,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_cannot_close_last_tab() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Should have 1 tab
         assert_eq!(state.tabs.tabs.len(), 1);
@@ -226,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_tab_creation_initializes_with_cwd() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Get the current working directory
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
@@ -248,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_tab_closure_adjusts_active_index() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create 3 tabs
         create_tab(&mut state);
@@ -267,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_tab_switching_wraps_around() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create 3 tabs
         create_tab(&mut state);
@@ -298,7 +294,7 @@ mod tests {
     fn test_tab_persistence_saves_and_restores() {
         use std::path::PathBuf;
 
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create multiple tabs
         create_tab(&mut state);
@@ -326,7 +322,7 @@ mod tests {
         session.save_to_file(&session_path).unwrap();
 
         // Create new state and restore
-        let mut state2 = create_test_state();
+        let mut state2 = test_state();
         let loaded_session = crate::session::SessionState::load_from_file(&session_path).unwrap();
         state2.tabs.tabs = crate::session::restore_tabs(&loaded_session);
         state2.tabs.active_index = loaded_session.active_tab_index;
@@ -343,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_tab_selector_dialog_filtering() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create multiple tabs with different locations
         create_tab(&mut state);
@@ -377,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_tab_independence() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create second tab
         create_tab(&mut state);
@@ -445,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_close_middle_tab() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create 3 tabs
         create_tab(&mut state);
@@ -466,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_tab_selector_with_single_tab() {
-        let state = create_test_state();
+        let state = test_state();
 
         // Show tab selector with only one tab
         let transitions = action_to_transitions(&state, &Action::TabSelector);
@@ -481,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_multiple_tab_operations_sequence() {
-        let mut state = create_test_state();
+        let mut state = test_state();
 
         // Create 4 tabs
         for _ in 0..4 {

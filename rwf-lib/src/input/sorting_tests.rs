@@ -6,27 +6,15 @@
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{ActivePane, FileEntry, Location, SortMode, SortOrder};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use proptest::prelude::*;
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     // Helper to create a test file entry
     fn create_test_entry(name: &str, size: u64, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+        FileEntryBuilder::new(name).size(size).dir(is_dir).build()
     }
 
     #[test]
@@ -90,8 +78,7 @@ mod tests {
 
     #[test]
     fn test_sort_action_creates_correct_transition() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         // Test SortByName action
         let transitions = action_to_transitions(&state, &Action::SortByName);
@@ -140,8 +127,7 @@ mod tests {
 
     #[test]
     fn test_sort_transition_updates_pane_state() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some test entries
         let entries = vec![
@@ -177,8 +163,7 @@ mod tests {
 
     #[test]
     fn test_sort_applies_to_active_pane_only() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add entries to both panes
         state.current_tab_mut().left_pane.entries = vec![
@@ -210,8 +195,7 @@ mod tests {
 
     #[test]
     fn test_sort_respects_directory_first_rule() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add mixed files and directories
         let entries = vec![
@@ -250,8 +234,7 @@ mod tests {
 
     #[test]
     fn test_sort_by_extension_groups_correctly() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let entries = vec![
             create_test_entry("file.txt", 100, false),
@@ -299,8 +282,7 @@ mod tests {
 
     #[test]
     fn test_sort_mode_persists_across_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set sort mode to size
         update_state(
@@ -329,8 +311,7 @@ mod tests {
 
     #[test]
     fn test_each_pane_has_independent_sort_mode() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Sort left pane by size
         update_state(
@@ -372,8 +353,7 @@ mod tests {
             file_count in 1usize..10,
             sort_mode_idx in 0usize..4
         )| {
-            let config = AppConfig::default();
-            let mut state = AppState::new(config);
+            let mut state = test_state();
 
             // Map index to sort mode
             let sort_mode = match sort_mode_idx {
@@ -388,36 +368,16 @@ mod tests {
 
             // Add directories with various names
             for i in 0..dir_count {
-                entries.push(FileEntry {
-                    name: format!("dir_{}", i),
-                    location: Location::Local(PathBuf::from(format!("/test/dir_{}", i))),
-                    size: 0,
-                    is_dir: true,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-                });
+                entries.push(create_test_entry(&format!("dir_{}", i), 0, true));
             }
 
             // Add files with various names and sizes
             for i in 0..file_count {
-                entries.push(FileEntry {
-                    name: format!("file_{}.txt", i),
-                    location: Location::Local(PathBuf::from(format!("/test/file_{}.txt", i))),
-                    size: (i as u64 + 1) * 100,
-                    is_dir: false,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-                });
+                entries.push(create_test_entry(
+                    &format!("file_{}.txt", i),
+                    (i as u64 + 1) * 100,
+                    false,
+                ));
             }
 
             // Shuffle entries to ensure they're not already sorted
@@ -481,8 +441,7 @@ mod tests {
             entry_count in 5usize..20,
             sort_mode_idx in 0usize..4
         )| {
-            let config = AppConfig::default();
-            let mut state = AppState::new(config);
+            let mut state = test_state();
 
             // Map index to sort mode
             let sort_mode = match sort_mode_idx {
@@ -503,19 +462,13 @@ mod tests {
                     format!("doc_{}.txt", i / 2)
                 };
 
-                entries.push(FileEntry {
-                    name,
-                    location: Location::Local(PathBuf::from(format!("/test/entry_{}", i))),
-                    size,
-                    is_dir,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-                });
+                entries.push(
+                    FileEntryBuilder::new(&name)
+                        .path(&format!("/test/entry_{}", i))
+                        .size(size)
+                        .dir(is_dir)
+                        .build(),
+                );
             }
 
             state.current_tab_mut().left_pane.entries = entries;
@@ -559,8 +512,7 @@ mod tests {
             entry_count in 1usize..30,
             sort_mode_idx in 0usize..4
         )| {
-            let config = AppConfig::default();
-            let mut state = AppState::new(config);
+            let mut state = test_state();
 
             let sort_mode = match sort_mode_idx {
                 0 => SortMode::Name,
@@ -572,19 +524,11 @@ mod tests {
             // Create entries
             let mut entries = Vec::new();
             for i in 0..entry_count {
-                entries.push(FileEntry {
-                    name: format!("entry_{}.txt", i),
-                    location: Location::Local(PathBuf::from(format!("/test/entry_{}.txt", i))),
-                    size: (i as u64) * 100,
-                    is_dir: i % 4 == 0,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-                });
+                entries.push(create_test_entry(
+                    &format!("entry_{}.txt", i),
+                    (i as u64) * 100,
+                    i % 4 == 0,
+                ));
             }
 
             // Store original locations
@@ -624,15 +568,13 @@ mod tests {
     // Unit test: Verify directory-first with specific examples
     #[test]
     fn test_directory_first_all_sort_modes() {
-        let config = AppConfig::default();
-
         for sort_mode in &[
             SortMode::Name,
             SortMode::Size,
             SortMode::Date,
             SortMode::Extension,
         ] {
-            let mut state = AppState::new(config.clone());
+            let mut state = test_state();
 
             // Create entries with files that would sort before directories by name
             let entries = vec![
@@ -683,8 +625,7 @@ mod tests {
     // Unit test: Verify sort stability with equal elements
     #[test]
     fn test_sort_stability_equal_elements() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create files with same size but different names
         let entries = vec![
@@ -737,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_sort_order_ascending_default() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         assert_eq!(
             state.current_tab().left_pane.sort_order,
             SortOrder::Ascending
@@ -752,7 +693,7 @@ mod tests {
 
     #[test]
     fn test_sort_descending_reverses_order() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let entries = vec![
             create_test_entry("apple.txt", 100, false),
             create_test_entry("cherry.txt", 300, false),
@@ -805,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_sort_order_dirs_always_first() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![
             create_test_entry("z_file.txt", 100, false),
             create_test_entry("a_dir", 0, true),
@@ -836,7 +777,7 @@ mod tests {
 
     #[test]
     fn test_toggle_sort_order_action() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         assert_eq!(
             state.current_tab().left_pane.sort_order,
             SortOrder::Ascending
@@ -860,7 +801,7 @@ mod tests {
 
     #[test]
     fn test_open_sort_dialog_action() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::OpenSortDialog);
         assert!(matches!(transitions[0], Transition::ShowDialog { .. }));
     }

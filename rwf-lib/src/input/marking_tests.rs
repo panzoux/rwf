@@ -3,36 +3,17 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{action_to_transitions, Action};
-    use crate::model::{FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::model::Location;
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{entries, numbered_entries, test_state};
     use std::path::PathBuf;
-    use std::time::SystemTime;
-
-    fn create_test_entries(count: usize) -> Vec<FileEntry> {
-        (0..count)
-            .map(|i| FileEntry {
-                name: format!("file{}.txt", i),
-                location: Location::Local(PathBuf::from(format!("/test/file{}.txt", i))),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            })
-            .collect()
-    }
 
     #[test]
     fn test_mark_all_action() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = create_test_entries(5);
+        let entries = numbered_entries(5);
         state.current_tab_mut().left_pane.entries = entries;
 
         // Execute MarkAll action
@@ -49,11 +30,10 @@ mod tests {
 
     #[test]
     fn test_unmark_all_action() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries and mark them
-        let entries = create_test_entries(5);
+        let entries = numbered_entries(5);
         state.current_tab_mut().left_pane.entries = entries.clone();
         state.current_tab_mut().left_pane.marking.mark_all(&entries);
         assert_eq!(state.current_tab_mut().left_pane.marking.count(), 5);
@@ -72,8 +52,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_marking_action_shows_dialog() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         // Execute WildcardMarking action
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
@@ -94,52 +73,10 @@ mod tests {
 
     #[test]
     fn test_wildcard_marking_pattern_matching() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries with different names
-        let entries = vec![
-            FileEntry {
-                name: "test.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/test.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "test.rs".to_string(),
-                location: Location::Local(PathBuf::from("/test/test.rs")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "other.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/other.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-        ];
-        state.current_tab_mut().left_pane.entries = entries;
+        state.current_tab_mut().left_pane.entries = entries(&["test.txt", "test.rs", "other.txt"]);
 
         // Mark files matching "*.txt"
         update_state(
@@ -170,11 +107,10 @@ mod tests {
 
     #[test]
     fn test_range_marking_mode_entry() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = create_test_entries(10);
+        let entries = numbered_entries(10);
         state.current_tab_mut().left_pane.entries = entries;
         state.current_tab_mut().left_pane.cursor = 3;
 
@@ -192,11 +128,10 @@ mod tests {
 
     #[test]
     fn test_range_marking_completion() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = create_test_entries(10);
+        let entries = numbered_entries(10);
         state.current_tab_mut().left_pane.entries = entries;
         state.current_tab_mut().left_pane.cursor = 2;
 
@@ -230,11 +165,10 @@ mod tests {
 
     #[test]
     fn test_range_marking_reverse_order() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = create_test_entries(10);
+        let entries = numbered_entries(10);
         state.current_tab_mut().left_pane.entries = entries;
 
         // Start at position 7
@@ -251,11 +185,10 @@ mod tests {
 
     #[test]
     fn test_invert_marks_action() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = create_test_entries(5);
+        let entries = numbered_entries(5);
         state.current_tab_mut().left_pane.entries = entries.clone();
 
         // Mark some files
@@ -310,52 +243,11 @@ mod tests {
 
     #[test]
     fn test_wildcard_question_mark() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
-        let entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file2.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file2.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file10.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file10.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-        ];
-        state.current_tab_mut().left_pane.entries = entries;
+        state.current_tab_mut().left_pane.entries =
+            entries(&["file1.txt", "file2.txt", "file10.txt"]);
 
         // Mark files matching "file?.txt" (single digit)
         update_state(

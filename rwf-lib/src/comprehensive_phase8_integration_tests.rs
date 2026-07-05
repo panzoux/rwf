@@ -15,55 +15,29 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
-    use crate::model::{ActivePane, DialogContent, FileEntry, Location};
+    use crate::model::{ActivePane, DialogContent, Location};
     use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{state_with_temp_dirs, temp_dir, test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
     use tempfile::TempDir;
 
     /// Helper function to create a test AppState with populated panes
     fn create_test_state() -> (AppState, TempDir, TempDir) {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
-
-        // Create temporary directories
-        let left_dir = TempDir::new().unwrap();
-        let right_dir = TempDir::new().unwrap();
+        let (mut state, left_dir, right_dir) = state_with_temp_dirs();
 
         // Set up left pane
         let left_location = Location::Local(left_dir.path().to_path_buf());
-        state.current_tab_mut().left_pane.current_location = left_location.clone();
-        state.current_tab_mut().left_pane.entries = vec![FileEntry {
-            name: "file1.txt".to_string(),
-            location: left_location.join("file1.txt"),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }];
+        state.current_tab_mut().left_pane.entries = vec![FileEntryBuilder::new("file1.txt")
+            .location(left_location.join("file1.txt"))
+            .size(100)
+            .build()];
 
         // Set up right pane
         let right_location = Location::Local(right_dir.path().to_path_buf());
-        state.current_tab_mut().right_pane.current_location = right_location.clone();
-        state.current_tab_mut().right_pane.entries = vec![FileEntry {
-            name: "file2.txt".to_string(),
-            location: right_location.join("file2.txt"),
-            size: 200,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }];
+        state.current_tab_mut().right_pane.entries = vec![FileEntryBuilder::new("file2.txt")
+            .location(right_location.join("file2.txt"))
+            .size(200)
+            .build()];
 
         (state, left_dir, right_dir)
     }
@@ -246,8 +220,7 @@ mod tests {
         // Test error handling when showing file info with no file
         // Validates: Requirement 43.1 (error case)
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Empty pane
         state.current_tab_mut().left_pane.entries = vec![];
@@ -264,8 +237,7 @@ mod tests {
         // Test context menu with no files in pane
         // Validates: Requirement 42.1 (edge case)
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Empty pane
         state.current_tab_mut().left_pane.entries = vec![];
@@ -286,11 +258,10 @@ mod tests {
         // Test pane sync when one pane has an invalid location
         // Validates: Requirement 41.1 (error handling)
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a valid left pane
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let left_location = Location::Local(temp_dir.path().to_path_buf());
         state.current_tab_mut().left_pane.current_location = left_location.clone();
 
@@ -314,8 +285,7 @@ mod tests {
         // Test drive selection dialog when no drives are available
         // Validates: Requirement 42.3 (edge case)
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show drive selection dialog
         let result = update_state(&mut state, Transition::ShowDriveChangeDialog);

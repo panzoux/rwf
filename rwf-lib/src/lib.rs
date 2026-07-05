@@ -37,6 +37,9 @@ pub mod volume_info;
 pub mod worker_pool;
 
 #[cfg(test)]
+pub mod test_utils;
+
+#[cfg(test)]
 mod error_handling_tests;
 
 #[cfg(test)]
