@@ -4,7 +4,6 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
@@ -31,8 +30,8 @@ pub(super) fn render_simple_rename_dialog(
         ])
         .split(area);
 
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+    let hint_style = crate::ui::dialog::common::DIALOG_DIM;
     let item_width = area.width.saturating_sub(4);
 
     frame.render_widget(
@@ -59,7 +58,7 @@ pub(super) fn render_simple_rename_dialog(
         Rect::new(area.x + 2, chunks[2].y, item_width, 1),
     );
 
-    let focused_item = Style::default().fg(Color::Black).bg(Color::White);
+    let focused_item = crate::ui::dialog::common::DIALOG_SELECTED;
     let ok_style = if focused_field == 1 {
         focused_item
     } else {

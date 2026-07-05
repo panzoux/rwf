@@ -71,15 +71,12 @@ pub(super) fn render_help_dialog(
     use rwf_lib::model::dialog::HelpTab;
     use unicode_width::UnicodeWidthStr;
 
-    let base = Style::default().fg(Color::Black).bg(Color::Gray);
-    let tab_active = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let tab_inactive = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base = crate::ui::dialog::common::DIALOG_TEXT;
+    let tab_active = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let tab_inactive = crate::ui::dialog::common::DIALOG_DIM;
     let search_style = Style::default().fg(Color::White).bg(Color::DarkGray);
-    let unbound_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let unbound_style = crate::ui::dialog::common::DIALOG_DIM;
+    let hint_style = crate::ui::dialog::common::DIALOG_DIM;
 
     let w = area.width.saturating_sub(2) as usize; // 1-char margin each side
 

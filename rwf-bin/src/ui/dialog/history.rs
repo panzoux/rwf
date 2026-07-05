@@ -2,12 +2,7 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
 
-use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
 
@@ -18,16 +13,11 @@ pub(super) fn render_history_dialog(
     selected_index: usize,
     current_pos: usize,
 ) {
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let selected_style = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let current_marker_style = Style::default()
-        .fg(Color::Yellow)
-        .bg(Color::Gray)
-        .add_modifier(Modifier::BOLD);
+    let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+    let hint_style = crate::ui::dialog::common::DIALOG_DIM;
+    let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let current_marker_style =
+        crate::ui::dialog::common::DIALOG_ACCENT_YELLOW.add_modifier(Modifier::BOLD);
 
     let item_width = area.width.saturating_sub(4) as usize;
 

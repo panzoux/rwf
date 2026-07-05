@@ -32,12 +32,9 @@ pub(super) fn render_pattern_rename_dialog(
     preview_mode: u8,
     show_all: bool,
 ) {
-    let base = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let active = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
+    let base = crate::ui::dialog::common::DIALOG_TEXT;
+    let hint = crate::ui::dialog::common::DIALOG_DIM;
+    let active = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
     let w = area.width as usize;
 
     // Helper: render one labeled textbox row
@@ -58,7 +55,7 @@ pub(super) fn render_pattern_rename_dialog(
         let input_style = if focused {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
-            Style::default().fg(Color::Black).bg(Color::White)
+            crate::ui::dialog::common::DIALOG_SELECTED
         };
         frame.render_widget(
             Paragraph::new(visible).style(input_style),
@@ -140,10 +137,7 @@ pub(super) fn render_pattern_rename_dialog(
     let (sep_style, sep_line) = if focused_field == 2 {
         let dashes: String = std::iter::repeat_n('─', w.saturating_sub(9)).collect();
         (
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
+            crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD),
             format!("▶ LIST {}", dashes),
         )
     } else {

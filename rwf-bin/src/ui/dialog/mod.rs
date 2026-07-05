@@ -60,7 +60,7 @@ pub use job_manager::{
 use crossterm::event::{KeyEvent, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::Line,
     widgets::Paragraph,
     Frame,
@@ -390,7 +390,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 .split(content_area);
 
             let confirmation =
-                Paragraph::new(message).style(Style::default().fg(Color::Black).bg(Color::Gray));
+                Paragraph::new(message).style(crate::ui::dialog::common::DIALOG_TEXT);
 
             frame.render_widget(confirmation, chunks[0]);
 

@@ -4,7 +4,6 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
@@ -34,9 +33,9 @@ pub(super) fn render_sort_dialog(
     let orders = ["Ascending", "Descending"];
 
     // Spec colors: focused item = Black/White, unfocused = Black/Gray
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let focused_item = Style::default().fg(Color::Black).bg(Color::White); // spec: White bg
-    let label_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+    let focused_item = crate::ui::dialog::common::DIALOG_SELECTED; // spec: White bg
+    let label_style = crate::ui::dialog::common::DIALOG_TEXT;
     let item_width = chunks[0].width.saturating_sub(4); // 2-char margin each side
 
     // --- Sort key section ---

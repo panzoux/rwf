@@ -46,8 +46,7 @@ pub(super) fn render_file_conflict_dialog(
             "..."
         )
     );
-    let filename_para =
-        Paragraph::new(filename_line).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let filename_para = Paragraph::new(filename_line).style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(
         filename_para,
         Rect::new(area.x + 2, area.y, content_width as u16, 1),
@@ -55,8 +54,7 @@ pub(super) fn render_file_conflict_dialog(
 
     // --- FROM SECTION (Lines 1-4) ---
     // Line 1: "From:" label
-    let from_label =
-        Paragraph::new("From:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let from_label = Paragraph::new("From:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(
         from_label,
         Rect::new(area.x + 2, area.y + 1, content_width as u16, 1),
@@ -65,7 +63,7 @@ pub(super) fn render_file_conflict_dialog(
     // Line 2-3: From path (2 lines) using SmartText
     let from_full_path = current.source_path.display_path();
     let from_path_widget = SmartText::new(&from_full_path)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray))
+        .style(crate::ui::dialog::common::DIALOG_TEXT)
         .max_lines(2)
         .mode(TruncateMode::Path);
     from_path_widget.render(
@@ -85,8 +83,7 @@ pub(super) fn render_file_conflict_dialog(
         chrono::DateTime::<chrono::Local>::from(current.source.modified)
             .format("%Y-%m-%d %H:%M:%S")
     );
-    let from_info_para =
-        Paragraph::new(from_info).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let from_info_para = Paragraph::new(from_info).style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(
         from_info_para,
         Rect::new(area.x + 2, area.y + 4, content_width as u16, 1),
@@ -96,7 +93,7 @@ pub(super) fn render_file_conflict_dialog(
 
     // --- TO SECTION (Lines 6-9) ---
     // Line 6: "To:" label
-    let to_label = Paragraph::new("To:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let to_label = Paragraph::new("To:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(
         to_label,
         Rect::new(area.x + 2, area.y + 6, content_width as u16, 1),
@@ -105,7 +102,7 @@ pub(super) fn render_file_conflict_dialog(
     // Line 7-8: To path (2 lines) using SmartText
     let to_full_path = current.dest_path.display_path();
     let to_path_widget = SmartText::new(&to_full_path)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray))
+        .style(crate::ui::dialog::common::DIALOG_TEXT)
         .max_lines(2)
         .mode(TruncateMode::Path);
     to_path_widget.render(
@@ -124,8 +121,7 @@ pub(super) fn render_file_conflict_dialog(
         current.dest.size,
         chrono::DateTime::<chrono::Local>::from(current.dest.modified).format("%Y-%m-%d %H:%M:%S")
     );
-    let to_info_para =
-        Paragraph::new(to_info).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let to_info_para = Paragraph::new(to_info).style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(
         to_info_para,
         Rect::new(area.x + 2, area.y + 9, content_width as u16, 1),
@@ -171,12 +167,9 @@ pub(super) fn render_file_conflict_dialog(
         if i == 3 {
             // Rename label + Textbox
             let label_style = if button_is_focused {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .bg(Color::Gray)
-                    .add_modifier(Modifier::BOLD)
+                crate::ui::dialog::common::DIALOG_ACCENT_YELLOW.add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Black).bg(Color::Gray)
+                crate::ui::dialog::common::DIALOG_TEXT
             };
 
             // Render "Rename:" label
@@ -207,12 +200,9 @@ pub(super) fn render_file_conflict_dialog(
             );
         } else {
             let button_style = if button_is_focused {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White)
-                    .add_modifier(Modifier::BOLD)
+                crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Black).bg(Color::Gray)
+                crate::ui::dialog::common::DIALOG_TEXT
             };
             let button_para = Paragraph::new(button_text.clone()).style(button_style);
             frame.render_widget(
@@ -227,7 +217,7 @@ pub(super) fn render_file_conflict_dialog(
     // Hint text (shown when Force, Overwrite if New, or Skip focused)
     if focused_button == 0 || focused_button == 1 || focused_button == 2 {
         let hint = Paragraph::new("(Shift+Enter for the rest)")
-            .style(Style::default().fg(Color::DarkGray).bg(Color::Gray));
+            .style(crate::ui::dialog::common::DIALOG_DIM);
         frame.render_widget(
             hint,
             Rect::new(area.x + 2, button_y, content_width as u16, 1),
@@ -660,223 +650,95 @@ mod conflict_tests {
 
     #[test]
     fn test_skip_button_enter_pushes_skip_decision() {
-        let mut conflicts = vec![make_conflict("b.txt", "b.txt")];
-        let mut current_index = 0usize;
-        let mut focused_button = 2usize; // Skip
-        let mut rename_text = "b.txt".to_string();
-        let mut rename_cursor = 5usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = Vec::new();
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["b.txt".to_string()];
-        let mut history_index = 0usize;
+        let mut harness =
+            super::super::test_support::ConflictInputHarness::new(vec![make_conflict(
+                "b.txt", "b.txt",
+            )]);
+        harness.focused_button = 2; // Skip
 
-        let action = handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            enter_key(),
-        );
+        let action = harness.send(enter_key());
 
         assert_eq!(action, DialogAction::Confirm);
-        assert!(matches!(decisions[0], ConflictAction::Skip));
+        assert!(matches!(harness.decisions[0], ConflictAction::Skip));
     }
 
     // ---- Cancel button (index 4) -------------------------------------------
 
     #[test]
     fn test_cancel_button_enter_returns_confirm_with_skip_decision() {
-        let mut conflicts = vec![make_conflict("c.txt", "c.txt")];
-        let mut current_index = 0usize;
-        let mut focused_button = 4usize; // Cancel
-        let mut rename_text = "c.txt".to_string();
-        let mut rename_cursor = 5usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = Vec::new();
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["c.txt".to_string()];
-        let mut history_index = 0usize;
+        let mut harness =
+            super::super::test_support::ConflictInputHarness::new(vec![make_conflict(
+                "c.txt", "c.txt",
+            )]);
+        harness.focused_button = 4; // Cancel
 
-        let action = handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            enter_key(),
-        );
+        let action = harness.send(enter_key());
 
         assert_eq!(action, DialogAction::Confirm);
-        assert!(matches!(decisions[0], ConflictAction::Skip));
+        assert!(matches!(harness.decisions[0], ConflictAction::Skip));
     }
 
     // ---- Esc cancels dialog ------------------------------------------------
 
     #[test]
     fn test_esc_cancels_dialog() {
-        let mut conflicts = vec![make_conflict("d.txt", "d.txt")];
-        let mut current_index = 0usize;
-        let mut focused_button = 0usize;
-        let mut rename_text = "d.txt".to_string();
-        let mut rename_cursor = 5usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = Vec::new();
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["d.txt".to_string()];
-        let mut history_index = 0usize;
+        let mut harness =
+            super::super::test_support::ConflictInputHarness::new(vec![make_conflict(
+                "d.txt", "d.txt",
+            )]);
 
-        let action = handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            esc_key(),
-        );
+        let action = harness.send(esc_key());
 
         assert_eq!(action, DialogAction::Cancel);
-        assert!(decisions.is_empty(), "Cancel should not push a decision");
+        assert!(
+            harness.decisions.is_empty(),
+            "Cancel should not push a decision"
+        );
     }
 
     // ---- Shift+Enter applies to all remaining ------------------------------
 
     #[test]
     fn test_shift_enter_applies_to_all_remaining() {
-        let mut conflicts = vec![
+        let mut harness = super::super::test_support::ConflictInputHarness::new(vec![
             make_conflict("e1.txt", "e1.txt"),
             make_conflict("e2.txt", "e2.txt"),
             make_conflict("e3.txt", "e3.txt"),
-        ];
-        let mut current_index = 1usize; // at second conflict
-        let mut focused_button = 2usize; // Skip
-        let mut rename_text = "e2.txt".to_string();
-        let mut rename_cursor = 6usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = vec![ConflictAction::Force]; // first conflict already decided
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["e2.txt".to_string()];
-        let mut history_index = 0usize;
+        ]);
+        harness.current_index = 1; // at second conflict
+        harness.focused_button = 2; // Skip
+        harness.rename_text = "e2.txt".to_string();
+        harness.rename_cursor = 6;
+        harness.decisions = vec![ConflictAction::Force]; // first conflict already decided
+        harness.history = vec!["e2.txt".to_string()];
 
-        let action = handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            shift_enter_key(),
-        );
+        let action = harness.send(shift_enter_key());
 
         assert_eq!(action, DialogAction::ConfirmAll);
         // decisions: 1 (pre-existing) + 2 (remaining from current_index=1 to end)
-        assert_eq!(decisions.len(), 3, "all 3 decisions must be present");
-        assert!(matches!(decisions[1], ConflictAction::Skip));
-        assert!(matches!(decisions[2], ConflictAction::Skip));
+        assert_eq!(
+            harness.decisions.len(),
+            3,
+            "all 3 decisions must be present"
+        );
+        assert!(matches!(harness.decisions[1], ConflictAction::Skip));
+        assert!(matches!(harness.decisions[2], ConflictAction::Skip));
     }
 
     // ---- Tab cycle stays within 0..4 ---------------------------------------
 
     #[test]
     fn test_tab_cycles_0_to_4() {
-        let mut conflicts = vec![make_conflict("f.txt", "f.txt")];
-        let mut current_index = 0usize;
-        let mut focused_button = 4usize; // last field
-        let mut rename_text = "f.txt".to_string();
-        let mut rename_cursor = 5usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = Vec::new();
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["f.txt".to_string()];
-        let mut history_index = 0usize;
+        let mut harness =
+            super::super::test_support::ConflictInputHarness::new(vec![make_conflict(
+                "f.txt", "f.txt",
+            )]);
+        harness.focused_button = 4; // last field
 
-        let tab_key = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
-        handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            tab_key,
-        );
+        harness.send(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
 
         assert_eq!(
-            focused_button, 0,
+            harness.focused_button, 0,
             "Tab from last field (4) should wrap to 0"
         );
     }

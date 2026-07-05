@@ -2,12 +2,7 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
 
-use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
 
@@ -18,12 +13,9 @@ pub(super) fn render_custom_function_selector(
     selected_index: usize,
     filter: &str,
 ) {
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+    let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let hint_style = crate::ui::dialog::common::DIALOG_DIM;
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -104,13 +96,10 @@ pub(super) fn render_custom_function_menu(
     items: &[rwf_lib::model::dialog::MenuItem],
     selected_index: usize,
 ) {
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+    let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let sep_style = crate::ui::dialog::common::DIALOG_DIM;
+    let hint_style = crate::ui::dialog::common::DIALOG_DIM;
 
     // item_width = inner width - 4 (2 left-indent + 2 right-margin for items)
     let item_width = area.width.saturating_sub(4) as usize;

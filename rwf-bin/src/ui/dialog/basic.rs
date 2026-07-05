@@ -5,7 +5,7 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     widgets::Paragraph,
     Frame,
 };
@@ -104,8 +104,8 @@ pub(super) fn render_dialog_content(
                     Constraint::Length(1), // hint
                 ])
                 .split(area);
-            let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-            let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+            let base_style = crate::ui::dialog::common::DIALOG_TEXT;
+            let hint_style = crate::ui::dialog::common::DIALOG_DIM;
             let item_width = area.width.saturating_sub(4);
             frame.render_widget(
                 Paragraph::new(prompt.as_str()).style(base_style),

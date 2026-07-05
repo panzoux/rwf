@@ -92,8 +92,8 @@ pub fn render_job_manager_dialog(
     );
 
     // Render detail label (chunk[2])
-    let detail_label = Paragraph::new("Selected Job Details:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let detail_label =
+        Paragraph::new("Selected Job Details:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(detail_label, chunks[2]);
 
     // Render detail view (chunk[3]) - Gray background, Black text (Part 2.2, 6.11)
@@ -122,13 +122,10 @@ fn render_job_list(
         // Show "No active jobs" with focus (Part 6.10 - Empty State)
         let style = if is_focused {
             // Focused item: Black on White (Part 2.2)
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD)
+            crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD)
         } else {
             // Unfocused: Black on Gray (Part 2.2)
-            Style::default().fg(Color::Black).bg(Color::Gray)
+            crate::ui::dialog::common::DIALOG_TEXT
         };
 
         let line = Line::from(Span::styled("> No active jobs", style));
@@ -169,13 +166,10 @@ fn render_job_list(
             // Focus style (Part 2.2, 6.11 - only ONE item has white background)
             let style = if is_focused && idx == focus_index {
                 // Focused item: Black on White (Part 2.2)
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White)
-                    .add_modifier(Modifier::BOLD)
+                crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD)
             } else {
                 // Unfocused: Black on Gray (Part 2.2) - NOT white on dark gray!
-                Style::default().fg(Color::Black).bg(Color::Gray)
+                crate::ui::dialog::common::DIALOG_TEXT
             };
 
             let line = Line::from(Span::styled(line_text, style));
@@ -246,7 +240,7 @@ fn render_job_detail(
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Black)),
         )
-        .style(Style::default().fg(Color::Black).bg(Color::Gray)) // Gray background, Black text (Part 2.2, 6.11)
+        .style(crate::ui::dialog::common::DIALOG_TEXT) // Gray background, Black text (Part 2.2, 6.11)
         .wrap(ratatui::widgets::Wrap { trim: false }); // Enable text wrapping
 
     frame.render_widget(detail, area);
@@ -275,22 +269,16 @@ fn render_buttons(
     // Button style (Part 2.2, 6.11)
     let close_style = if close_focused {
         // Focused: Black on White
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD)
     } else {
         // Unfocused: Black on Gray
-        Style::default().fg(Color::Black).bg(Color::Gray)
+        crate::ui::dialog::common::DIALOG_TEXT
     };
 
     let terminate_style = if terminate_focused {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::Black).bg(Color::Gray)
+        crate::ui::dialog::common::DIALOG_TEXT
     };
 
     // Button display: [*Close*] is ALWAYS default (Part 2.3)

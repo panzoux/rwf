@@ -3,7 +3,6 @@
 use crate::ui::text_input::TextInput;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
     widgets::{List, ListItem, Paragraph},
     Frame,
 };
@@ -63,9 +62,9 @@ impl CompressionDialogState {
                 // Focused item (only when format section has focus): black text on white background
                 // Unfocused items: black text on gray (transparent)
                 let style = if is_focused {
-                    Style::default().fg(Color::Black).bg(Color::White)
+                    crate::ui::dialog::common::DIALOG_SELECTED
                 } else {
-                    Style::default().fg(Color::Black).bg(Color::Gray)
+                    crate::ui::dialog::common::DIALOG_TEXT
                 };
 
                 ListItem::new(format!("{}{}", radio, name)).style(style)
@@ -89,9 +88,9 @@ impl CompressionDialogState {
                 // Unfocused items: black text on gray (transparent)
                 // No indent
                 let style = if is_focused {
-                    Style::default().fg(Color::Black).bg(Color::White)
+                    crate::ui::dialog::common::DIALOG_SELECTED
                 } else {
-                    Style::default().fg(Color::Black).bg(Color::Gray)
+                    crate::ui::dialog::common::DIALOG_TEXT
                 };
 
                 ListItem::new(format!("{}{} ({})", radio, name, level)).style(style)
@@ -141,7 +140,7 @@ pub fn render_compression_dialog(
 
     // Render archive format label (black text, no background)
     let format_label =
-        Paragraph::new("Archive Format:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+        Paragraph::new("Archive Format:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(format_label, chunks[0]);
 
     // Render archive format (vertical list, all 8 formats shown)
@@ -151,8 +150,8 @@ pub fn render_compression_dialog(
     frame.render_widget(format_list, format_area);
 
     // Render compression level label (black text, no background)
-    let compression_label = Paragraph::new("Compression Level:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let compression_label =
+        Paragraph::new("Compression Level:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(compression_label, chunks[2]);
 
     // Render compression levels (vertical list)
@@ -162,8 +161,7 @@ pub fn render_compression_dialog(
     frame.render_widget(compression_list, compression_area);
 
     // Render archive name input using TextInput widget
-    let name_label =
-        Paragraph::new("Archive Name:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let name_label = Paragraph::new("Archive Name:").style(crate::ui::dialog::common::DIALOG_TEXT);
     frame.render_widget(name_label, chunks[4]);
 
     let textbox_is_focused = state.focused_field == 2;
@@ -208,9 +206,9 @@ pub fn render_compression_dialog(
         // Focused button: black text on white background
         // Unfocused: black text on gray
         let button_style = if is_focused {
-            Style::default().fg(Color::Black).bg(Color::White)
+            crate::ui::dialog::common::DIALOG_SELECTED
         } else {
-            Style::default().fg(Color::Black).bg(Color::Gray)
+            crate::ui::dialog::common::DIALOG_TEXT
         };
 
         let button = Paragraph::new(format!(" {} ", button_text)).style(button_style);

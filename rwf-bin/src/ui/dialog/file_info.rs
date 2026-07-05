@@ -2,12 +2,7 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
 
-use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
 
@@ -55,9 +50,9 @@ pub(super) fn render_file_info_dialog(
     link_target: Option<&str>,
     link_kind: Option<&rwf_lib::model::LinkKind>,
 ) {
-    let base = Style::default().fg(Color::Black).bg(Color::Gray);
-    let label = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base = crate::ui::dialog::common::DIALOG_TEXT;
+    let label = crate::ui::dialog::common::DIALOG_DIM;
+    let hint = crate::ui::dialog::common::DIALOG_DIM;
     let w = area.width.saturating_sub(4) as usize;
 
     let type_label = match link_kind {
