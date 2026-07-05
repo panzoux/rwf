@@ -1,6 +1,6 @@
 # Phase M — 品質整備フェーズ 詳細計画
 
-作成: 2026-07-05 / 状態: 未着手 / 概要は [ROADMAP.md](ROADMAP.md) の Phase M ブロック参照
+作成: 2026-07-05 / 状態: M1〜M2 完了・M3 未着手 / 概要は [ROADMAP.md](ROADMAP.md) の Phase M ブロック参照
 
 ## 背景と目的
 
@@ -98,6 +98,28 @@ JobManager/WorkerPool による非同期 I/O 分離、rwf-lib/rwf-bin 分離）�
 **規模**: 中（2〜3 セッション）
 **実行**: fixture 移行 = 並列 general-purpose × haiku（5〜7 ファイル/エージェント、test_utils API 例と
 「テスト件数を変えない」制約を明示）。API 設計とドキュメント = sonnet 本体。
+
+> **M2 実施メモ（2026-07-05 完了）**
+> - `test_utils.rs`: `test_state()` / `FileEntryBuilder`（`calculated_size`・`modified` 等全フィールド
+>   セッター付き）/ `entry`・`entries`・`numbered_entries` / `AppStateBuilder` / `temp_dir`・
+>   `state_with_temp_dirs` / `open_dialog`・`current_dialog`。
+> - fixture 移行 40 ファイル（パイロット 4 + 並列 haiku）。テスト件数 1043 で前後一致。
+>   **意図的未移行**: `config_display/integration/keybindings/launch`・`concurrent_operations`・
+>   `multi_language_help`・`log_management`（カスタム AppConfig）、`sevenz`・`tar`・
+>   `archive_format_recognition`（実 FS/アーカイブセットアップ）、`help_viewer`（対象なし）。
+> - rwf-bin: `ui/dialog/common.rs`（`DIALOG_*` 定数 + `titled_block`。ratatui 0.29 の const Style を利用）
+>   を新設し frame.rs と mod.rs の数箇所へ最小適用（全面適用は M3）。既存 `frame.rs` が
+>   centered_rect/枠/ボタン行を既に提供していたため、common.rs はスタイル定数に限定し重複を回避。
+>   `test_support::ConflictInputHarness`（13 可変変数 + conflicts/history を束ねる）新設、1 テスト移行済み。
+> - ドキュメント: ルート `CLAUDE.md` / `docs/ARCHITECTURE.md` / `docs/TESTING.md` /
+>   `docs/recipes/`（ドラフト 2 本）/ stale 参照修正（USER_GUIDE の two-pane-fm→rwf、
+>   DEVELOPER_GUIDE のディレクトリツリーを実ワークスペース構成に更新）。
+> - **並列 haiku 運用の教訓**（M3 のスナップショット量産で再利用すること）:
+>   (1) セッション上限でエージェントが途中死すると半端編集が残る — 「1 ファイルずつ一貫状態で
+>   完結させる」指示を必須にする。(2) `entry()`（setter なし）と `FileEntryBuilder` の混同、
+>   `calculated_size: Some(..)` の脱落が実際に発生 — coordinator 側で
+>   `git diff` の非デフォルト値監査（`calculated_size: Some|marked: true|UNIX_EPOCH` 等の
+>   削除行と追加行の突合）を必ず実施する。
 
 ## Phase M3 — dialog/mod.rs 分割（4,434 行 → ファイル群）+ スナップショットテスト導入
 
