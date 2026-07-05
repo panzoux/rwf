@@ -5,10 +5,18 @@
 //! - Content-specific rendering via trait
 //! - Centralized input handling with consistent shortcuts
 
+pub mod common;
 mod compression;
 mod extract_confirm;
 mod frame;
 mod job_manager;
+#[cfg(test)]
+mod test_support;
+
+use common::{
+    DIALOG_ACCENT_GREEN, DIALOG_ACCENT_YELLOW, DIALOG_DIM, DIALOG_INPUT, DIALOG_SELECTED,
+    DIALOG_TEXT,
+};
 
 pub use compression::{render_compression_dialog, CompressionDialogState};
 pub use extract_confirm::ExtractionConfirmDialog;
@@ -658,12 +666,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 ])
                 .split(content_area);
 
-            let base = Style::default().fg(Color::Black).bg(Color::Gray);
-            let dir_s = Style::default()
-                .fg(Color::Black)
-                .bg(Color::Gray)
-                .add_modifier(Modifier::BOLD);
-            let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+            let base = DIALOG_TEXT;
+            let dir_s = DIALOG_TEXT.add_modifier(Modifier::BOLD);
+            let hint = DIALOG_DIM;
             let w = content_area.width.saturating_sub(2) as usize;
             let total = targets.len();
 
@@ -881,9 +886,9 @@ fn render_file_conflict_dialog(
     // Line 11: Status indicator
     let status_line = format!("{} {}", indicator, message);
     let status_style = if indicator == "✓" {
-        Style::default().fg(Color::Green).bg(Color::Gray)
+        DIALOG_ACCENT_GREEN
     } else {
-        Style::default().fg(Color::Yellow).bg(Color::Gray)
+        DIALOG_ACCENT_YELLOW
     };
     let status_para = Paragraph::new(status_line).style(status_style);
     frame.render_widget(
@@ -1680,15 +1685,12 @@ fn render_jump_to_path_dialog(
     selected_index: usize,
     is_loading: bool,
 ) {
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let input_style = Style::default().fg(Color::White).bg(Color::Black);
-    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let preview_style = Style::default().fg(Color::White).bg(Color::Black);
+    let base_style = DIALOG_TEXT;
+    let selected_style = DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let hint_style = DIALOG_DIM;
+    let input_style = DIALOG_INPUT;
+    let sep_style = DIALOG_DIM;
+    let preview_style = DIALOG_INPUT;
 
     let clamped_sel = if suggestions.is_empty() {
         0
@@ -1814,15 +1816,12 @@ fn render_jump_to_file_dialog(
     selected_index: usize,
     is_loading: bool,
 ) {
-    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default()
-        .fg(Color::Black)
-        .bg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let input_style = Style::default().fg(Color::White).bg(Color::Black);
-    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let preview_style = Style::default().fg(Color::White).bg(Color::Black);
+    let base_style = DIALOG_TEXT;
+    let selected_style = DIALOG_SELECTED.add_modifier(Modifier::BOLD);
+    let hint_style = DIALOG_DIM;
+    let input_style = DIALOG_INPUT;
+    let sep_style = DIALOG_DIM;
+    let preview_style = DIALOG_INPUT;
 
     let clamped_sel = if suggestions.is_empty() {
         0
@@ -5478,44 +5477,17 @@ mod conflict_tests {
 
     #[test]
     fn test_force_button_enter_pushes_force_decision() {
-        let mut conflicts = vec![make_conflict("a.txt", "a.txt")];
-        let mut current_index = 0usize;
-        let mut focused_button = 0usize; // Force
-        let mut rename_text = "a.txt".to_string();
-        let mut rename_cursor = 5usize;
-        let mut rename_scroll = 0usize;
-        let mut edit_mode = rwf_lib::config::EditMode::Emacs;
-        let mut vi_mode = None;
-        let mut error_message = None;
-        let mut decisions = Vec::new();
-        let mut pending_fwd = None;
-        let mut pending_op = None;
-        let mut pending_cx = false;
-        let mut history = vec!["a.txt".to_string()];
-        let mut history_index = 0usize;
+        // Uses the M2 harness (test_support::ConflictInputHarness); the
+        // remaining conflict tests migrate to it in M3.
+        let mut harness =
+            super::test_support::ConflictInputHarness::new(vec![make_conflict("a.txt", "a.txt")]);
+        harness.focused_button = 0; // Force
 
-        let action = handle_file_conflict_input(
-            &mut conflicts,
-            &mut current_index,
-            &mut focused_button,
-            &mut rename_text,
-            &mut rename_cursor,
-            &mut rename_scroll,
-            &mut edit_mode,
-            &mut vi_mode,
-            &mut error_message,
-            &mut decisions,
-            &mut pending_fwd,
-            &mut pending_op,
-            &mut pending_cx,
-            &mut history,
-            &mut history_index,
-            enter_key(),
-        );
+        let action = harness.send(enter_key());
 
         assert_eq!(action, DialogAction::Confirm);
-        assert_eq!(decisions.len(), 1);
-        assert!(matches!(decisions[0], ConflictAction::Force));
+        assert_eq!(harness.decisions.len(), 1);
+        assert!(matches!(harness.decisions[0], ConflictAction::Force));
     }
 
     // ---- Skip button (index 2) ---------------------------------------------

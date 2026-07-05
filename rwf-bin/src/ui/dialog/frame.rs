@@ -4,12 +4,12 @@
 
 use ratatui::{
     layout::{Alignment, Rect},
-    prelude::Stylize,
-    style::{Color, Style},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
     Frame,
 };
 use rwf_lib::model::dialog::DialogContent;
+
+use super::common::{titled_block, DIALOG_SELECTED, DIALOG_TEXT};
 
 /// Render dialog border and title, return content area
 pub fn render_dialog_frame(frame: &mut Frame, title: &str, area: Rect) -> Rect {
@@ -17,12 +17,7 @@ pub fn render_dialog_frame(frame: &mut Frame, title: &str, area: Rect) -> Rect {
     frame.render_widget(Clear, area);
 
     // Create block with border and title
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Black))
-        .title(title)
-        .title_style(Style::default().bold().fg(Color::Black))
-        .style(Style::default().bg(Color::Gray));
+    let block = titled_block(title);
 
     // Render block and get inner area
     let inner_area = block.inner(area);
@@ -64,9 +59,9 @@ pub fn render_dialog_buttons(
         // Focused button: black text on white background
         // Unfocused: black text on gray (transparent)
         let button_style = if is_focused {
-            Style::default().fg(Color::Black).bg(Color::White)
+            DIALOG_SELECTED
         } else {
-            Style::default().fg(Color::Black).bg(Color::Gray)
+            DIALOG_TEXT
         };
 
         let button_width = button_text.len() as u16;
