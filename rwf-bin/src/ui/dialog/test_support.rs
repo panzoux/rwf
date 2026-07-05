@@ -11,7 +11,8 @@ use crossterm::event::KeyEvent;
 use rwf_lib::config::{EditMode, ViMode};
 use rwf_lib::model::dialog::{ConflictAction, ConflictPair};
 
-use super::{handle_file_conflict_input, DialogAction};
+use super::file_conflict::handle_file_conflict_input;
+use super::DialogAction;
 
 /// Bundles the mutable state threaded through `handle_file_conflict_input`.
 ///
