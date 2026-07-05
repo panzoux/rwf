@@ -52,41 +52,28 @@ The Two-Pane File Manager follows a clean architecture with strict separation of
 ### Directory Structure
 
 ```
-two-pane-fm/
-├── src/
-│   ├── main.rs                 # Application entry point
-│   ├── core/
-│   │   ├── state.rs            # AppState and core data structures
-│   │   ├── transition.rs       # Transition enum and state update logic
-│   │   ├── job.rs              # Job types and JobManager
-│   │   └── config.rs           # Configuration structures
-│   ├── event/
-│   │   ├── input.rs            # Input handling and key mapping
-│   │   └── job_event.rs        # Job event types
-│   ├── backend/
-│   │   ├── filesystem.rs       # Filesystem backend trait
-│   │   ├── local.rs            # Local filesystem implementation
-│   │   ├── archive.rs          # Archive handler
-│   │   └── ssh.rs              # SSH backend (future)
-│   ├── executor/
-│   │   └── job_executor.rs     # Job execution logic
-│   ├── ui/
-│   │   ├── renderer.rs         # Main UI rendering
-│   │   ├── pane.rs             # Pane rendering
-│   │   ├── dialog.rs           # Dialog rendering
-│   │   ├── status.rs           # Status bar rendering
-│   │   └── task_panel.rs       # Task panel rendering
-│   └── util/
-│       ├── format.rs           # Formatting utilities
-│       └── cache.rs            # Directory cache
-├── docs/
-│   ├── USER_GUIDE.md           # User documentation
-│   ├── DEVELOPER_GUIDE.md      # This file
-│   └── API_REFERENCE.md        # API documentation
-├── tests/
-│   ├── integration/            # Integration tests
-│   └── property/               # Property-based tests
-└── Cargo.toml
+rwf/                            # Cargo workspace root
+├── rwf-lib/                    # Core library (state machine, jobs, backends)
+│   └── src/
+│       ├── state.rs            # AppState, Transition, update_state
+│       ├── model.rs + model/   # Domain models (panes, tabs, dialogs, entries)
+│       ├── input/              # Key mapping and action_to_transitions
+│       ├── job.rs + job/       # Job types, JobManager, job_executor
+│       ├── backend.rs + backend/ # Filesystem/archive backend abstraction
+│       ├── worker_pool.rs      # rwf worker pool (JobEvent)
+│       ├── event_receiver.rs   # JobEvent -> Transition mapping
+│       ├── config.rs           # Configuration structures
+│       ├── macro_expander/     # $P/$F macro expansion
+│       ├── test_utils.rs       # Shared test fixtures (#[cfg(test)])
+│       └── *_tests.rs          # Integration test modules
+├── rwf-bin/                    # TUI binary (rendering, terminal, event loop)
+│   └── src/
+│       ├── main.rs / app.rs    # Entry point and event loop
+│       ├── terminal.rs         # Terminal setup/restore
+│       └── ui/                 # Rendering (panes, dialog/, viewer, task_panel)
+├── docs/                       # This documentation
+├── plan/                       # Roadmap and phase plans (Japanese)
+└── Cargo.toml                  # Workspace manifest ([workspace.lints])
 ```
 
 ## Design Patterns

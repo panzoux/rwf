@@ -37,13 +37,13 @@ The Two-Pane File Manager is a terminal-based file manager built in Rust that pr
 cargo build --release
 ```
 
-The binary will be located at `target/release/two-pane-fm`.
+The binary will be located at `target/release/rwf`.
 
 ### First Launch
 
 On first launch, the application will:
 1. Initialize both panes with your current working directory
-2. Create default configuration files in `~/.config/two-pane-fm/` (Linux/macOS) or `%APPDATA%\two-pane-fm\` (Windows)
+2. Create default configuration files in `~/.config/rwf/` (Linux/macOS) or `%APPDATA%\rwf\` (Windows)
 3. Load TWF-compatible default key bindings
 
 ### Basic Navigation
@@ -206,8 +206,8 @@ When in text/hex viewer:
 ## Configuration
 
 Configuration files are stored in:
-- **Linux/macOS**: `~/.config/two-pane-fm/`
-- **Windows**: `%APPDATA%\two-pane-fm\`
+- **Linux/macOS**: `~/.config/rwf/`
+- **Windows**: `%APPDATA%\rwf\`
 
 ### Main Configuration (`config.json`)
 
@@ -549,7 +549,7 @@ To change your shell's directory when exiting:
 **Bash/Zsh** - Add to `~/.bashrc` or `~/.zshrc`:
 ```bash
 function fm() {
-    local output=$(two-pane-fm -cwd)
+    local output=$(rwf -cwd)
     if [ -d "$output" ]; then
         cd "$output"
     fi
@@ -559,7 +559,7 @@ function fm() {
 **PowerShell** - Add to profile:
 ```powershell
 function fm {
-    $output = two-pane-fm -cwd
+    $output = rwf -cwd
     if (Test-Path $output -PathType Container) {
         Set-Location $output
     }
