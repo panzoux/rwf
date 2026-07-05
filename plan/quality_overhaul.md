@@ -247,6 +247,11 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 
 ## フェーズ横断の実行規約（Claude Code 運用）
 
+> **2026-07-05 更新**: M4〜M7 は Fable 5 退役（07-07）に伴い opus/sonnet/haiku での実行に引き継ぐ。
+> **実行時は下表より [M_handoff_common.md](M_handoff_common.md) + 各 [M4](M4_handoff.md)/[M5](M5_handoff.md)/[M6](M6_handoff.md)/[M7](M7_handoff.md)_handoff.md が優先**
+> （設計判断は handoff に確定済みのため opus は原則不要。M4 の並列 haiku は共有ファイル衝突のため禁止に変更、
+> セッション分割・途中死対策・M2/M3 の実事故に基づく haiku 運用ルールも handoff 側に記載）。
+
 | 作業種別 | 実行形態 | モデル |
 |---|---|---|
 | 棚卸し・監査・所属マップ作成 | Explore サブエージェント並列 | haiku |
