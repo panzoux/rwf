@@ -1,6 +1,6 @@
 # Phase M — 品質整備フェーズ 詳細計画
 
-作成: 2026-07-05 / 状態: M1〜M2 完了・M3 未着手 / 概要は [ROADMAP.md](ROADMAP.md) の Phase M ブロック参照
+作成: 2026-07-05 / 状態: M1〜M3 完了・M4 未着手 / 概要は [ROADMAP.md](ROADMAP.md) の Phase M ブロック参照
 
 ## 背景と目的
 
@@ -140,6 +140,25 @@ JobManager/WorkerPool による非同期 I/O 分離、rwf-lib/rwf-bin 分離）�
 **実行**: スナップショット量産と切り出しは並列 general-purpose × haiku（見本 1 本を sonnet が先に作成、
 最初の 2 ダイアログも sonnet でパターン確立 → 残りを haiku 展開）。mod.rs の `mod` 宣言は
 並列展開**前**に全部先行コミットしてコンフリクト面を消す。統合は sonnet。
+
+> **M3 実施メモ（2026-07-05 完了）**
+> - 安全網: `snapshot_tests/`（ハーネス + 全 29 バリアント × 80×24/120×40 = 94 テスト/188 snap）。
+>   Buffer の Debug 出力（テキスト + スタイル run）をそのまま snapshot。決定性は 3 回連続実行で検証。
+>   タイムゾーン/揮発対策: insta filters で `YYYY-MM-DD HH:MM:SS`・`HH:MM:SS`・UUID を redact。
+>   JumpTo 系は Transition 経由だと実 FS を走査するため content 直組み。job_manager は
+>   HashMap 順序が不定なためジョブ 1 件まで。
+> - 分割: move-only で 17 ファイル（batch1: リスト/入力系 10、batch2: jump×2/file_info/
+>   pattern_rename/help、batch3: file_conflict 一式 + conflict_tests 同居、batch4: basic.rs
+>   （render_dialog_content/handle_content_input）+ confirm.rs（process_dialog_confirmation 系））。
+>   mod.rs 5,409→2,024 行。**残り**: render_dialog のサイズ計算+dispatch と handle_dialog_input の
+>   inline 腕 — 腕本体の関数化は現状 15 引数関数を量産するだけなので、M4 のバリアント struct 化後に
+>   `handle_input(&mut FooDialog, key)` 形式で実施する（計画の「mod.rs 〜100 行」はそこで達成）。
+> - common.rs 適用: `Style::default().fg(..).bg(..)` 81 箇所を `DIALOG_*` 定数へ機械置換
+>   （regex、完全修飾パス）。snap 差分ゼロで挙動保存を証明。
+> - conflict 入力テスト 6 本を `ConflictInputHarness` へ移行（13 変数宣言を撤去）。
+> - 抽出は PowerShell スクリプト（brace カウント + LF 保持 WriteAllText）で機械化。
+>   char リテラル `'"'` で brace カウントが狂う既知の穴あり — テスト mod は EOF 起点で切り出した。
+>   並列 haiku は今回もセッション上限で 4/5 バッチ途中死 → スナップショット 7 ファイルは本体で作成。
 
 ## Phase M4 — model/dialog.rs 分割と UI 状態/ビジネスデータ分離
 

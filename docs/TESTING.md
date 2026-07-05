@@ -85,6 +85,27 @@ Conventions:
   `handle_file_conflict_input` with `ui::dialog::test_support::ConflictInputHarness`
   instead of declaring them by hand.
 
+## Dialog snapshot tests (insta)
+
+Every `DialogContent` variant is pinned by snapshot tests in
+`rwf-bin/src/ui/dialog/snapshot_tests/` (94 tests, 188 snapshots): the dialog
+is rendered through the real `render_dialog` dispatch onto a ratatui
+`TestBackend` at 80x24 and 120x40, and the buffer dump (text + style runs) is
+compared against `snapshot_tests/snapshots/*.snap`.
+
+- Run: part of the normal suite (`cargo test -p rwf snapshot_tests -- --test-threads=1`).
+- After an *intentional* visual change, regenerate and review:
+  `cargo insta review` (or `INSTA_UPDATE=always cargo test -p rwf snapshot_tests`
+  followed by inspecting the git diff). Commit updated `.snap` files with the
+  change; never commit `.snap.new` pending files.
+- New dialogs: add a module under `snapshot_tests/` using
+  `snapshot_dialog(name, &dialog, &state)` with 2-4 representative states.
+- Determinism rules: fixed ASCII data only, no `SystemTime::now()`/`Instant`,
+  no TempDir/filesystem scans (build `JumpToPath`/`JumpToFile` contents
+  directly, never via transitions). Wall-clock timestamps and UUIDs are
+  redacted by harness filters; HashMap-ordered lists (job manager rows) must
+  contain at most one element.
+
 ## Property-based tests (proptest)
 
 Property tests live in `*_properties.rs` files (e.g. `state_properties.rs`,
