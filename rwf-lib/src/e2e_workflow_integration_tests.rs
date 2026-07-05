@@ -11,36 +11,32 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::input::{action_to_transitions, Action};
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{CustomFunction, DialogContent, FileEntry, Location};
-    use crate::state::{update_state, AppState, Transition};
+    use crate::model::{CustomFunction, DialogContent, Location};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
-    fn create_test_file_entry(name: &str, path: &str, is_dir: bool, marked: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(path)),
-            size: if is_dir { 0 } else { 1024 },
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+    fn create_test_file_entry(
+        name: &str,
+        path: &str,
+        is_dir: bool,
+        marked: bool,
+    ) -> crate::model::FileEntry {
+        FileEntryBuilder::new(name)
+            .path(path)
+            .dir(is_dir)
+            .marked(marked)
+            .size(if is_dir { 0 } else { 1024 })
+            .build()
     }
 
     /// Test complete file copy workflow from start to finish
     /// **Validates: Requirements 6.1-6.12**
     #[test]
     fn test_complete_file_copy_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Add files to left pane
         let _file1_loc = Location::Local(PathBuf::from("/source/file1.txt"));
@@ -140,8 +136,7 @@ mod tests {
     /// **Validates: Requirements 7.1-7.12**
     #[test]
     fn test_complete_file_move_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Add files to left pane
         state.current_tab_mut().left_pane.entries = vec![
@@ -198,8 +193,7 @@ mod tests {
     /// **Validates: Requirements 8.1-8.11**
     #[test]
     fn test_complete_delete_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Add files to left pane
         let file1_loc = Location::Local(PathBuf::from("/test/file1.txt"));
@@ -279,8 +273,7 @@ mod tests {
     /// **Validates: Requirements 27.1-27.14**
     #[test]
     fn test_complete_tab_management_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Initial state: 1 tab
         assert_eq!(state.tabs.tabs.len(), 1);
@@ -353,8 +346,7 @@ mod tests {
     /// **Validates: Requirements 28.1-28.15**
     #[test]
     fn test_complete_custom_function_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Add files to left pane
         state.current_tab_mut().left_pane.entries = vec![
@@ -409,8 +401,7 @@ mod tests {
     /// **Validates: Requirements 15.5-15.7**
     #[test]
     fn test_workflow_with_job_cancellation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Create a copy job
         let job_spec = JobSpec::new(JobKind::Copy {
@@ -449,8 +440,7 @@ mod tests {
     /// **Validates: Requirements 19.1-19.5**
     #[test]
     fn test_workflow_with_error_handling() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Create a copy job
         let job_spec = JobSpec::new(JobKind::Copy {
@@ -488,8 +478,7 @@ mod tests {
     /// **Validates: Requirements 9.1-9.9**
     #[test]
     fn test_complete_rename_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Setup: Add file to left pane
         state.current_tab_mut().left_pane.entries = vec![create_test_file_entry(
@@ -556,8 +545,7 @@ mod tests {
     /// **Validates: Requirements 10.1-10.9**
     #[test]
     fn test_complete_mkdir_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         state.current_tab_mut().left_pane.current_location =
             Location::Local(PathBuf::from("/test"));

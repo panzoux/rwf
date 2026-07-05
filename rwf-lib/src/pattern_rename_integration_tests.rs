@@ -1,36 +1,23 @@
 //! Integration tests for pattern-based rename functionality (TWF-compatible)
 
 use crate::job::{JobKind, OpResult, SuccessData};
-use crate::model::{DialogContent, FileEntry, Location};
-use crate::state::{update_state, AppConfig, AppState, Transition};
+use crate::model::{DialogContent, Location};
+use crate::state::{update_state, Transition};
+use crate::test_utils::{test_state, FileEntryBuilder};
 use std::path::PathBuf;
-use std::time::SystemTime;
-
-fn make_entry(name: &str, path: &str) -> FileEntry {
-    FileEntry {
-        name: name.to_string(),
-        location: Location::Local(PathBuf::from(path)),
-        size: 100,
-        is_dir: false,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: None,
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    }
-}
 
 #[test]
 fn test_show_pattern_rename_dialog_with_marked_files() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        make_entry("file1.txt", "/test/file1.txt"),
-        make_entry("file2.txt", "/test/file2.txt"),
+        FileEntryBuilder::new("file1.txt")
+            .path("/test/file1.txt")
+            .build(),
+        FileEntryBuilder::new("file2.txt")
+            .path("/test/file2.txt")
+            .build(),
     ];
     update_state(&mut state, Transition::MarkAll);
     update_state(&mut state, Transition::ShowPatternRenameDialog);
@@ -45,11 +32,12 @@ fn test_show_pattern_rename_dialog_with_marked_files() {
 
 #[test]
 fn test_show_pattern_rename_dialog_with_cursor_file() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
-    pane.entries = vec![make_entry("document.txt", "/test/document.txt")];
+    pane.entries = vec![FileEntryBuilder::new("document.txt")
+        .path("/test/document.txt")
+        .build()];
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     assert!(!state.dialogs.is_empty());
@@ -62,13 +50,16 @@ fn test_show_pattern_rename_dialog_with_cursor_file() {
 
 #[test]
 fn test_update_pattern_rename_fields_regex() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        make_entry("file1.txt", "/test/file1.txt"),
-        make_entry("file2.txt", "/test/file2.txt"),
+        FileEntryBuilder::new("file1.txt")
+            .path("/test/file1.txt")
+            .build(),
+        FileEntryBuilder::new("file2.txt")
+            .path("/test/file2.txt")
+            .build(),
     ];
     update_state(&mut state, Transition::MarkAll);
     update_state(&mut state, Transition::ShowPatternRenameDialog);
@@ -108,15 +99,18 @@ fn test_update_pattern_rename_fields_regex() {
 
 #[test]
 fn test_execute_pattern_rename_creates_job() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     let loc1 = Location::Local(PathBuf::from("/test/file1.txt"));
     let loc2 = Location::Local(PathBuf::from("/test/file2.txt"));
     pane.entries = vec![
-        make_entry("file1.txt", "/test/file1.txt"),
-        make_entry("file2.txt", "/test/file2.txt"),
+        FileEntryBuilder::new("file1.txt")
+            .path("/test/file1.txt")
+            .build(),
+        FileEntryBuilder::new("file2.txt")
+            .path("/test/file2.txt")
+            .build(),
     ];
     update_state(&mut state, Transition::MarkAll);
 
@@ -154,11 +148,12 @@ fn test_execute_pattern_rename_creates_job() {
 
 #[test]
 fn test_pattern_rename_plain_mode_replace() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
-    pane.entries = vec![make_entry("hello_world.txt", "/test/hello_world.txt")];
+    pane.entries = vec![FileEntryBuilder::new("hello_world.txt")
+        .path("/test/hello_world.txt")
+        .build()];
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // Plain mode: replace _ with -
@@ -187,13 +182,16 @@ fn test_pattern_rename_plain_mode_replace() {
 #[test]
 fn test_pattern_rename_all_files_in_preview() {
     // TWF behaviour: unchanged files still appear in the preview (just colored differently)
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        make_entry("file1.txt", "/test/file1.txt"),
-        make_entry("file2.pdf", "/test/file2.pdf"),
+        FileEntryBuilder::new("file1.txt")
+            .path("/test/file1.txt")
+            .build(),
+        FileEntryBuilder::new("file2.pdf")
+            .path("/test/file2.pdf")
+            .build(),
     ];
     update_state(&mut state, Transition::MarkAll);
     update_state(&mut state, Transition::ShowPatternRenameDialog);
@@ -224,11 +222,12 @@ fn test_pattern_rename_all_files_in_preview() {
 
 #[test]
 fn test_pattern_rename_s_command() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
-    pane.entries = vec![make_entry("Photo_001.JPG", "/test/Photo_001.JPG")];
+    pane.entries = vec![FileEntryBuilder::new("Photo_001.JPG")
+        .path("/test/Photo_001.JPG")
+        .build()];
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // s/ command: case-insensitive global replace
@@ -254,14 +253,19 @@ fn test_pattern_rename_s_command() {
 #[test]
 fn test_no_marks_shows_all_pane_entries_in_preview() {
     // Without any marks, UpdatePatternRenameFields should use ALL pane entries (not just cursor)
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     pane.entries = vec![
-        make_entry("alpha.txt", "/test/alpha.txt"),
-        make_entry("beta.txt", "/test/beta.txt"),
-        make_entry("gamma.pdf", "/test/gamma.pdf"),
+        FileEntryBuilder::new("alpha.txt")
+            .path("/test/alpha.txt")
+            .build(),
+        FileEntryBuilder::new("beta.txt")
+            .path("/test/beta.txt")
+            .build(),
+        FileEntryBuilder::new("gamma.pdf")
+            .path("/test/gamma.pdf")
+            .build(),
     ];
     // No MarkAll — no marks at all
     update_state(&mut state, Transition::ShowPatternRenameDialog);
@@ -296,12 +300,13 @@ fn test_no_marks_shows_all_pane_entries_in_preview() {
 
 #[test]
 fn test_pattern_rename_job_completion_refreshes_pane() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let pane = state.active_pane_mut();
     let file_location = Location::Local(PathBuf::from("/test/file1.txt"));
-    pane.entries = vec![make_entry("file1.txt", "/test/file1.txt")];
+    pane.entries = vec![FileEntryBuilder::new("file1.txt")
+        .path("/test/file1.txt")
+        .build()];
 
     let result = update_state(
         &mut state,

@@ -5,7 +5,8 @@ mod tests {
     use crate::input::{Action, KeyBindings};
     use crate::model::dialog::{DriveInfo, DriveType};
     use crate::model::Location;
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::test_state;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
 
@@ -73,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_drive_dialog_opens() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
@@ -87,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_drive_dialog_title() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
@@ -99,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_drive_dialog_contains_home_entry_first() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content
@@ -118,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_drive_dialog_includes_network_share_from_history() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         // Navigate to a network path so it ends up in history
         update_state(
             &mut state,
@@ -157,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_drive_selection_filter_initial_empty() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let crate::model::dialog::DialogContent::DriveSelection { filter, .. } = &dialog.content

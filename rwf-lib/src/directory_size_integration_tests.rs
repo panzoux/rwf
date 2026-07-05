@@ -8,35 +8,25 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{FileEntry, Location};
+    use crate::model::Location;
+    use crate::state::update_state;
     use crate::state::Transition;
-    use crate::state::{update_state, AppState};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     /// Test single directory size calculation
     #[test]
     fn test_single_directory_size_calculation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory entry in the active pane
         let dir_location = Location::Local(PathBuf::from("/test/mydir"));
-        let dir_entry = FileEntry {
-            name: "mydir".to_string(),
-            location: dir_location.clone(),
-            size: 0,
-            is_dir: true,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let dir_entry = FileEntryBuilder::new("mydir")
+            .location(dir_location.clone())
+            .size(0)
+            .dir(true)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![dir_entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -85,8 +75,7 @@ mod tests {
     /// Test concurrent directory size calculations
     #[test]
     fn test_concurrent_directory_size_calculations() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up multiple directory entries
         let dir1_location = Location::Local(PathBuf::from("/test/dir1"));
@@ -94,45 +83,21 @@ mod tests {
         let dir3_location = Location::Local(PathBuf::from("/test/dir3"));
 
         let entries = vec![
-            FileEntry {
-                name: "dir1".to_string(),
-                location: dir1_location.clone(),
-                size: 0,
-                is_dir: true,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "dir2".to_string(),
-                location: dir2_location.clone(),
-                size: 0,
-                is_dir: true,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "dir3".to_string(),
-                location: dir3_location.clone(),
-                size: 0,
-                is_dir: true,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("dir1")
+                .location(dir1_location.clone())
+                .size(0)
+                .dir(true)
+                .build(),
+            FileEntryBuilder::new("dir2")
+                .location(dir2_location.clone())
+                .size(0)
+                .dir(true)
+                .build(),
+            FileEntryBuilder::new("dir3")
+                .location(dir3_location.clone())
+                .size(0)
+                .dir(true)
+                .build(),
         ];
 
         state.current_tab_mut().left_pane.entries = entries;
@@ -202,24 +167,15 @@ mod tests {
     /// Test cancellation of directory size calculation
     #[test]
     fn test_directory_size_calculation_cancellation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory entry
         let dir_location = Location::Local(PathBuf::from("/test/largedir"));
-        let dir_entry = FileEntry {
-            name: "largedir".to_string(),
-            location: dir_location.clone(),
-            size: 0,
-            is_dir: true,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let dir_entry = FileEntryBuilder::new("largedir")
+            .location(dir_location.clone())
+            .size(0)
+            .dir(true)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![dir_entry];
 
@@ -258,24 +214,15 @@ mod tests {
     /// Test size calculation updates entry in multiple panes
     #[test]
     fn test_size_calculation_updates_multiple_panes() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up the same directory in both panes
         let dir_location = Location::Local(PathBuf::from("/test/shareddir"));
-        let dir_entry = FileEntry {
-            name: "shareddir".to_string(),
-            location: dir_location.clone(),
-            size: 0,
-            is_dir: true,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let dir_entry = FileEntryBuilder::new("shareddir")
+            .location(dir_location.clone())
+            .size(0)
+            .dir(true)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![dir_entry.clone()];
         state.current_tab_mut().right_pane.entries = vec![dir_entry.clone()];
@@ -314,24 +261,15 @@ mod tests {
     /// Test size calculation with job progress updates
     #[test]
     fn test_size_calculation_with_progress_updates() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory entry
         let dir_location = Location::Local(PathBuf::from("/test/progressdir"));
-        let dir_entry = FileEntry {
-            name: "progressdir".to_string(),
-            location: dir_location.clone(),
-            size: 0,
-            is_dir: true,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let dir_entry = FileEntryBuilder::new("progressdir")
+            .location(dir_location.clone())
+            .size(0)
+            .dir(true)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![dir_entry];
 
@@ -388,24 +326,15 @@ mod tests {
     /// Test size calculation for non-directory entry (should not create job)
     #[test]
     fn test_size_calculation_for_file_does_nothing() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a file entry (not a directory)
         let file_location = Location::Local(PathBuf::from("/test/file.txt"));
-        let file_entry = FileEntry {
-            name: "file.txt".to_string(),
-            location: file_location.clone(),
-            size: 1024,
-            is_dir: false, // This is a file, not a directory
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let file_entry = FileEntryBuilder::new("file.txt")
+            .location(file_location.clone())
+            .size(1024)
+            .dir(false)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![file_entry];
         state.current_tab_mut().left_pane.cursor = 0;

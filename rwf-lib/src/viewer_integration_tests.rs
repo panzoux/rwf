@@ -7,17 +7,16 @@
 //! - Navigation (Home/End, F5/F6, scrolling)
 //! - Search functionality (F4, F3, Shift+F3)
 
-use crate::config::AppConfig;
 use crate::job::JobKind;
 use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, ViewerBuffer};
 use crate::model::{Location, TextEncoding, UIMode, ViewerMode};
-use crate::state::{update_state, AppState, Transition};
+use crate::state::{update_state, Transition};
+use crate::test_utils::test_state;
 use std::path::PathBuf;
 
 #[test]
 fn test_open_text_viewer() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -49,8 +48,7 @@ fn test_open_text_viewer() {
 
 #[test]
 fn test_open_hex_viewer() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.bin"));
 
@@ -76,8 +74,7 @@ fn test_open_hex_viewer() {
 
 #[test]
 fn test_viewer_load_complete() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -106,8 +103,7 @@ fn test_viewer_load_complete() {
 
 #[test]
 fn test_viewer_encoding_cycle() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -145,8 +141,7 @@ fn test_viewer_encoding_cycle() {
 
 #[test]
 fn test_viewer_navigation_home_end() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -178,8 +173,7 @@ fn test_viewer_navigation_home_end() {
 
 #[test]
 fn test_viewer_navigation_top_bottom() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -212,8 +206,7 @@ fn test_viewer_navigation_top_bottom() {
 
 #[test]
 fn test_viewer_scrolling() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -274,8 +267,7 @@ fn test_viewer_scrolling() {
 
 #[test]
 fn test_viewer_search() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -336,8 +328,7 @@ fn test_viewer_search() {
 
 #[test]
 fn test_viewer_hex_mode_navigation() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.bin"));
 
@@ -378,8 +369,7 @@ fn test_viewer_hex_mode_navigation() {
 
 #[test]
 fn test_close_viewer() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.txt"));
 
@@ -396,8 +386,7 @@ fn test_close_viewer() {
 
 #[test]
 fn test_viewer_hex_line_formatting() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     let location = Location::Local(PathBuf::from("/test/file.bin"));
 
@@ -439,8 +428,7 @@ fn test_viewer_ready_with_seekable_buffer() {
         },
     );
 
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
     update_state(
         &mut state,
         Transition::OpenTextViewer {
@@ -481,8 +469,7 @@ fn test_viewer_seekable_text_search() {
         },
     );
 
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
     update_state(
         &mut state,
         Transition::OpenTextViewer {
@@ -534,8 +521,7 @@ fn test_viewer_seekable_hex_mode() {
     let sf = SeekableFile::new(file, data.len() as u64);
     let buffer = ViewerBuffer::new(FileBytes::Seekable(sf), LineIndex::new_complete_empty());
 
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
     update_state(
         &mut state,
         Transition::OpenHexViewer {
@@ -574,8 +560,7 @@ fn test_viewer_seekable_hex_search() {
     let sf = SeekableFile::new(file, data.len() as u64);
     let buffer = ViewerBuffer::new(FileBytes::Seekable(sf), LineIndex::new_complete_empty());
 
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
     update_state(
         &mut state,
         Transition::OpenHexViewer {

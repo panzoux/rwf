@@ -9,97 +9,46 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
-    use crate::model::{ActivePane, FileEntry, Location};
+    use crate::model::ActivePane;
     use crate::state::{update_state, AppState, Transition};
-    use std::time::SystemTime;
+    use crate::test_utils::{state_with_temp_dirs, FileEntryBuilder};
     use tempfile::TempDir;
 
     /// Helper function to create a test AppState with two different pane locations
     fn create_test_state_with_different_panes() -> (AppState, TempDir, TempDir) {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let (mut state, left_dir, right_dir) = state_with_temp_dirs();
 
-        // Create temporary directories for testing
-        let left_dir = TempDir::new().unwrap();
-        let right_dir = TempDir::new().unwrap();
+        // Get the locations for building entries
+        let left_location = state.current_tab().left_pane.current_location.clone();
+        let right_location = state.current_tab().right_pane.current_location.clone();
 
-        // Set up left pane
-        let left_location = Location::Local(left_dir.path().to_path_buf());
-        state.current_tab_mut().left_pane.current_location = left_location.clone();
+        // Set up left pane entries
         state.current_tab_mut().left_pane.entries = vec![
-            FileEntry {
-                name: "left_file1.txt".to_string(),
-                location: left_location.join("left_file1.txt"),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "left_file2.txt".to_string(),
-                location: left_location.join("left_file2.txt"),
-                size: 200,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("left_file1.txt")
+                .location(left_location.join("left_file1.txt"))
+                .size(100)
+                .build(),
+            FileEntryBuilder::new("left_file2.txt")
+                .location(left_location.join("left_file2.txt"))
+                .size(200)
+                .build(),
         ];
         state.current_tab_mut().left_pane.cursor = 1;
 
-        // Set up right pane
-        let right_location = Location::Local(right_dir.path().to_path_buf());
-        state.current_tab_mut().right_pane.current_location = right_location.clone();
+        // Set up right pane entries
         state.current_tab_mut().right_pane.entries = vec![
-            FileEntry {
-                name: "right_file1.txt".to_string(),
-                location: right_location.join("right_file1.txt"),
-                size: 300,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "right_file2.txt".to_string(),
-                location: right_location.join("right_file2.txt"),
-                size: 400,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "right_file3.txt".to_string(),
-                location: right_location.join("right_file3.txt"),
-                size: 500,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("right_file1.txt")
+                .location(right_location.join("right_file1.txt"))
+                .size(300)
+                .build(),
+            FileEntryBuilder::new("right_file2.txt")
+                .location(right_location.join("right_file2.txt"))
+                .size(400)
+                .build(),
+            FileEntryBuilder::new("right_file3.txt")
+                .location(right_location.join("right_file3.txt"))
+                .size(500)
+                .build(),
         ];
         state.current_tab_mut().right_pane.cursor = 2;
 

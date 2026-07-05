@@ -4,7 +4,8 @@
 mod tests {
     use crate::input::{Action, KeyBindings};
     use crate::model::dialog::{filter_jump_to_file_suggestions, DialogContent};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::test_state;
 
     fn open_dialog(state: &mut AppState) {
         update_state(state, Transition::ShowJumpToFileDialog);
@@ -27,7 +28,7 @@ mod tests {
 
     #[test]
     fn test_dialog_opens() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(matches!(dialog.content, DialogContent::JumpToFile { .. }));
@@ -35,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_dialog_title() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert_eq!(dialog.title, "Jump to File");
@@ -45,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_initial_query_is_empty() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::JumpToFile { query, .. } = &dialog.content {
@@ -57,7 +58,7 @@ mod tests {
 
     #[test]
     fn test_initial_selected_index_is_zero() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::JumpToFile { selected_index, .. } = &dialog.content {
@@ -69,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_initial_suggestions_equal_candidates() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::JumpToFile {
@@ -90,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_search_root_is_set() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::JumpToFile { search_root, .. } = &dialog.content {

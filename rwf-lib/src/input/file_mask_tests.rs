@@ -4,29 +4,17 @@
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{ActivePane, FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn make_entry(name: &str, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size: 100,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+        FileEntryBuilder::new(name).dir(is_dir).build()
     }
 
     fn default_state_with_entries(entries: Vec<FileEntry>) -> AppState {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let tab = state.current_tab_mut();
         tab.left_pane.entries = entries;
         tab.left_pane.current_location = Location::Local(PathBuf::from("/test"));
@@ -131,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_set_file_mask_transition_stores_mask() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         update_state(
             &mut state,
             Transition::SetFileMask {
@@ -145,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_clear_file_mask_transition() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.file_mask = Some("*.txt".to_string());
         update_state(
             &mut state,
@@ -169,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_file_mask_action_opens_dialog() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
         assert!(
             transitions.iter().any(|t| matches!(t, Transition::ShowDialog { dialog }

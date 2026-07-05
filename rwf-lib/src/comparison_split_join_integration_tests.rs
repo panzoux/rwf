@@ -5,10 +5,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::job::{DiffType, JobKind, JobSpec, SuccessData};
     use crate::model::Location;
-    use crate::state::{update_state, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -281,8 +281,7 @@ mod tests {
     /// Test comparison transition creates job
     #[test]
     fn test_comparison_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let left = Location::Local(PathBuf::from("/test/left.txt"));
         let right = Location::Local(PathBuf::from("/test/right.txt"));
@@ -311,8 +310,7 @@ mod tests {
     /// Test split transition creates job
     #[test]
     fn test_split_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let source = Location::Local(PathBuf::from("/test/source.txt"));
         let dest_dir = Location::Local(PathBuf::from("/test/parts"));
@@ -348,8 +346,7 @@ mod tests {
     /// Test join transition creates job
     #[test]
     fn test_join_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let parts = vec![
             Location::Local(PathBuf::from("/test/file.part000")),

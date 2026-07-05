@@ -9,34 +9,20 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{ActivePane, FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
-    use std::path::PathBuf;
-    use std::time::SystemTime;
+    use crate::model::{ActivePane, FileEntry};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
 
     /// Helper to create a test file entry
     fn create_test_entry(name: &str, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size: 100,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+        FileEntryBuilder::new(name).dir(is_dir).build()
     }
 
     #[test]
     fn test_set_file_mask() {
         // Requirement 13.1: Display filter input dialog
         // Requirement 13.2: Apply file mask pattern
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set file mask
         let result = update_state(
@@ -57,8 +43,7 @@ mod tests {
     #[test]
     fn test_clear_file_mask() {
         // Requirement 13.5: Clear filter when mask is empty
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set file mask first
         update_state(
@@ -85,8 +70,7 @@ mod tests {
     #[test]
     fn test_separate_masks_per_pane() {
         // Requirement 13.4: Maintain separate File_Mask settings for each pane
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set different masks for each pane
         update_state(
@@ -119,8 +103,7 @@ mod tests {
     #[test]
     fn test_wildcard_filtering_star() {
         // Requirement 13.3: Support wildcard patterns (* and ?)
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -151,8 +134,7 @@ mod tests {
     #[test]
     fn test_wildcard_filtering_question_mark() {
         // Requirement 13.3: Support wildcard patterns (* and ?)
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -181,8 +163,7 @@ mod tests {
     #[test]
     fn test_wildcard_filtering_combined() {
         // Requirement 13.3: Support wildcard patterns (* and ?)
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -212,8 +193,7 @@ mod tests {
     #[test]
     fn test_filter_always_shows_directories() {
         // Requirement 13.2: Directories should always be visible regardless of filter
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -241,8 +221,7 @@ mod tests {
     #[test]
     fn test_get_filtered_entries_with_mask() {
         // Test the get_filtered_entries method
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -271,8 +250,7 @@ mod tests {
     #[test]
     fn test_get_filtered_entries_without_mask() {
         // Test that get_filtered_entries returns all entries when no mask is set
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -293,8 +271,7 @@ mod tests {
     #[test]
     fn test_apply_current_filter() {
         // Test the apply_current_filter method
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -335,8 +312,7 @@ mod tests {
     #[test]
     fn test_filter_with_special_regex_characters() {
         // Test that special regex characters are properly escaped
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries with special characters
         let entries = vec![
@@ -361,8 +337,7 @@ mod tests {
     #[test]
     fn test_filter_empty_pattern() {
         // Test that empty pattern doesn't filter anything
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test entries
         let entries = vec![
@@ -383,8 +358,7 @@ mod tests {
     #[test]
     fn test_filter_persists_across_pane_switch() {
         // Requirement 13.4: Maintain separate File_Mask settings for each pane
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set filter on left pane
         update_state(
@@ -427,8 +401,7 @@ mod tests {
         // Requirement 13.6: Display active File_Mask in Status_Bar
         use crate::model::Dialog;
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show filter dialog
         let dialog = Dialog::input(
@@ -469,8 +442,7 @@ mod tests {
         // Requirement 13.5: Clear filter when mask is empty
         use crate::model::Dialog;
 
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set a filter first
         update_state(

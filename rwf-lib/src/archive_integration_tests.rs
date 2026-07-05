@@ -8,7 +8,7 @@ mod tests {
     use crate::backend::archive::{ArchiveHandler, ZipArchiveHandler};
     use crate::job::JobKind;
     use crate::model::Location;
-    use crate::state::{AppConfig, AppState};
+    use crate::test_utils::test_state;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -292,8 +292,7 @@ mod tests {
     /// **Validates: Requirements 29.7, 29.8**
     #[test]
     fn test_archive_job_creation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create extract archive job
         let archive_location = Location::Local(PathBuf::from("/test/archive.zip"));
@@ -325,8 +324,7 @@ mod tests {
     /// **Validates: Requirements 29.6, 29.7, 29.8**
     #[test]
     fn test_create_archive_job() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create archive job
         let sources = vec![
@@ -382,8 +380,7 @@ mod tests {
     /// **Validates: Requirements 29.10**
     #[test]
     fn test_archive_operations_non_blocking() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Queue multiple archive operations
         for i in 0..5 {

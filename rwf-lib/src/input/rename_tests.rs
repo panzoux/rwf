@@ -3,26 +3,12 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
-    use crate::model::{FileEntry, Location};
-    use crate::state::{AppConfig, AppState, Transition};
+    use crate::state::Transition;
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
-    use std::time::SystemTime;
 
-    fn make_entry(name: &str, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size: 100,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+    fn make_entry(name: &str, is_dir: bool) -> crate::model::FileEntry {
+        FileEntryBuilder::new(name).dir(is_dir).build()
     }
 
     // ---- Key binding --------------------------------------------------------
@@ -39,7 +25,7 @@ mod tests {
 
     #[test]
     fn test_rename_opens_simple_rename_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![make_entry("hello.txt", false)];
 
         let transitions = action_to_transitions(&state, &Action::Rename);
@@ -55,7 +41,7 @@ mod tests {
 
     #[test]
     fn test_rename_dialog_title() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![make_entry("hello.txt", false)];
 
         let transitions = action_to_transitions(&state, &Action::Rename);
@@ -68,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_rename_dialog_prefilled_with_current_name() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![make_entry("hello.txt", false)];
 
         let transitions = action_to_transitions(&state, &Action::Rename);
@@ -91,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_rename_cursor_at_end_of_prefilled_name() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![make_entry("hello.txt", false)];
 
         let transitions = action_to_transitions(&state, &Action::Rename);
@@ -113,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_rename_no_dialog_when_pane_empty() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::Rename);
         assert!(
             transitions.is_empty(),
@@ -123,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_rename_dialog_works_for_directory() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![make_entry("src", true)];
 
         let transitions = action_to_transitions(&state, &Action::Rename);

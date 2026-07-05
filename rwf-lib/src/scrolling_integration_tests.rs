@@ -15,31 +15,22 @@ mod tests {
     use crate::config::AppConfig;
     use crate::model::{ActivePane, FileEntry, Location, PaneModel};
     use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn create_test_entry(name: &str, size: u64, is_dir: bool, location: &Location) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: location.join(name),
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+        FileEntryBuilder::new(name)
+            .size(size)
+            .dir(is_dir)
+            .location(location.join(name))
+            .build()
     }
 
     /// Test that scroll_offset is reset to 0 when changing location via ChangeLocation transition
     /// Requirement 2A.7: WHEN scrolling to the beginning of the file list, THE Application SHALL position the first entry at the top of the visible area
     #[test]
     fn test_scroll_offset_reset_on_change_location() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial state with some scroll_offset
         let initial_location = Location::Local(PathBuf::from("/test/dir1"));
@@ -79,8 +70,7 @@ mod tests {
     /// This uses ChangeLocation internally via NavigateUp
     #[test]
     fn test_scroll_offset_reset_on_navigate_up() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial state in a subdirectory with scroll_offset
         let initial_location = Location::Local(PathBuf::from("/test/dir1/subdir"));
@@ -130,8 +120,7 @@ mod tests {
     /// Registered folder navigation uses ChangeLocation internally
     #[test]
     fn test_scroll_offset_reset_on_registered_folder_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial state with scroll_offset
         let initial_location = Location::Local(PathBuf::from("/test/dir1"));
@@ -169,8 +158,7 @@ mod tests {
     /// Test that scroll_offset is reset in the right pane when changing location
     #[test]
     fn test_scroll_offset_reset_right_pane() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial state in right pane with scroll_offset
         let initial_location = Location::Local(PathBuf::from("/test/dir1"));
@@ -209,8 +197,7 @@ mod tests {
     /// This simulates pressing Enter on a directory entry
     #[test]
     fn test_scroll_offset_reset_on_enter_directory() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial state with a directory entry
         let initial_location = Location::Local(PathBuf::from("/test"));
@@ -252,8 +239,7 @@ mod tests {
     /// Pane sync uses ChangeLocation internally
     #[test]
     fn test_scroll_offset_reset_on_pane_sync() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up left pane with one location
         let left_location = Location::Local(PathBuf::from("/test/left"));
@@ -295,8 +281,7 @@ mod tests {
     /// This is the correct TWF behavior - positions are cached per directory
     #[test]
     fn test_navigation_cache_remembers_position() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up initial location with cursor and scroll position
         let dir1 = Location::Local(PathBuf::from("/test/dir1"));
@@ -345,8 +330,7 @@ mod tests {
     /// Test that first visit to a directory starts at cursor=0, scroll=0
     #[test]
     fn test_navigation_cache_first_visit_starts_at_zero() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Navigate to a new directory (first visit)
         let new_dir = Location::Local(PathBuf::from("/test/newdir"));
@@ -366,8 +350,7 @@ mod tests {
     /// Test that positions are clamped to valid ranges when entries change
     #[test]
     fn test_navigation_cache_clamps_to_valid_range() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up dir1 with 30 entries, cursor at position 25
         let dir1 = Location::Local(PathBuf::from("/test/dir1"));
@@ -413,8 +396,7 @@ mod tests {
     /// Test that navigation cache works independently for left and right panes
     #[test]
     fn test_navigation_cache_independent_panes() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let dir1 = Location::Local(PathBuf::from("/test/dir1"));
         let dir2 = Location::Local(PathBuf::from("/test/dir2"));
@@ -507,8 +489,7 @@ mod tests {
     /// Test that navigation cache handles empty directories correctly
     #[test]
     fn test_navigation_cache_empty_directory() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up dir1 with entries and position
         let dir1 = Location::Local(PathBuf::from("/test/dir1"));
@@ -540,8 +521,7 @@ mod tests {
     /// Test that LRU eviction works correctly (cache size limit)
     #[test]
     fn test_navigation_cache_lru_eviction() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Visit many directories to trigger LRU eviction
         // The cache limit is 1000 entries, so we'll visit 1001 directories

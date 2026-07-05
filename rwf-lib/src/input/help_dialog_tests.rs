@@ -5,7 +5,8 @@ mod tests {
     use crate::input::{Action, KeyBindings};
     use crate::model::dialog::DialogContent;
     use crate::model::Dialog;
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::test_state;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn open_help(state: &mut AppState) {
@@ -39,7 +40,7 @@ mod tests {
 
     #[test]
     fn test_help_dialog_opens() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(matches!(dialog.content, DialogContent::Help { .. }));
@@ -47,7 +48,7 @@ mod tests {
 
     #[test]
     fn test_help_dialog_title_non_empty() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
@@ -60,7 +61,7 @@ mod tests {
 
     #[test]
     fn test_help_dialog_initial_scroll_pos() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::Help { scroll_pos, .. } = &dialog.content {
@@ -73,7 +74,7 @@ mod tests {
     #[test]
     fn test_help_dialog_entries_field_exists() {
         // Verify Help dialog has structured entries (populated by help builder, empty here)
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
@@ -84,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_help_dialog_language_field() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::Help { language, .. } = &dialog.content {
@@ -98,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_help_rotate_language_changes_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
 
         let lang_before = {
@@ -129,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_help_rotate_language_dialog_stays_open() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_help(&mut state);
         update_state(&mut state, Transition::RotateHelpLanguage);
 

@@ -8,17 +8,16 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::job::{JobKind, JobSpec};
     use crate::model::Location;
-    use crate::state::{update_state, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use std::path::PathBuf;
 
     #[test]
     fn test_toggle_task_panel_visibility() {
         // **Validates: Requirements 47.1**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Initially visible
         assert!(state.ui.layout.show_task_panel);
@@ -37,8 +36,7 @@ mod tests {
     #[test]
     fn test_increase_task_panel_height() {
         // **Validates: Requirements 47.2**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Initial height is 5
         assert_eq!(state.ui.layout.task_panel_height, 5);
@@ -57,8 +55,7 @@ mod tests {
     #[test]
     fn test_increase_task_panel_height_max_limit() {
         // **Validates: Requirements 47.2**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set height to max (20)
         state.ui.layout.task_panel_height = 20;
@@ -72,8 +69,7 @@ mod tests {
     #[test]
     fn test_decrease_task_panel_height() {
         // **Validates: Requirements 47.3**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set initial height to 7
         state.ui.layout.task_panel_height = 7;
@@ -92,8 +88,7 @@ mod tests {
     #[test]
     fn test_decrease_task_panel_height_min_limit() {
         // **Validates: Requirements 47.3**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set height to min (3)
         state.ui.layout.task_panel_height = 3;
@@ -107,8 +102,7 @@ mod tests {
     #[test]
     fn test_scroll_task_panel_up() {
         // **Validates: Requirements 47.4**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set initial scroll offset
         state.ui.layout.task_panel_scroll_offset = 5;
@@ -127,8 +121,7 @@ mod tests {
     #[test]
     fn test_scroll_task_panel_up_at_top() {
         // **Validates: Requirements 47.4**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Already at top
         state.ui.layout.task_panel_scroll_offset = 0;
@@ -142,8 +135,7 @@ mod tests {
     #[test]
     fn test_scroll_task_panel_down() {
         // **Validates: Requirements 47.5**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some jobs to enable scrolling
         for i in 0..10 {
@@ -170,8 +162,7 @@ mod tests {
     #[test]
     fn test_scroll_task_panel_down_at_bottom() {
         // **Validates: Requirements 47.5**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some jobs
         for i in 0..10 {
@@ -196,8 +187,7 @@ mod tests {
     #[test]
     fn test_scroll_task_panel_no_scroll_when_few_items() {
         // **Validates: Requirements 47.5, 47.7**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add only 2 jobs (less than visible height of 5)
         for i in 0..2 {
@@ -216,8 +206,7 @@ mod tests {
     #[test]
     fn test_task_panel_settings_persistence() {
         // **Validates: Requirements 47.6**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Modify task panel settings
         state.ui.layout.show_task_panel = false;
@@ -238,8 +227,7 @@ mod tests {
         assert_eq!(session.task_panel_height, 10);
 
         // Create new state and restore
-        let config2 = AppConfig::default();
-        let mut state2 = AppState::new(config2);
+        let mut state2 = test_state();
 
         // Manually restore task panel settings (simulating restore_session)
         state2.ui.layout.show_task_panel = session.show_task_panel;
@@ -253,8 +241,7 @@ mod tests {
     #[test]
     fn test_combined_task_panel_operations() {
         // **Validates: Requirements 47.1-47.7**
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some jobs
         for i in 0..15 {

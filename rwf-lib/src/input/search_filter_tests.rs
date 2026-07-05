@@ -4,12 +4,12 @@
 mod tests {
     use crate::input::{action_to_transitions, Action};
     use crate::model::{ActivePane, DialogContent, UIMode};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
 
     #[test]
     fn test_start_search_action() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::StartSearch);
 
@@ -28,8 +28,7 @@ mod tests {
 
     #[test]
     fn test_file_mask_filter_action() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
 
@@ -51,8 +50,7 @@ mod tests {
 
     #[test]
     fn test_file_mask_filter_with_existing_mask() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set an existing file mask
         state.current_tab_mut().left_pane.file_mask = Some("*.txt".to_string());
@@ -72,8 +70,7 @@ mod tests {
 
     #[test]
     fn test_clear_search_filter_in_normal_mode() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set a file mask
         state.current_tab_mut().left_pane.file_mask = Some("*.rs".to_string());
@@ -94,8 +91,7 @@ mod tests {
 
     #[test]
     fn test_clear_search_filter_in_search_mode() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Enter search mode
         state.ui.mode = UIMode::Search;
@@ -120,8 +116,7 @@ mod tests {
 
     #[test]
     fn test_clear_search_filter_both() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Enter search mode and set file mask
         state.ui.mode = UIMode::Search;
@@ -155,8 +150,7 @@ mod tests {
 
     #[test]
     fn test_exit_search_mode_when_in_search() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Enter search mode
         state.ui.mode = UIMode::Search;
@@ -186,8 +180,7 @@ mod tests {
 
     #[test]
     fn test_exit_search_mode_when_not_in_search() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         // Not in search mode
         assert_eq!(state.ui.mode, UIMode::Normal);
@@ -200,8 +193,7 @@ mod tests {
 
     #[test]
     fn test_next_match_in_search_mode() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Enter search mode
         state.ui.mode = UIMode::Search;
@@ -218,8 +210,7 @@ mod tests {
 
     #[test]
     fn test_next_match_not_in_search_mode() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::NextMatch);
 
@@ -229,8 +220,7 @@ mod tests {
 
     #[test]
     fn test_prev_match_in_search_mode() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Enter search mode
         state.ui.mode = UIMode::Search;
@@ -247,8 +237,7 @@ mod tests {
 
     #[test]
     fn test_prev_match_not_in_search_mode() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::PrevMatch);
 
@@ -258,8 +247,7 @@ mod tests {
 
     #[test]
     fn test_search_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Start search
         let transitions = action_to_transitions(&state, &Action::StartSearch);
@@ -283,8 +271,7 @@ mod tests {
 
     #[test]
     fn test_filter_workflow() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show filter dialog
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);

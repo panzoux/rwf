@@ -90,6 +90,11 @@ impl FileEntryBuilder {
         self
     }
 
+    pub fn calculated_size(mut self, calculated_size: Option<u64>) -> Self {
+        self.entry.calculated_size = calculated_size;
+        self
+    }
+
     pub fn build(self) -> FileEntry {
         self.entry
     }

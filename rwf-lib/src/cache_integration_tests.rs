@@ -7,39 +7,21 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::job::{JobKind, OpResult, SuccessData};
-    use crate::model::{ActivePane, FileEntry, Location};
-    use crate::state::{update_state, AppState, Transition};
+    use crate::model::{ActivePane, Location};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
-
-    fn create_test_entry(name: &str, size: u64, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
-    }
 
     /// Test cache hit: navigating to a cached directory should not create a job
     #[test]
     fn test_cache_hit() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let location = Location::Local(PathBuf::from("/test/dir1"));
         let entries = vec![
-            create_test_entry("file1.txt", 100, false),
-            create_test_entry("file2.txt", 200, false),
+            FileEntryBuilder::new("file1.txt").size(100).build(),
+            FileEntryBuilder::new("file2.txt").size(200).build(),
         ];
 
         // Populate cache
@@ -66,8 +48,7 @@ mod tests {
     /// Test cache miss: navigating to an uncached directory should create a job
     #[test]
     fn test_cache_miss() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let location = Location::Local(PathBuf::from("/test/dir1"));
 
@@ -94,11 +75,10 @@ mod tests {
     /// Test cache invalidation after copy operation
     #[test]
     fn test_cache_invalidation_after_copy() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let dest_location = Location::Local(PathBuf::from("/test/dest"));
-        let entries = vec![create_test_entry("file1.txt", 100, false)];
+        let entries = vec![FileEntryBuilder::new("file1.txt").size(100).build()];
 
         // Populate cache for destination
         state.cache.insert(dest_location.clone(), entries.clone());
@@ -130,11 +110,10 @@ mod tests {
     /// Test cache invalidation after move operation
     #[test]
     fn test_cache_invalidation_after_move() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let dest_location = Location::Local(PathBuf::from("/test/dest"));
-        let entries = vec![create_test_entry("file1.txt", 100, false)];
+        let entries = vec![FileEntryBuilder::new("file1.txt").size(100).build()];
 
         // Populate cache for destination
         state.cache.insert(dest_location.clone(), entries.clone());
@@ -166,12 +145,11 @@ mod tests {
     /// Test cache invalidation after delete operation
     #[test]
     fn test_cache_invalidation_after_delete() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let parent_location = Location::Local(PathBuf::from("/test"));
         let file_location = Location::Local(PathBuf::from("/test/file.txt"));
-        let entries = vec![create_test_entry("file.txt", 100, false)];
+        let entries = vec![FileEntryBuilder::new("file.txt").size(100).build()];
 
         // Populate cache for parent directory
         state.cache.insert(parent_location.clone(), entries.clone());
@@ -202,12 +180,11 @@ mod tests {
     /// Test cache invalidation after mkdir operation
     #[test]
     fn test_cache_invalidation_after_mkdir() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let parent_location = Location::Local(PathBuf::from("/test"));
         let new_dir_location = Location::Local(PathBuf::from("/test/newdir"));
-        let entries = vec![create_test_entry("file.txt", 100, false)];
+        let entries = vec![FileEntryBuilder::new("file.txt").size(100).build()];
 
         // Populate cache for parent directory
         state.cache.insert(parent_location.clone(), entries.clone());
@@ -238,13 +215,12 @@ mod tests {
     /// Test cache invalidation after rename operation
     #[test]
     fn test_cache_invalidation_after_rename() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let parent_location = Location::Local(PathBuf::from("/test"));
         let from_location = Location::Local(PathBuf::from("/test/oldname.txt"));
         let to_location = Location::Local(PathBuf::from("/test/newname.txt"));
-        let entries = vec![create_test_entry("oldname.txt", 100, false)];
+        let entries = vec![FileEntryBuilder::new("oldname.txt").size(100).build()];
 
         // Populate cache for parent directory
         state.cache.insert(parent_location.clone(), entries.clone());
@@ -276,13 +252,12 @@ mod tests {
     /// Test that ReadDirectory job completion populates cache
     #[test]
     fn test_read_directory_populates_cache() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let location = Location::Local(PathBuf::from("/test/dir1"));
         let entries = vec![
-            create_test_entry("file1.txt", 100, false),
-            create_test_entry("file2.txt", 200, false),
+            FileEntryBuilder::new("file1.txt").size(100).build(),
+            FileEntryBuilder::new("file2.txt").size(200).build(),
         ];
 
         // Verify cache is empty
@@ -313,13 +288,12 @@ mod tests {
     /// Test cache hit with multiple navigations
     #[test]
     fn test_cache_hit_with_multiple_navigations() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let location1 = Location::Local(PathBuf::from("/test/dir1"));
         let location2 = Location::Local(PathBuf::from("/test/dir2"));
-        let entries1 = vec![create_test_entry("file1.txt", 100, false)];
-        let entries2 = vec![create_test_entry("file2.txt", 200, false)];
+        let entries1 = vec![FileEntryBuilder::new("file1.txt").size(100).build()];
+        let entries2 = vec![FileEntryBuilder::new("file2.txt").size(200).build()];
 
         // Populate cache for both locations
         state.cache.insert(location1.clone(), entries1.clone());

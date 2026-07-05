@@ -6,12 +6,13 @@
 mod tests {
     use crate::job::{JobKind, JobSpec, OpResult};
     use crate::model::{Dialog, DialogContent, ErrorType, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use std::path::PathBuf;
 
     #[test]
     fn test_permission_error_shows_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a job
         let job_spec = JobSpec::new(JobKind::ReadDirectory {
@@ -49,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_file_not_found_error_shows_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a copy job
         let job_spec = JobSpec::new(JobKind::Copy {
@@ -88,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_invalid_path_error_shows_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a mkdir job
         let job_spec = JobSpec::new(JobKind::Mkdir {
@@ -120,7 +121,7 @@ mod tests {
 
     #[test]
     fn test_operation_failed_error_shows_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a delete job
         let job_spec = JobSpec::new(JobKind::Delete {
@@ -159,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_error_dialog_can_be_dismissed() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Show error dialog
         let error_dialog = Dialog::error("Test error");
@@ -175,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_multiple_errors_stack_dialogs() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Show first error dialog directly
         let error1 = Dialog::error("Error 1");
@@ -247,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_successful_job_does_not_show_error_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a job
         let job_spec = JobSpec::new(JobKind::Mkdir {
@@ -271,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_cancelled_job_does_not_show_error_dialog() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
 
         // Create a job
         let job_spec = JobSpec::new(JobKind::Copy {

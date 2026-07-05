@@ -3,35 +3,15 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{action_to_transitions, Action};
-    use crate::model::{DialogContent, FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::model::{DialogContent, Location};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{entries, test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
-
-    fn create_test_entries(names: Vec<&str>) -> Vec<FileEntry> {
-        names
-            .iter()
-            .map(|name| FileEntry {
-                name: name.to_string(),
-                location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            })
-            .collect()
-    }
 
     #[test]
     fn test_wildcard_marking_dialog_display() {
         // Requirement 36.1: WHEN the user presses '@', THE Application SHALL display a wildcard marking Dialog
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         // Execute WildcardMarking action
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
@@ -50,10 +30,9 @@ mod tests {
     #[test]
     fn test_wildcard_patterns_star_and_question() {
         // Requirement 36.2: THE Application SHALL support wildcard patterns (* and ?) in the marking Dialog
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let file_entries = entries(&[
             "test.txt",
             "test.rs",
             "file1.txt",
@@ -61,7 +40,7 @@ mod tests {
             "file10.txt",
             "data.json",
         ]);
-        state.current_tab_mut().left_pane.entries = entries;
+        state.current_tab_mut().left_pane.entries = file_entries;
 
         // Test * wildcard - mark all .txt files
         update_state(
@@ -123,17 +102,16 @@ mod tests {
     #[test]
     fn test_wildcard_pattern_execution() {
         // Requirement 36.3: WHEN the user submits a pattern, THE Application SHALL mark all files matching the pattern
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let file_entries = entries(&[
             "document.pdf",
             "report.pdf",
             "image.png",
             "photo.jpg",
             "data.csv",
         ]);
-        state.current_tab_mut().left_pane.entries = entries;
+        state.current_tab_mut().left_pane.entries = file_entries;
 
         // Mark all PDF files
         update_state(
@@ -175,17 +153,16 @@ mod tests {
     #[test]
     fn test_range_marking_mode_entry() {
         // Requirement 36.4: WHEN the user presses Ctrl+Space, THE Application SHALL enter range marking mode
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let file_entries = entries(&[
             "file1.txt",
             "file2.txt",
             "file3.txt",
             "file4.txt",
             "file5.txt",
         ]);
-        state.current_tab_mut().left_pane.entries = entries;
+        state.current_tab_mut().left_pane.entries = file_entries;
         state.current_tab_mut().left_pane.cursor = 2;
 
         // Execute RangeMarking action (first time - enter mode)
@@ -204,10 +181,9 @@ mod tests {
     fn test_range_marking_execution() {
         // Requirement 36.5: WHEN in range marking mode, THE Application SHALL mark all files between
         // the initial Cursor position and the current Cursor position
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let entries = entries(&[
             "file0.txt",
             "file1.txt",
             "file2.txt",
@@ -280,10 +256,9 @@ mod tests {
     #[test]
     fn test_range_marking_reverse_order() {
         // Test that range marking works when cursor moves backward
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let entries = entries(&[
             "file0.txt",
             "file1.txt",
             "file2.txt",
@@ -344,10 +319,9 @@ mod tests {
     fn test_invert_marks() {
         // Requirement 36.6: WHEN the user presses Home (with Shift or in marking mode),
         // THE Application SHALL invert all marks in the Active_Pane
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let entries = entries(&[
             "file1.txt",
             "file2.txt",
             "file3.txt",
@@ -409,10 +383,9 @@ mod tests {
     #[test]
     fn test_marking_persistence_across_navigation() {
         // Requirement 36.7: THE Application SHALL maintain marked file state across directory navigation
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec!["file1.txt", "file2.txt", "file3.txt"]);
+        let entries = entries(&["file1.txt", "file2.txt", "file3.txt"]);
         state.current_tab_mut().left_pane.entries = entries.clone();
 
         // Mark some files
@@ -478,49 +451,12 @@ mod tests {
     #[test]
     fn test_marked_file_count_and_size_display() {
         // Requirement 36.8: THE Application SHALL display marked file count and total size in the Status_Bar
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file1.txt")),
-                size: 1024,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file2.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file2.txt")),
-                size: 2048,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file3.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file3.txt")),
-                size: 512,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("file1.txt").size(1024).build(),
+            FileEntryBuilder::new("file2.txt").size(2048).build(),
+            FileEntryBuilder::new("file3.txt").size(512).build(),
         ];
         state.current_tab_mut().left_pane.entries = entries.clone();
 
@@ -551,10 +487,9 @@ mod tests {
     #[test]
     fn test_wildcard_marking_complex_patterns() {
         // Test complex wildcard patterns
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec![
+        let entries = entries(&[
             "test_file_1.txt",
             "test_file_2.txt",
             "test_doc_1.txt",
@@ -603,10 +538,9 @@ mod tests {
     #[test]
     fn test_wildcard_marking_case_insensitive() {
         // Test that wildcard marking is case-insensitive
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec!["Test.TXT", "test.txt", "TEST.txt", "file.rs"]);
+        let entries = entries(&["Test.TXT", "test.txt", "TEST.txt", "file.rs"]);
         state.current_tab_mut().left_pane.entries = entries.clone();
 
         // Mark files matching "*.txt" (lowercase pattern)
@@ -644,10 +578,9 @@ mod tests {
     #[test]
     fn test_range_marking_single_file() {
         // Test range marking when start and end are the same
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec!["file1.txt", "file2.txt", "file3.txt"]);
+        let entries = entries(&["file1.txt", "file2.txt", "file3.txt"]);
         state.current_tab_mut().left_pane.entries = entries.clone();
 
         // Enter range marking mode at position 1
@@ -670,11 +603,10 @@ mod tests {
     #[test]
     fn test_wildcard_marking_no_matches() {
         // Test wildcard marking when no files match
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec!["file1.txt", "file2.txt", "file3.txt"]);
-        state.current_tab_mut().left_pane.entries = entries;
+        let file_entries = entries(&["file1.txt", "file2.txt", "file3.txt"]);
+        state.current_tab_mut().left_pane.entries = file_entries;
 
         // Mark files matching "*.pdf" (no matches)
         update_state(
@@ -691,10 +623,9 @@ mod tests {
     #[test]
     fn test_wildcard_marking_all_files() {
         // Test wildcard marking with "*" pattern (all files)
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
-        let entries = create_test_entries(vec!["file1.txt", "file2.rs", "file3.md"]);
+        let entries = entries(&["file1.txt", "file2.rs", "file3.md"]);
         state.current_tab_mut().left_pane.entries = entries.clone();
 
         // Mark all files with "*"

@@ -12,6 +12,7 @@ mod tests {
     use crate::config::AppConfig;
     use crate::log_manager::LogEntryLevel;
     use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::temp_dir;
     use std::time::Duration;
     use tempfile::TempDir;
 
@@ -34,7 +35,7 @@ mod tests {
     #[test]
     fn test_manual_log_saving() {
         // **Validates: Requirements 44.1, 44.2, 44.3**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Add some log entries
@@ -67,7 +68,7 @@ mod tests {
     #[test]
     fn test_log_memory_management() {
         // **Validates: Requirements 44.4**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Max is 10, add 15 entries
@@ -87,7 +88,7 @@ mod tests {
     #[test]
     fn test_log_memory_auto_flush() {
         // **Validates: Requirements 44.4**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Fill to capacity
@@ -111,7 +112,7 @@ mod tests {
     #[test]
     fn test_log_on_exit_enabled() {
         // **Validates: Requirements 44.5**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         state.log_manager.info("Exit test message".to_string());
@@ -132,7 +133,7 @@ mod tests {
     #[test]
     fn test_log_on_exit_disabled() {
         // **Validates: Requirements 44.5**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
         state.config.save_log_on_exit = false;
 
@@ -151,7 +152,7 @@ mod tests {
     #[test]
     fn test_log_rotation() {
         // **Validates: Requirements 44.6**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Create first log
@@ -189,7 +190,7 @@ mod tests {
     #[test]
     fn test_slow_operation_logging() {
         // **Validates: Requirements 44.7**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Fast operation - should not log
@@ -219,7 +220,7 @@ mod tests {
     #[test]
     fn test_log_save_with_empty_log() {
         // **Validates: Requirements 44.1**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Try to save empty log
@@ -234,7 +235,7 @@ mod tests {
     #[test]
     fn test_log_path_configuration() {
         // **Validates: Requirements 44.2**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let custom_path = temp_dir.path().join("custom").join("my_session.log");
 
         let config = AppConfig {
@@ -254,7 +255,7 @@ mod tests {
     #[test]
     fn test_log_entries_have_timestamps() {
         // **Validates: Requirements 44.3**
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         state.log_manager.info("Message 1".to_string());
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_log_manager_integration_with_state() {
         // Integration test: verify log manager is properly integrated with AppState
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = temp_dir();
         let mut state = create_test_state_with_log_config(&temp_dir);
 
         // Log manager should be accessible from state

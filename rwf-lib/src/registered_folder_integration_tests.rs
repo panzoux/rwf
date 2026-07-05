@@ -8,16 +8,15 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{FileEntry, Location, RegisteredFolder};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::model::{Location, RegisteredFolder};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::env;
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     #[test]
     fn test_register_current_folder() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -43,8 +42,7 @@ mod tests {
 
     #[test]
     fn test_show_registered_folder_dialog() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders and add test folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -82,8 +80,7 @@ mod tests {
 
     #[test]
     fn test_navigate_to_registered_folder() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -112,8 +109,7 @@ mod tests {
 
     #[test]
     fn test_navigate_to_invalid_folder_index() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -130,8 +126,7 @@ mod tests {
 
     #[test]
     fn test_environment_variable_expansion_in_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -165,8 +160,7 @@ mod tests {
 
     #[test]
     fn test_environment_variable_expansion_unix_braces() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -201,8 +195,7 @@ mod tests {
 
     #[test]
     fn test_environment_variable_expansion_powershell() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -237,40 +230,21 @@ mod tests {
 
     #[test]
     fn test_move_marked_files_to_registered_folder() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
 
         // Add some files to the active pane
         let entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/source/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file2.txt".to_string(),
-                location: Location::Local(PathBuf::from("/source/file2.txt")),
-                size: 200,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("file1.txt")
+                .path("/source/file1.txt")
+                .size(100)
+                .build(),
+            FileEntryBuilder::new("file2.txt")
+                .path("/source/file2.txt")
+                .size(200)
+                .build(),
         ];
 
         state.current_tab_mut().left_pane.entries = entries;
@@ -317,8 +291,7 @@ mod tests {
 
     #[test]
     fn test_move_to_registered_folder_with_no_marked_files() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -340,8 +313,7 @@ mod tests {
 
     #[test]
     fn test_move_to_invalid_registered_folder() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -365,8 +337,7 @@ mod tests {
 
     #[test]
     fn test_multiple_environment_variables_in_path() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -402,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_nonexistent_environment_variable_unchanged() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -440,8 +410,7 @@ mod tests {
 
     #[test]
     fn test_register_folder_dialog_confirmation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -471,8 +440,7 @@ mod tests {
 
     #[test]
     fn test_registered_folder_selector_dialog_confirmation_for_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
@@ -507,26 +475,15 @@ mod tests {
 
     #[test]
     fn test_registered_folder_selector_dialog_confirmation_for_move() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Clear any pre-loaded folders
         state.registered_folders = crate::model::RegisteredFolderManager::new();
 
         // Add a file entry to the pane
-        let file_entry = FileEntry {
-            name: "file.txt".to_string(),
-            location: Location::Local(PathBuf::from("/source/file.txt")),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let file_entry = FileEntryBuilder::new("file.txt")
+            .path("/source/file.txt")
+            .build();
         state.current_tab_mut().left_pane.entries = vec![file_entry];
 
         // Mark the file

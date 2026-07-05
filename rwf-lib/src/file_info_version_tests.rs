@@ -1,31 +1,15 @@
 //! Integration tests for file information and version display
 
-use crate::config::AppConfig;
-use crate::model::{Dialog, DialogContent, FileEntry, Location};
+use crate::model::{Dialog, DialogContent};
 use crate::state::{update_state, Transition};
-use crate::AppState;
-use std::path::PathBuf;
-use std::time::SystemTime;
+use crate::test_utils::{test_state, FileEntryBuilder};
 
 #[test]
 fn test_show_file_info_transition() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Add a file entry to the active pane
-    let entry = FileEntry {
-        name: "test.txt".to_string(),
-        location: Location::Local(PathBuf::from("/test/test.txt")),
-        size: 1024,
-        is_dir: false,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: None,
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("test.txt").size(1024).build();
 
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
@@ -62,8 +46,7 @@ fn test_show_file_info_transition() {
 
 #[test]
 fn test_show_file_info_no_entry() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // No entries in the pane
     state.current_tab_mut().left_pane.entries = vec![];
@@ -78,23 +61,14 @@ fn test_show_file_info_no_entry() {
 
 #[test]
 fn test_show_file_info_directory() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Add a directory entry to the active pane
-    let entry = FileEntry {
-        name: "test_dir".to_string(),
-        location: Location::Local(PathBuf::from("/test/test_dir")),
-        size: 0,
-        is_dir: true,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: Some(4096),
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("test_dir")
+        .size(0)
+        .dir(true)
+        .calculated_size(Some(4096))
+        .build();
 
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
@@ -130,8 +104,7 @@ fn test_show_file_info_directory() {
 
 #[test]
 fn test_show_version_transition() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Trigger ShowVersion transition
     let result = update_state(&mut state, Transition::ShowVersion);
@@ -164,19 +137,10 @@ fn test_show_version_transition() {
 #[test]
 fn test_file_info_dialog_creation() {
     // Create a test file entry
-    let entry = FileEntry {
-        name: "example.txt".to_string(),
-        location: Location::Local(PathBuf::from("/home/user/example.txt")),
-        size: 2048,
-        is_dir: false,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: None,
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("example.txt")
+        .path("/home/user/example.txt")
+        .size(2048)
+        .build();
 
     // Create file info dialog
     let dialog = Dialog::file_info(&entry);
@@ -227,23 +191,10 @@ fn test_version_dialog_creation() {
 
 #[test]
 fn test_file_info_dialog_dismissal() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Add a file entry and show file info
-    let entry = FileEntry {
-        name: "test.txt".to_string(),
-        location: Location::Local(PathBuf::from("/test/test.txt")),
-        size: 1024,
-        is_dir: false,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: None,
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("test.txt").size(1024).build();
 
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
@@ -261,8 +212,7 @@ fn test_file_info_dialog_dismissal() {
 
 #[test]
 fn test_version_dialog_dismissal() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Show version dialog
     update_state(&mut state, Transition::ShowVersion);
@@ -278,23 +228,14 @@ fn test_version_dialog_dismissal() {
 
 #[test]
 fn test_file_info_with_calculated_size() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Add a directory entry with calculated size
-    let entry = FileEntry {
-        name: "large_dir".to_string(),
-        location: Location::Local(PathBuf::from("/test/large_dir")),
-        size: 0,
-        is_dir: true,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: Some(1048576), // 1 MB
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("large_dir")
+        .size(0)
+        .dir(true)
+        .calculated_size(Some(1048576)) // 1 MB
+        .build();
 
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
@@ -315,19 +256,7 @@ fn test_file_info_with_calculated_size() {
 
 #[test]
 fn test_file_info_dialog_does_not_require_input() {
-    let entry = FileEntry {
-        name: "test.txt".to_string(),
-        location: Location::Local(PathBuf::from("/test/test.txt")),
-        size: 1024,
-        is_dir: false,
-        is_hidden: false,
-        modified: SystemTime::now(),
-        marked: false,
-        calculated_size: None,
-        is_symlink: false,
-        link_target: None,
-        link_kind: None,
-    };
+    let entry = FileEntryBuilder::new("test.txt").size(1024).build();
 
     let dialog = Dialog::file_info(&entry);
 

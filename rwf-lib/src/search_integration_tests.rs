@@ -4,77 +4,16 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{FileEntry, Location, SearchModel};
-    use std::path::PathBuf;
-    use std::time::SystemTime;
+    use crate::model::SearchModel;
+    use crate::test_utils::{entry, FileEntryBuilder};
 
-    fn create_test_entries() -> Vec<FileEntry> {
+    fn create_test_entries() -> Vec<crate::model::FileEntry> {
         vec![
-            FileEntry {
-                name: "test.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/test.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "Test.rs".to_string(),
-                location: Location::Local(PathBuf::from("/test/Test.rs")),
-                size: 200,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "example.md".to_string(),
-                location: Location::Local(PathBuf::from("/test/example.md")),
-                size: 300,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "data.json".to_string(),
-                location: Location::Local(PathBuf::from("/test/data.json")),
-                size: 400,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "README.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/README.txt")),
-                size: 500,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("test.txt").size(100).build(),
+            FileEntryBuilder::new("Test.rs").size(200).build(),
+            FileEntryBuilder::new("example.md").size(300).build(),
+            FileEntryBuilder::new("data.json").size(400).build(),
+            FileEntryBuilder::new("README.txt").size(500).build(),
         ]
     }
 
@@ -346,34 +285,7 @@ mod tests {
     fn test_special_regex_characters_in_wildcard() {
         // Test that special regex characters are escaped in wildcard mode
         let mut search = SearchModel::new();
-        let entries = vec![
-            FileEntry {
-                name: "file.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file+txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file+txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-        ];
+        let entries = vec![entry("file.txt"), entry("file+txt")];
 
         // The dot should be treated as literal dot, not regex wildcard
         search.query = "file.txt".to_string();
@@ -435,47 +347,7 @@ mod tests {
         if search.load_migemo_dict_auto(None).is_ok() {
             search.use_migemo = true;
 
-            let entries = vec![
-                FileEntry {
-                    name: "日本.txt".to_string(),
-                    location: Location::Local(PathBuf::from("/test/日本.txt")),
-                    size: 100,
-                    is_dir: false,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-                    is_symlink: false,
-                    link_target: None,
-                    link_kind: None,
-                },
-                FileEntry {
-                    name: "nihon.txt".to_string(),
-                    location: Location::Local(PathBuf::from("/test/nihon.txt")),
-                    size: 100,
-                    is_dir: false,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-                    is_symlink: false,
-                    link_target: None,
-                    link_kind: None,
-                },
-                FileEntry {
-                    name: "test.txt".to_string(),
-                    location: Location::Local(PathBuf::from("/test/test.txt")),
-                    size: 100,
-                    is_dir: false,
-                    is_hidden: false,
-                    modified: SystemTime::now(),
-                    marked: false,
-                    calculated_size: None,
-                    is_symlink: false,
-                    link_target: None,
-                    link_kind: None,
-                },
-            ];
+            let entries = vec![entry("日本.txt"), entry("nihon.txt"), entry("test.txt")];
 
             // Search for "nihon" should match "日本.txt" and "nihon.txt"
             search.query = "nihon".to_string();

@@ -7,58 +7,31 @@
 mod tests {
     use crate::job::{JobKind, JobSpec, PipeToAction};
     use crate::macro_expander::MacroExpander;
-    use crate::model::{CustomFunction, FileEntry, Location};
+    use crate::model::{CustomFunction, Location};
     use crate::pipe_to_action::{process_pipe_to_action, PipeToActionResult};
-    use crate::state::{AppConfig, AppState};
+    use crate::state::AppState;
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn create_test_state_with_files() -> AppState {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add test files
         let test_location = Location::Local(PathBuf::from("/test"));
         state.tabs.tabs[0].left_pane.entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: test_location.join("file1.txt"),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file2.rs".to_string(),
-                location: test_location.join("file2.rs"),
-                size: 200,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: true,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "document.pdf".to_string(),
-                location: test_location.join("document.pdf"),
-                size: 5000,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("file1.txt")
+                .location(test_location.join("file1.txt"))
+                .size(100)
+                .build(),
+            FileEntryBuilder::new("file2.rs")
+                .location(test_location.join("file2.rs"))
+                .size(200)
+                .marked(true)
+                .build(),
+            FileEntryBuilder::new("document.pdf")
+                .location(test_location.join("document.pdf"))
+                .size(5000)
+                .build(),
         ];
 
         state

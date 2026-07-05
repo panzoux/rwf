@@ -4,7 +4,8 @@
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -39,7 +40,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_marking_opens_wildcard_mark_dialog() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         assert!(
             transitions.iter().any(|t| matches!(
@@ -53,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_mark_dialog_title() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
             assert_eq!(dialog.title, "Wildcard Marking");
@@ -64,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_mark_dialog_starts_empty() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
             if let crate::model::dialog::DialogContent::WildcardMark {
@@ -85,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_mark_pattern_marks_matching_files() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![
             make_entry("readme.txt", false),
             make_entry("main.rs", false),
@@ -118,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_mark_pattern_star_marks_all() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries =
             vec![make_entry("a.txt", false), make_entry("b.rs", false)];
 
@@ -134,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_mark_pattern_question_mark() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![
             make_entry("a1.txt", false),
             make_entry("ab.txt", false),
@@ -173,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_mark_pattern_accumulates_with_existing_marks() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries =
             vec![make_entry("a.txt", false), make_entry("b.rs", false)];
 
@@ -199,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_mark_pattern_dirs_can_be_marked() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.active_pane_mut().entries = vec![
             make_entry("src", true),
             make_entry("docs", true),

@@ -2,12 +2,12 @@
 
 use super::*;
 use crate::model::{Dialog, DialogContent};
-use crate::state::{AppConfig, AppState, Transition};
+use crate::state::Transition;
+use crate::test_utils::test_state;
 
 #[test]
 fn test_quit_action_q_key() {
-    let config = AppConfig::default();
-    let state = AppState::new(config);
+    let state = test_state();
 
     let transitions = action_to_transitions(&state, &Action::Quit);
 
@@ -17,8 +17,7 @@ fn test_quit_action_q_key() {
 
 #[test]
 fn test_help_action() {
-    let config = AppConfig::default();
-    let state = AppState::new(config);
+    let state = test_state();
 
     let transitions = action_to_transitions(&state, &Action::Help);
 
@@ -40,8 +39,7 @@ fn test_help_action() {
 
 #[test]
 fn test_job_manager_action() {
-    let config = AppConfig::default();
-    let state = AppState::new(config);
+    let state = test_state();
 
     let transitions = action_to_transitions(&state, &Action::JobManager);
 
@@ -156,8 +154,7 @@ fn test_help_content_completeness() {
 
 #[test]
 fn test_quit_action_exits_search_mode_when_in_search() {
-    let config = AppConfig::default();
-    let mut state = AppState::new(config);
+    let mut state = test_state();
 
     // Enter search mode
     state.ui.mode = crate::model::UIMode::Search;
@@ -173,8 +170,7 @@ fn test_quit_action_exits_search_mode_when_in_search() {
 
 #[test]
 fn test_quit_action_quits_when_in_normal_mode() {
-    let config = AppConfig::default();
-    let state = AppState::new(config);
+    let state = test_state();
 
     // Should be in normal mode by default
     assert_eq!(state.ui.mode, crate::model::UIMode::Normal);

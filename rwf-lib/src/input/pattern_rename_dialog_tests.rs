@@ -4,26 +4,16 @@
 mod tests {
     use crate::input::{Action, KeyBindings};
     use crate::model::dialog::DialogContent;
-    use crate::model::{FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
     use std::time::SystemTime;
 
-    fn make_entry(name: &str) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size: 0,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::UNIX_EPOCH,
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+    fn make_entry(name: &str) -> crate::model::FileEntry {
+        FileEntryBuilder::new(name)
+            .size(0)
+            .modified(SystemTime::UNIX_EPOCH)
+            .build()
     }
 
     fn open_pattern_rename(state: &mut AppState) {
@@ -62,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_dialog_opens_with_entry() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("photo.jpg")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -77,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_dialog_title() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("notes.txt")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -89,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_dialog_initial_values() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("file.txt")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -124,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_no_dialog_on_empty_pane() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         open_pattern_rename(&mut state);
         assert!(
             state.dialogs.current().is_none(),
@@ -136,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_update_preview_regex() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let e1 = make_entry("photo001.jpg");
         let e2 = make_entry("photo002.jpg");
         let e3 = make_entry("photo003.jpg");
@@ -180,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_preview_shows_transformation() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("file.txt")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -203,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_uses_marked_files() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let e1 = make_entry("doc1.txt");
         let e2 = make_entry("doc2.txt");
         let e3 = make_entry("image.jpg");
@@ -234,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_s_command_syntax() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("hello_world.txt")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -255,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_tr_command_syntax() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         state.current_tab_mut().left_pane.entries = vec![make_entry("abc.txt")];
         state.current_tab_mut().left_pane.cursor = 0;
 
@@ -275,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_pattern_rename_unchanged_files_in_preview() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let e1 = make_entry("file.txt");
         let e2 = make_entry("image.jpg");
         let loc1 = e1.location.clone();

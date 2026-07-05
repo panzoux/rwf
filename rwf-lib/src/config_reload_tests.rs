@@ -5,12 +5,12 @@
 mod tests {
     use crate::config::{AppConfig, ConfigManager};
     use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::test_state;
     use tempfile::TempDir;
 
     #[test]
     fn test_reload_config_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         let result = update_state(&mut state, Transition::ReloadConfig);
         assert!(result.ui_changed);
@@ -18,8 +18,7 @@ mod tests {
 
     #[test]
     fn test_update_config_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         assert_eq!(state.config.worker_pool_size, 4);
 
@@ -43,8 +42,7 @@ mod tests {
 
     #[test]
     fn test_update_config_updates_job_manager() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         assert_eq!(state.jobs.max_parallel, 4);
 
@@ -103,8 +101,7 @@ mod tests {
 
     #[test]
     fn test_config_reload_preserves_state() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some state
         update_state(&mut state, Transition::CreateTab);
@@ -130,8 +127,7 @@ mod tests {
 
     #[test]
     fn test_config_reload_without_restart() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Simulate application running with some state
         update_state(&mut state, Transition::CreateTab);

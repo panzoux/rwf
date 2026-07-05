@@ -3,17 +3,16 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::model::{ContextMenuAction, Dialog, DialogContent, Location};
-    use crate::state::{update_state, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use std::path::PathBuf;
 
     /// Test showing context menu dialog
     /// **Validates: Requirement 42.1**
     #[test]
     fn test_show_context_menu() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show context menu
         let result = update_state(&mut state, Transition::ShowContextMenu);
@@ -53,8 +52,7 @@ mod tests {
     /// **Validates: Requirement 42.2**
     #[test]
     fn test_context_menu_options() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show context menu
         update_state(&mut state, Transition::ShowContextMenu);
@@ -92,8 +90,7 @@ mod tests {
     /// **Validates: Requirement 42.3**
     #[test]
     fn test_show_drive_selection_dialog() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show drive selection dialog
         let result = update_state(&mut state, Transition::ShowDriveChangeDialog);
@@ -130,8 +127,7 @@ mod tests {
     /// **Validates: Requirement 42.4**
     #[test]
     fn test_drive_selection_lists_drives() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show drive selection dialog
         update_state(&mut state, Transition::ShowDriveChangeDialog);
@@ -154,8 +150,7 @@ mod tests {
     /// **Validates: Requirement 42.5**
     #[test]
     fn test_navigate_to_selected_drive() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Manually create a drive selection dialog with a test drive
         use crate::model::{DriveInfo, DriveType};
@@ -224,8 +219,7 @@ mod tests {
     /// **Validates: Requirement 42.7**
     #[test]
     fn test_quick_drive_switching() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show drive selection dialog
         update_state(&mut state, Transition::ShowContextMenu);
@@ -245,8 +239,7 @@ mod tests {
     /// Test context menu selection navigation
     #[test]
     fn test_context_menu_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Show context menu
         update_state(&mut state, Transition::ShowContextMenu);
@@ -271,8 +264,7 @@ mod tests {
     /// Test drive selection with no drives available
     #[test]
     fn test_drive_selection_empty() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Manually create an empty drive selection dialog
         let dialog = Dialog::drive_selection(vec![], crate::model::ui::ActivePane::Left);
@@ -289,8 +281,7 @@ mod tests {
     /// Test context menu with file selected
     #[test]
     fn test_context_menu_with_file() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add a test file to the active pane
         use crate::model::FileEntry;

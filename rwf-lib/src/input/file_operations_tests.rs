@@ -4,56 +4,19 @@
 mod tests {
     use crate::backend::MockArchiveHandler;
     use crate::input::{action_to_transitions, Action};
-    use crate::model::{FileEntry, Location};
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::model::Location;
+    use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn create_test_state() -> AppState {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Add some test entries to the active pane
         let entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "file2.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file2.txt")),
-                size: 200,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
-            FileEntry {
-                name: "dir1".to_string(),
-                location: Location::Local(PathBuf::from("/test/dir1")),
-                size: 0,
-                is_dir: true,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
-                is_symlink: false,
-                link_target: None,
-                link_kind: None,
-            },
+            FileEntryBuilder::new("file1.txt").size(100).build(),
+            FileEntryBuilder::new("file2.txt").size(200).build(),
+            FileEntryBuilder::new("dir1").dir(true).size(0).build(),
         ];
 
         state.current_tab_mut().left_pane.entries = entries;
@@ -348,8 +311,7 @@ mod tests {
 
     #[test]
     fn test_copy_with_no_entries_returns_empty() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::Copy);
 
@@ -359,8 +321,7 @@ mod tests {
 
     #[test]
     fn test_rename_with_no_entries_returns_empty() {
-        let config = AppConfig::default();
-        let state = AppState::new(config);
+        let state = test_state();
 
         let transitions = action_to_transitions(&state, &Action::Rename);
 

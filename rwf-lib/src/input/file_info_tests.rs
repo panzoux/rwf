@@ -4,25 +4,17 @@
 mod tests {
     use crate::input::{Action, KeyBindings};
     use crate::model::FileEntry;
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
     use std::time::SystemTime;
 
     fn make_entry(name: &str, size: u64, is_dir: bool) -> FileEntry {
-        FileEntry {
-            name: name.to_string(),
-            location: crate::model::Location::Local(PathBuf::from(format!("/test/{}", name))),
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::UNIX_EPOCH,
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }
+        FileEntryBuilder::new(name)
+            .size(size)
+            .dir(is_dir)
+            .modified(SystemTime::UNIX_EPOCH)
+            .build()
     }
 
     // ---- Key binding -------------------------------------------------------
@@ -39,7 +31,7 @@ mod tests {
 
     #[test]
     fn test_file_info_dialog_opens_with_entry() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let entry = make_entry("readme.txt", 1024, false);
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -58,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_file_info_dialog_title() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let entry = make_entry("notes.md", 512, false);
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -71,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_file_info_dialog_contains_filename() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let entry = make_entry("document.pdf", 99999, false);
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -96,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_file_info_dialog_directory_entry() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         let entry = make_entry("src", 0, true);
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -113,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_file_info_no_dialog_on_empty_pane() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         // No entries in pane
         assert!(state.dialogs.current().is_none());
 

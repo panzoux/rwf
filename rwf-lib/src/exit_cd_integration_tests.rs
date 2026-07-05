@@ -9,19 +9,17 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
-    use crate::model::{ActivePane, FileEntry, Location};
-    use crate::state::{update_state, AppState};
+    use crate::model::{ActivePane, Location};
+    use crate::state::update_state;
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use crate::Transition;
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     /// Test that ExitAndChangeDirectory transition is recognized
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_exit_and_change_directory_transition() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a specific directory in the active pane
         let test_dir = Location::Local(PathBuf::from("/test/directory"));
@@ -42,8 +40,7 @@ mod tests {
     /// **Validates: Requirement 46.1, 46.4**
     #[test]
     fn test_get_active_pane_directory() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a specific directory in the left pane (active by default)
         let test_dir = Location::Local(PathBuf::from("/test/directory"));
@@ -60,8 +57,7 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_different_panes() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up different directories in each pane
         let left_dir = Location::Local(PathBuf::from("/left/directory"));
@@ -90,8 +86,7 @@ mod tests {
     /// **Validates: Requirement 46.4**
     #[test]
     fn test_directory_output_nested_paths() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a deeply nested directory
         let nested_dir = Location::Local(PathBuf::from("/very/deep/nested/directory/structure"));
@@ -111,8 +106,7 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_after_navigation() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Start in one directory
         let start_dir = Location::Local(PathBuf::from("/start"));
@@ -139,8 +133,7 @@ mod tests {
     /// **Validates: Requirement 46.4**
     #[test]
     fn test_directory_output_special_characters() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory with spaces and special characters
         let special_dir = Location::Local(PathBuf::from("/test/directory with spaces"));
@@ -158,8 +151,7 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_multiple_tabs() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up directory in first tab
         let tab1_dir = Location::Local(PathBuf::from("/tab1"));
@@ -192,8 +184,7 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_archive_location() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up an archive location
         let archive_path = Location::Local(PathBuf::from("/test/archive.zip"));
@@ -216,8 +207,7 @@ mod tests {
     /// **Validates: Requirement 46.4**
     #[test]
     fn test_directory_output_consistency() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory
         let test_dir = Location::Local(PathBuf::from("/test/consistency"));
@@ -238,8 +228,7 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_empty_pane() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory with no entries
         let empty_dir = Location::Local(PathBuf::from("/empty/directory"));
@@ -257,27 +246,17 @@ mod tests {
     /// **Validates: Requirement 46.1**
     #[test]
     fn test_directory_output_with_marked_files() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set up a directory with marked files
         let test_dir = Location::Local(PathBuf::from("/test/marked"));
         state.current_tab_mut().left_pane.current_location = test_dir.clone();
 
         // Add some entries and mark them
-        let entry1 = FileEntry {
-            name: "file1.txt".to_string(),
-            location: test_dir.join("file1.txt"),
-            size: 100,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        };
+        let entry1 = FileEntryBuilder::new("file1.txt")
+            .location(test_dir.join("file1.txt"))
+            .size(100)
+            .build();
 
         state.current_tab_mut().left_pane.entries = vec![entry1.clone()];
         state

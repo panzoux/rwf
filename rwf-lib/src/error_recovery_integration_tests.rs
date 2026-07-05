@@ -9,19 +9,17 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::AppConfig;
     use crate::job::{JobKind, JobSpec, OpResult};
-    use crate::model::{DialogContent, ErrorType, FileEntry, Location};
+    use crate::model::{DialogContent, ErrorType, Location};
     use crate::state::{update_state, AppState, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
-    use std::time::SystemTime;
 
     /// Test recovery from file operation failure
     /// **Validates: Requirements 19.1, 19.2**
     #[test]
     fn test_recovery_from_file_operation_failure() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create a copy job that will fail
         let job_spec = JobSpec::new(JobKind::Copy {
@@ -88,8 +86,7 @@ mod tests {
     /// **Validates: Requirements 19.5**
     #[test]
     fn test_recovery_from_permission_error() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create a job that will fail with permission error
         let job_spec = JobSpec::new(JobKind::Delete {
@@ -133,8 +130,7 @@ mod tests {
     /// **Validates: Requirements 19.1**
     #[test]
     fn test_recovery_from_invalid_path_error() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create a job with invalid path
         let job_spec = JobSpec::new(JobKind::Mkdir {
@@ -169,8 +165,7 @@ mod tests {
     /// **Validates: Requirements 19.1-19.4**
     #[test]
     fn test_recovery_from_multiple_consecutive_failures() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create multiple jobs that will fail
         for i in 0..3 {
@@ -241,8 +236,7 @@ mod tests {
     /// **Validates: Requirements 3.8, 19.2**
     #[test]
     fn test_recovery_from_directory_read_failure() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Set current location
         state.current_tab_mut().left_pane.current_location =
@@ -286,7 +280,7 @@ mod tests {
     #[test]
     fn test_recovery_from_invalid_configuration() {
         // Create config with very small worker pool size
-        let config = AppConfig {
+        let config = crate::config::AppConfig {
             worker_pool_size: 1, // Minimum viable value
             ..Default::default()
         };
@@ -307,8 +301,7 @@ mod tests {
     /// **Validates: Requirements 38.6**
     #[test]
     fn test_recovery_from_corrupted_session_state() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Simulate corrupted session by setting invalid tab index
         state.tabs.active_index = 999; // Invalid index
@@ -328,8 +321,7 @@ mod tests {
     /// **Validates: Requirements 15.6, 15.7**
     #[test]
     fn test_recovery_from_job_cancellation_failure() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create and start a job
         let job_spec = JobSpec::new(JobKind::Copy {
@@ -367,23 +359,11 @@ mod tests {
     /// **Validates: Requirements 19.1**
     #[test]
     fn test_recovery_from_pane_state_inconsistency() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create inconsistent state: cursor beyond entries
-        state.current_tab_mut().left_pane.entries = vec![FileEntry {
-            name: "file.txt".to_string(),
-            location: Location::Local(PathBuf::from("/test/file.txt")),
-            size: 1024,
-            is_dir: false,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        }];
+        state.current_tab_mut().left_pane.entries =
+            vec![FileEntryBuilder::new("file.txt").size(1024).build()];
         state.current_tab_mut().left_pane.cursor = 999; // Invalid cursor position
 
         // Application should handle this gracefully
@@ -404,8 +384,7 @@ mod tests {
     /// **Validates: Requirements 19.1**
     #[test]
     fn test_recovery_from_empty_pane_operations() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Ensure pane is empty
         state.current_tab_mut().left_pane.entries.clear();
@@ -437,8 +416,7 @@ mod tests {
     /// **Validates: Requirements 19.1-19.4**
     #[test]
     fn test_recovery_from_mixed_success_and_failure() {
-        let config = AppConfig::default();
-        let mut state = AppState::new(config);
+        let mut state = test_state();
 
         // Create jobs that will have mixed results
         let success_job = JobSpec::new(JobKind::Mkdir {

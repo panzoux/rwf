@@ -4,7 +4,8 @@
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::Location;
-    use crate::state::{update_state, AppConfig, AppState, Transition};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
 
@@ -43,7 +44,7 @@ mod tests {
 
     #[test]
     fn test_show_history_dialog_opens_even_with_empty_history() {
-        let state = AppState::new(AppConfig::default());
+        let state = test_state();
         let transitions = action_to_transitions(&state, &Action::ShowHistoryDialog);
         assert!(
             transitions
@@ -57,7 +58,7 @@ mod tests {
 
     #[test]
     fn test_show_history_dialog_opens_when_history_exists() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         // Seed history by navigating
         update_state(
             &mut state,
@@ -87,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_history_dialog_title_includes_tab_and_pane() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         update_state(
             &mut state,
             Transition::ChangeLocation {
@@ -113,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_history_dialog_contains_visited_locations() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         update_state(
             &mut state,
             Transition::ChangeLocation {
@@ -151,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_history_dialog_selected_index_at_current_pos() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         update_state(
             &mut state,
             Transition::ChangeLocation {
@@ -202,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_navigate_to_history_index_changes_location() {
-        let mut state = AppState::new(AppConfig::default());
+        let mut state = test_state();
         update_state(
             &mut state,
             Transition::ChangeLocation {
