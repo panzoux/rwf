@@ -11,6 +11,8 @@ mod extract_confirm;
 mod frame;
 mod job_manager;
 #[cfg(test)]
+mod snapshot_tests;
+#[cfg(test)]
 mod test_support;
 
 use common::{
