@@ -178,24 +178,49 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 
 ---
 
+## Phase M — 品質整備フェーズ（機能開発凍結。詳細: [quality_overhaul.md](quality_overhaul.md)）
+
+> **背景**: 複数 AI（kilo→antigravity→qwen→gemini→claude）を渡り歩いた開発による ad-hoc コード蓄積への対処。
+> 本来の目的は一回きりの掃除ではなく「AI 主導開発でも品質が劣化しない仕組み」の構築。
+> **Phase 7 の残タスクに着手する前に本フェーズを完了させ、後続開発の負荷を下げた状態で Phase 7 以降を実施する。**
+> M 完了まで新機能（Phase 7 残・Phase 8+）の実装は行わない。全タスクは挙動保存（M7 の archive.rs TODO 修正のみ例外）。
+> 各タスク完了条件: fmt / clippy -D warnings / 全テスト緑 + コミット。
+
+| # | タスク | 状態 | 概要 |
+|---|---|---|---|
+| M1 | ガードレール導入 | `[ ]` | rustfmt.toml + cargo fmt（独立コミット, blame-ignore）/ clippy.toml（allow-unwrap-in-tests）/ workspace lints（unsafe_code deny, unwrap_used deny + モジュール allow ratchet）/ CI に fmt --check |
+| M2 | 共有部品・ドキュメント基盤 | `[ ]` | rwf-lib test_utils（〜40 テストファイルの fixture 統合）/ ui/dialog/common.rs（スタイル定数・共通レイアウト）/ ルート CLAUDE.md / ARCHITECTURE.md / TESTING.md / stale 参照修正 |
+| M3 | dialog/mod.rs 分割 | `[ ]` | 先に ratatui TestBackend + insta で 18 ダイアログのスナップショット固定 → ダイアログ単位にファイル分割（4,434 行 → mod.rs 〜100 行 + 個別ファイル）+ common.rs 適用 + テストヘルパ移行 |
+| M4 | model/dialog.rs 分割 | `[ ]` | バリアント別 struct 化（enum は維持）/ 共通 DialogUiState 分離 / new() コンストラクタで生成 1 呼び出し化 / DIALOG_DESIGN_SPEC.md 更新 |
+| M5 | state.rs 分割 | `[ ]` | state/handlers/ へハンドラ単位 move-only 分割（unwrap は触らない）。AppState 本体は分割せず所有権マップを文書化（判断根拠は詳細計画参照） |
+| M6 | unwrap/clone 監査 | `[ ]` | 非テスト unwrap 455 を分類（infallible→expect+理由 / 失敗しうる→エラー伝播）しモジュール単位で allow を ratchet 撤去。clone 799 は FileEntry 系・ホットパスに限定して修正 |
+| M7 | 仕上げ | `[ ]` | レシピ（add-a-dialog / add-a-transition）確定 / backend・job・model rustdoc / archive.rs TODO 修正（唯一の挙動変更）/ rwf-bin UI スモークテスト / ルート散乱 md 整理 / **凍結解除宣言** |
+
+---
+
 ## Phase 7 — twf超え（rwf独自の強化）
 
 > CJK表示はすでに rwf の強み。さらに差別化できる機能。
+> **着手条件: Phase M 完了。**
 
-### 推奨実装優先度（2026-07-02 番号再割当・状態更新）
+### 推奨実装優先度（2026-07-05 番号再割当・状態更新）
 
-> **番号再割当について**: 旧表の 7.1(Undo)/7.2(Leap) は、plan/ 配下の実ファイル名
-> （`7.6.transactional_rollback.md`・`7.8.leap_navigation.md`）およびコミット履歴（`feat(7.8)` = Leap）と
-> 不一致だったため、**ファイル名側を正として再割当**した。7.1・7.2 は欠番。
+> **番号再割当について（履歴）**:
+> - 2026-07-02: 旧表の 7.1(Undo)/7.2(Leap) が plan/ 配下の実ファイル名
+>   （`7.6.transactional_rollback.md`・`7.8.leap_navigation.md`）およびコミット履歴（`feat(7.8)` = Leap）と
+>   不一致だったため、ファイル名側を正として再割当。7.1・7.2 は欠番となった。
+> - 2026-07-05: 欠番だった 7.1 に **Leap（完了済み、旧 7.8）** を、7.2 に **コマンドパレット（旧 Phase 8.7 から昇格）** を割当。
+>   7.8 は欠番。**詳細ファイル名 `7.8.leap_navigation.md` とコミット履歴 `feat(7.8)` は歴史的経緯としてそのまま**（リネームしない）。
 
 | # | 機能 | 状態 | 詳細 | 優先度 | 工期 |
 |---|------|------|------|--------|------|
+| 7.1 | **Leap ナビゲーション（高速フィルタ移動）** | `[x]` | **実装完了（2026-06〜07、705a392〜c8ff3e4、旧 7.8）**。F3 で Leap モード起動、AND セグメント + prefix/substring/Migemo union フィルタ、LEAP バー + スピナー、デフォルトキーバインド配線・キー衝突解消済み。詳細は [7.8.leap_navigation.md](7.8.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
+| 7.2 | **コマンドパレット** | `[ ]` | 旧 Phase 8.7 から昇格。ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要 | ⭐⭐⭐⭐ | 小規模 |
 | 7.3 | **スマート・ファイルオープナー（Rifle システム）** | `[ ]` | Phase 6.2 (ExtensionAssociations) の発展形。MIME型ベース、条件付きロジック、複数オプション選択メニュー。**詳細md未作成（着手時に設計から）** | ⭐⭐⭐⭐ | 2週間 |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[ ]` | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
 | 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
 | 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
 | 7.7 | **スマート・トラッシュ（ゴミ箱）管理** | `[ ]` | Windows/macOS/Linux 各OS標準への対応。削除ではなくゴミ箱へ移動、復元サポート。詳細は [7.7.smart_trash.md](7.7.smart_trash.md) 参照 | ⭐⭐⭐ | 2週間 |
-| 7.8 | **Leap ナビゲーション（高速フィルタ移動）** | `[x]` | **実装完了（2026-06〜07、705a392〜c8ff3e4）**。F3 で Leap モード起動、AND セグメント + prefix/substring/Migemo union フィルタ、LEAP バー + スピナー、デフォルトキーバインド配線・キー衝突解消済み。詳細は [7.8.leap_navigation.md](7.8.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
 | 7.9 | **シンタックスハイライト（ビューア）** | `[ ]` | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張（旧7.6） | ⭐⭐⭐ | 2週間 |
 | 7.10 | **SSH/SFTP対応**（将来） | `[ ]` | リモートファイルシステム（大規模追加）（旧7.8） | ⭐⭐ | TBD |
 
@@ -213,7 +238,8 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | **Escape キャンセル** | バックグラウンドジョブ実行中に Escape で即座にキャンセル | Phase 8.4 |
 | **Git ステータス表示** | ペイン内で Git ファイル状態（modified/staged等）を色分け表示 | Phase 8.5 |
 | **Registered Folder へのコピー/移動** | **CopyToRegisteredFolder** / **MoveToRegisteredFolder**。大量の登録フォルダから高速に絞り込み・選択して整理する機能 | Phase 8.6 |
-| **コマンドパレット** | ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要 | Phase 8.7 |
+
+> 旧 8.7 コマンドパレットは 2026-07-05 に Phase 7.2 へ昇格。
 
 ---
 
@@ -244,6 +270,7 @@ Phase 3 (〜3週間)  → ジョブ管理UI洗練
 Phase 4 (〜3週間)  → ビューア完成（テキスト+Hex）
 Phase 5 (〜2週間)  → アーカイブ拡張
 Phase 6 (〜4週間)  → twf完全パリティ
+Phase M (先行実施) → 品質整備（機能凍結。Phase 7 残タスクの前提）
 Phase 7 (随時)     → 差別化機能
 ```
 
@@ -259,20 +286,21 @@ Phase 7 (随時)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-07-02（総合棚卸で全面同期）  
-現在のフェーズ: **Phase 7**（7.8 Leap Navigation 完了）
+最終更新: 2026-07-05（Phase M 追加・Phase 7 再採番: Leap→7.1、コマンドパレット 8.7→7.2 昇格）  
+現在のフェーズ: **Phase M**（品質整備・機能凍結。7.1 Leap Navigation は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
 次の作業候補（優先順）:
-1. **Phase 8.7 コマンドパレット** — ヘルプビューアに Enter ディスパッチを足すだけで完成する小規模・高価値タスク
-2. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
-3. **7.3 Rifle System** — 詳細md未作成のため設計から
+1. **Phase M1〜M7** — 品質整備（詳細: [quality_overhaul.md](quality_overhaul.md)）。完了まで機能開発凍結
+2. **7.2 コマンドパレット** — M 完了後の最初の機能。ヘルプビューアに Enter ディスパッチを足すだけの小規模・高価値タスク
+3. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
 
-## Phase 7 実装順序（2026-07-02 更新）
+## Phase 7 実装順序（2026-07-05 更新。着手は Phase M 完了後）
 
-1. ~~**7.8 Leap Navigation**~~ — **完了**（705a392〜c8ff3e4）
-2. **7.6 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.6.transactional_rollback.md
-3. **7.3 Rifle System** — Phase 6.2 の発展。詳細md未作成
-4. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md
+1. ~~**7.1 Leap Navigation**~~ — **完了**（705a392〜c8ff3e4、旧 7.8）
+2. **7.2 コマンドパレット** — 旧 8.7 から昇格。小規模・高価値
+3. **7.6 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.6.transactional_rollback.md
+4. **7.3 Rifle System** — Phase 6.2 の発展。詳細md未作成
+5. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md
 
 ## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
 
