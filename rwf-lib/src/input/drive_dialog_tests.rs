@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
-    use crate::model::Location;
+    use crate::input::{Action, KeyBindings};
     use crate::model::dialog::{DriveInfo, DriveType};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::model::Location;
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
 
@@ -77,7 +77,10 @@ mod tests {
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
-            matches!(dialog.content, crate::model::dialog::DialogContent::DriveSelection { .. }),
+            matches!(
+                dialog.content,
+                crate::model::dialog::DialogContent::DriveSelection { .. }
+            ),
             "must be DriveSelection dialog"
         );
     }
@@ -87,7 +90,11 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(dialog.title.starts_with("Select Drive"), "title must start with 'Select Drive', got: {}", dialog.title);
+        assert!(
+            dialog.title.starts_with("Select Drive"),
+            "title must start with 'Select Drive', got: {}",
+            dialog.title
+        );
     }
 
     #[test]
@@ -95,9 +102,13 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content {
+        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content
+        {
             assert!(!drives.is_empty(), "drive list must not be empty");
-            assert_eq!(drives[0].label, "~ User Directory", "first entry must be home");
+            assert_eq!(
+                drives[0].label, "~ User Directory",
+                "first entry must be home"
+            );
         } else {
             panic!("Expected DriveSelection content");
         }
@@ -109,23 +120,33 @@ mod tests {
     fn test_drive_dialog_includes_network_share_from_history() {
         let mut state = AppState::new(AppConfig::default());
         // Navigate to a network path so it ends up in history
-        update_state(&mut state, Transition::ChangeLocation {
-            pane: crate::model::ui::ActivePane::Left,
-            location: loc("\\\\fileserver\\data\\project"),
-        });
+        update_state(
+            &mut state,
+            Transition::ChangeLocation {
+                pane: crate::model::ui::ActivePane::Left,
+                location: loc("\\\\fileserver\\data\\project"),
+            },
+        );
         // Navigate away so the NW path goes into history stack
-        update_state(&mut state, Transition::ChangeLocation {
-            pane: crate::model::ui::ActivePane::Left,
-            location: loc("C:\\"),
-        });
+        update_state(
+            &mut state,
+            Transition::ChangeLocation {
+                pane: crate::model::ui::ActivePane::Left,
+                location: loc("C:\\"),
+            },
+        );
 
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content {
+        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content
+        {
             let paths: Vec<&str> = drives.iter().map(|d| d.path.as_str()).collect();
             assert!(
-                paths.iter().any(|p| p.contains("fileserver") && p.contains("data")),
-                "history NW share root must appear; got: {:?}", paths
+                paths
+                    .iter()
+                    .any(|p| p.contains("fileserver") && p.contains("data")),
+                "history NW share root must appear; got: {:?}",
+                paths
             );
         } else {
             panic!("Expected DriveSelection content");
@@ -139,7 +160,8 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { filter, .. } = &dialog.content {
+        if let crate::model::dialog::DialogContent::DriveSelection { filter, .. } = &dialog.content
+        {
             assert_eq!(filter, "", "initial filter must be empty");
         } else {
             panic!("Expected DriveSelection content");

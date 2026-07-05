@@ -9,10 +9,10 @@
 #[cfg(test)]
 mod tests {
     use crate::config::{AppConfig, ConfigManager};
-    use crate::state::{update_state, AppState, Transition};
     use crate::job::{JobKind, OpResult, SuccessData};
-    use tempfile::TempDir;
+    use crate::state::{update_state, AppState, Transition};
     use std::fs;
+    use tempfile::TempDir;
 
     /// Test that EditConfigFile transition creates an ExecuteCustomFunction job
     /// **Validates: Requirements 45.1, 45.2**
@@ -20,13 +20,13 @@ mod tests {
     fn test_launch_configuration_program_creates_job() {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Trigger EditConfigFile transition
         let result = update_state(&mut state, Transition::EditConfigFile);
-        
+
         // Should create a job
         assert_eq!(result.jobs_to_start.len(), 1);
-        
+
         // Verify it's a SpawnProcess job that waits for the editor to close
         let job = &result.jobs_to_start[0];
         match &job.kind {
@@ -35,9 +35,12 @@ mod tests {
                 // Args should contain the config path
                 let config_manager = ConfigManager::new();
                 let config_path = config_manager.config_path().to_string_lossy().to_string();
-                assert!(args.iter().any(|a| a == &config_path),
+                assert!(
+                    args.iter().any(|a| a == &config_path),
                     "Args should contain config path. Args: {:?}, Path: {}",
-                    args, config_path);
+                    args,
+                    config_path
+                );
             }
             _ => panic!("Expected SpawnProcess job, got {:?}", job.kind),
         }
@@ -50,7 +53,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         // Create config with custom editor
         let config = AppConfig {
             editor_command: Some("nano".to_string()),
@@ -59,21 +62,24 @@ mod tests {
 
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         manager.save_config(&config).unwrap();
-        
+
         // Load config and create state
         let loaded_config = manager.load_config().unwrap();
         let mut state = AppState::new(loaded_config);
-        
+
         // Trigger EditConfigFile
         let result = update_state(&mut state, Transition::EditConfigFile);
-        
+
         // Verify the job uses the configured editor
         assert_eq!(result.jobs_to_start.len(), 1);
         let job = &result.jobs_to_start[0];
         match &job.kind {
             JobKind::SpawnProcess { args, .. } => {
-                assert!(args.iter().any(|a| a == "nano"),
-                    "Args should contain 'nano', got: {:?}", args);
+                assert!(
+                    args.iter().any(|a| a == "nano"),
+                    "Args should contain 'nano', got: {:?}",
+                    args
+                );
             }
             _ => panic!("Expected SpawnProcess job"),
         }
@@ -86,68 +92,77 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
         let config = AppConfig::default();
         manager.save_config(&config).unwrap();
-        
+
         let mut state = AppState::new(config);
-        
+
         // Launch config editor
         let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
-        
+
         // Enqueue and start the job
         state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
-        
+
         // Simulate job completion
-        let _result = update_state(&mut state, Transition::CompleteJob {
-            job_id,
-            result: OpResult::Success(SuccessData::None),
-        });
-        
+        let _result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
         // Should show reload prompt dialog
-        assert!(!state.dialogs.is_empty(), "Should show reload prompt dialog");
+        assert!(
+            !state.dialogs.is_empty(),
+            "Should show reload prompt dialog"
+        );
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Configuration Editor Closed");
     }
 
     /// Test that configuration is reloaded when user confirms
     /// **Validates: Requirement 45.4**
-    /// 
+    ///
     /// Note: This test verifies the reload mechanism works, but uses default config paths
     /// since the ReloadConfig transition creates a new ConfigManager with default paths.
     #[test]
     fn test_reload_configuration_on_confirm() {
         // This test verifies the reload prompt and confirmation flow
         // The actual config reload uses default paths, so we just verify the flow works
-        
+
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Launch config editor
         let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
-        
+
         // Simulate job completion (editor closed)
-        update_state(&mut state, Transition::CompleteJob {
-            job_id,
-            result: OpResult::Success(SuccessData::None),
-        });
-        
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
         // Verify reload prompt is shown
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Configuration Editor Closed");
-        
+
         // User confirms reload
         let result = update_state(&mut state, Transition::ConfirmDialog);
-        
+
         // The reload should complete (may load default config or show error if file doesn't exist)
         // Either way, the UI should change
         assert!(result.ui_changed);
@@ -160,9 +175,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
-        
+
         // Create initial valid config
         let config = AppConfig {
             worker_pool_size: 4,
@@ -171,26 +186,29 @@ mod tests {
         manager.save_config(&config).unwrap();
 
         let mut state = AppState::new(config.clone());
-        
+
         // Launch config editor
         let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
-        
+
         // Simulate job completion
-        update_state(&mut state, Transition::CompleteJob {
-            job_id,
-            result: OpResult::Success(SuccessData::None),
-        });
-        
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
         // Write invalid JSON to config file
         fs::write(&config_path, "{ invalid json }").unwrap();
-        
+
         // User confirms reload
         let result = update_state(&mut state, Transition::ConfirmDialog);
-        
+
         // Should keep previous config (reload will fail because we're using temp paths
         // but ReloadConfig uses default paths, so it won't find the invalid config)
         assert_eq!(state.config.worker_pool_size, 4);
@@ -199,43 +217,46 @@ mod tests {
 
     /// Test that validation error shows error and keeps previous config
     /// **Validates: Requirements 45.5, 45.6**
-    /// 
+    ///
     /// Note: This test verifies validation error handling using default config paths.
     #[test]
     fn test_validation_error_shows_error_and_fallback() {
         // This test verifies that validation errors are caught and previous config is kept
         // We test this by verifying the error handling flow
-        
+
         let config = AppConfig {
             worker_pool_size: 4,
             ..Default::default()
         };
         let mut state = AppState::new(config.clone());
-        
+
         // Launch config editor
         let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
-        
+
         // Simulate job completion
-        update_state(&mut state, Transition::CompleteJob {
-            job_id,
-            result: OpResult::Success(SuccessData::None),
-        });
-        
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
         // Verify reload prompt is shown
         assert!(!state.dialogs.is_empty());
-        
+
         // User confirms reload
         // Since we're using default paths and likely no config file exists,
         // this will either load defaults or show an error
         let result = update_state(&mut state, Transition::ConfirmDialog);
-        
+
         // The reload should complete
         assert!(result.ui_changed);
-        
+
         // Previous config should be preserved if there was an error
         // (or new config loaded if successful)
         assert!(state.config.worker_pool_size > 0);
@@ -248,9 +269,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
-        
+
         // Create initial config
         let config = AppConfig {
             worker_pool_size: 4,
@@ -259,30 +280,33 @@ mod tests {
         manager.save_config(&config).unwrap();
 
         let mut state = AppState::new(config);
-        
+
         // Launch config editor
         let result = update_state(&mut state, Transition::EditConfigFile);
         let job_spec = result.jobs_to_start[0].clone();
         let job_id = job_spec.id;
         state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
-        
+
         // Simulate job completion
-        update_state(&mut state, Transition::CompleteJob {
-            job_id,
-            result: OpResult::Success(SuccessData::None),
-        });
-        
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
         // Modify config file
         let new_config = AppConfig {
             worker_pool_size: 8,
             ..Default::default()
         };
         manager.save_config(&new_config).unwrap();
-        
+
         // User cancels reload
         let result = update_state(&mut state, Transition::CancelDialog);
-        
+
         // Config should NOT be reloaded
         assert_eq!(state.config.worker_pool_size, 4);
         assert!(result.ui_changed);
@@ -294,13 +318,13 @@ mod tests {
     #[test]
     fn test_y_key_binding() {
         use crate::config::KeyBindings;
-        
+
         let keybindings = KeyBindings::default();
-        
+
         // Verify Y is bound to EditConfigFile
         let action = keybindings.normal_mode.get("Y");
         assert!(action.is_some(), "Y key should be bound");
-        
+
         // Note: The actual action type is in config::Action, not input::Action
         // We just verify the binding exists
     }

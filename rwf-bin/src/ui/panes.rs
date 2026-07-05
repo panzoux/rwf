@@ -2,6 +2,7 @@
 //!
 //! This module renders the two vertical panes side by side.
 
+use super::{pad_to_width, parse_color, smart_truncate};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
@@ -9,20 +10,33 @@ use ratatui::{
     widgets::{List, ListItem, Paragraph},
     Frame,
 };
-use rwf_lib::{model::ActivePane, AppState, FileEntry, config::ColorScheme};
-use super::{parse_color, pad_to_width, smart_truncate};
+use rwf_lib::{config::ColorScheme, model::ActivePane, AppState, FileEntry};
 
 /// Render only the anchored pane, filling the entire area (used in SideBySide viewer mode).
-pub fn render_active_pane_only(frame: &mut Frame, area: Rect, state: &AppState, anchor: ActivePane) {
+pub fn render_active_pane_only(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    anchor: ActivePane,
+) {
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
     let ellipsis = &state.config.ellipsis;
     let symlink_sep = &state.config.display.symlink_separator;
     let (pane, marking) = match anchor {
-        ActivePane::Left  => (&tab.left_pane,  &tab.left_pane.marking),
+        ActivePane::Left => (&tab.left_pane, &tab.left_pane.marking),
         ActivePane::Right => (&tab.right_pane, &tab.right_pane.marking),
     };
-    render_pane(frame, area, pane, true, marking, colors, ellipsis, symlink_sep);
+    render_pane(
+        frame,
+        area,
+        pane,
+        true,
+        marking,
+        colors,
+        ellipsis,
+        symlink_sep,
+    );
 }
 
 /// Render both panes side by side
@@ -76,16 +90,21 @@ fn render_pane(
     symlink_sep: &str,
 ) {
     // NO BORDERS - render directly to area
-    
+
     // If loading, show fetching message
     if pane.is_loading {
-        tracing::error!("[UI::render_pane] STUCK: is_loading=true for pane={:?} at location={} address={:p}", pane.display_mode, pane.current_location.display_path(), pane as *const _);
+        tracing::error!(
+            "[UI::render_pane] STUCK: is_loading=true for pane={:?} at location={} address={:p}",
+            pane.display_mode,
+            pane.current_location.display_path(),
+            pane as *const _
+        );
         let loading_msg = Paragraph::new("(fetching file entries...)")
             .style(Style::default().fg(parse_color(&colors.foreground_color)));
         frame.render_widget(loading_msg, area);
         return;
     }
-    
+
     tracing::info!("[UI::render_pane] OK: is_loading=false for pane at location={}, entries.len()={} address={:p}", pane.current_location.display_path(), pane.entries.len(), pane as *const _);
 
     // If no entries, show empty message
@@ -99,17 +118,45 @@ fn render_pane(
     // Render based on display mode
     match pane.display_mode {
         rwf_lib::model::DisplayMode::Detailed => {
-            render_detailed_mode(frame, area, pane, marking, colors, is_active, ellipsis, symlink_sep);
+            render_detailed_mode(
+                frame,
+                area,
+                pane,
+                marking,
+                colors,
+                is_active,
+                ellipsis,
+                symlink_sep,
+            );
         }
         rwf_lib::model::DisplayMode::Columns(cols) => {
-            render_column_mode(frame, area, pane, marking, cols, colors, is_active, ellipsis, symlink_sep);
+            render_column_mode(
+                frame,
+                area,
+                pane,
+                marking,
+                cols,
+                colors,
+                is_active,
+                ellipsis,
+                symlink_sep,
+            );
         }
     }
 }
 
 /// Create a list item for a file entry with selection indicator
 #[allow(clippy::too_many_arguments)]
-fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors: &ColorScheme, is_active: bool, name_width: usize, ellipsis: &str, symlink_sep: &str) -> ListItem<'static> {
+fn create_list_item(
+    entry: &FileEntry,
+    is_cursor: bool,
+    is_marked: bool,
+    colors: &ColorScheme,
+    is_active: bool,
+    name_width: usize,
+    ellipsis: &str,
+    symlink_sep: &str,
+) -> ListItem<'static> {
     // Set base colors based on active state
     let mut style = if is_active {
         Style::default()
@@ -133,9 +180,7 @@ fn create_list_item(entry: &FileEntry, is_cursor: bool, is_marked: bool, colors:
         } else {
             colors.get_inactive_file_pane_cursor_foreground()
         };
-        style = style
-            .bg(parse_color(bg_color))
-            .fg(parse_color(fg_color));
+        style = style.bg(parse_color(bg_color)).fg(parse_color(fg_color));
     }
 
     // Apply directory coloring
@@ -235,7 +280,16 @@ fn render_detailed_mode(
             let is_cursor = global_idx == pane.cursor;
             let is_marked = marking.is_marked(&entry.location);
 
-            create_list_item(entry, is_cursor, is_marked, colors, is_active, name_width, ellipsis, symlink_sep)
+            create_list_item(
+                entry,
+                is_cursor,
+                is_marked,
+                colors,
+                is_active,
+                name_width,
+                ellipsis,
+                symlink_sep,
+            )
         })
         .collect();
 
@@ -258,7 +312,7 @@ fn render_column_mode(
     symlink_sep: &str,
 ) {
     let columns = columns.clamp(1, 8) as usize;
-    
+
     // Calculate visible range
     let visible_height = area.height as usize;
     let start_idx = pane.scroll_offset;
@@ -269,22 +323,22 @@ fn render_column_mode(
 
     // Create lines for each row
     let mut lines = Vec::new();
-    
+
     for row in 0..visible_height {
         let mut spans = Vec::new();
-        
+
         for col in 0..columns {
             let idx = start_idx + row * columns + col;
-            
+
             if idx >= end_idx {
                 break;
             }
-            
+
             if idx < pane.entries.len() {
                 let entry = &pane.entries[idx];
                 let is_cursor = idx == pane.cursor;
                 let is_marked = marking.is_marked(&entry.location);
-                
+
                 // Set base colors based on active state
                 let mut style = if is_active {
                     Style::default()
@@ -295,7 +349,7 @@ fn render_column_mode(
                         .fg(parse_color(colors.get_inactive_foreground()))
                         .bg(parse_color(colors.get_inactive_background()))
                 };
-                
+
                 // Apply cursor highlighting
                 if is_cursor {
                     let bg_color = if is_active {
@@ -308,11 +362,9 @@ fn render_column_mode(
                     } else {
                         colors.get_inactive_file_pane_cursor_foreground()
                     };
-                    style = style
-                        .bg(parse_color(bg_color))
-                        .fg(parse_color(fg_color));
+                    style = style.bg(parse_color(bg_color)).fg(parse_color(fg_color));
                 }
-                
+
                 // Apply directory coloring
                 if entry.is_dir {
                     style = style.fg(if is_cursor {
@@ -328,7 +380,7 @@ fn render_column_mode(
                         parse_color(&colors.inactive_directory_color)
                     });
                 }
-                
+
                 // Apply marked file coloring
                 if is_marked {
                     style = style.fg(if is_cursor {
@@ -342,10 +394,10 @@ fn render_column_mode(
                         parse_color(&colors.marked_file_color)
                     });
                 }
-                
+
                 // Selection indicator
                 let indicator = if is_marked { "*" } else { " " };
-                
+
                 // Format the entry name
                 let name = if entry.is_dir {
                     format!("{}/", entry.name)
@@ -361,12 +413,12 @@ fn render_column_mode(
                 let truncated = smart_truncate(&name, col_width.saturating_sub(2), ellipsis);
                 let combined = format!("{}{}", indicator, truncated);
                 let padded = pad_to_width(&combined, col_width);
-                
+
                 spans.push(Span::styled(padded, style));
                 spans.push(Span::raw(" "));
             }
         }
-        
+
         if !spans.is_empty() {
             lines.push(Line::from(spans));
         }

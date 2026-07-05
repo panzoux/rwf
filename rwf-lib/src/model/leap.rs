@@ -46,7 +46,7 @@ impl LeapState {
     pub fn local_filter(&self) -> &str {
         match self.buffer.rfind('/') {
             Some(i) => &self.buffer[i + 1..],
-            None    => &self.buffer,
+            None => &self.buffer,
         }
     }
 
@@ -54,7 +54,7 @@ impl LeapState {
     pub fn trail(&self) -> &str {
         match self.buffer.rfind('/') {
             Some(i) => &self.buffer[..=i],
-            None    => "",
+            None => "",
         }
     }
 
@@ -69,12 +69,12 @@ impl LeapState {
     /// `PopChar` for any other character, or `Empty` if the buffer was already empty.
     pub fn backspace(&mut self) -> BackspaceResult {
         match self.buffer.pop() {
-            None      => BackspaceResult::Empty,
+            None => BackspaceResult::Empty,
             Some('/') => {
                 self.dir_stack.pop();
                 BackspaceResult::GoToParent
             }
-            Some(_)   => BackspaceResult::PopChar,
+            Some(_) => BackspaceResult::PopChar,
         }
     }
 
@@ -206,7 +206,8 @@ mod tests {
         let mut s = state();
         s.buffer = "mapm/ci/te".to_string();
         s.dir_stack.push((PathBuf::from("C:/test/mapmodels"), 4));
-        s.dir_stack.push((PathBuf::from("C:/test/mapmodels/city"), 7));
+        s.dir_stack
+            .push((PathBuf::from("C:/test/mapmodels/city"), 7));
         s.clear_all();
         assert_eq!(s.buffer, "");
         assert!(s.dir_stack.is_empty());

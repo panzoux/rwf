@@ -2,10 +2,10 @@
 //!
 //! **Validates: Requirements 27.1**
 
-use super::tab::TabManager;
-use super::pane::PaneModel;
-use super::location::Location;
 use super::file_entry::FileEntry;
+use super::location::Location;
+use super::pane::PaneModel;
+use super::tab::TabManager;
 use proptest::prelude::*;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -115,7 +115,7 @@ proptest! {
     ) {
         // Ensure target_tab_index is valid
         let target_tab_index = target_tab_index % manager.tabs.len();
-        
+
         // Add some entries to all tabs' panes so modifications can be applied
         for tab in &mut manager.tabs {
             for i in 0..10 {
@@ -136,7 +136,7 @@ proptest! {
                 tab.right_pane.entries.push(entry);
             }
         }
-        
+
         // Take snapshots of all tabs' panes BEFORE modifications
         let snapshots_before: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .map(|tab| (
@@ -144,12 +144,12 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Apply modifications to the target tab's left pane
         for modification in &modifications {
             modification.apply(&mut manager.tabs[target_tab_index].left_pane);
         }
-        
+
         // Take snapshots of all tabs' panes AFTER modifications
         let snapshots_after: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .map(|tab| (
@@ -157,7 +157,7 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Verify that ONLY the target tab's left pane changed
         for (i, (before, after)) in snapshots_before.iter().zip(snapshots_after.iter()).enumerate() {
             if i == target_tab_index {
@@ -202,7 +202,7 @@ proptest! {
         modifications in prop::collection::vec(pane_modification(), 1..10)
     ) {
         let target_tab_index = target_tab_index % manager.tabs.len();
-        
+
         // Add entries to all tabs
         for tab in &mut manager.tabs {
             for i in 0..10 {
@@ -223,7 +223,7 @@ proptest! {
                 tab.right_pane.entries.push(entry);
             }
         }
-        
+
         // Snapshots before
         let snapshots_before: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .map(|tab| (
@@ -231,12 +231,12 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Apply modifications to the target tab's RIGHT pane
         for modification in &modifications {
             modification.apply(&mut manager.tabs[target_tab_index].right_pane);
         }
-        
+
         // Snapshots after
         let snapshots_after: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .map(|tab| (
@@ -244,7 +244,7 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Verify independence
         for (i, (before, after)) in snapshots_before.iter().zip(snapshots_after.iter()).enumerate() {
             if i == target_tab_index {
@@ -290,7 +290,7 @@ proptest! {
         if manager.tabs.len() < 3 {
             return Ok(());
         }
-        
+
         // Add entries to all tabs
         for tab in &mut manager.tabs {
             for i in 0..10 {
@@ -311,7 +311,7 @@ proptest! {
                 tab.right_pane.entries.push(entry);
             }
         }
-        
+
         // Take snapshots of tabs 2+ before any modifications
         let unmodified_snapshots_before: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .skip(2)
@@ -320,17 +320,17 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Modify tab 0's left pane
         for modification in &tab1_mods {
             modification.apply(&mut manager.tabs[0].left_pane);
         }
-        
+
         // Modify tab 1's right pane
         for modification in &tab2_mods {
             modification.apply(&mut manager.tabs[1].right_pane);
         }
-        
+
         // Take snapshots of tabs 2+ after modifications
         let unmodified_snapshots_after: Vec<(PaneSnapshot, PaneSnapshot)> = manager.tabs.iter()
             .skip(2)
@@ -339,11 +339,11 @@ proptest! {
                 PaneSnapshot::from_pane(&tab.right_pane)
             ))
             .collect();
-        
+
         // Verify that tabs 2+ remain completely unchanged
         for (i, (before, after)) in unmodified_snapshots_before.iter()
             .zip(unmodified_snapshots_after.iter())
-            .enumerate() 
+            .enumerate()
         {
             let actual_tab_index = i + 2;
             prop_assert_eq!(
@@ -370,7 +370,7 @@ mod unit_tests {
     fn test_tab_independence_basic() {
         let mut manager = TabManager::new();
         manager.create_tab();
-        
+
         // Add entries to both tabs
         for i in 0..5 {
             let entry = FileEntry {
@@ -382,17 +382,17 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             };
             manager.tabs[0].left_pane.entries.push(entry.clone());
             manager.tabs[1].left_pane.entries.push(entry);
         }
-        
+
         // Modify tab 0's cursor
         manager.tabs[0].left_pane.cursor = 3;
-        
+
         // Verify tab 1's cursor is unchanged
         assert_eq!(manager.tabs[1].left_pane.cursor, 0);
     }
@@ -401,7 +401,7 @@ mod unit_tests {
     fn test_tab_independence_marking() {
         let mut manager = TabManager::new();
         manager.create_tab();
-        
+
         // Add entries to both tabs
         for i in 0..5 {
             let entry = FileEntry {
@@ -413,17 +413,17 @@ mod unit_tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             };
             manager.tabs[0].left_pane.entries.push(entry.clone());
             manager.tabs[1].left_pane.entries.push(entry);
         }
-        
+
         // Mark a file in tab 0
         manager.tabs[0].left_pane.entries[2].marked = true;
-        
+
         // Verify tab 1's files are not marked
         assert!(!manager.tabs[1].left_pane.entries[2].marked);
     }
@@ -432,13 +432,17 @@ mod unit_tests {
     fn test_tab_independence_location() {
         let mut manager = TabManager::new();
         manager.create_tab();
-        
+
         let original_location = manager.tabs[1].left_pane.current_location.clone();
-        
+
         // Change location in tab 0
-        manager.tabs[0].left_pane.current_location = Location::Local(PathBuf::from("/different/path"));
-        
+        manager.tabs[0].left_pane.current_location =
+            Location::Local(PathBuf::from("/different/path"));
+
         // Verify tab 1's location is unchanged
-        assert_eq!(manager.tabs[1].left_pane.current_location, original_location);
+        assert_eq!(
+            manager.tabs[1].left_pane.current_location,
+            original_location
+        );
     }
 }

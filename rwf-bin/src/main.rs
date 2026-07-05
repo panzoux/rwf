@@ -35,7 +35,10 @@ async fn main() -> Result<()> {
 
     // Export embedded action descriptions and exit (no UI needed)
     if args.export_function_list {
-        print!("{}", include_str!("../../rwf-lib/resources/action_descriptions.en.json"));
+        print!(
+            "{}",
+            include_str!("../../rwf-lib/resources/action_descriptions.en.json")
+        );
         return Ok(());
     }
 
@@ -48,7 +51,7 @@ async fn main() -> Result<()> {
 
     // Get proper app data directory based on OS
     let log_dir = rwf_lib::logging::default_log_dir();
-    
+
     // Initialize logging (this sets up the global tracing subscriber)
     // and correctly bridges with our in-memory LogManager
     rwf_lib::logging::init_logging(rwf_lib::logging::LogLevel::Information, &log_dir)?;
@@ -94,10 +97,17 @@ async fn main() -> Result<()> {
         }
         Err(e) => {
             let result = if kb_exists {
-                tracing::warn!("Failed to parse {:?}, using built-in defaults: {:?}", kb_path, e);
+                tracing::warn!(
+                    "Failed to parse {:?}, using built-in defaults: {:?}",
+                    kb_path,
+                    e
+                );
                 rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
             } else {
-                tracing::info!("Keybindings file not found at {:?}, using built-in defaults", kb_path);
+                tracing::info!(
+                    "Keybindings file not found at {:?}, using built-in defaults",
+                    kb_path
+                );
                 rwf_lib::config::ConfigLoadResult::default_fallback(kb_path, "built-in defaults")
             };
             (rwf_lib::KeyBindings::default(), result)
@@ -118,14 +128,14 @@ async fn main() -> Result<()> {
     // Restore terminal state
     terminal_manager.restore()?;
     info!("Terminal restored");
-    
+
     // Output directory to stdout if -cwd flag was provided or Shift+Q was pressed
     if args.cwd || app.should_output_directory() {
         let exit_dir = app.get_exit_directory_public();
         println!("{}", exit_dir);
         info!("Output exit directory: {}", exit_dir);
     }
-    
+
     Ok(())
 }
 
@@ -141,14 +151,22 @@ fn write_if_absent(dir: &std::path::Path, name: &str, content: &str) -> Result<(
 }
 
 fn export_default_configs(dir: &std::path::Path) -> Result<()> {
-    write_if_absent(dir, "keybindings.json",
-        include_str!("../../rwf-lib/resources/default_keybindings.json"))?;
-    write_if_absent(dir, "custom_functions.json",
-        rwf_lib::DEFAULT_CUSTOM_FUNCTIONS)?;
-    write_if_absent(dir, "menu_config.json",
-        rwf_lib::DEFAULT_MENU_CONFIG)?;
-    write_if_absent(dir, "action_descriptions.en.json",
-        include_str!("../../rwf-lib/resources/action_descriptions.en.json"))?;
+    write_if_absent(
+        dir,
+        "keybindings.json",
+        include_str!("../../rwf-lib/resources/default_keybindings.json"),
+    )?;
+    write_if_absent(
+        dir,
+        "custom_functions.json",
+        rwf_lib::DEFAULT_CUSTOM_FUNCTIONS,
+    )?;
+    write_if_absent(dir, "menu_config.json", rwf_lib::DEFAULT_MENU_CONFIG)?;
+    write_if_absent(
+        dir,
+        "action_descriptions.en.json",
+        include_str!("../../rwf-lib/resources/action_descriptions.en.json"),
+    )?;
     let config_json = serde_json::to_string_pretty(&rwf_lib::config::AppConfig::default())?;
     write_if_absent(dir, "config.json", &config_json)?;
     Ok(())

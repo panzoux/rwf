@@ -60,14 +60,12 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
 
         match &transitions[0] {
-            Transition::ShowDialog { dialog } => {
-                match &dialog.content {
-                    DialogContent::FileMask { input, .. } => {
-                        assert_eq!(input, "*.txt");
-                    }
-                    _ => panic!("Expected FileMask dialog content"),
+            Transition::ShowDialog { dialog } => match &dialog.content {
+                DialogContent::FileMask { input, .. } => {
+                    assert_eq!(input, "*.txt");
                 }
-            }
+                _ => panic!("Expected FileMask dialog content"),
+            },
             _ => panic!("Expected ShowDialog transition"),
         }
     }

@@ -4,13 +4,13 @@
 //! tracking user-visible metadata (name, description, tab info) and maintaining
 //! JobStatus for UI display.
 
+use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use std::cmp::Ordering;
 use tokio::sync::{mpsc, Semaphore};
 
-use crate::job::{JobId, JobSpec, JobStatus, BackgroundJob, BackgroundJobId, JobProgress};
+use crate::job::{BackgroundJob, BackgroundJobId, JobId, JobProgress, JobSpec, JobStatus};
 use std::fmt;
 
 /// Events from BackgroundJobManager to UI
@@ -95,22 +95,22 @@ impl BackgroundJobManager {
     pub fn with_default_cleanup(max_parallel: usize) -> Self {
         Self::new(max_parallel, Duration::from_secs(5))
     }
-    
+
     /// Get the event receiver (can only be called once)
     pub fn take_event_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<BackgroundJobEvent>> {
         self.event_rx.take()
     }
-    
+
     /// Get the event sender for cloning
     pub fn get_event_sender(&self) -> mpsc::UnboundedSender<BackgroundJobEvent> {
         self.event_tx.clone()
     }
-    
+
     /// Get the semaphore for job execution
     pub fn get_semaphore(&self) -> Arc<Semaphore> {
         self.semaphore.clone()
     }
-    
+
     /// Start a new background job
     pub fn start_job(
         &mut self,
@@ -122,12 +122,12 @@ impl BackgroundJobManager {
     ) -> BackgroundJobId {
         let short_id = self.next_short_id;
         self.next_short_id += 1;
-        
+
         let background_job_id = BackgroundJobId {
             uuid: job_spec.id,
             short_id,
         };
-        
+
         let background_job = BackgroundJob {
             id: background_job_id,
             name: name.clone(),
@@ -142,16 +142,18 @@ impl BackgroundJobManager {
             tab_id,
             tab_name,
         };
-        
+
         // Send Started event
-        let _ = self.event_tx.send(BackgroundJobEvent::Started(background_job.clone()));
-        
+        let _ = self
+            .event_tx
+            .send(BackgroundJobEvent::Started(background_job.clone()));
+
         // Store job
         self.jobs.insert(job_spec.id, background_job);
-        
+
         background_job_id
     }
-    
+
     /// Update job status to Running
     pub fn mark_job_running(&mut self, job_id: JobId) {
         if let Some(job) = self.jobs.get_mut(&job_id) {
@@ -159,13 +161,9 @@ impl BackgroundJobManager {
             let _ = self.event_tx.send(BackgroundJobEvent::Updated(job.clone()));
         }
     }
-    
+
     /// Update job progress
-    pub fn update_progress(
-        &mut self,
-        job_id: JobId,
-        progress: JobProgress,
-    ) {
+    pub fn update_progress(&mut self, job_id: JobId, progress: JobProgress) {
         if let Some(job) = self.jobs.get_mut(&job_id) {
             job.progress_percent = progress.percent;
             job.progress_message = progress.message;
@@ -173,19 +171,24 @@ impl BackgroundJobManager {
             let _ = self.event_tx.send(BackgroundJobEvent::Updated(job.clone()));
         }
     }
-    
+
     /// Mark job as completed
     pub fn mark_job_completed(&mut self, job_id: JobId) {
         if let Some(job) = self.jobs.get_mut(&job_id) {
             job.status = JobStatus::Completed;
             job.progress_percent = 100.0;
             job.end_time = Some(SystemTime::now());
-            
+
             // Schedule cleanup
             let expiry_time = Instant::now() + self.cleanup_delay;
-            self.cleanup_queue.push(JobExpiry { expiry_time, job_id });
-            
-            let _ = self.event_tx.send(BackgroundJobEvent::Completed(job.clone()));
+            self.cleanup_queue.push(JobExpiry {
+                expiry_time,
+                job_id,
+            });
+
+            let _ = self
+                .event_tx
+                .send(BackgroundJobEvent::Completed(job.clone()));
         }
     }
 
@@ -195,12 +198,17 @@ impl BackgroundJobManager {
             job.status = JobStatus::Failed;
             job.progress_message = error.clone();
             job.end_time = Some(SystemTime::now());
-            
+
             // Schedule cleanup
             let expiry_time = Instant::now() + self.cleanup_delay;
-            self.cleanup_queue.push(JobExpiry { expiry_time, job_id });
-            
-            let _ = self.event_tx.send(BackgroundJobEvent::Failed(job.clone(), error));
+            self.cleanup_queue.push(JobExpiry {
+                expiry_time,
+                job_id,
+            });
+
+            let _ = self
+                .event_tx
+                .send(BackgroundJobEvent::Failed(job.clone(), error));
         }
     }
 
@@ -209,15 +217,20 @@ impl BackgroundJobManager {
         if let Some(job) = self.jobs.get_mut(&job_id) {
             job.status = JobStatus::Cancelled;
             job.end_time = Some(SystemTime::now());
-            
+
             // Schedule cleanup
             let expiry_time = Instant::now() + self.cleanup_delay;
-            self.cleanup_queue.push(JobExpiry { expiry_time, job_id });
-            
-            let _ = self.event_tx.send(BackgroundJobEvent::Cancelled(job.clone()));
+            self.cleanup_queue.push(JobExpiry {
+                expiry_time,
+                job_id,
+            });
+
+            let _ = self
+                .event_tx
+                .send(BackgroundJobEvent::Cancelled(job.clone()));
         }
     }
-    
+
     /// Cancel a job by ID
     pub fn cancel_job(&mut self, job_id: JobId) {
         if let Some(job) = self.jobs.get_mut(&job_id) {
@@ -225,12 +238,17 @@ impl BackgroundJobManager {
                 job.cancel_token.cancel();
                 job.status = JobStatus::Cancelled;
                 job.end_time = Some(SystemTime::now());
-                
+
                 // Schedule cleanup (same as mark_job_cancelled)
                 let expiry_time = Instant::now() + self.cleanup_delay;
-                self.cleanup_queue.push(JobExpiry { expiry_time, job_id });
-                
-                let _ = self.event_tx.send(BackgroundJobEvent::Cancelled(job.clone()));
+                self.cleanup_queue.push(JobExpiry {
+                    expiry_time,
+                    job_id,
+                });
+
+                let _ = self
+                    .event_tx
+                    .send(BackgroundJobEvent::Cancelled(job.clone()));
             }
         }
     }
@@ -244,7 +262,7 @@ impl BackgroundJobManager {
         // Remove all expired jobs from heap
         while let Some(job_expiry) = self.cleanup_queue.peek() {
             if job_expiry.expiry_time > now {
-                break;  // No more expired jobs
+                break; // No more expired jobs
             }
 
             // Clone job_id before popping to avoid borrow issues
@@ -269,27 +287,29 @@ impl BackgroundJobManager {
     pub fn get_active_jobs(&self) -> impl Iterator<Item = &BackgroundJob> {
         self.jobs.values().filter(|j| j.is_active())
     }
-    
+
     /// Get all jobs (active + completed)
     pub fn get_all_jobs(&self) -> impl Iterator<Item = &BackgroundJob> {
         self.jobs.values()
     }
-    
+
     /// Get a specific job by ID
     pub fn get_job(&self, job_id: JobId) -> Option<&BackgroundJob> {
         self.jobs.get(&job_id)
     }
-    
+
     /// Get a mutable reference to a specific job by ID
     pub fn get_job_mut(&mut self, job_id: JobId) -> Option<&mut BackgroundJob> {
         self.jobs.get_mut(&job_id)
     }
-    
+
     /// Check if a tab has active jobs
     pub fn is_tab_busy(&self, tab_id: usize) -> bool {
-        self.jobs.values().any(|j| j.tab_id == tab_id && j.is_active())
+        self.jobs
+            .values()
+            .any(|j| j.tab_id == tab_id && j.is_active())
     }
-    
+
     /// Get count of active jobs for a tab
     pub fn get_active_job_count(&self, tab_id: usize) -> usize {
         self.jobs
@@ -297,17 +317,17 @@ impl BackgroundJobManager {
             .filter(|j| j.tab_id == tab_id && j.is_active())
             .count()
     }
-    
+
     /// Get job by short ID
     pub fn get_job_by_short_id(&self, short_id: u32) -> Option<&BackgroundJob> {
         self.jobs.values().find(|j| j.id.short_id == short_id)
     }
-    
+
     /// Get job by short ID (mutable)
     pub fn get_job_by_short_id_mut(&mut self, short_id: u32) -> Option<&mut BackgroundJob> {
         self.jobs.values_mut().find(|j| j.id.short_id == short_id)
     }
-    
+
     /// Remove completed/failed/cancelled jobs older than specified duration
     pub fn cleanup_old_jobs(&mut self, max_age: std::time::Duration) {
         let now = SystemTime::now();
@@ -322,15 +342,31 @@ impl BackgroundJobManager {
             true
         });
     }
-    
+
     /// Get statistics
     pub fn stats(&self) -> BackgroundJobStats {
         let active = self.jobs.values().filter(|j| j.is_active()).count();
-        let completed = self.jobs.values().filter(|j| j.status == JobStatus::Completed).count();
-        let failed = self.jobs.values().filter(|j| j.status == JobStatus::Failed).count();
-        let cancelled = self.jobs.values().filter(|j| j.status == JobStatus::Cancelled).count();
-        let pending = self.jobs.values().filter(|j| j.status == JobStatus::Pending).count();
-        
+        let completed = self
+            .jobs
+            .values()
+            .filter(|j| j.status == JobStatus::Completed)
+            .count();
+        let failed = self
+            .jobs
+            .values()
+            .filter(|j| j.status == JobStatus::Failed)
+            .count();
+        let cancelled = self
+            .jobs
+            .values()
+            .filter(|j| j.status == JobStatus::Cancelled)
+            .count();
+        let pending = self
+            .jobs
+            .values()
+            .filter(|j| j.status == JobStatus::Pending)
+            .count();
+
         BackgroundJobStats {
             total: self.jobs.len(),
             active,
@@ -359,8 +395,8 @@ pub struct BackgroundJobStats {
 mod tests {
     use super::*;
     use crate::job::{JobKind, Location};
-    use tokio_util::sync::CancellationToken;
     use std::path::PathBuf;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn test_background_job_is_active() {
@@ -461,8 +497,20 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp2")),
         });
 
-        manager.start_job("Job 1".to_string(), String::new(), 0, String::new(), spec1.clone());
-        manager.start_job("Job 2".to_string(), String::new(), 0, String::new(), spec2.clone());
+        manager.start_job(
+            "Job 1".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec1.clone(),
+        );
+        manager.start_job(
+            "Job 2".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec2.clone(),
+        );
 
         assert_eq!(manager.get_active_job_count(0), 2);
         assert!(manager.is_tab_busy(0));
@@ -477,7 +525,13 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp")),
         });
 
-        manager.start_job("Job".to_string(), String::new(), 0, String::new(), spec.clone());
+        manager.start_job(
+            "Job".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec.clone(),
+        );
         manager.mark_job_running(spec.id);
 
         assert!(manager.is_tab_busy(0));
@@ -496,7 +550,13 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp")),
         });
 
-        manager.start_job("Job".to_string(), String::new(), 0, String::new(), spec.clone());
+        manager.start_job(
+            "Job".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec.clone(),
+        );
         manager.mark_job_running(spec.id);
 
         let progress = JobProgress {
@@ -520,7 +580,13 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp")),
         });
 
-        manager.start_job("Job".to_string(), String::new(), 0, String::new(), spec.clone());
+        manager.start_job(
+            "Job".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec.clone(),
+        );
         manager.mark_job_completed(spec.id);
 
         let job = manager.get_job(spec.id).unwrap();
@@ -537,7 +603,13 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp")),
         });
 
-        manager.start_job("Job".to_string(), String::new(), 0, String::new(), spec.clone());
+        manager.start_job(
+            "Job".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec.clone(),
+        );
         manager.mark_job_failed(spec.id, "Error occurred".to_string());
 
         let job = manager.get_job(spec.id).unwrap();
@@ -556,8 +628,20 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp2")),
         });
 
-        manager.start_job("Job 1".to_string(), String::new(), 0, String::new(), spec1.clone());
-        manager.start_job("Job 2".to_string(), String::new(), 0, String::new(), spec2.clone());
+        manager.start_job(
+            "Job 1".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec1.clone(),
+        );
+        manager.start_job(
+            "Job 2".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec2.clone(),
+        );
 
         let job1 = manager.get_job_by_short_id(1);
         let job2 = manager.get_job_by_short_id(2);
@@ -587,16 +671,34 @@ mod tests {
             location: Location::Local(PathBuf::from("/tmp3")),
         });
 
-        manager.start_job("Job 1".to_string(), String::new(), 0, String::new(), spec1.clone());
-        manager.start_job("Job 2".to_string(), String::new(), 0, String::new(), spec2.clone());
-        manager.start_job("Job 3".to_string(), String::new(), 0, String::new(), spec3.clone());
+        manager.start_job(
+            "Job 1".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec1.clone(),
+        );
+        manager.start_job(
+            "Job 2".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec2.clone(),
+        );
+        manager.start_job(
+            "Job 3".to_string(),
+            String::new(),
+            0,
+            String::new(),
+            spec3.clone(),
+        );
 
         manager.mark_job_completed(spec1.id);
         manager.mark_job_failed(spec2.id, "error".to_string());
 
         let stats = manager.stats();
         assert_eq!(stats.total, 3);
-        assert_eq!(stats.active, 1);  // Job 3 is still pending
+        assert_eq!(stats.active, 1); // Job 3 is still pending
         assert_eq!(stats.completed, 1);
         assert_eq!(stats.failed, 1);
         assert_eq!(stats.pending, 1);

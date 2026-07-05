@@ -15,7 +15,7 @@ use rwf_lib::model::dialog::DialogContent;
 pub fn render_dialog_frame(frame: &mut Frame, title: &str, area: Rect) -> Rect {
     // Clear the area first so nothing shows through
     frame.render_widget(Clear, area);
-    
+
     // Create block with border and title
     let block = Block::default()
         .borders(Borders::ALL)
@@ -34,7 +34,12 @@ pub fn render_dialog_frame(frame: &mut Frame, title: &str, area: Rect) -> Rect {
 /// Render OK/Cancel buttons at bottom of dialog
 /// Renders buttons as TEXT: [*OK*] for default, [Cancel] for normal
 /// Focus indicated by white background
-pub fn render_dialog_buttons(frame: &mut Frame, area: Rect, content: &DialogContent, focused_button: usize) {
+pub fn render_dialog_buttons(
+    frame: &mut Frame,
+    area: Rect,
+    content: &DialogContent,
+    focused_button: usize,
+) {
     let buttons = get_button_labels(content);
 
     // Calculate button positions
@@ -59,13 +64,9 @@ pub fn render_dialog_buttons(frame: &mut Frame, area: Rect, content: &DialogCont
         // Focused button: black text on white background
         // Unfocused: black text on gray (transparent)
         let button_style = if is_focused {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
+            Style::default().fg(Color::Black).bg(Color::White)
         } else {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Gray)
+            Style::default().fg(Color::Black).bg(Color::Gray)
         };
 
         let button_width = button_text.len() as u16;

@@ -457,7 +457,12 @@ mod tests {
         // Enqueue jobs
         update_state(&mut state, Transition::EnqueueJob { spec: success_job });
         update_state(&mut state, Transition::EnqueueJob { spec: failure_job });
-        update_state(&mut state, Transition::EnqueueJob { spec: another_success_job });
+        update_state(
+            &mut state,
+            Transition::EnqueueJob {
+                spec: another_success_job,
+            },
+        );
 
         let job_ids: Vec<_> = state.jobs.queue.iter().map(|j| j.id).collect();
 
@@ -500,7 +505,10 @@ mod tests {
             state.jobs.completed[0].result,
             OpResult::Success(_)
         ));
-        assert!(matches!(state.jobs.completed[1].result, OpResult::Failed(_)));
+        assert!(matches!(
+            state.jobs.completed[1].result,
+            OpResult::Failed(_)
+        ));
         assert!(matches!(
             state.jobs.completed[2].result,
             OpResult::Success(_)

@@ -7,12 +7,12 @@
 //! - Log file rotation
 //! - Slow operation logging
 
+use chrono::{DateTime, Local};
 use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
-use chrono::{DateTime, Local};
 
 /// Session log manager
 #[derive(Debug)]
@@ -81,14 +81,14 @@ impl LogManager {
     /// Add a log entry and flush to file if memory limit is reached
     pub fn log_with_auto_flush(&mut self, level: LogEntryLevel, message: String) -> io::Result<()> {
         let was_at_limit = self.entries.len() >= self.max_lines;
-        
+
         self.log(level, message);
-        
+
         // If we were at the limit, flush to file
         if was_at_limit {
             self.save_to_file()?;
         }
-        
+
         Ok(())
     }
 
@@ -152,7 +152,11 @@ impl LogManager {
             .open(&self.log_path)?;
 
         // Write header
-        writeln!(file, "Session Log - {}", format_timestamp(SystemTime::now()))?;
+        writeln!(
+            file,
+            "Session Log - {}",
+            format_timestamp(SystemTime::now())
+        )?;
         writeln!(file, "=")?;
         writeln!(file)?;
 
@@ -193,13 +197,17 @@ impl LogManager {
 
         // Generate timestamped filename
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-        let file_stem = self.log_path.file_stem()
+        let file_stem = self
+            .log_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("session");
-        let extension = self.log_path.extension()
+        let extension = self
+            .log_path
+            .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("log");
-        
+
         let rotated_name = format!("{}_{}.{}", file_stem, timestamp, extension);
         let rotated_path = self.log_path.with_file_name(rotated_name);
 
@@ -224,16 +232,16 @@ fn format_timestamp(time: SystemTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::thread;
+    use tempfile::TempDir;
 
     #[test]
     fn test_log_manager_basic() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path, 5000);
-        
+
         manager.info("Test info message".to_string());
         manager.warn("Test warning message".to_string());
         manager.error("Test error message".to_string());
@@ -248,9 +256,9 @@ mod tests {
     fn test_log_manager_max_lines() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(5, log_path, 5000);
-        
+
         for i in 0..10 {
             manager.info(format!("Message {}", i));
         }
@@ -265,9 +273,9 @@ mod tests {
     fn test_save_to_file() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path.clone(), 5000);
-        
+
         manager.info("First message".to_string());
         manager.warn("Second message".to_string());
         manager.error("Third message".to_string());
@@ -289,9 +297,9 @@ mod tests {
     fn test_log_rotation() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path.clone(), 5000);
-        
+
         // Create first log
         manager.info("First log".to_string());
         manager.save_to_file().unwrap();
@@ -312,7 +320,7 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("log"))
             .collect();
-        
+
         assert_eq!(rotated_files.len(), 2);
     }
 
@@ -320,9 +328,9 @@ mod tests {
     fn test_slow_operation_logging() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path, 5000);
-        
+
         // Fast operation - should not log
         manager.log_operation_if_slow("copy", Duration::from_millis(1000), "/path/to/file");
         assert_eq!(manager.len(), 0);
@@ -338,9 +346,9 @@ mod tests {
     fn test_clear() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path, 5000);
-        
+
         manager.info("Test message".to_string());
         assert_eq!(manager.len(), 1);
 
@@ -353,9 +361,9 @@ mod tests {
     fn test_log_with_auto_flush() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(5, log_path.clone(), 5000);
-        
+
         // Fill to capacity
         for i in 0..5 {
             manager.info(format!("Message {}", i));
@@ -364,11 +372,13 @@ mod tests {
         assert!(!log_path.exists());
 
         // Add one more with auto-flush - should trigger flush
-        manager.log_with_auto_flush(LogEntryLevel::Info, "Message 5".to_string()).unwrap();
-        
+        manager
+            .log_with_auto_flush(LogEntryLevel::Info, "Message 5".to_string())
+            .unwrap();
+
         // File should now exist
         assert!(log_path.exists());
-        
+
         // Should still have 5 entries in memory
         assert_eq!(manager.len(), 5);
     }
@@ -377,18 +387,18 @@ mod tests {
     fn test_save_on_exit_if_configured() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let mut manager = LogManager::new(100, log_path.clone(), 5000);
-        
+
         manager.info("Test message".to_string());
-        
+
         // Test with save_on_exit = true
         manager.save_on_exit_if_configured(true).unwrap();
         assert!(log_path.exists());
-        
+
         // Remove the file
         fs::remove_file(&log_path).unwrap();
-        
+
         // Test with save_on_exit = false
         manager.save_on_exit_if_configured(false).unwrap();
         assert!(!log_path.exists());
@@ -398,9 +408,9 @@ mod tests {
     fn test_save_on_exit_empty_log() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("session.log");
-        
+
         let manager = LogManager::new(100, log_path.clone(), 5000);
-        
+
         // Empty log should not create file even with save_on_exit = true
         manager.save_on_exit_if_configured(true).unwrap();
         assert!(!log_path.exists());

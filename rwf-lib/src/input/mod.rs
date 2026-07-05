@@ -8,14 +8,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use tracing::debug;
 
+use crate::backend::ArchiveHandler;
+use crate::model::Location;
 use crate::state::Transition;
 use crate::AppState;
-use crate::model::Location;
-use crate::backend::ArchiveHandler;
 
 /// Archive format for compression operations
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum ArchiveFormat {
     #[default]
     ZIP,
@@ -23,7 +22,6 @@ pub enum ArchiveFormat {
     Tar,
     TarGz,
 }
-
 
 /// Check if a location is an archive file (by name suffix).
 /// Uses suffix matching rather than Path::extension() to support double
@@ -101,7 +99,9 @@ impl KeyBindings {
         if let Some(bindings) = v.get("bindings").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.normal_mode.insert(key.clone(), Self::parse_action_name(action_str));
+                    target
+                        .normal_mode
+                        .insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
@@ -110,7 +110,9 @@ impl KeyBindings {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
                     let stripped = action_str.strip_prefix("TextViewer.").unwrap_or(action_str);
-                    target.viewer_mode.insert(key.clone(), Self::parse_viewer_action_name(stripped));
+                    target
+                        .viewer_mode
+                        .insert(key.clone(), Self::parse_viewer_action_name(stripped));
                 }
             }
         }
@@ -118,35 +120,45 @@ impl KeyBindings {
         if let Some(bindings) = v.get("NormalMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.normal_mode.insert(key.clone(), Self::parse_action_name(action_str));
+                    target
+                        .normal_mode
+                        .insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("SearchMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.search_mode.insert(key.clone(), Self::parse_action_name(action_str));
+                    target
+                        .search_mode
+                        .insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("DialogMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.dialog_mode.insert(key.clone(), Self::parse_action_name(action_str));
+                    target
+                        .dialog_mode
+                        .insert(key.clone(), Self::parse_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("ViewerMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.viewer_mode.insert(key.clone(), Self::parse_viewer_action_name(action_str));
+                    target
+                        .viewer_mode
+                        .insert(key.clone(), Self::parse_viewer_action_name(action_str));
                 }
             }
         }
         if let Some(bindings) = v.get("LeapMode").and_then(|b| b.as_object()) {
             for (key, val) in bindings {
                 if let Some(action_str) = val.as_str() {
-                    target.leap_mode.insert(key.clone(), Self::parse_leap_action_name(action_str));
+                    target
+                        .leap_mode
+                        .insert(key.clone(), Self::parse_leap_action_name(action_str));
                 }
             }
         }
@@ -158,7 +170,7 @@ impl KeyBindings {
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
         let v: serde_json::Value = serde_json::from_str(&content)?;
-        let mut merged = Self::default();  // = embedded_defaults()
+        let mut merged = Self::default(); // = embedded_defaults()
         Self::apply_from_value(&v, &mut merged);
         Ok(merged)
     }
@@ -167,30 +179,32 @@ impl KeyBindings {
     /// Handles: exact rwf variant names, TWF alias names, and custom function names.
     fn parse_action_name(s: &str) -> Action {
         // 1. Try exact deserialization as an Action enum variant
-        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+        if let Ok(action) =
+            serde_json::from_value::<Action>(serde_json::Value::String(s.to_string()))
+        {
             return action;
         }
         // 2. Legacy alias table — maps old/variant names to canonical Actions
         match s {
-            "ReloadConfiguration"               => return Action::ReloadConfig,
-            "LaunchConfigEditor"                => return Action::EditConfigFile,
-            "ViewFile"                          => return Action::OpenTextViewer,
-            "ViewFileAsText"                    => return Action::OpenTextViewer,
-            "ViewFileAsHex"                     => return Action::OpenHexViewer,
+            "ReloadConfiguration" => return Action::ReloadConfig,
+            "LaunchConfigEditor" => return Action::EditConfigFile,
+            "ViewFile" => return Action::OpenTextViewer,
+            "ViewFileAsText" => return Action::OpenTextViewer,
+            "ViewFileAsHex" => return Action::OpenHexViewer,
             "ViewFileAsImage" | "OpenImageViewer" => return Action::OpenTextViewer, // fallback until image viewer exists
-            "NavigateToRoot"                    => return Action::CursorHome,
-            "PreviousTab"                       => return Action::PrevTab,
-            "JumpToPath"                        => return Action::ShowJumpToPathDialog,
-            "JumpToFile"                        => return Action::ShowJumpToFileDialog,
+            "NavigateToRoot" => return Action::CursorHome,
+            "PreviousTab" => return Action::PrevTab,
+            "JumpToPath" => return Action::ShowJumpToPathDialog,
+            "JumpToFile" => return Action::ShowJumpToFileDialog,
             "ExitApplicationAndChangeDirectory" => return Action::ExitAndChangeDirectory,
-            "ShowJobManager"                    => return Action::JobManager,
-            "RegisterCurrentDirectory"          => return Action::RegisterCurrentFolder,
-            "ToggleMarkAndMoveUp"               => return Action::ToggleMarkUp,
-            "ShowSortDialog"                    => return Action::OpenSortDialog,
-            "MarkRange"                         => return Action::RangeMarking,
-            "FileMask"                          => return Action::FileMaskFilter,
-            "WildcardMark"                      => return Action::WildcardMarking,
-            "ResizeTaskPanelUp" | "ResizeTaskPaneUp"     => return Action::IncreaseTaskPanelHeight,
+            "ShowJobManager" => return Action::JobManager,
+            "RegisterCurrentDirectory" => return Action::RegisterCurrentFolder,
+            "ToggleMarkAndMoveUp" => return Action::ToggleMarkUp,
+            "ShowSortDialog" => return Action::OpenSortDialog,
+            "MarkRange" => return Action::RangeMarking,
+            "FileMask" => return Action::FileMaskFilter,
+            "WildcardMark" => return Action::WildcardMarking,
+            "ResizeTaskPanelUp" | "ResizeTaskPaneUp" => return Action::IncreaseTaskPanelHeight,
             "ResizeTaskPanelDown" | "ResizeTaskPaneDown" => return Action::DecreaseTaskPanelHeight,
             _ => {}
         }
@@ -202,32 +216,36 @@ impl KeyBindings {
     fn parse_viewer_action_name(s: &str) -> Action {
         // Try full enum variant names first (e.g. "ViewerScrollDown", "ViewerClose")
         // so that keybindings.json can use the same names as the Action enum.
-        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+        if let Ok(action) =
+            serde_json::from_value::<Action>(serde_json::Value::String(s.to_string()))
+        {
             return action;
         }
         // Then try short TWF-style aliases for backward compatibility.
         match s {
             "FindNext" | "FindPrevious" => Action::ViewerFindNext,
-            "FindPrev"                  => Action::ViewerFindPrev,
-            "Search"                    => Action::ViewerBeginSearch,
-            "StartForwardSearch"        => Action::ViewerBeginSearch,
-            "StartBackwardSearch"       => Action::ViewerBeginSearchBackward,
-            "GoToFileTop"               => Action::ViewerGoToTop,
-            "GoToFileBottom"            => Action::ViewerGoToBottom,
-            "GoToLineStart"             => Action::ViewerScrollLeft,
-            "GoToLineEnd"               => Action::ViewerScrollRight,
-            "PageUp"                    => Action::ViewerPageUp,
-            "PageDown"                  => Action::ViewerPageDown,
-            "ToggleHexMode"             => Action::ViewerToggleHexMode,
-            "CycleEncoding"             => Action::ViewerCycleEncoding,
-            "Close"                     => Action::ViewerClose,
+            "FindPrev" => Action::ViewerFindPrev,
+            "Search" => Action::ViewerBeginSearch,
+            "StartForwardSearch" => Action::ViewerBeginSearch,
+            "StartBackwardSearch" => Action::ViewerBeginSearchBackward,
+            "GoToFileTop" => Action::ViewerGoToTop,
+            "GoToFileBottom" => Action::ViewerGoToBottom,
+            "GoToLineStart" => Action::ViewerScrollLeft,
+            "GoToLineEnd" => Action::ViewerScrollRight,
+            "PageUp" => Action::ViewerPageUp,
+            "PageDown" => Action::ViewerPageDown,
+            "ToggleHexMode" => Action::ViewerToggleHexMode,
+            "CycleEncoding" => Action::ViewerCycleEncoding,
+            "Close" => Action::ViewerClose,
             _ => Action::InvokeCustomFunction(s.to_string()),
         }
     }
-    
+
     /// Convert a leap mode action name string to an `Action`.
     fn parse_leap_action_name(s: &str) -> Action {
-        if let Ok(action) = serde_json::from_value::<Action>(serde_json::Value::String(s.to_string())) {
+        if let Ok(action) =
+            serde_json::from_value::<Action>(serde_json::Value::String(s.to_string()))
+        {
             return action;
         }
         Action::InvokeCustomFunction(s.to_string())
@@ -244,54 +262,56 @@ impl KeyBindings {
         std::fs::write(path, content)?;
         Ok(())
     }
-    
+
     /// Map a key event to an action, handling multi-key sequences
     pub fn map_key(&mut self, event: &KeyEvent) -> Option<Action> {
         let key_string = format_key_event(event);
-        
+
         // Check if we're in a multi-key sequence
         if let Some(prefix) = &self.pending_sequence {
             let full_key = format!("{}+{}", prefix, key_string);
-            
+
             // Try to find the full sequence
             if let Some(action) = self.normal_mode.get(&full_key) {
                 self.pending_sequence = None;
                 return Some(action.clone());
             }
-            
+
             // Sequence not found, clear pending
             self.pending_sequence = None;
             return None;
         }
-        
+
         // Check for direct match
         if let Some(action) = self.normal_mode.get(&key_string) {
             return Some(action.clone());
         }
-        
+
         // Check if this starts a multi-key sequence
-        let potential_sequences: Vec<_> = self.normal_mode.keys()
+        let potential_sequences: Vec<_> = self
+            .normal_mode
+            .keys()
             .filter(|k| k.starts_with(&format!("{}+", key_string)))
             .collect();
-        
+
         if !potential_sequences.is_empty() {
             self.pending_sequence = Some(key_string);
             return Some(Action::PendingSequence);
         }
-        
+
         None
     }
-    
+
     /// Check if we're waiting for the next key in a sequence
     pub fn has_pending_sequence(&self) -> bool {
         self.pending_sequence.is_some()
     }
-    
+
     /// Get the pending sequence prefix for visual feedback
     pub fn get_pending_sequence(&self) -> Option<&str> {
         self.pending_sequence.as_deref()
     }
-    
+
     /// Clear any pending sequence
     pub fn clear_pending_sequence(&mut self) {
         self.pending_sequence = None;
@@ -328,7 +348,9 @@ impl KeyBindings {
                     map.entry(name.clone()).or_default().push(key.clone());
                 }
                 _ => {
-                    map.entry(format!("{:?}", action)).or_default().push(key.clone());
+                    map.entry(format!("{:?}", action))
+                        .or_default()
+                        .push(key.clone());
                 }
             }
         }
@@ -362,7 +384,7 @@ pub enum Action {
     HistoryBack,
     HistoryForward,
     ShowHistoryDialog,
-    
+
     // File Operations
     Copy,
     Move,
@@ -371,7 +393,7 @@ pub enum Action {
     Rename,
     PatternRename,
     CreateDirectory,
-    
+
     // Marking
     ToggleMark,
     ToggleMarkUp,
@@ -381,7 +403,7 @@ pub enum Action {
     WildcardMarking,
     RangeMarking,
     InvertMarks,
-    
+
     // Sorting
     SortByName,
     SortBySize,
@@ -390,7 +412,7 @@ pub enum Action {
     CycleSortMode,
     ToggleSortOrder,
     OpenSortDialog,
-    
+
     // Search and Filter
     StartSearch,
     FileMaskFilter,
@@ -412,14 +434,14 @@ pub enum Action {
     DisplayMode8,
     ToggleHidden,
     Refresh,
-    
+
     // Tabs
     NewTab,
     CloseTab,
     NextTab,
     PrevTab,
     TabSelector,
-    
+
     // Registered Folders
     RegisterCurrentFolder,
     ShowRegisteredFolderDialog,
@@ -463,26 +485,26 @@ pub enum Action {
     RotateHelpLanguage,
     JobManager,
     CalculateDirectorySize,
-    
+
     // Pane operations
     SyncPanes,
     SwapPanes,
-    
+
     // Context menu, drive selection, custom functions
     ShowContextMenu,
     ShowDriveChangeDialog,
     ShowCustomFunctionsDialog,
-    
+
     // Information dialogs
     ShowFileInfoForCursor,
-    OpenWithEditor,         // open cursor file with Editor from config
+    OpenWithEditor, // open cursor file with Editor from config
     ShowVersion,
     ReloadConfig,
     ShowVersionInfo,        // compact version/system info (backtick key)
     ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
     SaveLog,
     EditConfigFile,
-    
+
     // Task panel operations
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,
@@ -495,19 +517,19 @@ pub enum Action {
     Extract,
 
     // Test jobs
-    CountDownJob(u32),  // Countdown test job (parameter: duration in seconds, 0 = default 180)
+    CountDownJob(u32), // Countdown test job (parameter: duration in seconds, 0 = default 180)
 
     // Leap Navigation (F3 mode)
     EnterLeap,
-    LeapGoDeeperOrOpen,  // Right: enter dir (append "/") or select file
-    LeapGoParent,        // Left: go to parent (strip local+"/")
+    LeapGoDeeperOrOpen, // Right: enter dir (append "/") or select file
+    LeapGoParent,       // Left: go to parent (strip local+"/")
     LeapCursorUp,
     LeapCursorDown,
-    LeapClearLocal,      // Ctrl+U: clear local filter
-    LeapClearAll,        // Ctrl+K: clear all, return to leap root
-    LeapConfirm,         // F3 again: exit leap, keep cursor
-    LeapCancel,          // Escape: exit leap, restore pre-leap state
-    LeapOpenFile,        // Enter: open file or enter dir
+    LeapClearLocal, // Ctrl+U: clear local filter
+    LeapClearAll,   // Ctrl+K: clear all, return to leap root
+    LeapConfirm,    // F3 again: exit leap, keep cursor
+    LeapCancel,     // Escape: exit leap, restore pre-leap state
+    LeapOpenFile,   // Enter: open file or enter dir
 
     // Internal
     PendingSequence,
@@ -588,7 +610,10 @@ impl<'de> serde::Deserialize<'de> for DupMap {
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "a map of key bindings")
             }
-            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<DupMap, A::Error> {
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<DupMap, A::Error> {
                 let mut seen = std::collections::HashMap::<String, String>::new();
                 let mut dupes = Vec::<(String, String, String)>::new();
                 while let Some(key) = map.next_key::<String>()? {
@@ -609,12 +634,18 @@ impl<'de> serde::Deserialize<'de> for DupMap {
 #[derive(serde::Deserialize, Default)]
 #[serde(default)]
 struct KeybindingsForDupCheck {
-    #[serde(rename = "NormalMode")]  normal_mode: Option<DupMap>,
-    #[serde(rename = "ViewerMode")]  viewer_mode: Option<DupMap>,
-    #[serde(rename = "DialogMode")]  dialog_mode: Option<DupMap>,
-    #[serde(rename = "SearchMode")]  search_mode: Option<DupMap>,
-    #[serde(rename = "LeapMode")]    leap_mode:   Option<DupMap>,
-    #[serde(rename = "bindings")]    bindings:    Option<DupMap>,
+    #[serde(rename = "NormalMode")]
+    normal_mode: Option<DupMap>,
+    #[serde(rename = "ViewerMode")]
+    viewer_mode: Option<DupMap>,
+    #[serde(rename = "DialogMode")]
+    dialog_mode: Option<DupMap>,
+    #[serde(rename = "SearchMode")]
+    search_mode: Option<DupMap>,
+    #[serde(rename = "LeapMode")]
+    leap_mode: Option<DupMap>,
+    #[serde(rename = "bindings")]
+    bindings: Option<DupMap>,
 }
 
 /// Scan keybindings JSON content for duplicate keys within each mode section.
@@ -629,8 +660,8 @@ pub fn check_keybindings_content_duplicates(content: &str) -> Vec<String> {
         ("ViewerMode", check.viewer_mode),
         ("DialogMode", check.dialog_mode),
         ("SearchMode", check.search_mode),
-        ("LeapMode",   check.leap_mode),
-        ("bindings",   check.bindings),
+        ("LeapMode", check.leap_mode),
+        ("bindings", check.bindings),
     ];
     for (name, maybe_map) in sections {
         if let Some(DupMap(dupes)) = maybe_map {
@@ -647,10 +678,11 @@ pub fn check_keybindings_content_duplicates(content: &str) -> Vec<String> {
 
 /// Scan a keybindings JSON file for duplicate keys within each mode section.
 pub fn check_keybindings_duplicates(path: &std::path::Path) -> Vec<String> {
-    let Ok(content) = std::fs::read_to_string(path) else { return vec![] };
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return vec![];
+    };
     check_keybindings_content_duplicates(&content)
 }
-
 
 fn delete_job_name(targets: &[Location]) -> String {
     let file_name = |loc: &Location| -> String {
@@ -662,8 +694,17 @@ fn delete_job_name(targets: &[Location]) -> String {
     match targets.len() {
         0 => "Delete".to_string(),
         1 => format!("Delete '{}'", file_name(&targets[0])),
-        2 => format!("Delete '{}', '{}'", file_name(&targets[0]), file_name(&targets[1])),
-        n => format!("Delete {} files: '{}', '{}'...", n, file_name(&targets[0]), file_name(&targets[1])),
+        2 => format!(
+            "Delete '{}', '{}'",
+            file_name(&targets[0]),
+            file_name(&targets[1])
+        ),
+        n => format!(
+            "Delete {} files: '{}', '{}'...",
+            n,
+            file_name(&targets[0]),
+            file_name(&targets[1])
+        ),
     }
 }
 
@@ -729,11 +770,17 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::EnterDirectory => {
             if let Some(entry) = state.active_pane().current_entry() {
-                debug!("EnterDirectory: entry = {}, is_dir = {}", entry.name, entry.is_dir);
-                
+                debug!(
+                    "EnterDirectory: entry = {}, is_dir = {}",
+                    entry.name, entry.is_dir
+                );
+
                 if entry.is_dir {
                     // Enter directory
-                    debug!("EnterDirectory: entering directory {}", entry.location.display_path());
+                    debug!(
+                        "EnterDirectory: entering directory {}",
+                        entry.location.display_path()
+                    );
                     vec![Transition::ChangeLocation {
                         pane: state.ui.active_pane,
                         location: entry.location.clone(),
@@ -763,25 +810,39 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                         });
                         if let Some(assoc) = assoc {
                             let expander = crate::macro_expander::MacroExpander::new();
-                            let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
+                            let func =
+                                crate::model::dialog::CustomFunction::new("open", &assoc.command);
                             let func = if let Some(ref shell) = assoc.shell {
                                 func.with_shell(shell)
-                            } else { func };
+                            } else {
+                                func
+                            };
                             match expander.expand(state, &func) {
                                 Ok(command) => {
-                                    debug!("EnterDirectory: running association command: {}", command);
+                                    debug!(
+                                        "EnterDirectory: running association command: {}",
+                                        command
+                                    );
                                     let working_dir = state.active_pane().current_location.clone();
                                     let shell = assoc.shell.clone();
-                                    vec![Transition::ExecuteAssociation { command, working_dir, shell }]
+                                    vec![Transition::ExecuteAssociation {
+                                        command,
+                                        working_dir,
+                                        shell,
+                                    }]
                                 }
                                 Err(_) => {
                                     debug!("EnterDirectory: association command expansion failed, falling back to viewer");
-                                    vec![Transition::OpenTextViewer { location: entry.location.clone() }]
+                                    vec![Transition::OpenTextViewer {
+                                        location: entry.location.clone(),
+                                    }]
                                 }
                             }
                         } else {
                             debug!("EnterDirectory: opening text viewer for {}", entry.name);
-                            vec![Transition::OpenTextViewer { location: entry.location.clone() }]
+                            vec![Transition::OpenTextViewer {
+                                location: entry.location.clone(),
+                            }]
                         }
                     }
                 }
@@ -808,19 +869,24 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             let tab_index = state.tabs.active_index;
             let tab = state.current_tab();
 
-            let build_entries = |pane: crate::model::ui::ActivePane| -> (Vec<crate::model::Location>, usize) {
-                let (stack, _) = tab.history.stack_and_pos(pane);
-                let current_loc = match pane {
-                    crate::model::ui::ActivePane::Left  => tab.left_pane.current_location.clone(),
-                    crate::model::ui::ActivePane::Right => tab.right_pane.current_location.clone(),
+            let build_entries =
+                |pane: crate::model::ui::ActivePane| -> (Vec<crate::model::Location>, usize) {
+                    let (stack, _) = tab.history.stack_and_pos(pane);
+                    let current_loc = match pane {
+                        crate::model::ui::ActivePane::Left => {
+                            tab.left_pane.current_location.clone()
+                        }
+                        crate::model::ui::ActivePane::Right => {
+                            tab.right_pane.current_location.clone()
+                        }
+                    };
+                    let mut entries = stack.to_vec();
+                    if entries.last() != Some(&current_loc) {
+                        entries.push(current_loc);
+                    }
+                    let pos = entries.len().saturating_sub(1);
+                    (entries, pos)
                 };
-                let mut entries = stack.to_vec();
-                if entries.last() != Some(&current_loc) {
-                    entries.push(current_loc);
-                }
-                let pos = entries.len().saturating_sub(1);
-                (entries, pos)
-            };
 
             let (left_entries, left_pos) = build_entries(crate::model::ui::ActivePane::Left);
             let (right_entries, right_pos) = build_entries(crate::model::ui::ActivePane::Right);
@@ -830,9 +896,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             } else {
                 vec![Transition::ShowDialog {
                     dialog: crate::model::Dialog::history_dialog(
-                        tab_index, active_pane,
-                        left_entries, left_pos,
-                        right_entries, right_pos,
+                        tab_index,
+                        active_pane,
+                        left_entries,
+                        left_pos,
+                        right_entries,
+                        right_pos,
                     ),
                 }]
             }
@@ -973,7 +1042,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::PrevTab => vec![Transition::PrevTab],
         Action::TabSelector => {
             // Create tab names for the selector dialog
-            let tab_names: Vec<String> = state.tabs.tabs.iter()
+            let tab_names: Vec<String> = state
+                .tabs
+                .tabs
+                .iter()
                 .enumerate()
                 .map(|(i, tab)| {
                     let left_path = tab.left_pane.current_location.display_path();
@@ -981,14 +1053,16 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     format!("Tab {}: {} | {}", i + 1, left_path, right_path)
                 })
                 .collect();
-            
+
             vec![Transition::ShowDialog {
                 dialog: crate::model::Dialog::tab_selector(tab_names),
             }]
         }
         Action::Copy => {
             let pane = state.active_pane();
-            let active_marked: Vec<_> = pane.entries.iter()
+            let active_marked: Vec<_> = pane
+                .entries
+                .iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
                 .map(|e| e.location.clone())
                 .collect();
@@ -1021,7 +1095,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::Move => {
             let pane = state.active_pane();
-            let active_marked: Vec<_> = pane.entries.iter()
+            let active_marked: Vec<_> = pane
+                .entries
+                .iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
                 .map(|e| e.location.clone())
                 .collect();
@@ -1054,7 +1130,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::Delete => {
             let pane = state.active_pane();
-            let active_marked: Vec<_> = pane.entries.iter()
+            let active_marked: Vec<_> = pane
+                .entries
+                .iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
                 .map(|e| (e.location.clone(), e.is_dir))
                 .collect();
@@ -1076,7 +1154,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::DeleteForce => {
             let pane = state.active_pane();
-            let active_marked: Vec<_> = pane.entries.iter()
+            let active_marked: Vec<_> = pane
+                .entries
+                .iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
                 .map(|e| e.location.clone())
                 .collect();
@@ -1139,7 +1219,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::ClearSearchFilter => {
             // Clear both search and filter
             let mut transitions = vec![];
-            
+
             // Clear search if in search mode
             if state.ui.mode == crate::model::UIMode::Search {
                 transitions.push(Transition::ClearSearch);
@@ -1147,7 +1227,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     mode: crate::model::UIMode::Normal,
                 });
             }
-            
+
             // Clear file mask if one is set
             if state.active_pane().file_mask.is_some() {
                 transitions.push(Transition::SetFileMask {
@@ -1155,7 +1235,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     mask: None,
                 });
             }
-            
+
             transitions
         }
         Action::ExitSearchMode => {
@@ -1217,8 +1297,11 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             );
             let mut dialog = crate::model::Dialog::help_with_language(lang);
             if let crate::model::DialogContent::Help {
-                entries: ref mut e, show_unbound: ref mut u, ..
-            } = dialog.content {
+                entries: ref mut e,
+                show_unbound: ref mut u,
+                ..
+            } = dialog.content
+            {
                 *e = entries;
                 *u = state.config.help_show_unbound;
             }
@@ -1263,13 +1346,11 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             });
             // Create BackgroundJob for UI, enqueue, AND start immediately
             // All in one transition to ensure atomicity
-            vec![
-                Transition::CreateAndStartCountDownJob {
-                    spec: job_spec,
-                    name: format!("CountDownJob {}", duration_secs),
-                    description: "Countdown test job".to_string(),
-                },
-            ]
+            vec![Transition::CreateAndStartCountDownJob {
+                spec: job_spec,
+                name: format!("CountDownJob {}", duration_secs),
+                description: "Countdown test job".to_string(),
+            }]
         }
         Action::Refresh => {
             // Refresh the current pane by clearing cache and reloading directory
@@ -1333,7 +1414,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 _ => &pane.current_location,
             };
             let path = loc.display_path();
-            let name = loc.path()
+            let name = loc
+                .path()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string())
@@ -1405,12 +1487,16 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             let sources = {
                 let pane = state.active_pane();
                 if pane.marking.count() > 0 {
-                    pane.entries.iter()
+                    pane.entries
+                        .iter()
                         .filter(|e| pane.marking.is_marked(&e.location))
                         .map(|e| e.location.clone())
                         .collect()
                 } else if let Some(entry) = pane.current_entry() {
-                    debug!("No marked files, using current entry from active pane: {:?}", entry.location);
+                    debug!(
+                        "No marked files, using current entry from active pane: {:?}",
+                        entry.location
+                    );
                     vec![entry.location.clone()]
                 } else {
                     vec![]
@@ -1420,7 +1506,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 // Active pane is empty, try the opposite pane
                 debug!("Active pane is empty, checking opposite pane");
                 if let Some(entry) = state.opposite_pane().current_entry() {
-                    debug!("Using current entry from opposite pane: {:?}", entry.location);
+                    debug!(
+                        "Using current entry from opposite pane: {:?}",
+                        entry.location
+                    );
                     vec![entry.location.clone()]
                 } else {
                     debug!("No files to compress - both panes have no current entry");
@@ -1433,7 +1522,10 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             debug!("Creating compression dialog with {} file(s)", sources.len());
             // Show compression dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::compression(sources, state.config.text_input.edit_mode),
+                dialog: crate::model::Dialog::compression(
+                    sources,
+                    state.config.text_input.edit_mode,
+                ),
             }]
         }
         Action::Extract => {
@@ -1450,7 +1542,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                         ),
                     }]
                 } else {
-                    vec![]  // Not an archive
+                    vec![] // Not an archive
                 }
             } else {
                 vec![]
@@ -1503,13 +1595,13 @@ mod tests {
     #[test]
     fn test_multi_key_sequence() {
         let mut bindings = KeyBindings::default();
-        
+
         // First key in sequence
         let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
         let action = bindings.map_key(&event);
         assert_eq!(action, Some(Action::PendingSequence));
         assert!(bindings.has_pending_sequence());
-        
+
         // Second key completes sequence
         let event = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
         let action = bindings.map_key(&event);
@@ -1559,7 +1651,9 @@ mod tests {
         let map = bindings.viewer_action_to_keys();
 
         // ViewerScrollDown is bound to "Down" and "j"
-        let keys = map.get("ViewerScrollDown").expect("ViewerScrollDown must be in map");
+        let keys = map
+            .get("ViewerScrollDown")
+            .expect("ViewerScrollDown must be in map");
         assert!(keys.contains(&"Down".to_string()));
         assert!(keys.contains(&"j".to_string()));
     }
@@ -1593,11 +1687,20 @@ mod tests {
         assert_eq!(bindings.normal_mode.get("F3"), Some(&Action::EnterLeap));
         assert_eq!(bindings.leap_mode.get("F3"), Some(&Action::LeapConfirm));
         assert_eq!(bindings.leap_mode.get("Escape"), Some(&Action::LeapCancel));
-        assert_eq!(bindings.leap_mode.get("Right"), Some(&Action::LeapGoDeeperOrOpen));
+        assert_eq!(
+            bindings.leap_mode.get("Right"),
+            Some(&Action::LeapGoDeeperOrOpen)
+        );
         assert_eq!(bindings.leap_mode.get("Left"), Some(&Action::LeapGoParent));
         assert_eq!(bindings.leap_mode.get("/"), Some(&Action::LeapGoParent));
-        assert_eq!(bindings.leap_mode.get("Ctrl+u"), Some(&Action::LeapClearLocal));
-        assert_eq!(bindings.leap_mode.get("Ctrl+k"), Some(&Action::LeapClearAll));
+        assert_eq!(
+            bindings.leap_mode.get("Ctrl+u"),
+            Some(&Action::LeapClearLocal)
+        );
+        assert_eq!(
+            bindings.leap_mode.get("Ctrl+k"),
+            Some(&Action::LeapClearAll)
+        );
         assert_eq!(bindings.leap_mode.get("Enter"), Some(&Action::LeapOpenFile));
     }
 
@@ -1621,10 +1724,10 @@ mod file_operations_tests;
 #[cfg(test)]
 mod marking_tests;
 
+mod history_tests;
 #[cfg(test)]
 mod marking_wildcard_tests;
 mod rename_tests;
-mod history_tests;
 
 #[cfg(test)]
 mod drive_dialog_tests;

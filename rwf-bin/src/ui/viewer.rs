@@ -5,19 +5,19 @@
 //! lines have been indexed so far with a '+' suffix while still loading.
 
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
+    Frame,
 };
-use unicode_width::UnicodeWidthChar;
 use rwf_lib::config::ColorScheme;
-use rwf_lib::model::{ViewerState, ViewerMode, UIMode, TextEncoding, Location};
+use rwf_lib::model::{Location, TextEncoding, UIMode, ViewerMode, ViewerState};
+use unicode_width::UnicodeWidthChar;
 
-use unicode_width::UnicodeWidthStr;
 use super::colors::parse_color;
 use super::{pad_to_width, smart_truncate};
+use unicode_width::UnicodeWidthStr;
 
 /// Render the file viewer.
 /// `sbs_focused`: true when this is a SideBySide viewer that currently has
@@ -42,9 +42,9 @@ pub fn render_viewer(
     // Brackets signal that this viewer panel has keyboard focus (SideBySide mode).
     let mode_label = match (viewer.mode, sbs_focused) {
         (ViewerMode::Text, false) => "Text Viewer",
-        (ViewerMode::Hex,  false) => "Hex Viewer",
-        (ViewerMode::Text, true)  => "[Text Viewer]",
-        (ViewerMode::Hex,  true)  => "[Hex Viewer]",
+        (ViewerMode::Hex, false) => "Hex Viewer",
+        (ViewerMode::Text, true) => "[Text Viewer]",
+        (ViewerMode::Hex, true) => "[Hex Viewer]",
     };
 
     // Search count + case label for the title (shown when results exist).
@@ -71,7 +71,9 @@ pub fn render_viewer(
     };
 
     // File size (always shown when buffer is available).
-    let title_size = viewer.buffer.as_ref()
+    let title_size = viewer
+        .buffer
+        .as_ref()
         .map(|b| format!(" | Size: {}", format_with_commas(b.total_bytes())))
         .unwrap_or_default();
 
@@ -82,13 +84,23 @@ pub fn render_viewer(
                     let idx = buffer.line_index.lock().unwrap();
                     (idx.offsets.len(), idx.is_complete)
                 };
-                let pos = if indexed == 0 { 0 } else { viewer.line_offset + 1 };
+                let pos = if indexed == 0 {
+                    0
+                } else {
+                    viewer.line_offset + 1
+                };
                 let suffix = if complete { "" } else { "+" };
-                format!(" {} | {}/{}{} | {} | Col:{}{}{} ",
-                    mode_label, pos, indexed, suffix,
+                format!(
+                    " {} | {}/{}{} | {} | Col:{}{}{} ",
+                    mode_label,
+                    pos,
+                    indexed,
+                    suffix,
                     viewer.encoding.name(),
                     viewer.column_offset + 1,
-                    title_search, title_size)
+                    title_search,
+                    title_size
+                )
             } else {
                 format!(" {} | Loading… ", mode_label)
             }
@@ -99,9 +111,15 @@ pub fn render_viewer(
             } else {
                 let total_bytes = viewer.buffer.as_ref().map(|b| b.total_bytes()).unwrap_or(0);
                 let byte_offset = viewer.line_offset * 16;
-                format!(" {} | 0x{:08X} / 0x{:08X} | {}{}{} ",
-                    mode_label, byte_offset, total_bytes,
-                    viewer.encoding.name(), title_search, title_size)
+                format!(
+                    " {} | 0x{:08X} / 0x{:08X} | {}{}{} ",
+                    mode_label,
+                    byte_offset,
+                    total_bytes,
+                    viewer.encoding.name(),
+                    title_search,
+                    title_size
+                )
             }
         }
     };
@@ -114,34 +132,40 @@ pub fn render_viewer(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.height < 3 { return; }
+    if inner.height < 3 {
+        return;
+    }
 
     // ── Layout: content | filename-bar | hint-bar ─────────────────────────────
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(inner);
 
-    let content_area  = chunks[0];
+    let content_area = chunks[0];
     let filename_area = chunks[1];
-    let hint_area     = chunks[2];
+    let hint_area = chunks[2];
 
     // ── Content ───────────────────────────────────────────────────────────────
     match viewer.mode {
         ViewerMode::Text => render_text_content(frame, content_area, viewer, fg, bg),
-        ViewerMode::Hex  => render_hex_content(frame, content_area, viewer, fg, bg),
+        ViewerMode::Hex => render_hex_content(frame, content_area, viewer, fg, bg),
     }
 
     // ── Filename bar: path (left) + search status (right) ────────────────────
-    let filename  = viewer.location.display_path();
+    let filename = viewer.location.display_path();
     let right_str = search_bar_status(viewer);
 
-    let bar_w      = filename_area.width as usize;
-    let right_len  = right_str.width();
+    let bar_w = filename_area.width as usize;
+    let right_len = right_str.width();
     // Reserve 1 leading space + space for right portion.
     let left_avail = bar_w.saturating_sub(right_len).saturating_sub(1);
     // smart_truncate: show beginning + end (keeps drive root AND filename/extension visible).
-    let shortened  = smart_truncate(&filename, left_avail, "…");
+    let shortened = smart_truncate(&filename, left_avail, "…");
     let left_display = format!(" {}", pad_to_width(&shortened, left_avail));
 
     let search_fg = if viewer.search_query.is_some()
@@ -156,7 +180,7 @@ pub fn render_viewer(
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(left_display, Style::default().fg(status_fg).bg(status_bg)),
-            Span::styled(right_str,    Style::default().fg(search_fg).bg(status_bg)),
+            Span::styled(right_str, Style::default().fg(search_fg).bg(status_bg)),
         ])),
         filename_area,
     );
@@ -165,7 +189,11 @@ pub fn render_viewer(
     match ui_mode {
         UIMode::ViewerSearch => {
             let prompt = if viewer.search_forward { '/' } else { '?' };
-            let case_label = if viewer.case_sensitive { "[Aa]" } else { "[aA]" };
+            let case_label = if viewer.case_sensitive {
+                "[Aa]"
+            } else {
+                "[aA]"
+            };
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(
@@ -174,7 +202,10 @@ pub fn render_viewer(
                     ),
                     Span::styled(
                         "█",
-                        Style::default().fg(Color::Yellow).bg(bg).add_modifier(Modifier::SLOW_BLINK),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .bg(bg)
+                            .add_modifier(Modifier::SLOW_BLINK),
                     ),
                 ])),
                 hint_area,
@@ -189,7 +220,10 @@ pub fn render_viewer(
                     ),
                     Span::styled(
                         "█",
-                        Style::default().fg(Color::Yellow).bg(bg).add_modifier(Modifier::SLOW_BLINK),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .bg(bg)
+                            .add_modifier(Modifier::SLOW_BLINK),
                     ),
                     Span::styled(
                         "  g/<:First  G/>:Last  Esc:Cancel",
@@ -201,8 +235,10 @@ pub fn render_viewer(
         }
         _ if viewer.search_query.is_some() => {
             frame.render_widget(
-                Paragraph::new(" n:Next  N:Prev  Ctrl+^:Case  /:Fwd  ?:Back  Ctrl+U:ClearHL  Esc:Close")
-                    .style(Style::default().fg(Color::DarkGray).bg(bg)),
+                Paragraph::new(
+                    " n:Next  N:Prev  Ctrl+^:Case  /:Fwd  ?:Back  Ctrl+U:ClearHL  Esc:Close",
+                )
+                .style(Style::default().fg(Color::DarkGray).bg(bg)),
                 hint_area,
             );
         }
@@ -241,7 +277,9 @@ fn format_with_commas(n: usize) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     for (i, c) in s.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 { out.push(','); }
+        if i > 0 && i % 3 == 0 {
+            out.push(',');
+        }
         out.push(c);
     }
     out.chars().rev().collect()
@@ -249,22 +287,15 @@ fn format_with_commas(n: usize) -> String {
 
 // ── Text rendering ────────────────────────────────────────────────────────────
 
-fn render_text_content(
-    frame: &mut Frame,
-    area: Rect,
-    viewer: &ViewerState,
-    fg: Color,
-    bg: Color,
-) {
+fn render_text_content(frame: &mut Frame, area: Rect, viewer: &ViewerState, fg: Color, bg: Color) {
     let viewport_height = area.height as usize;
-    let viewport_width  = area.width  as usize;
+    let viewport_width = area.width as usize;
 
     let buffer = match viewer.buffer.as_ref() {
         Some(b) => b,
         None => {
             frame.render_widget(
-                Paragraph::new("(Loading…)")
-                    .style(Style::default().fg(Color::DarkGray).bg(bg)),
+                Paragraph::new("(Loading…)").style(Style::default().fg(Color::DarkGray).bg(bg)),
                 area,
             );
             return;
@@ -279,17 +310,20 @@ fn render_text_content(
 
     if indexed_count == 0 {
         frame.render_widget(
-            Paragraph::new("(Loading…)")
-                .style(Style::default().fg(Color::DarkGray).bg(bg)),
+            Paragraph::new("(Loading…)").style(Style::default().fg(Color::DarkGray).bg(bg)),
             area,
         );
         return;
     }
 
-    let num_digits = if indexed_count >= 10000 { 5 }
-                     else if indexed_count >= 1000 { 4 }
-                     else { 3 };
-    let prefix_width  = num_digits + 3; // " NNN | "
+    let num_digits = if indexed_count >= 10000 {
+        5
+    } else if indexed_count >= 1000 {
+        4
+    } else {
+        3
+    };
+    let prefix_width = num_digits + 3; // " NNN | "
     let content_width = viewport_width.saturating_sub(prefix_width);
 
     let mut rendered: Vec<Line> = Vec::with_capacity(viewport_height);
@@ -317,10 +351,12 @@ fn render_text_content(
         let decoded = sanitize_for_display(&viewer.encoding.decode(&raw));
 
         let num_str = format!("{:>width$}", line_idx + 1, width = num_digits);
-        let prefix  = format!(" {} | ", num_str);
+        let prefix = format!(" {} | ", num_str);
 
         // Collect match ranges for this line: (byte_start, byte_end) in decoded string.
-        let line_match_ranges: Vec<(usize, usize)> = viewer.search_matches.iter()
+        let line_match_ranges: Vec<(usize, usize)> = viewer
+            .search_matches
+            .iter()
             .filter(|&&(l, _, _)| l == line_idx)
             .map(|&(_, s, e)| (s, e))
             .collect();
@@ -332,16 +368,18 @@ fn render_text_content(
             Style::default().fg(Color::DarkGray).bg(bg)
         };
 
-        let normal_style  = Style::default().fg(fg).bg(bg);
-        let match_style   = Style::default().fg(Color::Black).bg(Color::Yellow);
-        let current_style = Style::default().fg(Color::Black).bg(Color::LightYellow)
+        let normal_style = Style::default().fg(fg).bg(bg);
+        let match_style = Style::default().fg(Color::Black).bg(Color::Yellow);
+        let current_style = Style::default()
+            .fg(Color::Black)
+            .bg(Color::LightYellow)
             .add_modifier(Modifier::BOLD);
 
         // Byte range of the active match on this line, if any.
-        let current_match_range: Option<(usize, usize)> =
-            viewer.search_match_index
-                .and_then(|mi| viewer.search_matches.get(mi))
-                .and_then(|&(ml, ms, me)| if ml == line_idx { Some((ms, me)) } else { None });
+        let current_match_range: Option<(usize, usize)> = viewer
+            .search_match_index
+            .and_then(|mi| viewer.search_matches.get(mi))
+            .and_then(|&(ml, ms, me)| if ml == line_idx { Some((ms, me)) } else { None });
 
         let content_spans = highlight_spans(
             &decoded,
@@ -367,55 +405,67 @@ fn render_text_content(
 
 // ── Hex rendering ─────────────────────────────────────────────────────────────
 
-fn render_hex_content(
-    frame: &mut Frame,
-    area: Rect,
-    viewer: &ViewerState,
-    fg: Color,
-    bg: Color,
-) {
+fn render_hex_content(frame: &mut Frame, area: Rect, viewer: &ViewerState, fg: Color, bg: Color) {
     if viewer.buffer.is_none() {
         frame.render_widget(
-            Paragraph::new("(Loading…)")
-                .style(Style::default().fg(Color::DarkGray).bg(bg)),
+            Paragraph::new("(Loading…)").style(Style::default().fg(Color::DarkGray).bg(bg)),
             area,
         );
         return;
     }
 
-    let addr_style         = Style::default().fg(Color::DarkGray).bg(bg);
-    let hex_style          = Style::default().fg(fg).bg(bg);
-    let ascii_style        = Style::default().fg(Color::Cyan).bg(bg);
-    let sep_style          = Style::default().fg(Color::DarkGray).bg(bg);
-    let hex_match_style    = Style::default().fg(Color::Black).bg(Color::Yellow);
-    let ascii_match_style  = Style::default().fg(Color::Black).bg(Color::Yellow);
-    let hex_current_style  = Style::default().fg(Color::Black).bg(Color::LightYellow).add_modifier(Modifier::BOLD);
-    let ascii_current_style= Style::default().fg(Color::Black).bg(Color::LightYellow).add_modifier(Modifier::BOLD);
+    let addr_style = Style::default().fg(Color::DarkGray).bg(bg);
+    let hex_style = Style::default().fg(fg).bg(bg);
+    let ascii_style = Style::default().fg(Color::Cyan).bg(bg);
+    let sep_style = Style::default().fg(Color::DarkGray).bg(bg);
+    let hex_match_style = Style::default().fg(Color::Black).bg(Color::Yellow);
+    let ascii_match_style = Style::default().fg(Color::Black).bg(Color::Yellow);
+    let hex_current_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::LightYellow)
+        .add_modifier(Modifier::BOLD);
+    let ascii_current_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::LightYellow)
+        .add_modifier(Modifier::BOLD);
 
     // ── Column header (fixed, does not scroll) ────────────────────────────────
     // Reserve the first row for the header; the rest is the scrollable data area.
     let (header_area, data_area) = if area.height > 1 {
         (
-            Rect { x: area.x, y: area.y, width: area.width, height: 1 },
-            Rect { x: area.x, y: area.y + 1, width: area.width, height: area.height - 1 },
+            Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: 1,
+            },
+            Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: area.height - 1,
+            },
         )
     } else {
         (Rect { width: 0, ..area }, area) // no room for header
     };
 
     if header_area.width > 0 {
-        let hdr_style = Style::default().fg(Color::White).bg(bg).add_modifier(Modifier::DIM);
+        let hdr_style = Style::default()
+            .fg(Color::White)
+            .bg(bg)
+            .add_modifier(Modifier::DIM);
         // Hex column labels: "+0 " × 8, extra space, "+8 " × 8  → 49 chars total
         let hex_cols_1: String = (0u8..8).map(|i| format!("+{:X} ", i)).collect();
         let hex_cols_2: String = (8u8..16).map(|i| format!("+{:X} ", i)).collect();
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("  Offset  ", hdr_style),            // 10 chars — aligns with address
-                Span::styled(hex_cols_1, hdr_style),               // 24 chars
-                Span::styled(" ", hdr_style),                      //  1 char  — mid-gap
-                Span::styled(hex_cols_2, hdr_style),               // 24 chars
-                Span::styled(" |", sep_style),                     //  2 chars
-                Span::styled("0123456789ABCDEF", ascii_style),     // 16 chars
+                Span::styled("  Offset  ", hdr_style), // 10 chars — aligns with address
+                Span::styled(hex_cols_1, hdr_style),   // 24 chars
+                Span::styled(" ", hdr_style),          //  1 char  — mid-gap
+                Span::styled(hex_cols_2, hdr_style),   // 24 chars
+                Span::styled(" |", sep_style),         //  2 chars
+                Span::styled("0123456789ABCDEF", ascii_style), // 16 chars
                 Span::styled("|", sep_style),
             ])),
             header_area,
@@ -425,7 +475,8 @@ fn render_hex_content(
     let viewport_height = data_area.height as usize;
 
     // Current match byte range (file offsets).
-    let current_match_bytes: Option<(usize, usize)> = viewer.search_match_index
+    let current_match_bytes: Option<(usize, usize)> = viewer
+        .search_match_index
         .and_then(|mi| viewer.search_matches.get(mi))
         .map(|&(_, s, e)| (s, e));
 
@@ -435,7 +486,9 @@ fn render_hex_content(
         if let Some((offset, bytes)) = viewer.get_hex_bytes_vec(line_idx) {
             // Collect match byte ranges that overlap this row.
             let row_end = offset + bytes.len();
-            let row_matches: Vec<(usize, usize)> = viewer.search_matches.iter()
+            let row_matches: Vec<(usize, usize)> = viewer
+                .search_matches
+                .iter()
                 .map(|&(_, s, e)| (s, e))
                 .filter(|&(s, e)| s < row_end && e > offset)
                 .collect();
@@ -448,10 +501,20 @@ fn render_hex_content(
                 }
             });
             rendered.push(hex_row_spans(
-                offset, &bytes, &row_matches, current_match_bytes,
-                addr_style, hex_style, hex_match_style, hex_current_style,
-                ascii_style, ascii_match_style, ascii_current_style, sep_style,
-                viewer.encoding, addr_highlight,
+                offset,
+                &bytes,
+                &row_matches,
+                current_match_bytes,
+                addr_style,
+                hex_style,
+                hex_match_style,
+                hex_current_style,
+                ascii_style,
+                ascii_match_style,
+                ascii_current_style,
+                sep_style,
+                viewer.encoding,
+                addr_highlight,
             ));
         } else {
             rendered.push(Line::from(Span::styled("", hex_style)));
@@ -471,11 +534,18 @@ fn render_hex_content(
 /// resulting substring inside `format!("{:08X}", offset)`.
 fn compute_addr_highlight(query: &str, offset: usize) -> Option<(usize, usize)> {
     let q = query.trim();
-    let q = q.strip_prefix("0x").or_else(|| q.strip_prefix("0X")).unwrap_or(q);
-    if q.is_empty() { return None; }
+    let q = q
+        .strip_prefix("0x")
+        .or_else(|| q.strip_prefix("0X"))
+        .unwrap_or(q);
+    if q.is_empty() {
+        return None;
+    }
     let q_upper = q.to_ascii_uppercase();
     let addr_str = format!("{:08X}", offset);
-    addr_str.find(q_upper.as_str()).map(|s| (s, s + q_upper.len()))
+    addr_str
+        .find(q_upper.as_str())
+        .map(|s| (s, s + q_upper.len()))
 }
 
 /// Build a full hex-viewer row Line with per-byte match highlighting.
@@ -553,13 +623,18 @@ fn hex_row_spans(
         let abs_end = offset + byte_end;
         let as_ = if current_match.is_some_and(|(ms, me)| ms < abs_end && me > abs_start) {
             ascii_current_style
-        } else if match_ranges.iter().any(|&(ms, me)| ms < abs_end && me > abs_start) {
+        } else if match_ranges
+            .iter()
+            .any(|&(ms, me)| ms < abs_end && me > abs_start)
+        {
             ascii_match_style
         } else {
             ascii_style
         };
         let ch_width = UnicodeWidthChar::width_cjk(ch).unwrap_or(1);
-        if displayed_cols + ch_width > 16 { break; }
+        if displayed_cols + ch_width > 16 {
+            break;
+        }
         if as_ != ascii_cur {
             if !ascii_buf.is_empty() {
                 ascii_spans.push(Span::styled(ascii_buf.clone(), ascii_cur));
@@ -586,7 +661,10 @@ fn hex_row_spans(
         if hl_s > 0 {
             spans.push(Span::styled(addr_str[..hl_s].to_string(), addr_style));
         }
-        spans.push(Span::styled(addr_str[hl_s..hl_e].to_string(), hex_current_style));
+        spans.push(Span::styled(
+            addr_str[hl_s..hl_e].to_string(),
+            hex_current_style,
+        ));
         spans.push(Span::styled(format!("{}  ", &addr_str[hl_e..]), addr_style));
     } else {
         spans.push(Span::styled(format!("{}  ", addr_str), addr_style));
@@ -606,15 +684,17 @@ fn hex_row_spans(
 /// The resulting characters are all printable and width-1, so the column
 /// accounting in `take_display_cols` / `pad_cols` stays exact.
 fn sanitize_for_display(s: &str) -> String {
-    s.chars().map(|c| {
-        let n = c as u32;
-        match n {
-            0x00..=0x1F => char::from_u32(0x2400 + n).unwrap_or('·'), // ␀..␟
-            0x7F        => '\u{2421}',                                  // ␡
-            0x80..=0x9F => '·', // C1 controls — no Unicode picture; use middle dot
-            _           => c,
-        }
-    }).collect()
+    s.chars()
+        .map(|c| {
+            let n = c as u32;
+            match n {
+                0x00..=0x1F => char::from_u32(0x2400 + n).unwrap_or('·'), // ␀..␟
+                0x7F => '\u{2421}',                                       // ␡
+                0x80..=0x9F => '·', // C1 controls — no Unicode picture; use middle dot
+                _ => c,
+            }
+        })
+        .collect()
 }
 
 // ── Unicode helpers ───────────────────────────────────────────────────────────
@@ -636,10 +716,10 @@ fn highlight_spans(
     current_style: Style,
 ) -> Vec<Span<'static>> {
     let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut buf      = String::new();
+    let mut buf = String::new();
     let mut cur_style = normal_style;
-    let mut skipped  = 0usize;
-    let mut taken    = 0usize;
+    let mut skipped = 0usize;
+    let mut taken = 0usize;
     let mut byte_pos = 0usize;
 
     let style_for = |bp: usize| -> Style {
@@ -658,11 +738,13 @@ fn highlight_spans(
         let ch_style = style_for(byte_pos);
 
         if skipped < column_offset {
-            skipped  += ch_width;
+            skipped += ch_width;
             byte_pos += ch_bytes;
             continue;
         }
-        if taken + ch_width > max_cols { break; }
+        if taken + ch_width > max_cols {
+            break;
+        }
 
         if ch_style != cur_style {
             if !buf.is_empty() {
@@ -672,7 +754,7 @@ fn highlight_spans(
             cur_style = ch_style;
         }
         buf.push(ch);
-        taken    += ch_width;
+        taken += ch_width;
         byte_pos += ch_bytes;
     }
 
@@ -700,12 +782,16 @@ pub fn render_dir_preview(
     colors: &ColorScheme,
     sbs_focused: bool,
 ) {
-    let fg     = parse_color(&colors.text_viewer_foreground_color);
-    let bg     = parse_color(&colors.text_viewer_background_color);
+    let fg = parse_color(&colors.text_viewer_foreground_color);
+    let bg = parse_color(&colors.text_viewer_background_color);
     let status_bg = parse_color(&colors.text_viewer_status_background_color);
-    let dim_fg    = Color::DarkGray;
+    let dim_fg = Color::DarkGray;
 
-    let title = if sbs_focused { " [Directory] " } else { " Directory " };
+    let title = if sbs_focused {
+        " [Directory] "
+    } else {
+        " Directory "
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -714,7 +800,9 @@ pub fn render_dir_preview(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.height < 2 { return; }
+    if inner.height < 2 {
+        return;
+    }
 
     let path_str = location.display_path();
     let path_display = smart_truncate(&path_str, inner.width.saturating_sub(2) as usize, "…");
@@ -762,4 +850,3 @@ pub fn render_dir_preview(
         inner,
     );
 }
-

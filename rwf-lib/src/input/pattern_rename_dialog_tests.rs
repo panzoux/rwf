@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
+    use crate::input::{Action, KeyBindings};
     use crate::model::dialog::DialogContent;
     use crate::model::{FileEntry, Location};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -30,13 +30,22 @@ mod tests {
         update_state(state, Transition::ShowPatternRenameDialog);
     }
 
-    fn update_fields(state: &mut AppState, find: &str, replace: &str, use_regex: bool, case_sensitive: bool) {
-        update_state(state, Transition::UpdatePatternRenameFields {
-            find: find.to_string(),
-            replace: replace.to_string(),
-            use_regex,
-            case_sensitive,
-        });
+    fn update_fields(
+        state: &mut AppState,
+        find: &str,
+        replace: &str,
+        use_regex: bool,
+        case_sensitive: bool,
+    ) {
+        update_state(
+            state,
+            Transition::UpdatePatternRenameFields {
+                find: find.to_string(),
+                replace: replace.to_string(),
+                use_regex,
+                case_sensitive,
+            },
+        );
     }
 
     // ---- Key binding -------------------------------------------------------
@@ -60,7 +69,10 @@ mod tests {
         open_pattern_rename(&mut state);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(matches!(dialog.content, DialogContent::PatternRename { .. }));
+        assert!(matches!(
+            dialog.content,
+            DialogContent::PatternRename { .. }
+        ));
     }
 
     #[test]
@@ -85,9 +97,16 @@ mod tests {
 
         let dialog = state.dialogs.current().expect("dialog must be open");
         if let DialogContent::PatternRename {
-            find, replace, use_regex, case_sensitive,
-            preview, focused_field, preview_scroll, ..
-        } = &dialog.content {
+            find,
+            replace,
+            use_regex,
+            case_sensitive,
+            preview,
+            focused_field,
+            preview_scroll,
+            ..
+        } = &dialog.content
+        {
             assert_eq!(find, "", "initial find must be empty");
             assert_eq!(replace, "", "initial replace must be empty");
             assert!(*use_regex, "regex mode on by default (like TWF)");
@@ -107,7 +126,10 @@ mod tests {
     fn test_pattern_rename_no_dialog_on_empty_pane() {
         let mut state = AppState::new(AppConfig::default());
         open_pattern_rename(&mut state);
-        assert!(state.dialogs.current().is_none(), "no dialog should open on empty pane");
+        assert!(
+            state.dialogs.current().is_none(),
+            "no dialog should open on empty pane"
+        );
     }
 
     // ---- Preview update (regex mode) -------------------------------------
@@ -132,12 +154,22 @@ mod tests {
         update_fields(&mut state, r"\.jpg$", ".jpeg", true, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { find, replace, preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename {
+            find,
+            replace,
+            preview,
+            ..
+        } = &dialog.content
+        {
             assert_eq!(find, r"\.jpg$");
             assert_eq!(replace, ".jpeg");
             assert_eq!(preview.len(), 3, "all 3 marked files in preview");
             for (_, new_name) in preview {
-                assert!(new_name.ends_with(".jpeg"), "extension replaced: {}", new_name);
+                assert!(
+                    new_name.ends_with(".jpeg"),
+                    "extension replaced: {}",
+                    new_name
+                );
             }
         } else {
             panic!("Expected PatternRename dialog content");

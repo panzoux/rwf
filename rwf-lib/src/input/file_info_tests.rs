@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
+    use crate::input::{Action, KeyBindings};
     use crate::model::FileEntry;
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -48,7 +48,10 @@ mod tests {
 
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(
-            matches!(dialog.content, crate::model::dialog::DialogContent::FileInfo { .. }),
+            matches!(
+                dialog.content,
+                crate::model::dialog::DialogContent::FileInfo { .. }
+            ),
             "must be FileInfo dialog"
         );
     }
@@ -76,7 +79,13 @@ mod tests {
         update_state(&mut state, Transition::ShowFileInfo);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::FileInfo { file_name, size, is_dir, .. } = &dialog.content {
+        if let crate::model::dialog::DialogContent::FileInfo {
+            file_name,
+            size,
+            is_dir,
+            ..
+        } = &dialog.content
+        {
             assert_eq!(file_name, "document.pdf");
             assert_eq!(*size, 99999);
             assert!(!is_dir);

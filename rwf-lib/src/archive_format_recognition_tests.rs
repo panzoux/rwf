@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::backend::archive::{
-        ArchiveHandler, MultiFormatArchiveHandler,
-        RarArchiveHandler, IsoArchiveHandler, LzhArchiveHandler,
+        ArchiveHandler, IsoArchiveHandler, LzhArchiveHandler, MultiFormatArchiveHandler,
+        RarArchiveHandler,
     };
     use crate::model::Location;
     use std::path::PathBuf;
@@ -73,19 +73,31 @@ mod tests {
         let cancel = CancellationToken::new();
         let err = h.list_entries(&loc, &cancel).await.unwrap_err();
         let msg = err.to_string().to_lowercase();
-        assert!(msg.contains("rar") || msg.contains("unrar"), "error should mention RAR/unrar: {}", err);
+        assert!(
+            msg.contains("rar") || msg.contains("unrar"),
+            "error should mention RAR/unrar: {}",
+            err
+        );
     }
 
     #[tokio::test]
     async fn test_rar_create_returns_proprietary_error() {
         let h = RarArchiveHandler::new();
         let cancel = CancellationToken::new();
-        let err = h.create_archive(
-            &[Location::Local(PathBuf::from("/file.txt"))],
-            &Location::Local(PathBuf::from("/out.rar")),
-            &cancel,
-        ).await.unwrap_err();
-        assert!(err.to_string().to_lowercase().contains("proprietary") || err.to_string().to_lowercase().contains("cannot"), "got: {}", err);
+        let err = h
+            .create_archive(
+                &[Location::Local(PathBuf::from("/file.txt"))],
+                &Location::Local(PathBuf::from("/out.rar")),
+                &cancel,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("proprietary")
+                || err.to_string().to_lowercase().contains("cannot"),
+            "got: {}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -97,7 +109,11 @@ mod tests {
         };
         let cancel = CancellationToken::new();
         let err = h.list_entries(&loc, &cancel).await.unwrap_err();
-        assert!(!err.to_string().is_empty(), "error should not be empty: {}", err);
+        assert!(
+            !err.to_string().is_empty(),
+            "error should not be empty: {}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -109,7 +125,12 @@ mod tests {
         };
         let cancel = CancellationToken::new();
         let err = h.list_entries(&loc, &cancel).await.unwrap_err();
-        assert!(err.to_string().to_lowercase().contains("lzh") || err.to_string().to_lowercase().contains("lha"), "got: {}", err);
+        assert!(
+            err.to_string().to_lowercase().contains("lzh")
+                || err.to_string().to_lowercase().contains("lha"),
+            "got: {}",
+            err
+        );
     }
 
     // ── input::is_archive recognizes all formats ──────────────────────────────

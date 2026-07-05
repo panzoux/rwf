@@ -1,5 +1,5 @@
 //! Integration tests for pane synchronization and swapping operations
-//! 
+//!
 //! Tests Requirements 41.1-41.7:
 //! - Pane synchronization (O key)
 //! - Pane swapping (Shift+O key)
@@ -19,11 +19,11 @@ mod tests {
     fn create_test_state_with_different_panes() -> (AppState, TempDir, TempDir) {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Create temporary directories for testing
         let left_dir = TempDir::new().unwrap();
         let right_dir = TempDir::new().unwrap();
-        
+
         // Set up left pane
         let left_location = Location::Local(left_dir.path().to_path_buf());
         state.current_tab_mut().left_pane.current_location = left_location.clone();
@@ -37,9 +37,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "left_file2.txt".to_string(),
@@ -50,13 +50,13 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ];
         state.current_tab_mut().left_pane.cursor = 1;
-        
+
         // Set up right pane
         let right_location = Location::Local(right_dir.path().to_path_buf());
         state.current_tab_mut().right_pane.current_location = right_location.clone();
@@ -70,9 +70,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "right_file2.txt".to_string(),
@@ -83,9 +83,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "right_file3.txt".to_string(),
@@ -96,62 +96,62 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ];
         state.current_tab_mut().right_pane.cursor = 2;
-        
+
         // Set active pane to left
         state.ui.active_pane = ActivePane::Left;
-        
+
         (state, left_dir, right_dir)
     }
 
     #[test]
     fn test_sync_panes_from_left_to_right() {
-        // Requirement 41.1: WHEN the user presses 'O', THE Application SHALL synchronize 
+        // Requirement 41.1: WHEN the user presses 'O', THE Application SHALL synchronize
         // the opposite pane to the active pane's current directory
-        // Requirement 41.2: WHEN synchronization occurs, THE Application SHALL navigate 
+        // Requirement 41.2: WHEN synchronization occurs, THE Application SHALL navigate
         // the opposite pane to the same location as the active pane
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         let left_location = state.current_tab().left_pane.current_location.clone();
         let right_location_before = state.current_tab().right_pane.current_location.clone();
-        
+
         // Active pane is left, so sync should update right pane to left's location
         let _result = update_state(&mut state, Transition::SyncPanes);
-        
+
         // Verify right pane location was updated to match left pane
         assert_eq!(
             state.current_tab().right_pane.current_location,
             left_location,
             "Right pane should be synced to left pane's location"
         );
-        
+
         // Verify right pane location changed
         assert_ne!(
             state.current_tab().right_pane.current_location,
             right_location_before,
             "Right pane location should have changed"
         );
-        
+
         // Verify cursor was reset to 0
         assert_eq!(
             state.current_tab().right_pane.cursor,
             0,
             "Right pane cursor should be reset to 0"
         );
-        
+
         // Verify scroll offset was reset
         assert_eq!(
             state.current_tab().right_pane.scroll_offset,
             0,
             "Right pane scroll offset should be reset to 0"
         );
-        
+
         // Verify left pane was not affected
         assert_eq!(
             state.current_tab().left_pane.current_location,
@@ -168,32 +168,32 @@ mod tests {
     #[test]
     fn test_sync_panes_from_right_to_left() {
         // Requirement 41.1, 41.2: Test synchronization from right to left pane
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Switch to right pane
         state.ui.active_pane = ActivePane::Right;
-        
+
         let right_location = state.current_tab().right_pane.current_location.clone();
         let left_location_before = state.current_tab().left_pane.current_location.clone();
-        
+
         // Active pane is right, so sync should update left pane to right's location
         let _result = update_state(&mut state, Transition::SyncPanes);
-        
+
         // Verify left pane location was updated to match right pane
         assert_eq!(
             state.current_tab().left_pane.current_location,
             right_location,
             "Left pane should be synced to right pane's location"
         );
-        
+
         // Verify left pane location changed
         assert_ne!(
             state.current_tab().left_pane.current_location,
             left_location_before,
             "Left pane location should have changed"
         );
-        
+
         // Verify cursor was reset to 0
         assert_eq!(
             state.current_tab().left_pane.cursor,
@@ -204,14 +204,14 @@ mod tests {
 
     #[test]
     fn test_sync_panes_creates_read_directory_job() {
-        // Requirement 41.6: THE Application SHALL create Jobs to read directories 
+        // Requirement 41.6: THE Application SHALL create Jobs to read directories
         // for both panes after synchronization or swapping
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Sync panes
         let result = update_state(&mut state, Transition::SyncPanes);
-        
+
         // Verify a job was created (either directly or via cache)
         // If cache hit, no job is created; if cache miss, a job is created
         // We can't guarantee which, but we can verify the state is consistent
@@ -223,19 +223,19 @@ mod tests {
 
     #[test]
     fn test_swap_panes_exchanges_locations() {
-        // Requirement 41.3: WHEN the user presses Shift+O, THE Application SHALL swap 
+        // Requirement 41.3: WHEN the user presses Shift+O, THE Application SHALL swap
         // the paths of the left and right panes
-        // Requirement 41.4: WHEN swapping occurs, THE Application SHALL exchange 
+        // Requirement 41.4: WHEN swapping occurs, THE Application SHALL exchange
         // the current_location of both panes
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         let left_location_before = state.current_tab().left_pane.current_location.clone();
         let right_location_before = state.current_tab().right_pane.current_location.clone();
-        
+
         // Swap panes
         let _result = update_state(&mut state, Transition::SwapPanes);
-        
+
         // Verify locations were swapped
         assert_eq!(
             state.current_tab().left_pane.current_location,
@@ -251,17 +251,17 @@ mod tests {
 
     #[test]
     fn test_swap_panes_maintains_cursor_positions() {
-        // Requirement 41.5: THE Application SHALL maintain cursor positions and 
+        // Requirement 41.5: THE Application SHALL maintain cursor positions and
         // marked files during swap operations
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         let left_cursor_before = state.current_tab().left_pane.cursor;
         let right_cursor_before = state.current_tab().right_pane.cursor;
-        
+
         // Swap panes
         let _result = update_state(&mut state, Transition::SwapPanes);
-        
+
         // Verify cursor positions were maintained (stayed with their panes)
         assert_eq!(
             state.current_tab().left_pane.cursor,
@@ -277,30 +277,50 @@ mod tests {
 
     #[test]
     fn test_swap_panes_maintains_marked_files() {
-        // Requirement 41.5: THE Application SHALL maintain cursor positions and 
+        // Requirement 41.5: THE Application SHALL maintain cursor positions and
         // marked files during swap operations
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Mark some files
         let left_file = state.current_tab().left_pane.entries[0].location.clone();
         let right_file = state.current_tab().right_pane.entries[1].location.clone();
-        
-        state.current_tab_mut().left_pane.marking.mark(left_file.clone());
-        state.current_tab_mut().left_pane.marking.mark(right_file.clone());
-        
-        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2, "Should have 2 marked files");
-        
+
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(left_file.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(right_file.clone());
+
+        assert_eq!(
+            state.current_tab_mut().left_pane.marking.count(),
+            2,
+            "Should have 2 marked files"
+        );
+
         // Swap panes
         let _result = update_state(&mut state, Transition::SwapPanes);
-        
+
         // Verify marked files are still marked
         assert!(
-            state.current_tab_mut().left_pane.marking.is_marked(&left_file),
+            state
+                .current_tab_mut()
+                .left_pane
+                .marking
+                .is_marked(&left_file),
             "Left file should still be marked after swap"
         );
         assert!(
-            state.current_tab_mut().left_pane.marking.is_marked(&right_file),
+            state
+                .current_tab_mut()
+                .left_pane
+                .marking
+                .is_marked(&right_file),
             "Right file should still be marked after swap"
         );
         assert_eq!(
@@ -312,20 +332,20 @@ mod tests {
 
     #[test]
     fn test_swap_panes_creates_read_directory_jobs() {
-        // Requirement 41.6: THE Application SHALL create Jobs to read directories 
+        // Requirement 41.6: THE Application SHALL create Jobs to read directories
         // for both panes after synchronization or swapping
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Swap panes
         let result = update_state(&mut state, Transition::SwapPanes);
-        
+
         // Verify jobs were created or UI was updated (depending on cache)
         assert!(
             result.ui_changed || !result.jobs_to_start.is_empty(),
             "SwapPanes should either update UI or create jobs"
         );
-        
+
         // If jobs were created, verify we have up to 2 jobs (one for each pane)
         if !result.jobs_to_start.is_empty() {
             assert!(
@@ -338,25 +358,25 @@ mod tests {
     #[test]
     fn test_sync_panes_adds_to_history() {
         // Verify that sync panes adds the previous location to navigation history
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         let left_location = state.current_tab().left_pane.current_location.clone();
         let right_location_before = state.current_tab().right_pane.current_location.clone();
-        
+
         // Check initial history state for right pane
         let initial_history_len = state.current_tab().history.right_stack.len();
-        
+
         // Sync panes (left to right)
         let _result = update_state(&mut state, Transition::SyncPanes);
-        
+
         // After sync, right pane should have left's location
         assert_eq!(
             state.current_tab().right_pane.current_location,
             left_location,
             "Right pane should have left's location after sync"
         );
-        
+
         // Verify history was updated - should have one more entry
         let new_history_len = state.current_tab().history.right_stack.len();
         assert_eq!(
@@ -364,12 +384,11 @@ mod tests {
             initial_history_len + 1,
             "Right pane history should have one more entry after sync"
         );
-        
+
         // Verify the last history entry is the previous right location
         if let Some(last_history_entry) = state.current_tab().history.right_stack.last() {
             assert_eq!(
-                *last_history_entry,
-                right_location_before,
+                *last_history_entry, right_location_before,
                 "Last history entry should be the previous right pane location"
             );
         } else {
@@ -379,41 +398,41 @@ mod tests {
 
     #[test]
     fn test_swap_panes_ui_responsiveness() {
-        // Requirement 41.7: THE UI_Thread SHALL remain responsive during pane 
+        // Requirement 41.7: THE UI_Thread SHALL remain responsive during pane
         // synchronization and swapping
-        // 
+        //
         // This test verifies that swap operations complete synchronously and don't block
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Measure that swap completes quickly (should be near-instant for state changes)
         let start = std::time::Instant::now();
         let result = update_state(&mut state, Transition::SwapPanes);
         let duration = start.elapsed();
-        
+
         // State update should complete in less than 1ms (it's just swapping pointers)
         assert!(
             duration.as_millis() < 10,
             "SwapPanes state update should complete in less than 10ms, took {:?}",
             duration
         );
-        
+
         // Verify the operation completed successfully
         assert!(result.ui_changed, "SwapPanes should mark UI as changed");
     }
 
     #[test]
     fn test_sync_panes_ui_responsiveness() {
-        // Requirement 41.7: THE UI_Thread SHALL remain responsive during pane 
+        // Requirement 41.7: THE UI_Thread SHALL remain responsive during pane
         // synchronization and swapping
-        
+
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
-        
+
         // Measure that sync completes quickly
         let start = std::time::Instant::now();
         let _result = update_state(&mut state, Transition::SyncPanes);
         let duration = start.elapsed();
-        
+
         // State update should complete in less than 10ms
         assert!(
             duration.as_millis() < 10,

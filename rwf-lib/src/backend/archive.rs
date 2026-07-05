@@ -3,18 +3,18 @@
 //! This module provides the ArchiveHandler trait and implementations
 //! for different archive formats (initially .zip).
 
-use crate::model::{Location, FileEntry};
-use tokio_util::sync::CancellationToken;
+use crate::model::{FileEntry, Location};
 use anyhow::Result;
 use std::io::Write;
-use zip::ZipWriter;
+use tokio_util::sync::CancellationToken;
 use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 /// Trait for archive operations
 #[async_trait::async_trait]
 pub trait ArchiveHandler: Send + Sync {
     /// List entries in an archive at a specific path
-    /// 
+    ///
     /// For Location::Archive, lists the direct children at inner_path.
     /// Returns FileEntry items with Archive locations.
     async fn list_entries(
@@ -22,7 +22,7 @@ pub trait ArchiveHandler: Send + Sync {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>>;
-    
+
     /// Extract a single file from an archive
     async fn extract_file(
         &self,
@@ -30,7 +30,7 @@ pub trait ArchiveHandler: Send + Sync {
         dest: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<()>;
-    
+
     /// Extract entire archive to destination
     async fn extract_all(
         &self,
@@ -38,7 +38,7 @@ pub trait ArchiveHandler: Send + Sync {
         dest: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<()>;
-    
+
     /// Create archive from source files
     async fn create_archive(
         &self,
@@ -46,7 +46,7 @@ pub trait ArchiveHandler: Send + Sync {
         dest: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<()>;
-    
+
     /// Check if a file is a supported archive format
     fn is_archive(&self, filename: &str) -> bool;
 }
@@ -68,7 +68,10 @@ impl ArchiveHandler for ZipArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
         match location {
-            Location::Archive { archive_path, inner_path } => {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => {
                 // Only support local archives for now
                 match archive_path.as_ref() {
                     Location::Local(path) => {
@@ -80,7 +83,7 @@ impl ArchiveHandler for ZipArchiveHandler {
             _ => anyhow::bail!("Expected Archive location"),
         }
     }
-    
+
     async fn extract_file(
         &self,
         source: &Location,
@@ -88,18 +91,23 @@ impl ArchiveHandler for ZipArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match (source, dest) {
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        self.extract_zip_file(archive_file, inner_path, dest_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    self.extract_zip_file(archive_file, inner_path, dest_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid source/dest combination for archive extraction"),
         }
     }
-    
+
     async fn extract_all(
         &self,
         archive: &Location,
@@ -108,13 +116,21 @@ impl ArchiveHandler for ZipArchiveHandler {
     ) -> Result<()> {
         match (archive, dest) {
             (Location::Local(archive_path), Location::Local(dest_path)) => {
-                self.extract_zip_all(archive_path, dest_path, cancel_token).await
+                self.extract_zip_all(archive_path, dest_path, cancel_token)
+                    .await
             }
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => {
                 // Extract a subdirectory from archive
                 match archive_path.as_ref() {
                     Location::Local(archive_file) => {
-                        self.extract_zip_subdir(archive_file, inner_path, dest_path, cancel_token).await
+                        self.extract_zip_subdir(archive_file, inner_path, dest_path, cancel_token)
+                            .await
                     }
                     _ => anyhow::bail!("Only local archives are supported"),
                 }
@@ -122,7 +138,7 @@ impl ArchiveHandler for ZipArchiveHandler {
             _ => anyhow::bail!("Invalid archive/dest combination"),
         }
     }
-    
+
     async fn create_archive(
         &self,
         sources: &[Location],
@@ -130,13 +146,11 @@ impl ArchiveHandler for ZipArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match dest {
-            Location::Local(dest_path) => {
-                self.create_zip(sources, dest_path, cancel_token).await
-            }
+            Location::Local(dest_path) => self.create_zip(sources, dest_path, cancel_token).await,
             _ => anyhow::bail!("Archive destination must be local"),
         }
     }
-    
+
     fn is_archive(&self, filename: &str) -> bool {
         filename.to_lowercase().ends_with(".zip")
     }
@@ -151,16 +165,16 @@ impl ZipArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
         use std::fs::File;
-        use zip::ZipArchive;
         use std::time::SystemTime;
-        
+        use zip::ZipArchive;
+
         if cancel_token.is_cancelled() {
             anyhow::bail!("Operation cancelled");
         }
-        
+
         let file = File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
-        
+
         let mut entries = Vec::new();
         let inner_str = inner_path.to_string_lossy();
         let prefix = if inner_str.is_empty() {
@@ -168,48 +182,48 @@ impl ZipArchiveHandler {
         } else {
             format!("{}/", inner_str.trim_end_matches('/'))
         };
-        
+
         // Collect all entries that are direct children of inner_path
         let mut seen_names = std::collections::HashSet::new();
-        
+
         for i in 0..archive.len() {
             if cancel_token.is_cancelled() {
                 anyhow::bail!("Operation cancelled");
             }
-            
+
             let file = archive.by_index(i)?;
             let file_path = file.name();
-            
+
             // Check if this file is under our prefix
             if file_path.starts_with(&prefix) {
                 let relative = &file_path[prefix.len()..];
-                
+
                 // Skip empty paths
                 if relative.is_empty() {
                     continue;
                 }
-                
+
                 // Get the first component (direct child)
                 let first_component = if let Some(slash_pos) = relative.find('/') {
                     &relative[..slash_pos]
                 } else {
                     relative
                 };
-                
+
                 // Skip if we've already seen this entry
                 if !seen_names.insert(first_component.to_string()) {
                     continue;
                 }
-                
+
                 // Determine if this is a directory
                 let is_dir = relative.contains('/') || file.is_dir();
-                
+
                 let entry_inner_path = if prefix.is_empty() {
                     std::path::PathBuf::from(first_component)
                 } else {
                     inner_path.join(first_component)
                 };
-                
+
                 let entry = FileEntry {
                     name: first_component.to_string(),
                     location: Location::Archive {
@@ -222,18 +236,18 @@ impl ZipArchiveHandler {
                     modified: SystemTime::now(), // TODO: Extract proper timestamp from zip
                     marked: false,
                     calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                    is_symlink: false,
+                    link_target: None,
+                    link_kind: None,
                 };
-                
+
                 entries.push(entry);
             }
         }
-        
+
         Ok(entries)
     }
-    
+
     /// Extract a single file from ZIP archive
     async fn extract_zip_file(
         &self,
@@ -244,31 +258,31 @@ impl ZipArchiveHandler {
     ) -> Result<()> {
         use std::fs::File;
         use zip::ZipArchive;
-        
+
         if cancel_token.is_cancelled() {
             anyhow::bail!("Operation cancelled");
         }
-        
+
         let file = File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
-        
+
         let inner_str = inner_path.to_string_lossy();
         let mut zip_file = archive.by_name(&inner_str)?;
-        
+
         if zip_file.is_dir() {
             std::fs::create_dir_all(dest_path)?;
         } else {
             if let Some(parent) = dest_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            
+
             let mut outfile = File::create(dest_path)?;
             std::io::copy(&mut zip_file, &mut outfile)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Extract entire ZIP archive
     async fn extract_zip_all(
         &self,
@@ -278,18 +292,18 @@ impl ZipArchiveHandler {
     ) -> Result<()> {
         use std::fs::File;
         use zip::ZipArchive;
-        
+
         let file = File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
-        
+
         for i in 0..archive.len() {
             if cancel_token.is_cancelled() {
                 anyhow::bail!("Operation cancelled");
             }
-            
+
             let mut file = archive.by_index(i)?;
             let outpath = dest_path.join(file.name());
-            
+
             // Check if it's a directory (either by is_dir() or trailing slash)
             if file.is_dir() || file.name().ends_with('/') {
                 std::fs::create_dir_all(&outpath)?;
@@ -297,15 +311,15 @@ impl ZipArchiveHandler {
                 if let Some(parent) = outpath.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                
+
                 let mut outfile = File::create(&outpath)?;
                 std::io::copy(&mut file, &mut outfile)?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Extract a subdirectory from ZIP archive
     async fn extract_zip_subdir(
         &self,
@@ -316,45 +330,45 @@ impl ZipArchiveHandler {
     ) -> Result<()> {
         use std::fs::File;
         use zip::ZipArchive;
-        
+
         let file = File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
-        
+
         let inner_str = inner_path.to_string_lossy();
         let prefix = format!("{}/", inner_str.trim_end_matches('/'));
-        
+
         for i in 0..archive.len() {
             if cancel_token.is_cancelled() {
                 anyhow::bail!("Operation cancelled");
             }
-            
+
             let mut file = archive.by_index(i)?;
             let file_path = file.name();
-            
+
             if file_path.starts_with(&prefix) {
                 let relative = &file_path[prefix.len()..];
                 if relative.is_empty() {
                     continue;
                 }
-                
+
                 let outpath = dest_path.join(relative);
-                
+
                 if file.is_dir() {
                     std::fs::create_dir_all(&outpath)?;
                 } else {
                     if let Some(parent) = outpath.parent() {
                         std::fs::create_dir_all(parent)?;
                     }
-                    
+
                     let mut outfile = File::create(&outpath)?;
                     std::io::copy(&mut file, &mut outfile)?;
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Create a ZIP archive from source files
     async fn create_zip(
         &self,
@@ -369,7 +383,7 @@ impl ZipArchiveHandler {
         debug!("Creating ZIP archive at: {:?}", dest_path);
         let file = File::create(dest_path)?;
         debug!("File created successfully");
-        
+
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
@@ -388,7 +402,8 @@ impl ZipArchiveHandler {
                     if path.is_dir() {
                         debug!("Source is a directory");
                         // Get the directory name to use as the base in the archive
-                        let dir_name = path.file_name()
+                        let dir_name = path
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
@@ -397,11 +412,19 @@ impl ZipArchiveHandler {
                         debug!("Added directory entry: {}", dir_name);
 
                         // Add contents with the directory as base
-                        self.add_dir_contents_to_zip(&mut zip, path, dir_name, &options, cancel_token).await?;
+                        self.add_dir_contents_to_zip(
+                            &mut zip,
+                            path,
+                            dir_name,
+                            &options,
+                            cancel_token,
+                        )
+                        .await?;
                         debug!("Added directory contents");
                     } else {
                         debug!("Source is a file");
-                        let name = path.file_name()
+                        let name = path
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
                         self.add_file_to_zip(&mut zip, path, name, &options).await?;
@@ -419,11 +442,14 @@ impl ZipArchiveHandler {
         // Explicitly flush and sync to ensure data is written to disk
         file.flush()?;
         file.sync_all()?;
-        debug!("ZIP archive created and synced successfully at: {:?}", dest_path);
-        
+        debug!(
+            "ZIP archive created and synced successfully at: {:?}",
+            dest_path
+        );
+
         Ok(())
     }
-    
+
     /// Add a file to ZIP archive
     async fn add_file_to_zip<W: std::io::Write + std::io::Seek>(
         &self,
@@ -434,17 +460,17 @@ impl ZipArchiveHandler {
     ) -> Result<()> {
         use std::fs::File;
         use std::io::Read;
-        
+
         zip.start_file(name, *options)?;
-        
+
         let mut file = File::open(path)?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
         zip.write_all(&buffer)?;
-        
+
         Ok(())
     }
-    
+
     /// Add directory contents to ZIP archive with a prefix
     fn add_dir_contents_to_zip<'a, W: std::io::Write + std::io::Seek + Send + 'a>(
         &'a self,
@@ -459,24 +485,26 @@ impl ZipArchiveHandler {
                 if cancel_token.is_cancelled() {
                     anyhow::bail!("Operation cancelled");
                 }
-                
+
                 let entry = entry?;
                 let path = entry.path();
-                let file_name = path.file_name()
+                let file_name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
                 let name = format!("{}/{}", prefix, file_name);
-                
+
                 if path.is_dir() {
                     // Add directory entry with trailing slash
                     zip.add_directory(format!("{}/", name), *options)?;
                     // Recursively add contents
-                    self.add_dir_contents_to_zip(zip, &path, &name, options, cancel_token).await?;
+                    self.add_dir_contents_to_zip(zip, &path, &name, options, cancel_token)
+                        .await?;
                 } else {
                     self.add_file_to_zip(zip, &path, &name, options).await?;
                 }
             }
-            
+
             Ok(())
         })
     }
@@ -496,11 +524,15 @@ impl Default for ZipArchiveHandler {
 pub struct SevenZArchiveHandler;
 
 impl SevenZArchiveHandler {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for SevenZArchiveHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -511,14 +543,16 @@ impl ArchiveHandler for SevenZArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
         match location {
-            Location::Archive { archive_path, inner_path } => {
-                match archive_path.as_ref() {
-                    Location::Local(path) => {
-                        self.list_sevenz_entries(path, inner_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => match archive_path.as_ref() {
+                Location::Local(path) => {
+                    self.list_sevenz_entries(path, inner_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Expected Archive location"),
         }
     }
@@ -530,14 +564,19 @@ impl ArchiveHandler for SevenZArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match (source, dest) {
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        self.extract_sevenz_file(archive_file, inner_path, dest_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    self.extract_sevenz_file(archive_file, inner_path, dest_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid source/dest combination for 7z extraction"),
         }
     }
@@ -557,14 +596,19 @@ impl ArchiveHandler for SevenZArchiveHandler {
                 sevenz_rust::decompress_file(archive_path, dest_path)
                     .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))
             }
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        self.extract_sevenz_subdir(archive_file, inner_path, dest_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    self.extract_sevenz_subdir(archive_file, inner_path, dest_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid archive/dest combination"),
         }
     }
@@ -658,9 +702,9 @@ impl SevenZArchiveHandler {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             });
         }
 
@@ -683,27 +727,30 @@ impl SevenZArchiveHandler {
         let mut found = false;
         let mut io_error: Option<std::io::Error> = None;
 
-        let mut reader = sevenz_rust::SevenZReader::open(archive_path, sevenz_rust::Password::empty())
-            .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
+        let mut reader =
+            sevenz_rust::SevenZReader::open(archive_path, sevenz_rust::Password::empty())
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
 
-        reader.for_each_entries(|entry, source| {
-            if entry.name.replace('\\', "/") != inner_str {
-                return Ok(true);
-            }
-            let result = (|| -> std::io::Result<()> {
-                if let Some(parent) = dest_path.parent() {
-                    std::fs::create_dir_all(parent)?;
+        reader
+            .for_each_entries(|entry, source| {
+                if entry.name.replace('\\', "/") != inner_str {
+                    return Ok(true);
                 }
-                let mut outfile = std::fs::File::create(&dest_path)?;
-                std::io::copy(source, &mut outfile)?;
-                Ok(())
-            })();
-            if let Err(e) = result {
-                io_error = Some(e);
-            }
-            found = true;
-            Ok(false)
-        }).map_err(|e| anyhow::anyhow!("7z extraction error: {}", e))?;
+                let result = (|| -> std::io::Result<()> {
+                    if let Some(parent) = dest_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut outfile = std::fs::File::create(&dest_path)?;
+                    std::io::copy(source, &mut outfile)?;
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    io_error = Some(e);
+                }
+                found = true;
+                Ok(false)
+            })
+            .map_err(|e| anyhow::anyhow!("7z extraction error: {}", e))?;
 
         if let Some(e) = io_error {
             return Err(anyhow::Error::from(e));
@@ -730,37 +777,40 @@ impl SevenZArchiveHandler {
         let dest_path = dest_path.to_path_buf();
         let mut io_error: Option<std::io::Error> = None;
 
-        let mut reader = sevenz_rust::SevenZReader::open(archive_path, sevenz_rust::Password::empty())
-            .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
+        let mut reader =
+            sevenz_rust::SevenZReader::open(archive_path, sevenz_rust::Password::empty())
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
 
-        reader.for_each_entries(|entry, source| {
-            let entry_name = entry.name.replace('\\', "/");
-            if !entry_name.starts_with(&prefix) {
-                return Ok(true);
-            }
-            let relative = &entry_name[prefix.len()..];
-            if relative.is_empty() {
-                return Ok(true);
-            }
-            let outpath = dest_path.join(relative);
-            let result = (|| -> std::io::Result<()> {
-                if entry.is_directory {
-                    std::fs::create_dir_all(&outpath)?;
-                } else {
-                    if let Some(parent) = outpath.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&outpath)?;
-                    std::io::copy(source, &mut outfile)?;
+        reader
+            .for_each_entries(|entry, source| {
+                let entry_name = entry.name.replace('\\', "/");
+                if !entry_name.starts_with(&prefix) {
+                    return Ok(true);
                 }
-                Ok(())
-            })();
-            if let Err(e) = result {
-                io_error = Some(e);
-                return Ok(false);
-            }
-            Ok(true)
-        }).map_err(|e| anyhow::anyhow!("7z extraction error: {}", e))?;
+                let relative = &entry_name[prefix.len()..];
+                if relative.is_empty() {
+                    return Ok(true);
+                }
+                let outpath = dest_path.join(relative);
+                let result = (|| -> std::io::Result<()> {
+                    if entry.is_directory {
+                        std::fs::create_dir_all(&outpath)?;
+                    } else {
+                        if let Some(parent) = outpath.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut outfile = std::fs::File::create(&outpath)?;
+                        std::io::copy(source, &mut outfile)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    io_error = Some(e);
+                    return Ok(false);
+                }
+                Ok(true)
+            })
+            .map_err(|e| anyhow::anyhow!("7z extraction error: {}", e))?;
 
         if let Some(e) = io_error {
             return Err(anyhow::Error::from(e));
@@ -783,7 +833,8 @@ impl SevenZArchiveHandler {
             }
             match source {
                 Location::Local(path) => {
-                    let name = path.file_name()
+                    let name = path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
                     add_path_to_sevenz_writer(&mut writer, path, name, cancel_token)?;
@@ -792,7 +843,8 @@ impl SevenZArchiveHandler {
             }
         }
 
-        writer.finish()
+        writer
+            .finish()
             .map_err(|e| anyhow::anyhow!("Failed to finalize 7z archive: {}", e))?;
         Ok(())
     }
@@ -809,7 +861,8 @@ fn add_path_to_sevenz_writer<W: std::io::Write + std::io::Seek>(
         let mut dir_entry = sevenz_rust::SevenZArchiveEntry::default();
         dir_entry.name = format!("{}/", arc_name);
         dir_entry.is_directory = true;
-        writer.push_archive_entry::<std::fs::File>(dir_entry, None)
+        writer
+            .push_archive_entry::<std::fs::File>(dir_entry, None)
             .map_err(|e| anyhow::anyhow!("7z dir entry error: {}", e))?;
 
         for entry in std::fs::read_dir(path)? {
@@ -818,7 +871,8 @@ fn add_path_to_sevenz_writer<W: std::io::Write + std::io::Seek>(
             }
             let entry = entry?;
             let child_path = entry.path();
-            let child_name = child_path.file_name()
+            let child_name = child_path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
             let child_arc_name = format!("{}/{}", arc_name, child_name);
@@ -831,7 +885,8 @@ fn add_path_to_sevenz_writer<W: std::io::Write + std::io::Seek>(
         file_entry.has_stream = true;
         file_entry.size = meta.len();
         let file = std::fs::File::open(path)?;
-        writer.push_archive_entry(file_entry, Some(file))
+        writer
+            .push_archive_entry(file_entry, Some(file))
             .map_err(|e| anyhow::anyhow!("7z file entry error: {}", e))?;
     }
     Ok(())
@@ -841,16 +896,22 @@ fn add_path_to_sevenz_writer<W: std::io::Write + std::io::Seek>(
 // TarArchiveHandler
 // ──────────────────────────────────────────────────────────────────────────────
 
-enum TarCompression { None, Gz }
+enum TarCompression {
+    None,
+    Gz,
+}
 
 /// TAR/TGZ archive handler (.tar, .tgz, .tar.gz)
 pub struct TarArchiveHandler;
 
 impl TarArchiveHandler {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     fn compression(path: &std::path::Path) -> TarCompression {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -863,7 +924,9 @@ impl TarArchiveHandler {
 }
 
 impl Default for TarArchiveHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -874,14 +937,15 @@ impl ArchiveHandler for TarArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
         match location {
-            Location::Archive { archive_path, inner_path } => {
-                match archive_path.as_ref() {
-                    Location::Local(path) => {
-                        self.list_tar_entries(path, inner_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => match archive_path.as_ref() {
+                Location::Local(path) => {
+                    self.list_tar_entries(path, inner_path, cancel_token).await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Expected Archive location"),
         }
     }
@@ -893,14 +957,19 @@ impl ArchiveHandler for TarArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match (source, dest) {
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        self.extract_tar_file(archive_file, inner_path, dest_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    self.extract_tar_file(archive_file, inner_path, dest_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid source/dest combination for TAR extraction"),
         }
     }
@@ -913,16 +982,22 @@ impl ArchiveHandler for TarArchiveHandler {
     ) -> Result<()> {
         match (archive, dest) {
             (Location::Local(archive_path), Location::Local(dest_path)) => {
-                self.extract_tar_all(archive_path, dest_path, cancel_token).await
+                self.extract_tar_all(archive_path, dest_path, cancel_token)
+                    .await
             }
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        self.extract_tar_subdir(archive_file, inner_path, dest_path, cancel_token).await
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    self.extract_tar_subdir(archive_file, inner_path, dest_path, cancel_token)
+                        .await
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid archive/dest combination"),
         }
     }
@@ -934,9 +1009,7 @@ impl ArchiveHandler for TarArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match dest {
-            Location::Local(dest_path) => {
-                self.create_tar(sources, dest_path, cancel_token).await
-            }
+            Location::Local(dest_path) => self.create_tar(sources, dest_path, cancel_token).await,
             _ => anyhow::bail!("Archive destination must be local"),
         }
     }
@@ -981,14 +1054,18 @@ fn collect_tar_direct_children<R: std::io::Read>(
         }
 
         let relative = &file_path[prefix.len()..];
-        if relative.is_empty() { continue; }
+        if relative.is_empty() {
+            continue;
+        }
 
         let first = if let Some(pos) = relative.find('/') {
             &relative[..pos]
         } else {
             relative
         };
-        if first.is_empty() || !seen.insert(first.to_string()) { continue; }
+        if first.is_empty() || !seen.insert(first.to_string()) {
+            continue;
+        }
 
         let is_dir = relative.contains('/') || entry.header().entry_type().is_dir();
         let size = if is_dir { 0 } else { entry.header().size()? };
@@ -1036,7 +1113,9 @@ fn extract_single_tar_entry<R: std::io::Read>(
         let raw = raw.as_str();
         let file_path = raw.strip_prefix("./").unwrap_or(raw);
         let file_path = file_path.trim_end_matches('/');
-        if file_path != inner_str { continue; }
+        if file_path != inner_str {
+            continue;
+        }
 
         if let Some(parent) = dest_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -1064,15 +1143,21 @@ fn extract_tar_subdir_from_reader<R: std::io::Read>(
         let raw = entry.path()?.to_string_lossy().replace('\\', "/");
         let raw = raw.as_str();
         let file_path = raw.strip_prefix("./").unwrap_or(raw);
-        if !file_path.starts_with(prefix) { continue; }
+        if !file_path.starts_with(prefix) {
+            continue;
+        }
         let relative = &file_path[prefix.len()..];
-        if relative.is_empty() { continue; }
+        if relative.is_empty() {
+            continue;
+        }
 
         let outpath = dest_path.join(relative);
         if entry.header().entry_type().is_dir() {
             std::fs::create_dir_all(&outpath)?;
         } else {
-            if let Some(p) = outpath.parent() { std::fs::create_dir_all(p)?; }
+            if let Some(p) = outpath.parent() {
+                std::fs::create_dir_all(p)?;
+            }
             let mut out = std::fs::File::create(&outpath)?;
             std::io::copy(&mut entry, &mut out)?;
         }
@@ -1087,7 +1172,8 @@ fn add_to_tar_builder<W: std::io::Write>(
 ) -> Result<()> {
     match source {
         Location::Local(path) => {
-            let name = path.file_name()
+            let name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
             if path.is_dir() {
@@ -1108,13 +1194,17 @@ impl TarArchiveHandler {
         inner_path: &std::path::Path,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
-        if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+        if cancel_token.is_cancelled() {
+            anyhow::bail!("Operation cancelled");
+        }
         let file = std::fs::File::open(archive_path)?;
         match TarArchiveHandler::compression(archive_path) {
-            TarCompression::Gz => {
-                collect_tar_direct_children(
-                    flate2::read::GzDecoder::new(file), archive_path, inner_path, cancel_token)
-            }
+            TarCompression::Gz => collect_tar_direct_children(
+                flate2::read::GzDecoder::new(file),
+                archive_path,
+                inner_path,
+                cancel_token,
+            ),
             TarCompression::None => {
                 collect_tar_direct_children(file, archive_path, inner_path, cancel_token)
             }
@@ -1127,17 +1217,23 @@ impl TarArchiveHandler {
         dest_path: &std::path::Path,
         cancel_token: &CancellationToken,
     ) -> Result<()> {
-        if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+        if cancel_token.is_cancelled() {
+            anyhow::bail!("Operation cancelled");
+        }
         std::fs::create_dir_all(dest_path)?;
         let file = std::fs::File::open(archive_path)?;
         match TarArchiveHandler::compression(archive_path) {
             TarCompression::Gz => {
                 let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
-                archive.unpack(dest_path).map_err(|e| anyhow::anyhow!("TAR extraction failed: {}", e))
+                archive
+                    .unpack(dest_path)
+                    .map_err(|e| anyhow::anyhow!("TAR extraction failed: {}", e))
             }
             TarCompression::None => {
                 let mut archive = tar::Archive::new(file);
-                archive.unpack(dest_path).map_err(|e| anyhow::anyhow!("TAR extraction failed: {}", e))
+                archive
+                    .unpack(dest_path)
+                    .map_err(|e| anyhow::anyhow!("TAR extraction failed: {}", e))
             }
         }
     }
@@ -1149,19 +1245,25 @@ impl TarArchiveHandler {
         dest_path: &std::path::Path,
         cancel_token: &CancellationToken,
     ) -> Result<()> {
-        if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+        if cancel_token.is_cancelled() {
+            anyhow::bail!("Operation cancelled");
+        }
         let inner_str = inner_path.to_string_lossy().replace('\\', "/");
         let file = std::fs::File::open(archive_path)?;
         let found = match TarArchiveHandler::compression(archive_path) {
-            TarCompression::Gz => {
-                extract_single_tar_entry(
-                    flate2::read::GzDecoder::new(file), &inner_str, dest_path, cancel_token)?
-            }
+            TarCompression::Gz => extract_single_tar_entry(
+                flate2::read::GzDecoder::new(file),
+                &inner_str,
+                dest_path,
+                cancel_token,
+            )?,
             TarCompression::None => {
                 extract_single_tar_entry(file, &inner_str, dest_path, cancel_token)?
             }
         };
-        if !found { anyhow::bail!("File not found in TAR archive: {}", inner_str); }
+        if !found {
+            anyhow::bail!("File not found in TAR archive: {}", inner_str);
+        }
         Ok(())
     }
 
@@ -1172,15 +1274,19 @@ impl TarArchiveHandler {
         dest_path: &std::path::Path,
         cancel_token: &CancellationToken,
     ) -> Result<()> {
-        if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+        if cancel_token.is_cancelled() {
+            anyhow::bail!("Operation cancelled");
+        }
         let inner_str = inner_path.to_string_lossy().replace('\\', "/");
         let prefix = format!("{}/", inner_str.trim_end_matches('/'));
         let file = std::fs::File::open(archive_path)?;
         match TarArchiveHandler::compression(archive_path) {
-            TarCompression::Gz => {
-                extract_tar_subdir_from_reader(
-                    flate2::read::GzDecoder::new(file), &prefix, dest_path, cancel_token)
-            }
+            TarCompression::Gz => extract_tar_subdir_from_reader(
+                flate2::read::GzDecoder::new(file),
+                &prefix,
+                dest_path,
+                cancel_token,
+            ),
             TarCompression::None => {
                 extract_tar_subdir_from_reader(file, &prefix, dest_path, cancel_token)
             }
@@ -1199,7 +1305,9 @@ impl TarArchiveHandler {
                 let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
                 let mut builder = tar::Builder::new(enc);
                 for source in sources {
-                    if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+                    if cancel_token.is_cancelled() {
+                        anyhow::bail!("Operation cancelled");
+                    }
                     add_to_tar_builder(&mut builder, source)?;
                 }
                 builder.into_inner()?.finish()?;
@@ -1207,7 +1315,9 @@ impl TarArchiveHandler {
             TarCompression::None => {
                 let mut builder = tar::Builder::new(file);
                 for source in sources {
-                    if cancel_token.is_cancelled() { anyhow::bail!("Operation cancelled"); }
+                    if cancel_token.is_cancelled() {
+                        anyhow::bail!("Operation cancelled");
+                    }
                     add_to_tar_builder(&mut builder, source)?;
                 }
                 builder.finish()?;
@@ -1224,20 +1334,47 @@ impl TarArchiveHandler {
 macro_rules! unsupported_handler {
     ($name:ident, $exts:expr, $extract_msg:literal, $create_msg:literal) => {
         pub struct $name;
-        impl $name { pub fn new() -> Self { Self } }
-        impl Default for $name { fn default() -> Self { Self::new() } }
+        impl $name {
+            pub fn new() -> Self {
+                Self
+            }
+        }
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
         #[async_trait::async_trait]
         impl ArchiveHandler for $name {
-            async fn list_entries(&self, _: &Location, _: &CancellationToken) -> Result<Vec<FileEntry>> {
+            async fn list_entries(
+                &self,
+                _: &Location,
+                _: &CancellationToken,
+            ) -> Result<Vec<FileEntry>> {
                 anyhow::bail!($extract_msg)
             }
-            async fn extract_file(&self, _: &Location, _: &Location, _: &CancellationToken) -> Result<()> {
+            async fn extract_file(
+                &self,
+                _: &Location,
+                _: &Location,
+                _: &CancellationToken,
+            ) -> Result<()> {
                 anyhow::bail!($extract_msg)
             }
-            async fn extract_all(&self, _: &Location, _: &Location, _: &CancellationToken) -> Result<()> {
+            async fn extract_all(
+                &self,
+                _: &Location,
+                _: &Location,
+                _: &CancellationToken,
+            ) -> Result<()> {
                 anyhow::bail!($extract_msg)
             }
-            async fn create_archive(&self, _: &[Location], _: &Location, _: &CancellationToken) -> Result<()> {
+            async fn create_archive(
+                &self,
+                _: &[Location],
+                _: &Location,
+                _: &CancellationToken,
+            ) -> Result<()> {
                 anyhow::bail!($create_msg)
             }
             fn is_archive(&self, filename: &str) -> bool {
@@ -1259,11 +1396,15 @@ unsupported_handler!(
 pub struct IsoArchiveHandler;
 
 impl IsoArchiveHandler {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for IsoArchiveHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -1274,14 +1415,13 @@ impl ArchiveHandler for IsoArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
         match location {
-            Location::Archive { archive_path, inner_path } => {
-                match archive_path.as_ref() {
-                    Location::Local(path) => {
-                        list_iso_entries(path, inner_path, cancel_token)
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
-                }
-            }
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => match archive_path.as_ref() {
+                Location::Local(path) => list_iso_entries(path, inner_path, cancel_token),
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Expected Archive location"),
         }
     }
@@ -1293,14 +1433,18 @@ impl ArchiveHandler for IsoArchiveHandler {
         cancel_token: &CancellationToken,
     ) -> Result<()> {
         match (source, dest) {
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        extract_iso_single_file(archive_file, inner_path, dest_path, cancel_token)
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    extract_iso_single_file(archive_file, inner_path, dest_path, cancel_token)
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid source/dest combination for ISO extraction"),
         }
     }
@@ -1317,17 +1461,21 @@ impl ArchiveHandler for IsoArchiveHandler {
                 let iso = open_iso(archive_path)?;
                 extract_iso_dir_recursive(&iso, "/", dest_path, cancel_token)
             }
-            (Location::Archive { archive_path, inner_path }, Location::Local(dest_path)) => {
-                match archive_path.as_ref() {
-                    Location::Local(archive_file) => {
-                        let iso_path = format!("/{}", inner_path.to_string_lossy().replace('\\', "/"));
-                        std::fs::create_dir_all(dest_path)?;
-                        let iso = open_iso(archive_file)?;
-                        extract_iso_dir_recursive(&iso, &iso_path, dest_path, cancel_token)
-                    }
-                    _ => anyhow::bail!("Only local archives are supported"),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Local(dest_path),
+            ) => match archive_path.as_ref() {
+                Location::Local(archive_file) => {
+                    let iso_path = format!("/{}", inner_path.to_string_lossy().replace('\\', "/"));
+                    std::fs::create_dir_all(dest_path)?;
+                    let iso = open_iso(archive_file)?;
+                    extract_iso_dir_recursive(&iso, &iso_path, dest_path, cancel_token)
                 }
-            }
+                _ => anyhow::bail!("Only local archives are supported"),
+            },
             _ => anyhow::bail!("Invalid archive/dest combination"),
         }
     }
@@ -1363,10 +1511,15 @@ fn list_iso_entries(
     let iso = open_iso(archive_path)?;
     let iso_path = {
         let s = inner_path.to_string_lossy();
-        if s.is_empty() { "/".to_string() } else { format!("/{}", s.replace('\\', "/")) }
+        if s.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{}", s.replace('\\', "/"))
+        }
     };
 
-    let dir_entry = iso.open(&iso_path)
+    let dir_entry = iso
+        .open(&iso_path)
         .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?;
     let dir = match dir_entry {
         Some(iso9660::DirectoryEntry::Directory(d)) => d,
@@ -1382,10 +1535,14 @@ fn list_iso_entries(
         let entry = entry.map_err(|e| anyhow::anyhow!("ISO entry error: {}", e))?;
         let raw_name = entry.identifier();
         // Skip dot/dotdot (identifiers \x00 and \x01)
-        if raw_name == "\x00" || raw_name == "\x01" { continue; }
+        if raw_name == "\x00" || raw_name == "\x01" {
+            continue;
+        }
         // ISO 9660 file identifiers have ";1" version suffix — strip it
         let name = raw_name.trim_end_matches(";1").to_string();
-        if name.is_empty() { continue; }
+        if name.is_empty() {
+            continue;
+        }
 
         let is_dir = matches!(entry, iso9660::DirectoryEntry::Directory(_));
         let size = match &entry {
@@ -1426,9 +1583,14 @@ fn extract_iso_single_file(
 ) -> Result<()> {
     let iso = open_iso(archive_path)?;
     let iso_path = format!("/{}", inner_path.to_string_lossy().replace('\\', "/"));
-    match iso.open(&iso_path).map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))? {
+    match iso
+        .open(&iso_path)
+        .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?
+    {
         Some(iso9660::DirectoryEntry::File(f)) => {
-            if let Some(p) = dest_path.parent() { std::fs::create_dir_all(p)?; }
+            if let Some(p) = dest_path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
             let mut reader = f.read();
             let mut out = std::fs::File::create(dest_path)?;
             std::io::copy(&mut reader, &mut out)?;
@@ -1445,7 +1607,9 @@ fn extract_iso_dir_recursive(
     dest_path: &std::path::Path,
     cancel_token: &CancellationToken,
 ) -> Result<()> {
-    let dir_entry = iso.open(iso_path).map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?;
+    let dir_entry = iso
+        .open(iso_path)
+        .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?;
     let dir = match dir_entry {
         Some(iso9660::DirectoryEntry::Directory(d)) => d,
         _ => return Ok(()),
@@ -1456,9 +1620,13 @@ fn extract_iso_dir_recursive(
     for entry in dir.contents() {
         let entry = entry.map_err(|e| anyhow::anyhow!("ISO entry error: {}", e))?;
         let raw = entry.identifier();
-        if raw == "\x00" || raw == "\x01" { continue; }
+        if raw == "\x00" || raw == "\x01" {
+            continue;
+        }
         let name = raw.trim_end_matches(";1").to_string();
-        if name.is_empty() { continue; }
+        if name.is_empty() {
+            continue;
+        }
         let is_dir = matches!(entry, iso9660::DirectoryEntry::Directory(_));
         items.push((name, is_dir));
     }
@@ -1476,8 +1644,9 @@ fn extract_iso_dir_recursive(
         if is_dir {
             std::fs::create_dir_all(&out_path)?;
             extract_iso_dir_recursive(iso, &child_iso_path, &out_path, cancel_token)?;
-        } else if let Some(iso9660::DirectoryEntry::File(f)) =
-            iso.open(&child_iso_path).map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?
+        } else if let Some(iso9660::DirectoryEntry::File(f)) = iso
+            .open(&child_iso_path)
+            .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?
         {
             let mut reader = f.read();
             let mut out = std::fs::File::create(&out_path)?;
@@ -1524,9 +1693,11 @@ impl MultiFormatArchiveHandler {
     fn location_name(location: &Location) -> String {
         match location {
             Location::Archive { archive_path, .. } => Self::location_name(archive_path),
-            Location::Local(path) => {
-                path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase()
-            }
+            Location::Local(path) => path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_lowercase(),
             _ => String::new(),
         }
     }
@@ -1555,7 +1726,9 @@ impl MultiFormatArchiveHandler {
 }
 
 impl Default for MultiFormatArchiveHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -1631,7 +1804,9 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
         if Self::location_is_tar(dest) {
             self.tar.create_archive(sources, dest, cancel_token).await
         } else if Self::location_is_sevenz(dest) {
-            self.sevenz.create_archive(sources, dest, cancel_token).await
+            self.sevenz
+                .create_archive(sources, dest, cancel_token)
+                .await
         } else {
             // RAR/ISO/LZH creation is not supported; their handlers return clear errors
             // For dest with those extensions, route to the appropriate stub
@@ -1698,7 +1873,7 @@ impl ArchiveHandler for MockArchiveHandler {
     ) -> Result<()> {
         Ok(())
     }
-    
+
     fn is_archive(&self, filename: &str) -> bool {
         filename.ends_with(".zip")
     }

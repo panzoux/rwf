@@ -312,9 +312,24 @@ mod tests {
 
         // Entries should be filtered in place
         assert_eq!(state.current_tab().left_pane.entries.len(), 3);
-        assert!(state.current_tab().left_pane.entries.iter().any(|e| e.name == "file1.txt"));
-        assert!(state.current_tab().left_pane.entries.iter().any(|e| e.name == "file3.txt"));
-        assert!(state.current_tab().left_pane.entries.iter().any(|e| e.name == "dir1"));
+        assert!(state
+            .current_tab()
+            .left_pane
+            .entries
+            .iter()
+            .any(|e| e.name == "file1.txt"));
+        assert!(state
+            .current_tab()
+            .left_pane
+            .entries
+            .iter()
+            .any(|e| e.name == "file3.txt"));
+        assert!(state
+            .current_tab()
+            .left_pane
+            .entries
+            .iter()
+            .any(|e| e.name == "dir1"));
     }
 
     #[test]

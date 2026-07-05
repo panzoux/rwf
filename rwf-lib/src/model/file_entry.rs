@@ -1,9 +1,9 @@
 //! File entry representation
 
+use super::Location;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::{SystemTime, Duration};
-use super::Location;
+use std::time::{Duration, SystemTime};
 
 /// Distinguishes symlinks from Windows junctions (reparse mount points).
 #[derive(Debug, Clone, PartialEq)]
@@ -42,16 +42,14 @@ pub struct FileEntry {
     pub marked: bool,
     pub calculated_size: Option<u64>,
     pub is_symlink: bool,
-    pub link_target: Option<PathBuf>,   // raw path from read_link(); None for non-links
-    pub link_kind: Option<LinkKind>,    // None for non-links
+    pub link_target: Option<PathBuf>, // raw path from read_link(); None for non-links
+    pub link_kind: Option<LinkKind>,  // None for non-links
 }
 
 impl FileEntry {
     /// Get file extension
     pub fn extension(&self) -> Option<&str> {
-        Path::new(&self.name)
-            .extension()
-            .and_then(|s| s.to_str())
+        Path::new(&self.name).extension().and_then(|s| s.to_str())
     }
 
     /// Get file name without extension
@@ -140,7 +138,8 @@ fn format_date(time: SystemTime) -> String {
 fn format_time_only(time: SystemTime, prefix: &str) -> String {
     // Extract hours and minutes from SystemTime
     // This is a simplified implementation
-    let duration = time.duration_since(SystemTime::UNIX_EPOCH)
+    let duration = time
+        .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0));
     let total_seconds = duration.as_secs();
     let hours = (total_seconds / 3600) % 24;
@@ -151,7 +150,8 @@ fn format_time_only(time: SystemTime, prefix: &str) -> String {
 
 fn format_full_date(time: SystemTime) -> String {
     // Convert SystemTime to YYYY-MM-DD HH:MM format
-    let duration = time.duration_since(SystemTime::UNIX_EPOCH)
+    let duration = time
+        .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0));
     let total_seconds = duration.as_secs();
 
@@ -167,7 +167,10 @@ fn format_full_date(time: SystemTime) -> String {
     let hours = (total_seconds / 3600) % 24;
     let minutes = (total_seconds / 60) % 60;
 
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", year, month, day, hours, minutes)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}",
+        year, month, day, hours, minutes
+    )
 }
 
 #[cfg(test)]

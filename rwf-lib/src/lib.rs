@@ -17,24 +17,24 @@
 //! 3. Pure state functions return StateUpdateResult with side effects
 //! 4. FIFO job ordering with cooperative cancellation
 
-pub mod state;
-pub mod job;
-pub mod backend;
-pub mod model;
 pub mod app_event;
-pub mod worker_pool;
-pub mod event_receiver;
-pub mod input;
-pub mod logging;
-pub mod log_manager;
-pub mod session;
-pub mod macro_expander;
-pub mod pipe_to_action;
-pub mod pattern_rename;
+pub mod backend;
 pub mod config;
-pub mod volume_info;
+pub mod event_receiver;
 pub mod help_content;
+pub mod input;
+pub mod job;
 pub mod leap_filter;
+pub mod log_manager;
+pub mod logging;
+pub mod macro_expander;
+pub mod model;
+pub mod pattern_rename;
+pub mod pipe_to_action;
+pub mod session;
+pub mod state;
+pub mod volume_info;
+pub mod worker_pool;
 
 #[cfg(test)]
 mod error_handling_tests;
@@ -138,19 +138,25 @@ mod archive_format_recognition_tests;
 #[cfg(test)]
 mod help_viewer_tests;
 
-pub use state::{AppState, Transition, StateUpdateResult, AppConfig};
-pub use job::{JobManager, JobId, JobSpec, JobKind, Job, JobResult};
-pub use model::{Location, FileEntry, PaneModel, TabState, TabManager, DialogContent};
-pub use worker_pool::{WorkerPool, JobEvent};
-pub use event_receiver::{map_job_event_to_transition, process_pending_events, process_next_event};
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
-pub use input::{KeyBindings, Action, ArchiveFormat, format_key_event, action_to_transitions,
-                check_keybindings_duplicates, check_keybindings_content_duplicates};
-pub use logging::{LogLevel, init_logging, default_log_dir};
-pub use log_manager::{LogManager, LogEntry, LogEntryLevel};
-pub use session::{SessionState, SessionError, save_session, restore_tabs, restore_marked_locations};
-pub use macro_expander::MacroExpander;
-pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
+pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
 pub use help_content::{DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_MENU_CONFIG};
+pub use input::{
+    action_to_transitions, check_keybindings_content_duplicates, check_keybindings_duplicates,
+    format_key_event, Action, ArchiveFormat, KeyBindings,
+};
+pub use job::{Job, JobId, JobKind, JobManager, JobResult, JobSpec};
+pub use log_manager::{LogEntry, LogEntryLevel, LogManager};
+pub use logging::{default_log_dir, init_logging, LogLevel};
+pub use macro_expander::MacroExpander;
+pub use model::{DialogContent, FileEntry, Location, PaneModel, TabManager, TabState};
 pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
-pub use volume_info::{MarkedFileStats, get_drive_or_share_name, calculate_marked_stats, format_top_separator_info};
+pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
+pub use session::{
+    restore_marked_locations, restore_tabs, save_session, SessionError, SessionState,
+};
+pub use state::{AppConfig, AppState, StateUpdateResult, Transition};
+pub use volume_info::{
+    calculate_marked_stats, format_top_separator_info, get_drive_or_share_name, MarkedFileStats,
+};
+pub use worker_pool::{JobEvent, WorkerPool};

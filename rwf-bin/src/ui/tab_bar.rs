@@ -2,6 +2,7 @@
 //!
 //! This module renders the tab bar at the top of the screen.
 
+use super::{parse_color, shorten_path, spinner};
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -10,7 +11,6 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::AppState;
-use super::{parse_color, shorten_path, spinner};
 
 /// Render the tab bar with spinner animation for busy tabs
 pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -69,7 +69,11 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
 
         // Get shortened paths for left and right panes
         let left_path = shorten_path(&tab.left_pane.current_location.display_path(), 15, ellipsis);
-        let right_path = shorten_path(&tab.right_pane.current_location.display_path(), 15, ellipsis);
+        let right_path = shorten_path(
+            &tab.right_pane.current_location.display_path(),
+            15,
+            ellipsis,
+        );
 
         // Determine which pane is active (only for the active tab)
         let active_marker = if is_active {
@@ -84,7 +88,7 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         // Format tab label with spinner for busy tabs (TWF style)
         // Multiple spinners for multiple jobs: /, //, ///, etc.
         let spinner_display = if has_jobs {
-            spinner.repeat(job_count.min(3))  // Max 3 spinners
+            spinner.repeat(job_count.min(3)) // Max 3 spinners
         } else {
             String::new()
         };

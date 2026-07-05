@@ -2,40 +2,40 @@
 //!
 //! This module handles all UI rendering using ratatui.
 
+mod colors;
+pub mod dialog;
+mod filename_line;
+mod leap_bar;
+mod pane_info_line;
 mod panes;
+mod path_line;
+pub mod smart_text;
+mod spinner;
 mod tab_bar;
 pub mod task_panel;
-mod filename_line;
-mod path_line;
-mod volume_line;
-mod pane_info_line;
-mod leap_bar;
-mod spinner;
-mod colors;
-mod unicode_utils;
-pub mod dialog;
 pub mod text_input;
-pub mod smart_text;
+mod unicode_utils;
 mod viewer;
+mod volume_line;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
-use rwf_lib::AppState;
 use rwf_lib::model::{UIMode, ViewerLayout};
+use rwf_lib::AppState;
 
-pub use panes::{render_panes, render_active_pane_only};
+pub use colors::parse_color;
+pub use dialog::render_dialog;
+pub use filename_line::render_filename_line;
+pub use pane_info_line::render_pane_info_line;
+pub use panes::{render_active_pane_only, render_panes};
+pub use path_line::render_path_line;
+pub use smart_text::{SmartText, TruncateMode};
 pub use tab_bar::render_tab_bar;
 pub use task_panel::{render_task_panel, TaskPanel};
-pub use filename_line::render_filename_line;
-pub use path_line::render_path_line;
-pub use volume_line::render_volume_line;
-pub use pane_info_line::render_pane_info_line;
-pub use colors::parse_color;
 pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
-pub use dialog::render_dialog;
-pub use smart_text::{SmartText, TruncateMode};
+pub use volume_line::render_volume_line;
 
 /// Main UI rendering function
 /// Minimum visible file-listing rows (path+volume+pane_info+filename take the other 4).
@@ -46,7 +46,11 @@ const CONTENT_FIXED_LINES: u16 = 4;
 pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let size = frame.area();
 
-    let tab_bar_h = if state.ui.layout.show_tab_bar { 1u16 } else { 0 };
+    let tab_bar_h = if state.ui.layout.show_tab_bar {
+        1u16
+    } else {
+        0
+    };
 
     // Compute how much the task panel can actually use without hiding pane_info / filename.
     let desired_task_h = if state.ui.layout.show_task_panel {
@@ -54,7 +58,8 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     } else {
         0
     };
-    let available_below_fixed = size.height
+    let available_below_fixed = size
+        .height
         .saturating_sub(tab_bar_h)
         .saturating_sub(CONTENT_FIXED_LINES)
         .saturating_sub(FILE_PANE_MIN);
@@ -68,8 +73,13 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     if is_viewer_active && state.ui.layout.viewer_layout == ViewerLayout::FullScreen {
         if let Some(viewer) = &state.viewer {
             viewer::render_viewer(
-                frame, size, viewer, &state.config.display.colors, state.ui.mode,
-                &state.viewer_search_input, &state.viewer_command_input,
+                frame,
+                size,
+                viewer,
+                &state.config.display.colors,
+                state.ui.mode,
+                &state.viewer_search_input,
+                &state.viewer_command_input,
                 false, // full-screen never needs focus brackets
             );
         }
@@ -91,7 +101,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     }
 
     let content_area = outer[1];
-    let task_area    = outer[2];
+    let task_area = outer[2];
 
     // Side-by-side viewer: split content area left/right.
     if state.viewer.is_some() && state.ui.layout.viewer_layout == ViewerLayout::SideBySide {
@@ -115,11 +125,11 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
         let pane_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1),            // Path line
-                Constraint::Length(1),            // Volume line
-                Constraint::Min(FILE_PANE_MIN),   // File pane (single pane, full width)
-                Constraint::Length(1), // Pane info line
-                Constraint::Length(1), // Filename line
+                Constraint::Length(1),          // Path line
+                Constraint::Length(1),          // Volume line
+                Constraint::Min(FILE_PANE_MIN), // File pane (single pane, full width)
+                Constraint::Length(1),          // Pane info line
+                Constraint::Length(1),          // Filename line
             ])
             .split(pane_area);
 
@@ -132,7 +142,7 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
         // Render viewer side — directory preview or file viewer.
         let tab = state.current_tab();
         let anchor_entry = match anchor {
-            rwf_lib::model::ActivePane::Left  => tab.left_pane.current_entry(),
+            rwf_lib::model::ActivePane::Left => tab.left_pane.current_entry(),
             rwf_lib::model::ActivePane::Right => tab.right_pane.current_entry(),
         };
 
@@ -140,33 +150,51 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
             if entry.is_dir {
                 // Count directory contents inline — std::fs::read_dir on local FS
                 // is sub-millisecond and this render only fires on state changes.
-                let counts = entry.location.path().and_then(|p| std::fs::read_dir(p).ok()).map(|rd| {
-                    let mut files = 0usize;
-                    let mut folders = 0usize;
-                    for e in rd.flatten() {
-                        match e.file_type() {
-                            Ok(ft) if ft.is_dir() => folders += 1,
-                            Ok(_)                 => files   += 1,
-                            Err(_)                => {}
+                let counts = entry
+                    .location
+                    .path()
+                    .and_then(|p| std::fs::read_dir(p).ok())
+                    .map(|rd| {
+                        let mut files = 0usize;
+                        let mut folders = 0usize;
+                        for e in rd.flatten() {
+                            match e.file_type() {
+                                Ok(ft) if ft.is_dir() => folders += 1,
+                                Ok(_) => files += 1,
+                                Err(_) => {}
+                            }
                         }
-                    }
-                    (files, folders)
-                });
+                        (files, folders)
+                    });
                 viewer::render_dir_preview(
-                    frame, viewer_area, &entry.location, counts,
-                    &state.config.display.colors, is_viewer_active,
+                    frame,
+                    viewer_area,
+                    &entry.location,
+                    counts,
+                    &state.config.display.colors,
+                    is_viewer_active,
                 );
             } else if let Some(v) = &state.viewer {
                 viewer::render_viewer(
-                    frame, viewer_area, v, &state.config.display.colors, state.ui.mode,
-                    &state.viewer_search_input, &state.viewer_command_input,
+                    frame,
+                    viewer_area,
+                    v,
+                    &state.config.display.colors,
+                    state.ui.mode,
+                    &state.viewer_search_input,
+                    &state.viewer_command_input,
                     is_viewer_active,
                 );
             }
         } else if let Some(v) = &state.viewer {
             viewer::render_viewer(
-                frame, viewer_area, v, &state.config.display.colors, state.ui.mode,
-                &state.viewer_search_input, &state.viewer_command_input,
+                frame,
+                viewer_area,
+                v,
+                &state.config.display.colors,
+                state.ui.mode,
+                &state.viewer_search_input,
+                &state.viewer_command_input,
                 is_viewer_active,
             );
         }
@@ -185,11 +213,11 @@ pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),            // Path line (left | right)
-            Constraint::Length(1),            // Volume name line (left | right)
-            Constraint::Min(FILE_PANE_MIN),   // File panes (NO BORDERS)
-            Constraint::Length(1),            // Pane info line (left | right)
-            Constraint::Length(1),            // Selected filename line
+            Constraint::Length(1),          // Path line (left | right)
+            Constraint::Length(1),          // Volume name line (left | right)
+            Constraint::Min(FILE_PANE_MIN), // File panes (NO BORDERS)
+            Constraint::Length(1),          // Pane info line (left | right)
+            Constraint::Length(1),          // Selected filename line
         ])
         .split(content_area);
 

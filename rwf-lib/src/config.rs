@@ -95,12 +95,20 @@ pub struct AppConfig {
     pub viewer_large_file_threshold_mb: u32,
 }
 
-fn default_polling_interval_ms() -> u32 { 1000 }
-fn default_help_show_unbound() -> bool { true }
+fn default_polling_interval_ms() -> u32 {
+    1000
+}
+fn default_help_show_unbound() -> bool {
+    true
+}
 
-fn default_viewer_large_file_threshold_mb() -> u32 { 100 }
+fn default_viewer_large_file_threshold_mb() -> u32 {
+    100
+}
 
-fn default_symlink_separator() -> String { "->".to_string() }
+fn default_symlink_separator() -> String {
+    "->".to_string()
+}
 
 /// Controls how Leap mode reports a zero-match query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -146,27 +154,43 @@ pub struct JumpNavConfig {
     pub no_match_feedback: NoMatchFeedback,
 }
 
-fn default_jump_file_max_results() -> usize { 1000 }
-fn default_jump_file_max_depth()   -> usize { 4 }
-fn default_jump_path_max_results() -> usize { 500 }
-fn default_jump_path_max_depth()   -> usize { 3 }
-fn default_leap_enabled()          -> bool  { true }
-fn default_leap_migemo_enabled()   -> bool  { true }
-fn default_leap_migemo_min_chars() -> usize { 1 }
-fn default_leap_debounce_ms()      -> u64   { 150 }
+fn default_jump_file_max_results() -> usize {
+    1000
+}
+fn default_jump_file_max_depth() -> usize {
+    4
+}
+fn default_jump_path_max_results() -> usize {
+    500
+}
+fn default_jump_path_max_depth() -> usize {
+    3
+}
+fn default_leap_enabled() -> bool {
+    true
+}
+fn default_leap_migemo_enabled() -> bool {
+    true
+}
+fn default_leap_migemo_min_chars() -> usize {
+    1
+}
+fn default_leap_debounce_ms() -> u64 {
+    150
+}
 
 impl Default for JumpNavConfig {
     fn default() -> Self {
         Self {
-            jump_file_max_results:  default_jump_file_max_results(),
-            jump_file_max_depth:    default_jump_file_max_depth(),
-            jump_path_max_results:  default_jump_path_max_results(),
-            jump_path_max_depth:    default_jump_path_max_depth(),
-            leap_enabled:           default_leap_enabled(),
-            leap_migemo_enabled:    default_leap_migemo_enabled(),
-            leap_migemo_min_chars:  default_leap_migemo_min_chars(),
-            leap_debounce_ms:       default_leap_debounce_ms(),
-            no_match_feedback:      NoMatchFeedback::default(),
+            jump_file_max_results: default_jump_file_max_results(),
+            jump_file_max_depth: default_jump_file_max_depth(),
+            jump_path_max_results: default_jump_path_max_results(),
+            jump_path_max_depth: default_jump_path_max_depth(),
+            leap_enabled: default_leap_enabled(),
+            leap_migemo_enabled: default_leap_migemo_enabled(),
+            leap_migemo_min_chars: default_leap_migemo_min_chars(),
+            leap_debounce_ms: default_leap_debounce_ms(),
+            no_match_feedback: NoMatchFeedback::default(),
         }
     }
 }
@@ -177,11 +201,11 @@ pub struct ArchiveConfig {
     /// Default archive format (default: ZIP)
     #[serde(default = "default_archive_format")]
     pub default_format: crate::input::ArchiveFormat,
-    
+
     /// Compression level (1-9, default: 6)
     #[serde(default = "default_compression_level")]
     pub compression_level: u32,
-    
+
     /// Last used archive name for quick access
     #[serde(default)]
     pub last_archive_name: String,
@@ -246,15 +270,33 @@ pub struct JobManagerConfig {
     pub loading_poll_interval_ms: u64,
 }
 
-fn default_max_simultaneous_jobs() -> usize { 4 }
-fn default_update_interval_ms() -> u64 { 300 }
-fn default_task_panel_height() -> usize { 10 }
-fn default_task_panel_refresh_interval_ms() -> u64 { 500 }
-fn default_max_task_panel_log_lines() -> usize { 1000 }
-fn default_max_log_files() -> usize { 5 }
-fn default_job_manager_refresh_interval_ms() -> u64 { 500 }
-fn default_job_retention_period_secs() -> u64 { 5 }
-fn default_loading_poll_interval_ms() -> u64 { 50 }
+fn default_max_simultaneous_jobs() -> usize {
+    4
+}
+fn default_update_interval_ms() -> u64 {
+    300
+}
+fn default_task_panel_height() -> usize {
+    10
+}
+fn default_task_panel_refresh_interval_ms() -> u64 {
+    500
+}
+fn default_max_task_panel_log_lines() -> usize {
+    1000
+}
+fn default_max_log_files() -> usize {
+    5
+}
+fn default_job_manager_refresh_interval_ms() -> u64 {
+    500
+}
+fn default_job_retention_period_secs() -> u64 {
+    5
+}
+fn default_loading_poll_interval_ms() -> u64 {
+    50
+}
 
 impl Default for JobManagerConfig {
     fn default() -> Self {
@@ -319,7 +361,7 @@ impl Default for AppConfig {
             session_persistence: true,
             key_repeat_delay_ms: 300,
             key_repeat_rate_ms: 15,
-            ellipsis: "…".to_string(),  // Unicode ellipsis U+2026
+            ellipsis: "…".to_string(), // Unicode ellipsis U+2026
             max_log_lines_in_memory: 2000,
             log_save_path: "logs/session.log".to_string(),
             save_log_on_exit: true,
@@ -372,9 +414,14 @@ pub struct DisplayConfig {
 }
 
 fn default_spinner_frames() -> Vec<String> {
-    ["|", "/", "-", "\\"].iter().map(|s| s.to_string()).collect()
+    ["|", "/", "-", "\\"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
-fn default_spinner_frame_ms() -> u64 { 150 }
+fn default_spinner_frame_ms() -> u64 {
+    150
+}
 
 impl Default for DisplayConfig {
     fn default() -> Self {
@@ -409,55 +456,55 @@ pub struct ColorScheme {
     pub background_color: String,
     pub highlight_foreground_color: String,
     pub highlight_background_color: String,
-    
+
     // Active file pane cursor colors (UI area 4)
     pub file_pane_cursor_foreground_color: Option<String>,
     pub file_pane_cursor_background_color: Option<String>,
-    
+
     // Inactive file pane cursor colors (UI area 4)
     pub inactive_file_pane_cursor_foreground_color: Option<String>,
     pub inactive_file_pane_cursor_background_color: Option<String>,
-    
+
     // Inactive pane colors (UI area 4)
     pub inactive_foreground_color: Option<String>,
     pub inactive_background_color: Option<String>,
-    
+
     // File and directory colors
     pub marked_file_color: String,
     pub directory_color: String,
     pub directory_background_color: String,
     pub inactive_directory_color: String,
     pub inactive_directory_background_color: String,
-    
+
     // Pane info bar colors (UI area 5)
     pub pane_info_foreground_color: Option<String>,
     pub pane_info_background_color: Option<String>,
-    
+
     // Pane and border colors
     pub filename_label_foreground_color: String,
     pub filename_label_background_color: String,
     pub pane_border_color: String,
-    
+
     // Top separator colors (UI area 3)
     pub top_separator_foreground_color: String,
     pub top_separator_background_color: String,
-    
+
     // Dialog colors
     pub dialog_help_foreground_color: String,
     pub dialog_help_background_color: String,
-    
+
     // Tab colors (UI area 1)
     pub active_tab_foreground_color: String,
     pub active_tab_background_color: String,
     pub inactive_tab_foreground_color: String,
     pub inactive_tab_background_color: String,
     pub tabbar_background_color: String,
-    
+
     // Status colors
     pub ok_color: String,
     pub warning_color: String,
     pub error_color: String,
-    
+
     // Text viewer colors
     pub text_viewer_foreground_color: String,
     pub text_viewer_background_color: String,
@@ -522,7 +569,7 @@ impl ColorScheme {
             .as_deref()
             .unwrap_or(&self.highlight_foreground_color)
     }
-    
+
     /// Get file pane cursor background color with backward compatibility
     /// Falls back to highlight_background_color if not set
     /// **Validates: Requirements 49.10**
@@ -531,7 +578,7 @@ impl ColorScheme {
             .as_deref()
             .unwrap_or(&self.highlight_background_color)
     }
-    
+
     /// Get inactive file pane cursor foreground color with backward compatibility
     /// Falls back to inactive_foreground_color, then foreground_color
     /// **Validates: Requirements 49.9**
@@ -541,7 +588,7 @@ impl ColorScheme {
             .or(self.inactive_foreground_color.as_deref())
             .unwrap_or(&self.foreground_color)
     }
-    
+
     /// Get inactive file pane cursor background color with backward compatibility
     /// Falls back to inactive_background_color, then background_color
     /// **Validates: Requirements 49.10**
@@ -551,7 +598,7 @@ impl ColorScheme {
             .or(self.inactive_background_color.as_deref())
             .unwrap_or(&self.background_color)
     }
-    
+
     /// Get inactive foreground color with backward compatibility
     /// Falls back to foreground_color if not set
     pub fn get_inactive_foreground(&self) -> &str {
@@ -559,7 +606,7 @@ impl ColorScheme {
             .as_deref()
             .unwrap_or(&self.foreground_color)
     }
-    
+
     /// Get inactive background color with backward compatibility
     /// Falls back to background_color if not set
     pub fn get_inactive_background(&self) -> &str {
@@ -567,7 +614,7 @@ impl ColorScheme {
             .as_deref()
             .unwrap_or(&self.background_color)
     }
-    
+
     /// Get pane info foreground color with backward compatibility
     /// Falls back to top_separator_foreground_color if not set
     /// **Validates: Requirements 49.9**
@@ -576,7 +623,7 @@ impl ColorScheme {
             .as_deref()
             .unwrap_or(&self.top_separator_foreground_color)
     }
-    
+
     /// Get pane info background color with backward compatibility
     /// Falls back to top_separator_background_color if not set
     /// **Validates: Requirements 49.10**
@@ -636,7 +683,7 @@ impl Default for KeyBindings {
         normal_mode.insert("Ctrl+L".to_string(), Action::SaveLog);
         normal_mode.insert("Q".to_string(), Action::Quit);
         normal_mode.insert("Escape".to_string(), Action::Quit);
-        
+
         Self {
             normal_mode,
             search_mode: HashMap::new(),
@@ -663,14 +710,14 @@ pub enum Action {
     SwitchPane,
     HistoryBack,
     HistoryForward,
-    
+
     // File Operations
     Copy,
     Move,
     Delete,
     Rename,
     CreateDirectory,
-    
+
     // Marking
     ToggleMark,
     MarkAll,
@@ -678,27 +725,27 @@ pub enum Action {
     MarkPattern,
     MarkRange,
     InvertMarks,
-    
+
     // Search
     StartSearch,
     NextMatch,
     PrevMatch,
     ClearSearch,
-    
+
     // View
     ChangeDisplayMode(u8),
     SortMenu,
     ToggleHidden,
     Refresh,
     SetFilter,
-    
+
     // Tabs
     NewTab,
     CloseTab,
     NextTab,
     PrevTab,
     TabSelector,
-    
+
     // Advanced
     CustomFunction,
     RegisteredFolders,
@@ -706,7 +753,7 @@ pub enum Action {
     ViewFile,
     HexView,
     CompareFiles,
-    
+
     // Application
     Quit,
     ReloadConfig,
@@ -756,14 +803,21 @@ pub struct SearchConfig {
     #[serde(rename = "SearchDebounceMs", default = "default_search_debounce_ms")]
     pub search_debounce_ms: u64,
     /// Pattern rename preview debounce in milliseconds (0 = update every keystroke)
-    #[serde(rename = "PatternRenameDebounceMs", default = "default_pattern_rename_debounce_ms")]
+    #[serde(
+        rename = "PatternRenameDebounceMs",
+        default = "default_pattern_rename_debounce_ms"
+    )]
     pub pattern_rename_debounce_ms: u64,
     /// Maximum number of search results
     pub max_results: usize,
 }
 
-fn default_search_debounce_ms() -> u64 { 150 }
-fn default_pattern_rename_debounce_ms() -> u64 { 150 }
+fn default_search_debounce_ms() -> u64 {
+    150
+}
+fn default_pattern_rename_debounce_ms() -> u64 {
+    150
+}
 
 impl Default for SearchConfig {
     fn default() -> Self {
@@ -842,8 +896,12 @@ impl ConfigManager {
     }
 
     /// Create a ConfigManager with custom paths (for testing)
-    pub fn with_paths(config_path: std::path::PathBuf, keybindings_path: std::path::PathBuf) -> Self {
-        let config_dir = config_path.parent()
+    pub fn with_paths(
+        config_path: std::path::PathBuf,
+        keybindings_path: std::path::PathBuf,
+    ) -> Self {
+        let config_dir = config_path
+            .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         Self {
@@ -854,78 +912,76 @@ impl ConfigManager {
             keybindings_path,
         }
     }
-    
+
     /// Load configuration from config.json
     /// Returns default configuration if file doesn't exist
     /// Returns error if file is malformed
     pub fn load_config(&self) -> Result<AppConfig, ConfigError> {
         if self.config_path.exists() {
-            let content = std::fs::read_to_string(&self.config_path)
-                .map_err(ConfigError::IoError)?;
-            
+            let content =
+                std::fs::read_to_string(&self.config_path).map_err(ConfigError::IoError)?;
+
             let config: AppConfig = serde_json::from_str(&content)
                 .map_err(|e| ConfigError::ParseError(format!("Invalid config.json: {}", e)))?;
-            
+
             // Validate configuration
             self.validate_config(&config)?;
-            
+
             Ok(config)
         } else {
             // Use default settings if file doesn't exist
             Ok(AppConfig::default())
         }
     }
-    
+
     /// Save configuration to config.json
     pub fn save_config(&self, config: &AppConfig) -> Result<(), ConfigError> {
         // Ensure directory exists
         if let Some(parent) = self.config_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(ConfigError::IoError)?;
+            std::fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
         }
-        
-        let content = serde_json::to_string_pretty(config)
-            .map_err(|e| ConfigError::SerializeError(format!("Failed to serialize config: {}", e)))?;
-        
-        std::fs::write(&self.config_path, content)
-            .map_err(ConfigError::IoError)?;
-        
+
+        let content = serde_json::to_string_pretty(config).map_err(|e| {
+            ConfigError::SerializeError(format!("Failed to serialize config: {}", e))
+        })?;
+
+        std::fs::write(&self.config_path, content).map_err(ConfigError::IoError)?;
+
         Ok(())
     }
-    
+
     /// Load key bindings from keybindings.json
     /// Returns default key bindings if file doesn't exist
     pub fn load_keybindings(&self) -> Result<KeyBindings, ConfigError> {
         if self.keybindings_path.exists() {
-            let content = std::fs::read_to_string(&self.keybindings_path)
-                .map_err(ConfigError::IoError)?;
-            
+            let content =
+                std::fs::read_to_string(&self.keybindings_path).map_err(ConfigError::IoError)?;
+
             let keybindings: KeyBindings = serde_json::from_str(&content)
                 .map_err(|e| ConfigError::ParseError(format!("Invalid keybindings.json: {}", e)))?;
-            
+
             Ok(keybindings)
         } else {
             Ok(KeyBindings::default())
         }
     }
-    
+
     /// Save key bindings to keybindings.json
     pub fn save_keybindings(&self, keybindings: &KeyBindings) -> Result<(), ConfigError> {
         // Ensure directory exists
         if let Some(parent) = self.keybindings_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(ConfigError::IoError)?;
+            std::fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
         }
-        
-        let content = serde_json::to_string_pretty(keybindings)
-            .map_err(|e| ConfigError::SerializeError(format!("Failed to serialize keybindings: {}", e)))?;
-        
-        std::fs::write(&self.keybindings_path, content)
-            .map_err(ConfigError::IoError)?;
-        
+
+        let content = serde_json::to_string_pretty(keybindings).map_err(|e| {
+            ConfigError::SerializeError(format!("Failed to serialize keybindings: {}", e))
+        })?;
+
+        std::fs::write(&self.keybindings_path, content).map_err(ConfigError::IoError)?;
+
         Ok(())
     }
-    
+
     /// Get the config file path
     pub fn config_path(&self) -> &std::path::Path {
         &self.config_path
@@ -958,10 +1014,15 @@ impl ConfigManager {
     }
 
     /// Load extension associations and return a `ConfigLoadResult` alongside the data.
-    pub fn load_extension_associations_with_result(&self) -> (Vec<ExtensionAssociation>, ConfigLoadResult) {
+    pub fn load_extension_associations_with_result(
+        &self,
+    ) -> (Vec<ExtensionAssociation>, ConfigLoadResult) {
         let path = self.extension_associations_path.clone();
         if !path.exists() {
-            return (Vec::new(), ConfigLoadResult::skipped(path, "file not found"));
+            return (
+                Vec::new(),
+                ConfigLoadResult::skipped(path, "file not found"),
+            );
         }
         match std::fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<Vec<ExtensionAssociation>>(&content) {
@@ -998,37 +1059,37 @@ impl ConfigManager {
         // Validate worker pool size
         if config.worker_pool_size == 0 {
             return Err(ConfigError::ValidationError(
-                "worker_pool_size must be greater than 0".to_string()
+                "worker_pool_size must be greater than 0".to_string(),
             ));
         }
-        
+
         if config.worker_pool_size > 32 {
             return Err(ConfigError::ValidationError(
-                "worker_pool_size must not exceed 32".to_string()
+                "worker_pool_size must not exceed 32".to_string(),
             ));
         }
-        
+
         // Validate CJK width
         if config.display.cjk_width != 1 && config.display.cjk_width != 2 {
             return Err(ConfigError::ValidationError(
-                "cjk_width must be 1 or 2".to_string()
+                "cjk_width must be 1 or 2".to_string(),
             ));
         }
-        
+
         // Validate UI refresh rate
         if config.ui.refresh_rate == 0 {
             return Err(ConfigError::ValidationError(
-                "refresh_rate must be greater than 0".to_string()
+                "refresh_rate must be greater than 0".to_string(),
             ));
         }
-        
+
         // Validate buffer size
         if config.file_operations.buffer_size == 0 {
             return Err(ConfigError::ValidationError(
-                "buffer_size must be greater than 0".to_string()
+                "buffer_size must be greater than 0".to_string(),
             ));
         }
-        
+
         Ok(())
     }
 }
@@ -1043,9 +1104,9 @@ impl Default for ConfigManager {
 #[derive(Debug, Clone)]
 pub enum ConfigLoadStatus {
     Ok,
-    Default(String),  // file absent; built-in defaults are active
-    Skipped(String),  // file absent; feature simply not configured
-    Error(String),    // file present but unparseable; brief description
+    Default(String), // file absent; built-in defaults are active
+    Skipped(String), // file absent; feature simply not configured
+    Error(String),   // file present but unparseable; brief description
 }
 
 /// Result of attempting to load one config file
@@ -1057,16 +1118,28 @@ pub struct ConfigLoadResult {
 
 impl ConfigLoadResult {
     pub fn ok(path: std::path::PathBuf) -> Self {
-        Self { path, status: ConfigLoadStatus::Ok }
+        Self {
+            path,
+            status: ConfigLoadStatus::Ok,
+        }
     }
     pub fn default_fallback(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
-        Self { path, status: ConfigLoadStatus::Default(reason.into()) }
+        Self {
+            path,
+            status: ConfigLoadStatus::Default(reason.into()),
+        }
     }
     pub fn skipped(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
-        Self { path, status: ConfigLoadStatus::Skipped(reason.into()) }
+        Self {
+            path,
+            status: ConfigLoadStatus::Skipped(reason.into()),
+        }
     }
     pub fn error(path: std::path::PathBuf, detail: impl Into<String>) -> Self {
-        Self { path, status: ConfigLoadStatus::Error(detail.into()) }
+        Self {
+            path,
+            status: ConfigLoadStatus::Error(detail.into()),
+        }
     }
 }
 
@@ -1075,13 +1148,13 @@ impl ConfigLoadResult {
 pub enum ConfigError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    
+
     #[error("Parse error: {0}")]
     ParseError(String),
-    
+
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
+
     #[error("Serialization error: {0}")]
     SerializeError(String),
 }
@@ -1090,26 +1163,26 @@ pub enum ConfigError {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     #[test]
     fn test_load_default_config_when_file_missing() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let config = manager.load_config().unwrap();
-        
+
         assert_eq!(config.worker_pool_size, 4);
         assert!(config.session_persistence);
     }
-    
+
     #[test]
     fn test_load_config_from_file() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         // Write a config file
         let config_json = r#"{
             "Display": {
@@ -1188,39 +1261,39 @@ mod tests {
             "Editor": null,
             "HelpLanguage": "en"
         }"#;
-        
+
         std::fs::write(&config_path, config_json).unwrap();
-        
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let config = manager.load_config().unwrap();
-        
+
         assert_eq!(config.worker_pool_size, 8);
         assert!(!config.session_persistence);
         assert!(config.display.show_hidden);
     }
-    
+
     #[test]
     fn test_invalid_config_returns_error() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         // Write invalid JSON
         std::fs::write(&config_path, "{ invalid json }").unwrap();
-        
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let result = manager.load_config();
-        
+
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ConfigError::ParseError(_)));
     }
-    
+
     #[test]
     fn test_validate_worker_pool_size() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let config = AppConfig {
             worker_pool_size: 0,
             ..Default::default()
@@ -1230,32 +1303,35 @@ mod tests {
         let result = manager.validate_config(&config);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ConfigError::ValidationError(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigError::ValidationError(_)
+        ));
     }
-    
+
     #[test]
     fn test_validate_cjk_width() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let mut config = AppConfig::default();
         config.display.cjk_width = 3;
-        
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let result = manager.validate_config(&config);
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_save_and_load_config() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path.clone(), keybindings_path);
-        
+
         let config = AppConfig {
             worker_pool_size: 6,
             session_persistence: false,
@@ -1263,22 +1339,25 @@ mod tests {
         };
 
         manager.save_config(&config).unwrap();
-        
+
         let loaded_config = manager.load_config().unwrap();
         assert_eq!(loaded_config.worker_pool_size, 6);
         assert!(!loaded_config.session_persistence);
     }
-    
+
     #[test]
     fn test_load_default_keybindings_when_file_missing() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
-        
+
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         let keybindings = manager.load_keybindings().unwrap();
-        
+
         assert!(keybindings.normal_mode.contains_key("Tab"));
-        assert_eq!(keybindings.normal_mode.get("Tab"), Some(&Action::SwitchPane));
+        assert_eq!(
+            keybindings.normal_mode.get("Tab"),
+            Some(&Action::SwitchPane)
+        );
     }
 }

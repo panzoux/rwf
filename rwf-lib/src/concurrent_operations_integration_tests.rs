@@ -126,7 +126,12 @@ mod tests {
 
         // Cancel the first job
         let job_to_cancel = job_ids[0];
-        let result = update_state(&mut state, Transition::CancelJob { job_id: job_to_cancel });
+        let result = update_state(
+            &mut state,
+            Transition::CancelJob {
+                job_id: job_to_cancel,
+            },
+        );
 
         // Verify cancellation was requested
         assert!(result.jobs_to_cancel.contains(&job_to_cancel));
@@ -137,7 +142,12 @@ mod tests {
         }
 
         // Acknowledge cancellation
-        update_state(&mut state, Transition::AcknowledgeCancel { job_id: job_to_cancel });
+        update_state(
+            &mut state,
+            Transition::AcknowledgeCancel {
+                job_id: job_to_cancel,
+            },
+        );
 
         // Verify job was removed from active jobs
         assert!(!state.jobs.active.contains_key(&job_to_cancel));
@@ -172,7 +182,10 @@ mod tests {
         // Create many jobs to simulate heavy load
         for i in 0..10 {
             let job = JobSpec::new(JobKind::Copy {
-                sources: vec![Location::Local(PathBuf::from(format!("/source{}/file.txt", i)))],
+                sources: vec![Location::Local(PathBuf::from(format!(
+                    "/source{}/file.txt",
+                    i
+                )))],
                 dest: Location::Local(PathBuf::from(format!("/dest{}", i))),
             });
             update_state(&mut state, Transition::EnqueueJob { spec: job });
@@ -273,7 +286,10 @@ mod tests {
         // Create and start 3 jobs
         for i in 0..3 {
             let job = JobSpec::new(JobKind::Copy {
-                sources: vec![Location::Local(PathBuf::from(format!("/source{}/file.txt", i)))],
+                sources: vec![Location::Local(PathBuf::from(format!(
+                    "/source{}/file.txt",
+                    i
+                )))],
                 dest: Location::Local(PathBuf::from(format!("/dest{}", i))),
             });
             update_state(&mut state, Transition::EnqueueJob { spec: job });
@@ -320,7 +336,10 @@ mod tests {
         // Create 10 jobs
         for i in 0..10 {
             let job = JobSpec::new(JobKind::Delete {
-                targets: vec![Location::Local(PathBuf::from(format!("/temp/file{}.txt", i)))],
+                targets: vec![Location::Local(PathBuf::from(format!(
+                    "/temp/file{}.txt",
+                    i
+                )))],
             });
             update_state(&mut state, Transition::EnqueueJob { spec: job });
         }

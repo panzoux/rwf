@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action, action_to_transitions};
+    use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{ActivePane, FileEntry, Location};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -46,10 +46,15 @@ mod tests {
         let mut state = default_state_with_entries(entries);
         let tab = state.current_tab_mut();
         tab.left_pane.apply_filter("*.txt");
-        let names: Vec<_> = tab.left_pane.entries.iter().map(|e| e.name.as_str()).collect();
+        let names: Vec<_> = tab
+            .left_pane
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
         assert!(names.contains(&"a.txt"), "a.txt should be visible");
         assert!(names.contains(&"c.txt"), "c.txt should be visible");
-        assert!(names.contains(&"dir"),   "directories always shown");
+        assert!(names.contains(&"dir"), "directories always shown");
         assert!(!names.contains(&"b.rs"), "b.rs should be filtered out");
     }
 
@@ -57,19 +62,30 @@ mod tests {
     fn test_apply_filter_question_mark_wildcard() {
         // '?' matches exactly one character
         let entries = vec![
-            make_entry("a1.txt", false),   // one char before .txt → matches
-            make_entry("ab.txt", false),   // one char before .txt → matches
-            make_entry("a.txt", false),    // zero chars before .txt → no match
-            make_entry("abc.txt", false),  // two chars before .txt → no match
+            make_entry("a1.txt", false),  // one char before .txt → matches
+            make_entry("ab.txt", false),  // one char before .txt → matches
+            make_entry("a.txt", false),   // zero chars before .txt → no match
+            make_entry("abc.txt", false), // two chars before .txt → no match
         ];
         let mut state = default_state_with_entries(entries);
         let tab = state.current_tab_mut();
         tab.left_pane.apply_filter("a?.txt");
-        let names: Vec<_> = tab.left_pane.entries.iter().map(|e| e.name.as_str()).collect();
-        assert!(names.contains(&"a1.txt"),  "a1.txt matches a?.txt");
-        assert!(names.contains(&"ab.txt"),  "ab.txt matches a?.txt");
-        assert!(!names.contains(&"a.txt"),  "a.txt does NOT match a?.txt (zero chars for ?)");
-        assert!(!names.contains(&"abc.txt"), "abc.txt does NOT match a?.txt (two chars for ?)");
+        let names: Vec<_> = tab
+            .left_pane
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(names.contains(&"a1.txt"), "a1.txt matches a?.txt");
+        assert!(names.contains(&"ab.txt"), "ab.txt matches a?.txt");
+        assert!(
+            !names.contains(&"a.txt"),
+            "a.txt does NOT match a?.txt (zero chars for ?)"
+        );
+        assert!(
+            !names.contains(&"abc.txt"),
+            "abc.txt does NOT match a?.txt (two chars for ?)"
+        );
     }
 
     #[test]
@@ -100,9 +116,14 @@ mod tests {
         let mut state = default_state_with_entries(entries);
         let tab = state.current_tab_mut();
         tab.left_pane.apply_filter("*.rs");
-        let names: Vec<_> = tab.left_pane.entries.iter().map(|e| e.name.as_str()).collect();
+        let names: Vec<_> = tab
+            .left_pane
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
         assert!(names.contains(&"docs"), "dirs always shown");
-        assert!(names.contains(&"src"),  "dirs always shown");
+        assert!(names.contains(&"src"), "dirs always shown");
         assert!(!names.contains(&"main.py"), "non-matching file filtered");
     }
 
@@ -111,10 +132,13 @@ mod tests {
     #[test]
     fn test_set_file_mask_transition_stores_mask() {
         let mut state = AppState::new(AppConfig::default());
-        update_state(&mut state, Transition::SetFileMask {
-            pane: ActivePane::Left,
-            mask: Some("*.txt".to_string()),
-        });
+        update_state(
+            &mut state,
+            Transition::SetFileMask {
+                pane: ActivePane::Left,
+                mask: Some("*.txt".to_string()),
+            },
+        );
         let mask = &state.current_tab().left_pane.file_mask;
         assert_eq!(mask.as_deref(), Some("*.txt"));
     }
@@ -123,10 +147,13 @@ mod tests {
     fn test_clear_file_mask_transition() {
         let mut state = AppState::new(AppConfig::default());
         state.current_tab_mut().left_pane.file_mask = Some("*.txt".to_string());
-        update_state(&mut state, Transition::SetFileMask {
-            pane: ActivePane::Left,
-            mask: None,
-        });
+        update_state(
+            &mut state,
+            Transition::SetFileMask {
+                pane: ActivePane::Left,
+                mask: None,
+            },
+        );
         assert!(state.current_tab().left_pane.file_mask.is_none());
     }
 
@@ -156,29 +183,32 @@ mod tests {
 
     #[test]
     fn test_apply_current_filter_uses_stored_mask() {
-        let entries = vec![
-            make_entry("readme.md", false),
-            make_entry("main.rs", false),
-        ];
+        let entries = vec![make_entry("readme.md", false), make_entry("main.rs", false)];
         let mut state = default_state_with_entries(entries);
         let tab = state.current_tab_mut();
         tab.left_pane.file_mask = Some("*.rs".to_string());
         tab.left_pane.apply_current_filter();
-        let names: Vec<_> = tab.left_pane.entries.iter().map(|e| e.name.as_str()).collect();
+        let names: Vec<_> = tab
+            .left_pane
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
         assert!(names.contains(&"main.rs"));
         assert!(!names.contains(&"readme.md"));
     }
 
     #[test]
     fn test_apply_current_filter_noop_when_no_mask() {
-        let entries = vec![
-            make_entry("readme.md", false),
-            make_entry("main.rs", false),
-        ];
+        let entries = vec![make_entry("readme.md", false), make_entry("main.rs", false)];
         let mut state = default_state_with_entries(entries);
         let tab = state.current_tab_mut();
         // file_mask is None by default
         tab.left_pane.apply_current_filter();
-        assert_eq!(tab.left_pane.entries.len(), 2, "no mask → all entries remain");
+        assert_eq!(
+            tab.left_pane.entries.len(),
+            2,
+            "no mask → all entries remain"
+        );
     }
 }

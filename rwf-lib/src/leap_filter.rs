@@ -41,7 +41,7 @@ enum MatchPriority {
 /// Check if `name` matches a single segment (case-insensitive).
 fn match_segment(name: &str, seg: &str, migemo_regex: Option<&regex::Regex>) -> MatchPriority {
     let name_lower = name.to_lowercase();
-    let seg_lower  = seg.to_lowercase();
+    let seg_lower = seg.to_lowercase();
 
     if name_lower.starts_with(&seg_lower) {
         return MatchPriority::Prefix;

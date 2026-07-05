@@ -2,9 +2,9 @@
 //!
 //! This example shows how to use the WorkerPool to execute jobs asynchronously.
 
-use rwf_lib::{WorkerPool, JobSpec, JobKind, JobEvent};
 use rwf_lib::backend::{LocalFilesystemBackend, ZipArchiveHandler};
 use rwf_lib::model::Location;
+use rwf_lib::{JobEvent, JobKind, JobSpec, WorkerPool};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -14,24 +14,24 @@ async fn main() {
     let backend = Arc::new(LocalFilesystemBackend::new());
     let archive_handler = Arc::new(ZipArchiveHandler::new());
     let mut pool = WorkerPool::new(4, backend, archive_handler);
-    
+
     // Submit some jobs
     println!("Submitting jobs...");
-    
+
     let job1 = JobSpec::new(JobKind::ReadDirectory {
         location: Location::Local(PathBuf::from("/tmp")),
     });
     pool.submit_job(job1);
-    
+
     let job2 = JobSpec::new(JobKind::Mkdir {
         location: Location::Local(PathBuf::from("/tmp/test_dir")),
     });
     pool.submit_job(job2);
-    
+
     // Process events
     println!("Processing events...");
     let mut completed_count = 0;
-    
+
     while completed_count < 2 {
         if let Some(event) = pool.recv_event().await {
             match event {
@@ -42,7 +42,13 @@ async fn main() {
                     println!("Job {:?} progress: {:.1}%", job_id, progress * 100.0);
                 }
                 JobEvent::ProgressWithDetail(job_id, progress, msg, detail) => {
-                    println!("Job {:?} progress: {:.1}% - {} ({})", job_id, progress * 100.0, msg, detail);
+                    println!(
+                        "Job {:?} progress: {:.1}% - {} ({})",
+                        job_id,
+                        progress * 100.0,
+                        msg,
+                        detail
+                    );
                 }
                 JobEvent::Completed(job_id, _) => {
                     println!("Job {:?} completed successfully", job_id);
@@ -61,7 +67,7 @@ async fn main() {
             }
         }
     }
-    
+
     println!("All jobs completed. Shutting down...");
     pool.shutdown().await;
     println!("Worker pool shut down successfully");

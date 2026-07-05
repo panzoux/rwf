@@ -3,7 +3,7 @@
 //! This module handles saving and restoring application state across sessions,
 //! including tab states, pane locations, and marked files.
 
-use crate::model::{Location, TabState, ActivePane};
+use crate::model::{ActivePane, Location, TabState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -81,15 +81,13 @@ impl SessionState {
     pub fn save_to_file(&self, path: &Path) -> Result<(), SessionError> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| SessionError::IoError(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| SessionError::IoError(e.to_string()))?;
         }
 
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| SessionError::SerializationError(e.to_string()))?;
 
-        std::fs::write(path, json)
-            .map_err(|e| SessionError::IoError(e.to_string()))?;
+        std::fs::write(path, json).map_err(|e| SessionError::IoError(e.to_string()))?;
 
         Ok(())
     }
@@ -100,8 +98,8 @@ impl SessionState {
             return Ok(Self::new());
         }
 
-        let json = std::fs::read_to_string(path)
-            .map_err(|e| SessionError::IoError(e.to_string()))?;
+        let json =
+            std::fs::read_to_string(path).map_err(|e| SessionError::IoError(e.to_string()))?;
 
         let state = serde_json::from_str(&json)
             .map_err(|e| SessionError::DeserializationError(e.to_string()))?;
@@ -111,8 +109,7 @@ impl SessionState {
 
     /// Get the default session file path
     pub fn default_path() -> PathBuf {
-        let mut path = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         path.push("rwf");
         path.push("session.json");
         path
@@ -197,10 +194,7 @@ pub fn save_session(
         })
         .collect();
 
-    let saved_marked: Vec<SavedLocation> = marked_locations
-        .iter()
-        .map(|loc| loc.into())
-        .collect();
+    let saved_marked: Vec<SavedLocation> = marked_locations.iter().map(|loc| loc.into()).collect();
 
     SessionState {
         tabs: saved_tabs,
@@ -227,11 +221,11 @@ pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
                 tab.right_pane.current_location = saved_tab.right_location.clone().into();
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
-                
+
                 // Don't adjust scroll_offset here - let the normal scrolling logic
                 // handle it when entries are loaded via CompleteJob transition.
                 // The cursor movement logic will ensure the cursor is visible.
-                
+
                 tab
             })
             .collect()
@@ -324,11 +318,7 @@ mod tests {
 
     #[test]
     fn test_save_session_with_multiple_tabs() {
-        let tabs = vec![
-            TabState::new(0),
-            TabState::new(1),
-            TabState::new(2),
-        ];
+        let tabs = vec![TabState::new(0), TabState::new(1), TabState::new(2)];
 
         let marked = HashSet::new();
         let session = save_session(&tabs, 1, ActivePane::Right, &marked, true, 5);
@@ -376,8 +366,12 @@ mod tests {
     #[test]
     fn test_restore_marked_locations() {
         let mut session = SessionState::new();
-        session.marked_locations.push(SavedLocation::Local(PathBuf::from("/file1")));
-        session.marked_locations.push(SavedLocation::Local(PathBuf::from("/file2")));
+        session
+            .marked_locations
+            .push(SavedLocation::Local(PathBuf::from("/file1")));
+        session
+            .marked_locations
+            .push(SavedLocation::Local(PathBuf::from("/file2")));
 
         let marked = restore_marked_locations(&session);
 
@@ -388,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_session_save_integration() {
-        use crate::model::{TabState, ActivePane};
+        use crate::model::{ActivePane, TabState};
         use std::collections::HashSet;
 
         // Create tabs with different locations and cursor positions
@@ -454,8 +448,12 @@ mod tests {
         });
         session.active_tab_index = 1;
         session.active_pane = SavedActivePane::Right;
-        session.marked_locations.push(SavedLocation::Local(PathBuf::from("/file1")));
-        session.marked_locations.push(SavedLocation::Local(PathBuf::from("/file2")));
+        session
+            .marked_locations
+            .push(SavedLocation::Local(PathBuf::from("/file1")));
+        session
+            .marked_locations
+            .push(SavedLocation::Local(PathBuf::from("/file2")));
 
         // Save to file
         session.save_to_file(&session_path).unwrap();
@@ -546,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_active_pane_persistence() {
-        use crate::model::{TabState, ActivePane};
+        use crate::model::{ActivePane, TabState};
         use std::collections::HashSet;
 
         let tabs = vec![TabState::new(0)];
@@ -574,7 +572,8 @@ mod tests {
         for i in 0..5 {
             let mut tab = TabState::new(i);
             tab.left_pane.current_location = Location::Local(PathBuf::from(format!("/path{}", i)));
-            tab.right_pane.current_location = Location::Local(PathBuf::from(format!("/other{}", i)));
+            tab.right_pane.current_location =
+                Location::Local(PathBuf::from(format!("/other{}", i)));
             tab.left_pane.cursor = i * 2;
             tab.right_pane.cursor = i * 3;
             tabs.push(tab);

@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action, action_to_transitions};
+    use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{FileEntry, Location};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -67,7 +67,12 @@ mod tests {
         let state = AppState::new(AppConfig::default());
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::WildcardMark { input, focused_field, .. } = &dialog.content {
+            if let crate::model::dialog::DialogContent::WildcardMark {
+                input,
+                focused_field,
+                ..
+            } = &dialog.content
+            {
                 assert_eq!(input, "");
                 assert_eq!(*focused_field, 0, "textbox should be focused by default");
             } else {
@@ -87,22 +92,42 @@ mod tests {
             make_entry("lib.rs", false),
         ];
 
-        update_state(&mut state, Transition::MarkPattern { pattern: "*.rs".to_string() });
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "*.rs".to_string(),
+            },
+        );
 
-        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/main.rs"))));
-        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/lib.rs"))));
-        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/readme.txt"))));
+        assert!(state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/main.rs"))));
+        assert!(state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/lib.rs"))));
+        assert!(!state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/readme.txt"))));
     }
 
     #[test]
     fn test_mark_pattern_star_marks_all() {
         let mut state = AppState::new(AppConfig::default());
-        state.active_pane_mut().entries = vec![
-            make_entry("a.txt", false),
-            make_entry("b.rs", false),
-        ];
+        state.active_pane_mut().entries =
+            vec![make_entry("a.txt", false), make_entry("b.rs", false)];
 
-        update_state(&mut state, Transition::MarkPattern { pattern: "*".to_string() });
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "*".to_string(),
+            },
+        );
 
         assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2);
     }
@@ -117,26 +142,59 @@ mod tests {
             make_entry("abc.txt", false), // two chars for ? — no match
         ];
 
-        update_state(&mut state, Transition::MarkPattern { pattern: "a?.txt".to_string() });
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "a?.txt".to_string(),
+            },
+        );
 
-        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/a1.txt"))));
-        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/ab.txt"))));
-        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/a.txt"))));
-        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/abc.txt"))));
+        assert!(state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/a1.txt"))));
+        assert!(state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/ab.txt"))));
+        assert!(!state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/a.txt"))));
+        assert!(!state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/abc.txt"))));
     }
 
     #[test]
     fn test_mark_pattern_accumulates_with_existing_marks() {
         let mut state = AppState::new(AppConfig::default());
-        state.active_pane_mut().entries = vec![
-            make_entry("a.txt", false),
-            make_entry("b.rs", false),
-        ];
+        state.active_pane_mut().entries =
+            vec![make_entry("a.txt", false), make_entry("b.rs", false)];
 
-        update_state(&mut state, Transition::MarkPattern { pattern: "*.txt".to_string() });
-        update_state(&mut state, Transition::MarkPattern { pattern: "*.rs".to_string() });
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "*.txt".to_string(),
+            },
+        );
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "*.rs".to_string(),
+            },
+        );
 
-        assert_eq!(state.current_tab_mut().left_pane.marking.count(), 2, "second mark_pattern must not clear first marks");
+        assert_eq!(
+            state.current_tab_mut().left_pane.marking.count(),
+            2,
+            "second mark_pattern must not clear first marks"
+        );
     }
 
     #[test]
@@ -148,9 +206,22 @@ mod tests {
             make_entry("main.rs", false),
         ];
 
-        update_state(&mut state, Transition::MarkPattern { pattern: "src".to_string() });
+        update_state(
+            &mut state,
+            Transition::MarkPattern {
+                pattern: "src".to_string(),
+            },
+        );
 
-        assert!(state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/src"))));
-        assert!(!state.current_tab_mut().left_pane.marking.is_marked(&Location::Local(PathBuf::from("/test/docs"))));
+        assert!(state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/src"))));
+        assert!(!state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .is_marked(&Location::Local(PathBuf::from("/test/docs"))));
     }
 }

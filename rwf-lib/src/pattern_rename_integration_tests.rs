@@ -1,8 +1,8 @@
 //! Integration tests for pattern-based rename functionality (TWF-compatible)
 
-use crate::state::{AppState, update_state, Transition, AppConfig};
-use crate::model::{Location, FileEntry, DialogContent};
 use crate::job::{JobKind, OpResult, SuccessData};
+use crate::model::{DialogContent, FileEntry, Location};
+use crate::state::{update_state, AppConfig, AppState, Transition};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -16,9 +16,9 @@ fn make_entry(name: &str, path: &str) -> FileEntry {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     }
 }
 
@@ -37,7 +37,10 @@ fn test_show_pattern_rename_dialog_with_marked_files() {
 
     assert!(!state.dialogs.is_empty());
     let dialog = state.dialogs.current().unwrap();
-    assert!(matches!(dialog.content, DialogContent::PatternRename { .. }));
+    assert!(matches!(
+        dialog.content,
+        DialogContent::PatternRename { .. }
+    ));
 }
 
 #[test]
@@ -51,7 +54,10 @@ fn test_show_pattern_rename_dialog_with_cursor_file() {
 
     assert!(!state.dialogs.is_empty());
     let dialog = state.dialogs.current().unwrap();
-    assert!(matches!(dialog.content, DialogContent::PatternRename { .. }));
+    assert!(matches!(
+        dialog.content,
+        DialogContent::PatternRename { .. }
+    ));
 }
 
 #[test]
@@ -68,22 +74,33 @@ fn test_update_pattern_rename_fields_regex() {
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // Regex: prepend "backup_"
-    update_state(&mut state, Transition::UpdatePatternRenameFields {
-        find: "^(.+)$".to_string(),
-        replace: "backup_${1}".to_string(),
-        use_regex: true,
-        case_sensitive: true,
-    });
+    update_state(
+        &mut state,
+        Transition::UpdatePatternRenameFields {
+            find: "^(.+)$".to_string(),
+            replace: "backup_${1}".to_string(),
+            use_regex: true,
+            case_sensitive: true,
+        },
+    );
 
     let dialog = state.dialogs.current().unwrap();
-    if let Some((find, replace, use_regex, case_sensitive, preview)) = dialog.content.as_pattern_rename() {
+    if let Some((find, replace, use_regex, case_sensitive, preview)) =
+        dialog.content.as_pattern_rename()
+    {
         assert_eq!(find, "^(.+)$");
         assert_eq!(replace, "backup_${1}");
         assert!(use_regex);
         assert!(case_sensitive);
         assert_eq!(preview.len(), 2);
-        assert_eq!(preview[0], ("file1.txt".to_string(), "backup_file1.txt".to_string()));
-        assert_eq!(preview[1], ("file2.txt".to_string(), "backup_file2.txt".to_string()));
+        assert_eq!(
+            preview[0],
+            ("file1.txt".to_string(), "backup_file1.txt".to_string())
+        );
+        assert_eq!(
+            preview[1],
+            ("file2.txt".to_string(), "backup_file2.txt".to_string())
+        );
     } else {
         panic!("Expected PatternRename dialog content");
     }
@@ -103,18 +120,27 @@ fn test_execute_pattern_rename_creates_job() {
     ];
     update_state(&mut state, Transition::MarkAll);
 
-    let result = update_state(&mut state, Transition::ExecutePatternRename {
-        find: r"\.txt$".to_string(),
-        replace: ".bak".to_string(),
-        use_regex: true,
-        case_sensitive: true,
-        targets: vec![loc1, loc2],
-    });
+    let result = update_state(
+        &mut state,
+        Transition::ExecutePatternRename {
+            find: r"\.txt$".to_string(),
+            replace: ".bak".to_string(),
+            use_regex: true,
+            case_sensitive: true,
+            targets: vec![loc1, loc2],
+        },
+    );
 
     assert_eq!(result.jobs_to_start.len(), 1);
     let job_spec = &result.jobs_to_start[0];
     match &job_spec.kind {
-        JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
+        JobKind::PatternRename {
+            targets,
+            find,
+            replace,
+            use_regex,
+            case_sensitive,
+        } => {
             assert_eq!(targets.len(), 2);
             assert_eq!(find, r"\.txt$");
             assert_eq!(replace, ".bak");
@@ -136,17 +162,23 @@ fn test_pattern_rename_plain_mode_replace() {
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // Plain mode: replace _ with -
-    update_state(&mut state, Transition::UpdatePatternRenameFields {
-        find: "_".to_string(),
-        replace: "-".to_string(),
-        use_regex: false,
-        case_sensitive: true,
-    });
+    update_state(
+        &mut state,
+        Transition::UpdatePatternRenameFields {
+            find: "_".to_string(),
+            replace: "-".to_string(),
+            use_regex: false,
+            case_sensitive: true,
+        },
+    );
 
     let dialog = state.dialogs.current().unwrap();
     if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
         assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0], ("hello_world.txt".to_string(), "hello-world.txt".to_string()));
+        assert_eq!(
+            preview[0],
+            ("hello_world.txt".to_string(), "hello-world.txt".to_string())
+        );
     } else {
         panic!("Expected PatternRename dialog content");
     }
@@ -167,12 +199,15 @@ fn test_pattern_rename_all_files_in_preview() {
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // Only matches .txt files
-    update_state(&mut state, Transition::UpdatePatternRenameFields {
-        find: r"\.txt$".to_string(),
-        replace: ".bak".to_string(),
-        use_regex: true,
-        case_sensitive: true,
-    });
+    update_state(
+        &mut state,
+        Transition::UpdatePatternRenameFields {
+            find: r"\.txt$".to_string(),
+            replace: ".bak".to_string(),
+            use_regex: true,
+            case_sensitive: true,
+        },
+    );
 
     let dialog = state.dialogs.current().unwrap();
     if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
@@ -197,12 +232,15 @@ fn test_pattern_rename_s_command() {
     update_state(&mut state, Transition::ShowPatternRenameDialog);
 
     // s/ command: case-insensitive global replace
-    update_state(&mut state, Transition::UpdatePatternRenameFields {
-        find: "s/photo/img/i".to_string(),
-        replace: String::new(),
-        use_regex: false,
-        case_sensitive: true,
-    });
+    update_state(
+        &mut state,
+        Transition::UpdatePatternRenameFields {
+            find: "s/photo/img/i".to_string(),
+            replace: String::new(),
+            use_regex: false,
+            case_sensitive: true,
+        },
+    );
 
     let dialog = state.dialogs.current().unwrap();
     if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
@@ -222,22 +260,29 @@ fn test_no_marks_shows_all_pane_entries_in_preview() {
     let pane = state.active_pane_mut();
     pane.entries = vec![
         make_entry("alpha.txt", "/test/alpha.txt"),
-        make_entry("beta.txt",  "/test/beta.txt"),
+        make_entry("beta.txt", "/test/beta.txt"),
         make_entry("gamma.pdf", "/test/gamma.pdf"),
     ];
     // No MarkAll — no marks at all
     update_state(&mut state, Transition::ShowPatternRenameDialog);
-    update_state(&mut state, Transition::UpdatePatternRenameFields {
-        find: r"\.txt$".to_string(),
-        replace: ".bak".to_string(),
-        use_regex: true,
-        case_sensitive: true,
-    });
+    update_state(
+        &mut state,
+        Transition::UpdatePatternRenameFields {
+            find: r"\.txt$".to_string(),
+            replace: ".bak".to_string(),
+            use_regex: true,
+            case_sensitive: true,
+        },
+    );
 
     let dialog = state.dialogs.current().unwrap();
     if let Some((_, _, _, _, preview)) = dialog.content.as_pattern_rename() {
         // All 3 files appear — not just cursor
-        assert_eq!(preview.len(), 3, "all pane entries must appear when no marks");
+        assert_eq!(
+            preview.len(),
+            3,
+            "all pane entries must appear when no marks"
+        );
         let alpha = preview.iter().find(|(o, _)| o == "alpha.txt").unwrap();
         assert_eq!(alpha.1, "alpha.bak");
         let beta = preview.iter().find(|(o, _)| o == "beta.txt").unwrap();
@@ -258,25 +303,36 @@ fn test_pattern_rename_job_completion_refreshes_pane() {
     let file_location = Location::Local(PathBuf::from("/test/file1.txt"));
     pane.entries = vec![make_entry("file1.txt", "/test/file1.txt")];
 
-    let result = update_state(&mut state, Transition::ExecutePatternRename {
-        find: r"\.txt$".to_string(),
-        replace: ".bak".to_string(),
-        use_regex: true,
-        case_sensitive: true,
-        targets: vec![file_location],
-    });
+    let result = update_state(
+        &mut state,
+        Transition::ExecutePatternRename {
+            find: r"\.txt$".to_string(),
+            replace: ".bak".to_string(),
+            use_regex: true,
+            case_sensitive: true,
+            targets: vec![file_location],
+        },
+    );
 
     let job_spec = result.jobs_to_start[0].clone();
     let job_id = job_spec.id;
 
-    update_state(&mut state, Transition::EnqueueJob { spec: job_spec.clone() });
+    update_state(
+        &mut state,
+        Transition::EnqueueJob {
+            spec: job_spec.clone(),
+        },
+    );
     update_state(&mut state, Transition::StartNextJob);
     state.jobs.start_job(job_spec);
 
-    let result = update_state(&mut state, Transition::CompleteJob {
-        job_id,
-        result: OpResult::Success(SuccessData::None),
-    });
+    let result = update_state(
+        &mut state,
+        Transition::CompleteJob {
+            job_id,
+            result: OpResult::Success(SuccessData::None),
+        },
+    );
 
     assert_eq!(result.panes_to_refresh.len(), 1);
 }

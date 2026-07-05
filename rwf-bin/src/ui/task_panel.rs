@@ -1,15 +1,15 @@
 //! Task Panel with state management
 
-use rwf_lib::config::ColorScheme;
 use super::colors::parse_color;
+use rwf_lib::config::ColorScheme;
 
 /// Log level for colored tags
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
-    Info,    // Normal text
-    Ok,      // [OK] - Green
-    Fail,    // [FAIL] - Red
-    Warn,    // [WARN] - Yellow
+    Info, // Normal text
+    Ok,   // [OK] - Green
+    Fail, // [FAIL] - Red
+    Warn, // [WARN] - Yellow
 }
 
 /// Log entry with level
@@ -45,25 +45,22 @@ impl TaskPanel {
             last_max_visual_scroll: std::cell::Cell::new(0),
         }
     }
-    
+
     /// Add a log entry with level
     pub fn add_log(&mut self, message: String, level: LogLevel) {
-        self.log_entries.push(LogEntry {
-            message,
-            level,
-        });
+        self.log_entries.push(LogEntry { message, level });
     }
-    
+
     /// Add a pending log (thread-safe, processed later)
     pub fn add_pending_log(&mut self, message: String) {
         self.pending_logs.push(message);
     }
-    
+
     /// Process pending logs with max lines limit
     pub fn process_pending_logs(&mut self, max_lines: usize) {
         // Collect messages first to avoid borrow checker issues
         let messages: Vec<String> = self.pending_logs.drain(..).collect();
-        
+
         for message in messages {
             // Parse log level from message tags
             let level = if message.contains("[OK]") {
@@ -76,10 +73,7 @@ impl TaskPanel {
                 LogLevel::Info
             };
 
-            self.log_entries.push(LogEntry {
-                message,
-                level,
-            });
+            self.log_entries.push(LogEntry { message, level });
         }
 
         // Trim old logs if exceeding max
@@ -95,7 +89,7 @@ impl TaskPanel {
             }
         }
     }
-    
+
     /// Scroll up
     pub fn scroll_up(&mut self) {
         // Normalize first: scroll_to_end sets a large sentinel; snap to actual max before decrementing
@@ -112,28 +106,32 @@ impl TaskPanel {
     pub fn scroll_down(&mut self, visible_height: usize) {
         let max_scroll = {
             let cached = self.last_max_visual_scroll.get();
-            if cached > 0 { cached } else { self.log_entries.len().saturating_sub(visible_height) }
+            if cached > 0 {
+                cached
+            } else {
+                self.log_entries.len().saturating_sub(visible_height)
+            }
         };
         if self.scroll_offset < max_scroll {
             self.scroll_offset += 1;
         }
     }
-    
+
     /// Scroll to end (sets offset to a large value; rendering will clamp it)
     pub fn scroll_to_end(&mut self, _visible_height: usize) {
         self.scroll_offset = usize::MAX;
     }
-    
+
     /// Get scroll offset (for rendering)
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
     }
-    
+
     /// Get log entry by absolute index
     pub fn get_log_entry(&self, index: usize) -> Option<&LogEntry> {
         self.log_entries.get(index)
     }
-    
+
     /// Get number of log entries
     pub fn log_count(&self) -> usize {
         self.log_entries.len()
@@ -257,7 +255,11 @@ pub fn render_task_panel(
             let wrapped = wrap_to_lines(&entry.message, panel_width, style);
 
             // Skip lines if this is the first entry (due to offset)
-            let start_line = if current_entry_idx == start_entry_idx { start_line_offset } else { 0 };
+            let start_line = if current_entry_idx == start_entry_idx {
+                start_line_offset
+            } else {
+                0
+            };
 
             for (idx, line) in wrapped.iter().enumerate() {
                 if idx < start_line {
@@ -280,7 +282,7 @@ pub fn render_task_panel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_task_panel_new() {
         let panel = TaskPanel::new();
@@ -293,40 +295,40 @@ mod tests {
         panel.add_log("Test message".to_string(), LogLevel::Info);
         assert_eq!(panel.log_count(), 1);
     }
-    
+
     #[test]
     fn test_task_panel_pending_logs() {
         let mut panel = TaskPanel::new();
         panel.add_pending_log("Pending [OK]".to_string());
         panel.add_pending_log("Pending [FAIL]".to_string());
         assert_eq!(panel.log_count(), 0);
-        
+
         panel.process_pending_logs(1000);
         assert_eq!(panel.log_count(), 2);
     }
-    
+
     #[test]
     fn test_task_panel_scroll() {
         let mut panel = TaskPanel::new();
-        
+
         // Add some logs
         for i in 0..20 {
             panel.add_log(format!("Log {}", i), LogLevel::Info);
         }
-        
+
         // Scroll up
         panel.scroll_up();
-        assert_eq!(panel.scroll_offset(), 0);  // Can't scroll up from 0
-        
+        assert_eq!(panel.scroll_offset(), 0); // Can't scroll up from 0
+
         // Scroll down
         panel.scroll_down(10);
         assert_eq!(panel.scroll_offset(), 1);
-        
+
         // Scroll to end
         panel.scroll_to_end(10);
-        assert_eq!(panel.scroll_offset(), usize::MAX);  // Sets to max; rendering clamps it
+        assert_eq!(panel.scroll_offset(), usize::MAX); // Sets to max; rendering clamps it
     }
-    
+
     // Spinner animation was removed from TaskPanel in the wall-clock spinner
     // consolidation (see rwf-bin/src/ui/spinner.rs). TaskPanel no longer owns
     // any tick state; spinner behavior is covered by spinner::tests instead.
@@ -334,17 +336,23 @@ mod tests {
     #[test]
     fn test_task_panel_max_lines() {
         let mut panel = TaskPanel::new();
-        
+
         // Add 15 logs with max of 10
         for i in 0..15 {
             panel.add_log(format!("Log {}", i), LogLevel::Info);
         }
-        
+
         panel.process_pending_logs(10);
         assert_eq!(panel.log_count(), 10);
-        
+
         // Oldest logs should be removed
-        assert_eq!(panel.get_log_entry(0).map(|e| e.message.as_str()), Some("Log 5"));
-        assert_eq!(panel.get_log_entry(9).map(|e| e.message.as_str()), Some("Log 14"));
+        assert_eq!(
+            panel.get_log_entry(0).map(|e| e.message.as_str()),
+            Some("Log 5")
+        );
+        assert_eq!(
+            panel.get_log_entry(9).map(|e| e.message.as_str()),
+            Some("Log 14")
+        );
     }
 }

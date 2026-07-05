@@ -20,15 +20,11 @@ impl ExtractionConfirmDialog {
     pub fn render(&self, frame: &mut Frame, area: Rect, _focused: bool) {
         let message = format!(
             "Extract '{}' ({} files) to:\n\n{}",
-            self.archive_name,
-            self.file_count,
-            self.dest_path
+            self.archive_name, self.file_count, self.dest_path
         );
 
-        let paragraph = Paragraph::new(message)
-            .style(Style::default().fg(Color::White));
+        let paragraph = Paragraph::new(message).style(Style::default().fg(Color::White));
 
         frame.render_widget(paragraph, area);
     }
 }
-

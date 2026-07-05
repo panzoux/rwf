@@ -30,10 +30,17 @@ impl Location {
             Location::Ssh { host, port, path } => {
                 format!("ssh://{}:{}{}", host, port, path.display())
             }
-            Location::Cloud { provider, bucket, path } => {
+            Location::Cloud {
+                provider,
+                bucket,
+                path,
+            } => {
                 format!("{}://{}/{}", provider, bucket, path.display())
             }
-            Location::Archive { archive_path, inner_path } => {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => {
                 format!("{}#{}", archive_path.display_path(), inner_path.display())
             }
         }
@@ -50,24 +57,25 @@ impl Location {
     /// Get parent location
     pub fn parent(&self) -> Option<Location> {
         match self {
-            Location::Local(path) => {
-                path.parent().map(|p| Location::Local(p.to_path_buf()))
-            }
-            Location::Ssh { host, port, path } => {
-                path.parent().map(|p| Location::Ssh {
-                    host: host.clone(),
-                    port: *port,
-                    path: p.to_path_buf(),
-                })
-            }
-            Location::Cloud { provider, bucket, path } => {
-                path.parent().map(|p| Location::Cloud {
-                    provider: provider.clone(),
-                    bucket: bucket.clone(),
-                    path: p.to_path_buf(),
-                })
-            }
-            Location::Archive { archive_path, inner_path } => {
+            Location::Local(path) => path.parent().map(|p| Location::Local(p.to_path_buf())),
+            Location::Ssh { host, port, path } => path.parent().map(|p| Location::Ssh {
+                host: host.clone(),
+                port: *port,
+                path: p.to_path_buf(),
+            }),
+            Location::Cloud {
+                provider,
+                bucket,
+                path,
+            } => path.parent().map(|p| Location::Cloud {
+                provider: provider.clone(),
+                bucket: bucket.clone(),
+                path: p.to_path_buf(),
+            }),
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => {
                 if inner_path.parent().is_some() && inner_path != &PathBuf::new() {
                     // Navigate up within the archive
                     inner_path.parent().map(|p| Location::Archive {
@@ -81,7 +89,7 @@ impl Location {
             }
         }
     }
-    
+
     /// Join with a path component
     pub fn join(&self, component: &str) -> Location {
         match self {
@@ -91,12 +99,19 @@ impl Location {
                 port: *port,
                 path: path.join(component),
             },
-            Location::Cloud { provider, bucket, path } => Location::Cloud {
+            Location::Cloud {
+                provider,
+                bucket,
+                path,
+            } => Location::Cloud {
                 provider: provider.clone(),
                 bucket: bucket.clone(),
                 path: path.join(component),
             },
-            Location::Archive { archive_path, inner_path } => Location::Archive {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => Location::Archive {
                 archive_path: archive_path.clone(),
                 inner_path: inner_path.join(component),
             },
@@ -232,7 +247,11 @@ mod tests {
         };
         let parent = loc.parent();
         // Parent of "file.txt" in archive should be the archive root (empty path)
-        if let Some(Location::Archive { archive_path, inner_path }) = parent {
+        if let Some(Location::Archive {
+            archive_path,
+            inner_path,
+        }) = parent
+        {
             assert_eq!(*archive_path, *archive_loc);
             assert_eq!(inner_path, PathBuf::from(""));
         } else {
@@ -244,7 +263,10 @@ mod tests {
     fn test_local_join() {
         let loc = Location::Local(PathBuf::from("/home/user"));
         let joined = loc.join("documents");
-        assert_eq!(joined, Location::Local(PathBuf::from("/home/user/documents")));
+        assert_eq!(
+            joined,
+            Location::Local(PathBuf::from("/home/user/documents"))
+        );
     }
 
     #[test]
@@ -311,7 +333,7 @@ mod tests {
             archive_path: inner_archive,
             inner_path: PathBuf::from("file.txt"),
         };
-        
+
         let display = loc.display_path();
         assert_eq!(display, "/home/user/outer.zip#inner.zip#file.txt");
     }

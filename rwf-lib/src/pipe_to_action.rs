@@ -19,12 +19,12 @@ pub fn process_pipe_to_action(
             if path_str.is_empty() {
                 return Err("Empty path returned from command".to_string());
             }
-            
+
             let path = PathBuf::from(path_str);
             if !path.exists() {
                 return Err(format!("Path does not exist: {}", path_str));
             }
-            
+
             Ok(PipeToActionResult::JumpToPath(Location::Local(path)))
         }
         PipeToAction::ExecuteFile => {
@@ -33,12 +33,12 @@ pub fn process_pipe_to_action(
             if file_str.is_empty() {
                 return Err("Empty file path returned from command".to_string());
             }
-            
+
             let file_path = PathBuf::from(file_str);
             if !file_path.exists() {
                 return Err(format!("File does not exist: {}", file_str));
             }
-            
+
             Ok(PipeToActionResult::ExecuteFile(file_path))
         }
         PipeToAction::ExecuteFileWithEditor => {
@@ -47,10 +47,10 @@ pub fn process_pipe_to_action(
             if file_str.is_empty() {
                 return Err("Empty file path returned from command".to_string());
             }
-            
+
             let file_path = PathBuf::from(file_str);
             // File doesn't need to exist for editor (can create new file)
-            
+
             Ok(PipeToActionResult::ExecuteFileWithEditor(file_path))
         }
     }
@@ -70,40 +70,38 @@ pub enum PipeToActionResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_jump_to_path() {
         // Test with current directory (should exist)
         let current_dir = std::env::current_dir().unwrap();
         let output = current_dir.to_str().unwrap();
-        
+
         let result = process_pipe_to_action(&PipeToAction::JumpToPath, output);
         assert!(result.is_ok());
-        
+
         match result.unwrap() {
-            PipeToActionResult::JumpToPath(location) => {
-                match location {
-                    Location::Local(path) => assert_eq!(path, current_dir),
-                    _ => panic!("Expected Local location"),
-                }
-            }
+            PipeToActionResult::JumpToPath(location) => match location {
+                Location::Local(path) => assert_eq!(path, current_dir),
+                _ => panic!("Expected Local location"),
+            },
             _ => panic!("Expected JumpToPath result"),
         }
     }
-    
+
     #[test]
     fn test_jump_to_path_nonexistent() {
         let output = "/nonexistent/path/that/does/not/exist";
         let result = process_pipe_to_action(&PipeToAction::JumpToPath, output);
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_execute_file_with_editor() {
         let output = "/tmp/newfile.txt";
         let result = process_pipe_to_action(&PipeToAction::ExecuteFileWithEditor, output);
         assert!(result.is_ok());
-        
+
         match result.unwrap() {
             PipeToActionResult::ExecuteFileWithEditor(path) => {
                 assert_eq!(path, PathBuf::from("/tmp/newfile.txt"));
@@ -111,7 +109,7 @@ mod tests {
             _ => panic!("Expected ExecuteFileWithEditor result"),
         }
     }
-    
+
     #[test]
     fn test_empty_output() {
         let result = process_pipe_to_action(&PipeToAction::JumpToPath, "");

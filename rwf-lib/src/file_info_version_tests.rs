@@ -1,9 +1,9 @@
 //! Integration tests for file information and version display
 
+use crate::config::AppConfig;
 use crate::model::{Dialog, DialogContent, FileEntry, Location};
 use crate::state::{update_state, Transition};
 use crate::AppState;
-use crate::config::AppConfig;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -11,7 +11,7 @@ use std::time::SystemTime;
 fn test_show_file_info_transition() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Add a file entry to the active pane
     let entry = FileEntry {
         name: "test.txt".to_string(),
@@ -22,29 +22,35 @@ fn test_show_file_info_transition() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
-    
+
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
-    
+
     // Trigger ShowFileInfo transition
     let result = update_state(&mut state, Transition::ShowFileInfo);
-    
+
     // Verify UI changed
     assert!(result.ui_changed);
-    
+
     // Verify dialog was created
     assert!(!state.dialogs.is_empty());
-    
+
     let dialog = state.dialogs.current().unwrap();
     assert_eq!(dialog.title, "File Information");
-    
+
     // Verify dialog content
     match &dialog.content {
-        DialogContent::FileInfo { file_name, file_path, size, is_dir, .. } => {
+        DialogContent::FileInfo {
+            file_name,
+            file_path,
+            size,
+            is_dir,
+            ..
+        } => {
             assert_eq!(file_name, "test.txt");
             assert!(file_path.contains("test.txt"));
             assert_eq!(*size, 1024);
@@ -58,13 +64,13 @@ fn test_show_file_info_transition() {
 fn test_show_file_info_no_entry() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // No entries in the pane
     state.current_tab_mut().left_pane.entries = vec![];
-    
+
     // Trigger ShowFileInfo transition
     let result = update_state(&mut state, Transition::ShowFileInfo);
-    
+
     // Verify no dialog was created
     assert!(!result.ui_changed);
     assert!(state.dialogs.is_empty());
@@ -74,7 +80,7 @@ fn test_show_file_info_no_entry() {
 fn test_show_file_info_directory() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Add a directory entry to the active pane
     let entry = FileEntry {
         name: "test_dir".to_string(),
@@ -85,29 +91,34 @@ fn test_show_file_info_directory() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: Some(4096),
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
-    
+
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
-    
+
     // Trigger ShowFileInfo transition
     let result = update_state(&mut state, Transition::ShowFileInfo);
-    
+
     // Verify UI changed
     assert!(result.ui_changed);
-    
+
     // Verify dialog was created
     assert!(!state.dialogs.is_empty());
-    
+
     let dialog = state.dialogs.current().unwrap();
     assert_eq!(dialog.title, "File Information");
-    
+
     // Verify dialog content
     match &dialog.content {
-        DialogContent::FileInfo { file_name, is_dir, size, .. } => {
+        DialogContent::FileInfo {
+            file_name,
+            is_dir,
+            size,
+            ..
+        } => {
             assert_eq!(file_name, "test_dir");
             assert!(*is_dir);
             // Should use calculated_size if available
@@ -121,22 +132,26 @@ fn test_show_file_info_directory() {
 fn test_show_version_transition() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Trigger ShowVersion transition
     let result = update_state(&mut state, Transition::ShowVersion);
-    
+
     // Verify UI changed
     assert!(result.ui_changed);
-    
+
     // Verify dialog was created
     assert!(!state.dialogs.is_empty());
-    
+
     let dialog = state.dialogs.current().unwrap();
     assert_eq!(dialog.title, "Version Information");
-    
+
     // Verify dialog content
     match &dialog.content {
-        DialogContent::Version { version, build_date, copyright } => {
+        DialogContent::Version {
+            version,
+            build_date,
+            copyright,
+        } => {
             assert!(!version.is_empty());
             assert!(!build_date.is_empty());
             assert!(!copyright.is_empty());
@@ -158,18 +173,24 @@ fn test_file_info_dialog_creation() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
-    
+
     // Create file info dialog
     let dialog = Dialog::file_info(&entry);
-    
+
     assert_eq!(dialog.title, "File Information");
-    
+
     match dialog.content {
-        DialogContent::FileInfo { file_name, file_path, size, is_dir, .. } => {
+        DialogContent::FileInfo {
+            file_name,
+            file_path,
+            size,
+            is_dir,
+            ..
+        } => {
             assert_eq!(file_name, "example.txt");
             assert!(file_path.contains("example.txt"));
             assert_eq!(size, 2048);
@@ -183,11 +204,15 @@ fn test_file_info_dialog_creation() {
 fn test_version_dialog_creation() {
     // Create version dialog
     let dialog = Dialog::version();
-    
+
     assert_eq!(dialog.title, "Version Information");
-    
+
     match dialog.content {
-        DialogContent::Version { version, build_date, copyright } => {
+        DialogContent::Version {
+            version,
+            build_date,
+            copyright,
+        } => {
             // Version should be from CARGO_PKG_VERSION
             assert!(!version.is_empty());
             // Build date may be "Unknown" in test environment
@@ -204,7 +229,7 @@ fn test_version_dialog_creation() {
 fn test_file_info_dialog_dismissal() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Add a file entry and show file info
     let entry = FileEntry {
         name: "test.txt".to_string(),
@@ -215,20 +240,20 @@ fn test_file_info_dialog_dismissal() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
-    
+
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
-    
+
     update_state(&mut state, Transition::ShowFileInfo);
     assert!(!state.dialogs.is_empty());
-    
+
     // Close the dialog
     let result = update_state(&mut state, Transition::CloseDialog);
-    
+
     // Verify dialog was closed
     assert!(result.ui_changed);
     assert!(state.dialogs.is_empty());
@@ -238,14 +263,14 @@ fn test_file_info_dialog_dismissal() {
 fn test_version_dialog_dismissal() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Show version dialog
     update_state(&mut state, Transition::ShowVersion);
     assert!(!state.dialogs.is_empty());
-    
+
     // Close the dialog
     let result = update_state(&mut state, Transition::CloseDialog);
-    
+
     // Verify dialog was closed
     assert!(result.ui_changed);
     assert!(state.dialogs.is_empty());
@@ -255,7 +280,7 @@ fn test_version_dialog_dismissal() {
 fn test_file_info_with_calculated_size() {
     let config = AppConfig::default();
     let mut state = AppState::new(config);
-    
+
     // Add a directory entry with calculated size
     let entry = FileEntry {
         name: "large_dir".to_string(),
@@ -270,15 +295,15 @@ fn test_file_info_with_calculated_size() {
         link_target: None,
         link_kind: None,
     };
-    
+
     state.current_tab_mut().left_pane.entries = vec![entry];
     state.current_tab_mut().left_pane.cursor = 0;
-    
+
     // Trigger ShowFileInfo transition
     update_state(&mut state, Transition::ShowFileInfo);
-    
+
     let dialog = state.dialogs.current().unwrap();
-    
+
     // Verify calculated size is used
     match &dialog.content {
         DialogContent::FileInfo { size, .. } => {
@@ -299,13 +324,13 @@ fn test_file_info_dialog_does_not_require_input() {
         modified: SystemTime::now(),
         marked: false,
         calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
     };
-    
+
     let dialog = Dialog::file_info(&entry);
-    
+
     // FileInfo dialog should not require input
     assert!(!dialog.content.requires_input());
 }
@@ -320,7 +345,7 @@ fn test_version_dialog_does_not_require_input() {
 
 #[cfg(test)]
 mod link_info_tests {
-    use crate::model::{Dialog, DialogContent, FileEntry, Location, LinkKind};
+    use crate::model::{Dialog, DialogContent, FileEntry, LinkKind, Location};
     use std::path::PathBuf;
     use std::time::SystemTime;
 
@@ -343,7 +368,11 @@ mod link_info_tests {
         let dialog = Dialog::file_info(&entry);
 
         match dialog.content {
-            DialogContent::FileInfo { link_target, link_kind, .. } => {
+            DialogContent::FileInfo {
+                link_target,
+                link_kind,
+                ..
+            } => {
                 assert_eq!(link_target, Some("./.vimrc".to_string()));
                 assert!(matches!(link_kind, Some(LinkKind::Symlink)));
             }
@@ -370,7 +399,11 @@ mod link_info_tests {
         let dialog = Dialog::file_info(&entry);
 
         match dialog.content {
-            DialogContent::FileInfo { link_target, link_kind, .. } => {
+            DialogContent::FileInfo {
+                link_target,
+                link_kind,
+                ..
+            } => {
                 assert_eq!(link_target, None);
                 assert_eq!(link_kind, None);
             }

@@ -47,8 +47,7 @@ pub const DEFAULT_CUSTOM_FUNCTIONS: &str =
     include_str!("../resources/default_custom_functions.json");
 
 /// Embedded default menu_config.json — exported by `--export-config-files`
-pub const DEFAULT_MENU_CONFIG: &str =
-    include_str!("../resources/default_menu_config.json");
+pub const DEFAULT_MENU_CONFIG: &str = include_str!("../resources/default_menu_config.json");
 
 impl ActionDescriptions {
     /// Load action descriptions for the given language.
@@ -56,7 +55,9 @@ impl ActionDescriptions {
     pub fn load(lang: &str) -> Self {
         // Try user-provided override file first
         if let Some(config_dir) = dirs::config_dir() {
-            let path = config_dir.join("rwf").join(format!("action_descriptions.{}.json", lang));
+            let path = config_dir
+                .join("rwf")
+                .join(format!("action_descriptions.{}.json", lang));
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(desc) = serde_json::from_str::<Self>(&content) {
                     return desc;
@@ -64,7 +65,11 @@ impl ActionDescriptions {
             }
         }
         // Try embedded
-        let embedded = if lang == "jp" { EMBEDDED_JP } else { EMBEDDED_EN };
+        let embedded = if lang == "jp" {
+            EMBEDDED_JP
+        } else {
+            EMBEDDED_EN
+        };
         serde_json::from_str(embedded)
             .expect("embedded action_descriptions.*.json is always valid JSON")
     }
@@ -103,9 +108,13 @@ fn active_editor_label(config: &crate::config::AppConfig) -> String {
         format!("{} (GUI)", ed)
     } else {
         #[cfg(target_os = "windows")]
-        { "notepad (default)".to_string() }
+        {
+            "notepad (default)".to_string()
+        }
         #[cfg(not(target_os = "windows"))]
-        { "$EDITOR (default)".to_string() }
+        {
+            "$EDITOR (default)".to_string()
+        }
     }
 }
 
@@ -134,7 +143,7 @@ pub fn build_help_entries(
     let normal_map = key_bindings.normal_action_to_keys();
     let viewer_map = key_bindings.viewer_action_to_keys();
     let dialog_map = key_bindings.dialog_action_to_keys();
-    let leap_map   = key_bindings.leap_action_to_keys();
+    let leap_map = key_bindings.leap_action_to_keys();
 
     // Normal mode actions
     for cat in &descriptions.normal_mode.categories {
@@ -202,10 +211,14 @@ pub fn build_help_entries(
 
     // Custom functions tab
     for func in custom_functions {
-        let category = func.category.clone()
+        let category = func
+            .category
+            .clone()
             .unwrap_or_else(|| "Custom Functions".to_string());
         let description = if func.is_menu() {
-            let menu_name = func.menu.as_ref()
+            let menu_name = func
+                .menu
+                .as_ref()
                 .and_then(|m| match m {
                     crate::model::dialog::MenuContent::File(f) => Some(f.clone()),
                     _ => None,
@@ -213,7 +226,9 @@ pub fn build_help_entries(
                 .unwrap_or_else(|| func.name.clone());
             format!("opens menu {}", menu_name)
         } else {
-            func.description.clone().unwrap_or_else(|| func.name.clone())
+            func.description
+                .clone()
+                .unwrap_or_else(|| func.name.clone())
         };
         // Look up whether this custom function has a bound key
         let keys = normal_map.get(&func.name).cloned().unwrap_or_default();
@@ -255,42 +270,42 @@ pub struct HelpContent {
 
 impl HelpContent {
     /// Load help content from a language-specific JSON file
-    /// 
+    ///
     /// **Validates: Requirements 48.1**
     pub fn load_from_file(lang: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let filename = format!("help.{}.json", lang);
         let path = Path::new(&filename);
-        
+
         if !path.exists() {
             return Err(format!("Help file not found: {}", filename).into());
         }
-        
+
         let content = std::fs::read_to_string(path)?;
         let help_content: HelpContent = serde_json::from_str(&content)?;
-        
+
         Ok(help_content)
     }
-    
+
     /// Load help content with fallback to English
-    /// 
+    ///
     /// **Validates: Requirements 48.4, 48.7**
     pub fn load_with_fallback(lang: &str) -> Self {
         // Try to load the requested language
         if let Ok(content) = Self::load_from_file(lang) {
             return content;
         }
-        
+
         // Fall back to English
         if lang != "en" {
             if let Ok(content) = Self::load_from_file("en") {
                 return content;
             }
         }
-        
+
         // If all else fails, return hardcoded English content
         Self::default_english()
     }
-    
+
     /// Get default English help content (hardcoded fallback)
     fn default_english() -> Self {
         HelpContent {
@@ -299,81 +314,186 @@ impl HelpContent {
                 HelpSection {
                     name: "Navigation".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "Tab".to_string(), description: "Switch pane".to_string() },
-                        KeyBinding { key: "Up/Down, j/k".to_string(), description: "Move cursor".to_string() },
-                        KeyBinding { key: "Home/End".to_string(), description: "Jump to first/last entry".to_string() },
-                        KeyBinding { key: "PageUp/PageDown".to_string(), description: "Page navigation".to_string() },
-                        KeyBinding { key: "Enter".to_string(), description: "Enter directory".to_string() },
-                        KeyBinding { key: "Backspace/Left".to_string(), description: "Parent directory".to_string() },
-                        KeyBinding { key: "Alt+Left/Right".to_string(), description: "History navigation".to_string() },
+                        KeyBinding {
+                            key: "Tab".to_string(),
+                            description: "Switch pane".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Up/Down, j/k".to_string(),
+                            description: "Move cursor".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Home/End".to_string(),
+                            description: "Jump to first/last entry".to_string(),
+                        },
+                        KeyBinding {
+                            key: "PageUp/PageDown".to_string(),
+                            description: "Page navigation".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Enter".to_string(),
+                            description: "Enter directory".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Backspace/Left".to_string(),
+                            description: "Parent directory".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Alt+Left/Right".to_string(),
+                            description: "History navigation".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "File Operations".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "C".to_string(), description: "Copy".to_string() },
-                        KeyBinding { key: "M".to_string(), description: "Move".to_string() },
-                        KeyBinding { key: "D".to_string(), description: "Delete".to_string() },
-                        KeyBinding { key: "R".to_string(), description: "Rename".to_string() },
-                        KeyBinding { key: "Shift+K".to_string(), description: "Create directory".to_string() },
+                        KeyBinding {
+                            key: "C".to_string(),
+                            description: "Copy".to_string(),
+                        },
+                        KeyBinding {
+                            key: "M".to_string(),
+                            description: "Move".to_string(),
+                        },
+                        KeyBinding {
+                            key: "D".to_string(),
+                            description: "Delete".to_string(),
+                        },
+                        KeyBinding {
+                            key: "R".to_string(),
+                            description: "Rename".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Shift+K".to_string(),
+                            description: "Create directory".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "Marking".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "Space".to_string(), description: "Toggle mark".to_string() },
-                        KeyBinding { key: "*".to_string(), description: "Mark all".to_string() },
-                        KeyBinding { key: "Ctrl+U".to_string(), description: "Unmark all".to_string() },
-                        KeyBinding { key: "@".to_string(), description: "Wildcard marking".to_string() },
-                        KeyBinding { key: "Ctrl+Space".to_string(), description: "Range marking".to_string() },
-                        KeyBinding { key: "Shift+Home".to_string(), description: "Invert marks".to_string() },
+                        KeyBinding {
+                            key: "Space".to_string(),
+                            description: "Toggle mark".to_string(),
+                        },
+                        KeyBinding {
+                            key: "*".to_string(),
+                            description: "Mark all".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+U".to_string(),
+                            description: "Unmark all".to_string(),
+                        },
+                        KeyBinding {
+                            key: "@".to_string(),
+                            description: "Wildcard marking".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+Space".to_string(),
+                            description: "Range marking".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Shift+Home".to_string(),
+                            description: "Invert marks".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "Sorting".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "s+n".to_string(), description: "Sort by name".to_string() },
-                        KeyBinding { key: "s+s".to_string(), description: "Sort by size".to_string() },
-                        KeyBinding { key: "s+d".to_string(), description: "Sort by date".to_string() },
-                        KeyBinding { key: "s+e".to_string(), description: "Sort by extension".to_string() },
+                        KeyBinding {
+                            key: "s+n".to_string(),
+                            description: "Sort by name".to_string(),
+                        },
+                        KeyBinding {
+                            key: "s+s".to_string(),
+                            description: "Sort by size".to_string(),
+                        },
+                        KeyBinding {
+                            key: "s+d".to_string(),
+                            description: "Sort by date".to_string(),
+                        },
+                        KeyBinding {
+                            key: "s+e".to_string(),
+                            description: "Sort by extension".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "Search & Filter".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "/, Ctrl+F".to_string(), description: "Start search".to_string() },
-                        KeyBinding { key: "f".to_string(), description: "File mask filter".to_string() },
-                        KeyBinding { key: "Ctrl+K".to_string(), description: "Clear search/filter".to_string() },
-                        KeyBinding { key: "Escape".to_string(), description: "Exit search mode".to_string() },
+                        KeyBinding {
+                            key: "/, Ctrl+F".to_string(),
+                            description: "Start search".to_string(),
+                        },
+                        KeyBinding {
+                            key: "f".to_string(),
+                            description: "File mask filter".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+K".to_string(),
+                            description: "Clear search/filter".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Escape".to_string(),
+                            description: "Exit search mode".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "Tab Management".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "Ctrl+N".to_string(), description: "New tab".to_string() },
-                        KeyBinding { key: "Ctrl+T/Ctrl+B".to_string(), description: "Tab selector".to_string() },
-                        KeyBinding { key: "Ctrl+W".to_string(), description: "Close tab".to_string() },
-                        KeyBinding { key: "Ctrl+Right".to_string(), description: "Next tab".to_string() },
-                        KeyBinding { key: "Ctrl+Left".to_string(), description: "Previous tab".to_string() },
+                        KeyBinding {
+                            key: "Ctrl+N".to_string(),
+                            description: "New tab".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+T/Ctrl+B".to_string(),
+                            description: "Tab selector".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+W".to_string(),
+                            description: "Close tab".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+Right".to_string(),
+                            description: "Next tab".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+Left".to_string(),
+                            description: "Previous tab".to_string(),
+                        },
                     ],
                 },
                 HelpSection {
                     name: "Miscellaneous".to_string(),
                     bindings: vec![
-                        KeyBinding { key: "Q, Escape".to_string(), description: "Quit application".to_string() },
-                        KeyBinding { key: "?, F1".to_string(), description: "Show this help".to_string() },
-                        KeyBinding { key: "Ctrl+J".to_string(), description: "Job manager".to_string() },
-                        KeyBinding { key: "L".to_string(), description: "Rotate language (in help dialog)".to_string() },
+                        KeyBinding {
+                            key: "Q, Escape".to_string(),
+                            description: "Quit application".to_string(),
+                        },
+                        KeyBinding {
+                            key: "?, F1".to_string(),
+                            description: "Show this help".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+J".to_string(),
+                            description: "Job manager".to_string(),
+                        },
+                        KeyBinding {
+                            key: "L".to_string(),
+                            description: "Rotate language (in help dialog)".to_string(),
+                        },
                     ],
                 },
             ],
         }
     }
-    
+
     /// Format help content as a string for display
     pub fn format(&self) -> String {
         let mut content = String::new();
-        
+
         for section in &self.sections {
             content.push_str(&format!("{}:\n", section.name));
             for binding in &section.bindings {
@@ -381,10 +501,10 @@ impl HelpContent {
             }
             content.push('\n');
         }
-        
+
         content
     }
-    
+
     /// Get list of available languages (delegates to ActionDescriptions)
     pub fn available_languages() -> Vec<String> {
         ActionDescriptions::available_languages()
@@ -399,13 +519,13 @@ impl HelpContent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_english_content() {
         let content = HelpContent::default_english();
         assert_eq!(content.title, "Help - Key Bindings");
         assert!(!content.sections.is_empty());
-        
+
         // Verify all expected sections are present
         let section_names: Vec<&str> = content.sections.iter().map(|s| s.name.as_str()).collect();
         assert!(section_names.contains(&"Navigation"));
@@ -416,17 +536,17 @@ mod tests {
         assert!(section_names.contains(&"Tab Management"));
         assert!(section_names.contains(&"Miscellaneous"));
     }
-    
+
     #[test]
     fn test_format_help_content() {
         let content = HelpContent::default_english();
         let formatted = content.format();
-        
+
         assert!(formatted.contains("Navigation:"));
         assert!(formatted.contains("Tab"));
         assert!(formatted.contains("Switch pane"));
     }
-    
+
     #[test]
     fn test_next_language_rotation() {
         // "jp" is an embedded default resource (action_descriptions.jp.json,
@@ -438,7 +558,7 @@ mod tests {
         assert_eq!(HelpContent::next_language("en"), "jp");
         assert_eq!(HelpContent::next_language("jp"), "en");
     }
-    
+
     #[test]
     fn test_load_with_fallback() {
         // Should always succeed with fallback

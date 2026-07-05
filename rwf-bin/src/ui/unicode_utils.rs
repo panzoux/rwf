@@ -9,35 +9,35 @@ use unicode_width::UnicodeWidthStr;
 /// Japanese characters have width 2, ASCII has width 1
 pub fn truncate_to_width(s: &str, max_width: usize, ellipsis: &str) -> String {
     let current_width = s.width();
-    
+
     if current_width <= max_width {
         return s.to_string();
     }
-    
+
     // Reserve space for ellipsis
     let ellipsis_width = ellipsis.width();
-    
+
     if max_width <= ellipsis_width {
         // Not enough space for ellipsis, just truncate
         return truncate_to_width_no_ellipsis(s, max_width);
     }
-    
+
     let target_width = max_width - ellipsis_width;
     let mut current = 0;
     let mut byte_pos = 0;
-    
+
     for (pos, ch) in s.char_indices() {
         let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-        
+
         if current + char_width > target_width {
             byte_pos = pos;
             break;
         }
-        
+
         current += char_width;
         byte_pos = pos + ch.len_utf8();
     }
-    
+
     format!("{}{}", &s[..byte_pos], ellipsis)
 }
 
@@ -45,26 +45,26 @@ pub fn truncate_to_width(s: &str, max_width: usize, ellipsis: &str) -> String {
 fn truncate_to_width_no_ellipsis(s: &str, max_width: usize) -> String {
     let mut current = 0;
     let mut byte_pos = 0;
-    
+
     for (pos, ch) in s.char_indices() {
         let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-        
+
         if current + char_width > max_width {
             byte_pos = pos;
             break;
         }
-        
+
         current += char_width;
         byte_pos = pos + ch.len_utf8();
     }
-    
+
     s[..byte_pos].to_string()
 }
 
 /// Pad string to target display width
 pub fn pad_to_width(s: &str, target_width: usize) -> String {
     let current_width = s.width();
-    
+
     if current_width >= target_width {
         s.to_string()
     } else {
@@ -77,23 +77,23 @@ pub fn pad_to_width(s: &str, target_width: usize) -> String {
 /// Truncates from the middle with ellipsis to show both start and end
 pub fn smart_truncate(s: &str, max_width: usize, ellipsis: &str) -> String {
     let current_width = s.width();
-    
+
     if current_width <= max_width {
         return s.to_string();
     }
-    
+
     let ellipsis_width = ellipsis.width();
-    
+
     if max_width <= ellipsis_width {
         return truncate_to_width(s, max_width, ellipsis);
     }
-    
+
     let available_width = max_width - ellipsis_width;
-    
+
     // Split: 2/3 for start, 1/3 for end
     let width_for_end = available_width / 3;
     let width_for_start = available_width - width_for_end;
-    
+
     // Find start portion
     let mut start_width = 0;
     let mut start_byte_pos = 0;
@@ -105,7 +105,7 @@ pub fn smart_truncate(s: &str, max_width: usize, ellipsis: &str) -> String {
         start_width += char_width;
         start_byte_pos = pos + ch.len_utf8();
     }
-    
+
     // Find end portion (scan backwards)
     let mut end_width = 0;
     let mut end_byte_pos = s.len();
@@ -117,12 +117,12 @@ pub fn smart_truncate(s: &str, max_width: usize, ellipsis: &str) -> String {
         end_width += char_width;
         end_byte_pos = pos;
     }
-    
+
     // Make sure start and end don't overlap
     if start_byte_pos >= end_byte_pos {
         return truncate_to_width(s, max_width, ellipsis);
     }
-    
+
     format!("{}{}{}", &s[..start_byte_pos], ellipsis, &s[end_byte_pos..])
 }
 
@@ -139,7 +139,7 @@ pub fn shorten_path(path: &str, max_width: usize, ellipsis: &str) -> String {
 
     if let Some(last_sep_byte) = path.rfind(['/', '\\']) {
         let sep_char = &path[last_sep_byte..last_sep_byte + 1]; // "/" or "\"
-        let last_component = &path[last_sep_byte + 1..];         // e.g. "plan"
+        let last_component = &path[last_sep_byte + 1..]; // e.g. "plan"
 
         // Tail = "…\last_component" — always shown when it fits
         let tail_width = ell_width + 1 /* sep */ + last_component.width();
@@ -160,7 +160,6 @@ pub fn shorten_path(path: &str, max_width: usize, ellipsis: &str) -> String {
     // Last component is too long to fit at all, truncate from end
     truncate_to_width(path, max_width, ellipsis)
 }
-
 
 #[cfg(test)]
 mod tests {

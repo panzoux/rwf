@@ -19,30 +19,30 @@ pub enum HelpTab {
 impl HelpTab {
     pub fn label(&self) -> &'static str {
         match self {
-            HelpTab::NormalMode      => "Normal",
-            HelpTab::ViewerMode      => "Viewer",
-            HelpTab::LeapMode        => "Leap",
-            HelpTab::DialogMode      => "Dialog",
+            HelpTab::NormalMode => "Normal",
+            HelpTab::ViewerMode => "Viewer",
+            HelpTab::LeapMode => "Leap",
+            HelpTab::DialogMode => "Dialog",
             HelpTab::CustomFunctions => "Custom Functions",
         }
     }
 
     pub fn next(self) -> Self {
         match self {
-            HelpTab::NormalMode      => HelpTab::ViewerMode,
-            HelpTab::ViewerMode      => HelpTab::LeapMode,
-            HelpTab::LeapMode        => HelpTab::DialogMode,
-            HelpTab::DialogMode      => HelpTab::CustomFunctions,
+            HelpTab::NormalMode => HelpTab::ViewerMode,
+            HelpTab::ViewerMode => HelpTab::LeapMode,
+            HelpTab::LeapMode => HelpTab::DialogMode,
+            HelpTab::DialogMode => HelpTab::CustomFunctions,
             HelpTab::CustomFunctions => HelpTab::NormalMode,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            HelpTab::NormalMode      => HelpTab::CustomFunctions,
-            HelpTab::ViewerMode      => HelpTab::NormalMode,
-            HelpTab::LeapMode        => HelpTab::ViewerMode,
-            HelpTab::DialogMode      => HelpTab::LeapMode,
+            HelpTab::NormalMode => HelpTab::CustomFunctions,
+            HelpTab::ViewerMode => HelpTab::NormalMode,
+            HelpTab::LeapMode => HelpTab::ViewerMode,
+            HelpTab::DialogMode => HelpTab::LeapMode,
             HelpTab::CustomFunctions => HelpTab::DialogMode,
         }
     }
@@ -93,13 +93,13 @@ impl DialogStack {
             input_buffer: String::new(),
         }
     }
-    
+
     /// Push a dialog onto the stack
     pub fn push(&mut self, dialog: Dialog) {
         self.stack.push(dialog);
         self.input_buffer.clear();
     }
-    
+
     /// Pop the top dialog
     pub fn pop(&mut self) -> Option<Dialog> {
         self.input_buffer.clear();
@@ -114,17 +114,17 @@ impl DialogStack {
             self.stack.remove(idx);
         }
     }
-    
+
     /// Get current dialog
     pub fn current(&self) -> Option<&Dialog> {
         self.stack.last()
     }
-    
+
     /// Get mutable current dialog
     pub fn current_mut(&mut self) -> Option<&mut Dialog> {
         self.stack.last_mut()
     }
-    
+
     /// Check if stack is empty
     pub fn is_empty(&self) -> bool {
         self.stack.is_empty()
@@ -176,13 +176,13 @@ pub enum DialogContent {
     },
     JobManager {
         selected_index: usize,
-        focused_field: usize,  // 0=Job List, 1=Close, 2=Cancel
+        focused_field: usize, // 0=Job List, 1=Close, 2=Cancel
     },
     CloseTabWithActiveJob {
         tab_index: usize,
         tab_name: String,
-        job_ids: Vec<u32>,  // Short IDs of active jobs in this tab
-        focused_field: usize,  // 0=OK, 1=Cancel
+        job_ids: Vec<u32>,    // Short IDs of active jobs in this tab
+        focused_field: usize, // 0=OK, 1=Cancel
     },
     CustomFunctionSelector {
         functions: Vec<CustomFunction>,
@@ -269,17 +269,17 @@ pub enum DialogContent {
     FileConflict {
         conflicts: Vec<ConflictPair>,
         current_index: usize,
-        focused_button: usize,  // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename (Textbox), 4=Cancel
+        focused_button: usize, // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename (Textbox), 4=Cancel
         rename_text: String,
         rename_cursor: usize,
         rename_scroll: usize,
-        edit_mode: crate::config::EditMode,  // Emacs or Vi mode for textbox
-        vi_mode: Option<crate::config::ViMode>,  // None = Emacs, Some = Vi mode state
+        edit_mode: crate::config::EditMode, // Emacs or Vi mode for textbox
+        vi_mode: Option<crate::config::ViMode>, // None = Emacs, Some = Vi mode state
         decisions: Vec<ConflictAction>,
         error_message: Option<String>,
         // Vi pending states (persisted between key presses)
         vi_pending_find_backward: Option<bool>,
-        vi_pending_operator: Option<u8>,  // 0=none, 1=change, 2=delete
+        vi_pending_operator: Option<u8>, // 0=none, 1=change, 2=delete
         vi_pending_ctrl_x: bool,
         // Undo/Redo history
         history: Vec<String>,
@@ -296,17 +296,17 @@ pub enum DialogContent {
         selected_compression_index: usize,
         compression_level: u32,
         // Interaction state (persists while dialog is open)
-        focused_field: usize,           // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
-        format_focus_index: usize,      // Which format has focus (0-7)
+        focused_field: usize, // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
+        format_focus_index: usize, // Which format has focus (0-7)
         compression_focus_index: usize, // Which compression level has focus (0-5)
-        cursor_pos: usize,              // Cursor position in archive name
-        scroll_pos: usize,              // Scroll position in archive name
+        cursor_pos: usize,    // Cursor position in archive name
+        scroll_pos: usize,    // Scroll position in archive name
         // Vi mode support
         edit_mode: crate::config::EditMode,
         vi_mode: Option<crate::config::ViMode>,
         // Vi pending states (persisted between key presses)
         vi_pending_find_backward: Option<bool>,
-        vi_pending_operator: Option<u8>,  // 0=none, 1=change, 2=delete
+        vi_pending_operator: Option<u8>, // 0=none, 1=change, 2=delete
         vi_pending_ctrl_x: bool,
         // Undo/Redo history
         history: Vec<String>,
@@ -402,7 +402,6 @@ pub enum DialogContent {
     },
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SplitJoinMode {
     Split,
@@ -466,9 +465,9 @@ impl DriveInfo {
             return self.path.clone();
         }
         let type_str = match self.drive_type {
-            DriveType::Local     => "Local",
+            DriveType::Local => "Local",
             DriveType::Removable => "Removable",
-            _                    => "Unknown",
+            _ => "Unknown",
         };
         let path_trimmed = self.path.trim_end_matches(['/', '\\']);
         if self.label.is_empty() {
@@ -502,7 +501,9 @@ impl MenuItem {
     pub fn is_separator(&self) -> bool {
         self.name.starts_with("-----") || self.action.is_empty()
     }
-    pub fn is_selectable(&self) -> bool { !self.is_separator() }
+    pub fn is_selectable(&self) -> bool {
+        !self.is_separator()
+    }
 }
 
 /// Wrapper for the menu_xxx.json file format.
@@ -555,8 +556,12 @@ pub struct CustomFunction {
 }
 
 impl CustomFunction {
-    pub fn is_menu(&self) -> bool { self.menu.is_some() }
-    pub fn is_command(&self) -> bool { self.command.is_some() }
+    pub fn is_menu(&self) -> bool {
+        self.menu.is_some()
+    }
+    pub fn is_command(&self) -> bool {
+        self.command.is_some()
+    }
 
     /// Return the resolved menu items, or empty slice if not a menu or not yet resolved.
     pub fn menu_items(&self) -> &[MenuItem] {
@@ -635,7 +640,11 @@ impl Dialog {
     }
 
     /// Create an input dialog
-    pub fn input(title: impl Into<String>, prompt: impl Into<String>, default_value: impl Into<String>) -> Self {
+    pub fn input(
+        title: impl Into<String>,
+        prompt: impl Into<String>,
+        default_value: impl Into<String>,
+    ) -> Self {
         let dv: String = default_value.into();
         let initial_cursor = dv.chars().count();
         Self {
@@ -651,7 +660,12 @@ impl Dialog {
     }
 
     /// Create a progress dialog
-    pub fn progress(title: impl Into<String>, operation: impl Into<String>, progress: f64, details: impl Into<String>) -> Self {
+    pub fn progress(
+        title: impl Into<String>,
+        operation: impl Into<String>,
+        progress: f64,
+        details: impl Into<String>,
+    ) -> Self {
         Self {
             title: title.into(),
             content: DialogContent::Progress {
@@ -668,15 +682,25 @@ impl Dialog {
             title: "Job Manager".to_string(),
             content: DialogContent::JobManager {
                 selected_index: 0,
-                focused_field: 0,  // Start with Job List focused (Part 6.7)
+                focused_field: 0, // Start with Job List focused (Part 6.7)
             },
         }
     }
 
     /// Create a file conflict dialog
-    pub fn file_conflict(conflicts: Vec<crate::model::dialog::ConflictPair>, current_index: usize, edit_mode: crate::config::EditMode, op_name: &str) -> Self {
+    pub fn file_conflict(
+        conflicts: Vec<crate::model::dialog::ConflictPair>,
+        current_index: usize,
+        edit_mode: crate::config::EditMode,
+        op_name: &str,
+    ) -> Self {
         let total = conflicts.len();
-        let title = format!("{} - File Conflict ({}/{})", op_name, current_index + 1, total);
+        let title = format!(
+            "{} - File Conflict ({}/{})",
+            op_name,
+            current_index + 1,
+            total
+        );
         let rename_text = if !conflicts.is_empty() {
             conflicts[current_index].source.name.clone()
         } else {
@@ -698,7 +722,7 @@ impl Dialog {
             content: DialogContent::FileConflict {
                 conflicts,
                 current_index,
-                focused_button: 3,  // Rename button focused by default
+                focused_button: 3, // Rename button focused by default
                 rename_text: rename_text.clone(),
                 rename_cursor,
                 rename_scroll: 0,
@@ -718,9 +742,20 @@ impl Dialog {
 
     /// Update the dialog title with current progress
     pub fn update_file_conflict_title(&mut self) {
-        if let DialogContent::FileConflict { conflicts, current_index, operation, .. } = &self.content {
+        if let DialogContent::FileConflict {
+            conflicts,
+            current_index,
+            operation,
+            ..
+        } = &self.content
+        {
             let total = conflicts.len();
-            self.title = format!("{} - File Conflict ({}/{})", operation, current_index + 1, total);
+            self.title = format!(
+                "{} - File Conflict ({}/{})",
+                operation,
+                current_index + 1,
+                total
+            );
         }
     }
 
@@ -746,8 +781,6 @@ impl Dialog {
             },
         }
     }
-
-
 
     /// Create a custom function selector dialog
     pub fn custom_function_selector(functions: Vec<CustomFunction>) -> Self {
@@ -840,13 +873,34 @@ impl Dialog {
 
     fn default_context_menu_options() -> Vec<ContextMenuOption> {
         vec![
-            ContextMenuOption { label: "View".to_string(), action: ContextMenuAction::View },
-            ContextMenuOption { label: "─────".to_string(), action: ContextMenuAction::Separator },
-            ContextMenuOption { label: "Copy".to_string(), action: ContextMenuAction::Copy },
-            ContextMenuOption { label: "Move".to_string(), action: ContextMenuAction::Move },
-            ContextMenuOption { label: "Rename".to_string(), action: ContextMenuAction::Rename },
-            ContextMenuOption { label: "─────".to_string(), action: ContextMenuAction::Separator },
-            ContextMenuOption { label: "Delete".to_string(), action: ContextMenuAction::Delete },
+            ContextMenuOption {
+                label: "View".to_string(),
+                action: ContextMenuAction::View,
+            },
+            ContextMenuOption {
+                label: "─────".to_string(),
+                action: ContextMenuAction::Separator,
+            },
+            ContextMenuOption {
+                label: "Copy".to_string(),
+                action: ContextMenuAction::Copy,
+            },
+            ContextMenuOption {
+                label: "Move".to_string(),
+                action: ContextMenuAction::Move,
+            },
+            ContextMenuOption {
+                label: "Rename".to_string(),
+                action: ContextMenuAction::Rename,
+            },
+            ContextMenuOption {
+                label: "─────".to_string(),
+                action: ContextMenuAction::Separator,
+            },
+            ContextMenuOption {
+                label: "Delete".to_string(),
+                action: ContextMenuAction::Delete,
+            },
         ]
     }
 
@@ -858,7 +912,7 @@ impl Dialog {
     /// Create a drive selection dialog
     pub fn drive_selection(drives: Vec<DriveInfo>, pane: crate::model::ui::ActivePane) -> Self {
         let pane_label = match pane {
-            crate::model::ui::ActivePane::Left  => "Left",
+            crate::model::ui::ActivePane::Left => "Left",
             crate::model::ui::ActivePane::Right => "Right",
         };
         Self {
@@ -877,14 +931,14 @@ impl Dialog {
         let (permissions, owner, group) = {
             use std::os::unix::fs::MetadataExt;
             use std::os::unix::fs::PermissionsExt;
-            
+
             // Try to get metadata for permissions and ownership
             let metadata_result = if let crate::model::Location::Local(path) = &entry.location {
                 std::fs::metadata(path).ok()
             } else {
                 None
             };
-            
+
             let permissions = metadata_result.as_ref().map(|m| m.permissions().mode());
             let owner = metadata_result.as_ref().and_then(|m| {
                 users::get_user_by_uid(m.uid()).map(|u| u.name().to_string_lossy().to_string())
@@ -892,10 +946,10 @@ impl Dialog {
             let group = metadata_result.as_ref().and_then(|m| {
                 users::get_group_by_gid(m.gid()).map(|g| g.name().to_string_lossy().to_string())
             });
-            
+
             (permissions, owner, group)
         };
-        
+
         // Try to get created and accessed times
         let (created, accessed) = if let crate::model::Location::Local(path) = &entry.location {
             if let Ok(metadata) = std::fs::metadata(path) {
@@ -908,7 +962,7 @@ impl Dialog {
         } else {
             (None, None)
         };
-        
+
         // Check if readonly
         let is_readonly = if let crate::model::Location::Local(path) = &entry.location {
             std::fs::metadata(path)
@@ -952,16 +1006,19 @@ impl Dialog {
     }
 
     /// Create a sort dialog pre-selected to the pane's current mode and order
-    pub fn sort_dialog(current_mode: crate::model::SortMode, current_order: crate::model::SortOrder) -> Self {
+    pub fn sort_dialog(
+        current_mode: crate::model::SortMode,
+        current_order: crate::model::SortOrder,
+    ) -> Self {
         use crate::model::{SortMode, SortOrder};
         let selected_mode_index = match current_mode {
-            SortMode::Name      => 0,
-            SortMode::Size      => 1,
-            SortMode::Date      => 2,
+            SortMode::Name => 0,
+            SortMode::Size => 1,
+            SortMode::Date => 2,
             SortMode::Extension => 3,
         };
         let selected_order_index = match current_order {
-            SortOrder::Ascending  => 0,
+            SortOrder::Ascending => 0,
             SortOrder::Descending => 1,
         };
         Self {
@@ -1055,11 +1112,13 @@ impl Dialog {
     pub fn history_dialog(
         tab_index: usize,
         active_pane: crate::model::ui::ActivePane,
-        left_entries: Vec<Location>, left_current_pos: usize,
-        right_entries: Vec<Location>, right_current_pos: usize,
+        left_entries: Vec<Location>,
+        left_current_pos: usize,
+        right_entries: Vec<Location>,
+        right_current_pos: usize,
     ) -> Self {
         let pane_label = match active_pane {
-            crate::model::ui::ActivePane::Left  => "Left",
+            crate::model::ui::ActivePane::Left => "Left",
             crate::model::ui::ActivePane::Right => "Right",
         };
         Self {
@@ -1079,11 +1138,9 @@ impl Dialog {
     /// Create a version information dialog
     pub fn version() -> Self {
         let version = env!("CARGO_PKG_VERSION").to_string();
-        let build_date = option_env!("BUILD_DATE")
-            .unwrap_or("Unknown")
-            .to_string();
+        let build_date = option_env!("BUILD_DATE").unwrap_or("Unknown").to_string();
         let copyright = "Copyright © 2024 RWF Contributors".to_string();
-        
+
         Self {
             title: "Version Information".to_string(),
             content: DialogContent::Version {
@@ -1162,8 +1219,9 @@ impl Dialog {
     /// Create an operation failed error dialog from JobResult
     pub fn from_job_failure(operation: &str, error_message: &str) -> Self {
         // Detect error type from message
-        let error_type = if error_message.to_lowercase().contains("permission") 
-            || error_message.to_lowercase().contains("access denied") {
+        let error_type = if error_message.to_lowercase().contains("permission")
+            || error_message.to_lowercase().contains("access denied")
+        {
             ErrorType::Permission
         } else if error_message.to_lowercase().contains("not found") {
             ErrorType::FileNotFound
@@ -1196,7 +1254,7 @@ impl Dialog {
             },
         }
     }
-    
+
     /// Create a comparison view dialog
     pub fn comparison_view(diff: crate::job::FileDiff) -> Self {
         Self {
@@ -1207,7 +1265,7 @@ impl Dialog {
             },
         }
     }
-    
+
     /// Create a split/join dialog
     pub fn split_join_dialog() -> Self {
         Self {
@@ -1220,7 +1278,10 @@ impl Dialog {
     }
 
     /// Create a compression dialog
-    pub fn compression(sources: Vec<crate::model::Location>, edit_mode: crate::config::EditMode) -> Self {
+    pub fn compression(
+        sources: Vec<crate::model::Location>,
+        edit_mode: crate::config::EditMode,
+    ) -> Self {
         let default_name = if sources.len() == 1 {
             let name = sources[0].display_path();
             // Get just the filename from the path
@@ -1248,7 +1309,7 @@ impl Dialog {
                 archive_name: default_name.clone(),
                 selected_format_index: 0,
                 selected_compression_index: 3, // Default to Normal
-                compression_level: 5, // Default to Normal
+                compression_level: 5,          // Default to Normal
                 // Initialize interaction state
                 focused_field: 0,           // Start with format focused
                 format_focus_index: 0,      // First format has focus
@@ -1269,7 +1330,11 @@ impl Dialog {
     }
 
     /// Create an extraction confirmation dialog
-    pub fn extraction_confirm(archive: crate::model::Location, dest: crate::model::Location, file_count: usize) -> Self {
+    pub fn extraction_confirm(
+        archive: crate::model::Location,
+        dest: crate::model::Location,
+        file_count: usize,
+    ) -> Self {
         Self {
             title: "Extract Archive".to_string(),
             content: DialogContent::ExtractionConfirm {
@@ -1283,10 +1348,17 @@ impl Dialog {
     /// Create a delete confirmation dialog
     pub fn delete_confirm(targets: Vec<(crate::model::Location, bool)>) -> Self {
         let n = targets.len();
-        let title = if n == 1 { "Delete File".to_string() } else { format!("Delete {} Files", n) };
+        let title = if n == 1 {
+            "Delete File".to_string()
+        } else {
+            format!("Delete {} Files", n)
+        };
         Self {
             title,
-            content: DialogContent::DeleteConfirm { targets, scroll_offset: 0 },
+            content: DialogContent::DeleteConfirm {
+                targets,
+                scroll_offset: 0,
+            },
         }
     }
 }
@@ -1410,7 +1482,7 @@ impl CustomFunction {
         self.pipe_to_action = Some(action);
         self
     }
-    
+
     /// Get the effective command for the current OS, or None for menu entries.
     pub fn get_command(&self) -> Option<&str> {
         #[cfg(target_os = "windows")]
@@ -1426,7 +1498,7 @@ impl CustomFunction {
             self.command.as_deref()
         }
     }
-    
+
     /// Get the shell for the current OS
     pub fn get_shell(&self) -> Option<&str> {
         #[cfg(target_os = "windows")]
@@ -1435,7 +1507,7 @@ impl CustomFunction {
         let os_key = "macos";
         #[cfg(target_os = "linux")]
         let os_key = "linux";
-        
+
         if let Some(os_config) = self.os_specific.get(os_key) {
             os_config.shell.as_deref().or(self.shell.as_deref())
         } else {
@@ -2109,19 +2181,25 @@ impl DialogContent {
     /// Get drive selection data if this is a drive selection dialog
     pub fn as_drive_selection(&self) -> Option<(&[DriveInfo], usize, &str)> {
         match self {
-            DialogContent::DriveSelection { drives, selected_index, filter } => {
-                Some((drives, *selected_index, filter.as_str()))
-            }
+            DialogContent::DriveSelection {
+                drives,
+                selected_index,
+                filter,
+            } => Some((drives, *selected_index, filter.as_str())),
             _ => None,
         }
     }
 
     /// Get mutable drive selection data
-    pub fn as_drive_selection_mut(&mut self) -> Option<(&mut Vec<DriveInfo>, &mut usize, &mut String)> {
+    pub fn as_drive_selection_mut(
+        &mut self,
+    ) -> Option<(&mut Vec<DriveInfo>, &mut usize, &mut String)> {
         match self {
-            DialogContent::DriveSelection { drives, selected_index, filter } => {
-                Some((drives, selected_index, filter))
-            }
+            DialogContent::DriveSelection {
+                drives,
+                selected_index,
+                filter,
+            } => Some((drives, selected_index, filter)),
             _ => None,
         }
     }
@@ -2137,20 +2215,52 @@ pub struct PatternRenameDialog {
 }
 
 impl PatternRenameDialog {
-    pub fn new(find: String, replace: String, use_regex: bool, case_sensitive: bool, preview: Vec<(String, String)>) -> Self {
-        Self { find, replace, use_regex, case_sensitive, preview }
+    pub fn new(
+        find: String,
+        replace: String,
+        use_regex: bool,
+        case_sensitive: bool,
+        preview: Vec<(String, String)>,
+    ) -> Self {
+        Self {
+            find,
+            replace,
+            use_regex,
+            case_sensitive,
+            preview,
+        }
     }
 
-    pub fn find(&self) -> &str { &self.find }
-    pub fn replace(&self) -> &str { &self.replace }
-    pub fn use_regex(&self) -> bool { self.use_regex }
-    pub fn case_sensitive(&self) -> bool { self.case_sensitive }
-    pub fn preview(&self) -> &[(String, String)] { &self.preview }
-    pub fn set_preview(&mut self, preview: Vec<(String, String)>) { self.preview = preview; }
-    pub fn is_empty(&self) -> bool { self.preview.is_empty() }
-    pub fn count(&self) -> usize { self.preview.len() }
-    pub fn get_preview(&self, index: usize) -> Option<&(String, String)> { self.preview.get(index) }
-    pub fn is_valid(&self) -> bool { !self.find.is_empty() }
+    pub fn find(&self) -> &str {
+        &self.find
+    }
+    pub fn replace(&self) -> &str {
+        &self.replace
+    }
+    pub fn use_regex(&self) -> bool {
+        self.use_regex
+    }
+    pub fn case_sensitive(&self) -> bool {
+        self.case_sensitive
+    }
+    pub fn preview(&self) -> &[(String, String)] {
+        &self.preview
+    }
+    pub fn set_preview(&mut self, preview: Vec<(String, String)>) {
+        self.preview = preview;
+    }
+    pub fn is_empty(&self) -> bool {
+        self.preview.is_empty()
+    }
+    pub fn count(&self) -> usize {
+        self.preview.len()
+    }
+    pub fn get_preview(&self, index: usize) -> Option<&(String, String)> {
+        self.preview.get(index)
+    }
+    pub fn is_valid(&self) -> bool {
+        !self.find.is_empty()
+    }
 }
 
 impl DialogContent {
@@ -2158,9 +2268,14 @@ impl DialogContent {
     #[allow(clippy::type_complexity)] // tuple mirrors PatternRename's fields; a type alias would obscure the field-order mapping used at call sites
     pub fn as_pattern_rename(&self) -> Option<(&str, &str, bool, bool, &[(String, String)])> {
         match self {
-            DialogContent::PatternRename { find, replace, use_regex, case_sensitive, preview, .. } => {
-                Some((find, replace, *use_regex, *case_sensitive, preview))
-            }
+            DialogContent::PatternRename {
+                find,
+                replace,
+                use_regex,
+                case_sensitive,
+                preview,
+                ..
+            } => Some((find, replace, *use_regex, *case_sensitive, preview)),
             _ => None,
         }
     }
@@ -2169,27 +2284,44 @@ impl DialogContent {
     #[allow(clippy::type_complexity)] // tuple mirrors PatternRename's fields; a type alias would obscure the field-order mapping used at call sites
     pub fn as_pattern_rename_mut(
         &mut self,
-    ) -> Option<(&mut String, &mut String, &mut bool, &mut bool, &mut Vec<(String, String)>)> {
+    ) -> Option<(
+        &mut String,
+        &mut String,
+        &mut bool,
+        &mut bool,
+        &mut Vec<(String, String)>,
+    )> {
         match self {
             DialogContent::PatternRename {
-                find, replace, use_regex, case_sensitive, preview, ..
+                find,
+                replace,
+                use_regex,
+                case_sensitive,
+                preview,
+                ..
             } => Some((find, replace, use_regex, case_sensitive, preview)),
             _ => None,
         }
     }
-    
+
     /// Get split/join dialog data
     pub fn as_split_join(&self) -> Option<(SplitJoinMode, u64)> {
         match self {
-            DialogContent::SplitJoinDialog { mode, chunk_size_mb } => Some((*mode, *chunk_size_mb)),
+            DialogContent::SplitJoinDialog {
+                mode,
+                chunk_size_mb,
+            } => Some((*mode, *chunk_size_mb)),
             _ => None,
         }
     }
-    
+
     /// Get mutable split/join dialog data
     pub fn as_split_join_mut(&mut self) -> Option<(&mut SplitJoinMode, &mut u64)> {
         match self {
-            DialogContent::SplitJoinDialog { mode, chunk_size_mb } => Some((mode, chunk_size_mb)),
+            DialogContent::SplitJoinDialog {
+                mode,
+                chunk_size_mb,
+            } => Some((mode, chunk_size_mb)),
             _ => None,
         }
     }
@@ -2251,7 +2383,9 @@ struct CustomFunctionsFile {
 /// Accepts the wrapper format `{"Version":"1.0","Functions":[...]}` and a bare
 /// array `[...]`. Menu entries whose `Menu` field is a filename string are loaded
 /// recursively from the same directory as the parent file.
-pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
+pub fn load_custom_functions(
+    path: &std::path::Path,
+) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -2263,7 +2397,9 @@ pub fn load_custom_functions(path: &std::path::Path) -> Result<Vec<CustomFunctio
     Ok(functions)
 }
 
-fn parse_custom_functions(content: &str) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
+fn parse_custom_functions(
+    content: &str,
+) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
     // Preferred: wrapper object with Version + Functions
     if let Ok(file) = serde_json::from_str::<CustomFunctionsFile>(content) {
         return Ok(file.functions);
@@ -2284,17 +2420,15 @@ fn resolve_menu_files(functions: &mut [CustomFunction], base_dir: &std::path::Pa
         if let Some(MenuContent::File(filename)) = &func.menu {
             let menu_path = base_dir.join(filename);
             match std::fs::read_to_string(&menu_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<MenuFile>(&content) {
-                        Ok(menu_file) => {
-                            func.menu = Some(MenuContent::Items(menu_file.menus));
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse menu file {:?}: {}", menu_path, e);
-                            func.menu = Some(MenuContent::Items(Vec::new()));
-                        }
+                Ok(content) => match serde_json::from_str::<MenuFile>(&content) {
+                    Ok(menu_file) => {
+                        func.menu = Some(MenuContent::Items(menu_file.menus));
                     }
-                }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse menu file {:?}: {}", menu_path, e);
+                        func.menu = Some(MenuContent::Items(Vec::new()));
+                    }
+                },
                 Err(e) => {
                     tracing::warn!("Failed to read menu file {:?}: {}", menu_path, e);
                     func.menu = Some(MenuContent::Items(Vec::new()));
@@ -2367,13 +2501,25 @@ impl ConflictPair {
         match self.get_status() {
             ConflictStatus::SameSizeDate => ("✓", "Same size and date".to_string()),
             ConflictStatus::SameSizeSourceNewer => ("✓", "Same size, Source is newer".to_string()),
-            ConflictStatus::SameSizeDestNewer => ("⚠", "Same size, Destination is newer".to_string()),
-            ConflictStatus::DifferentSizeSourceNewer => ("⚠", format!("Different size (Source: {}, Dest: {})", 
-                crate::model::file_entry::format_size(self.source.size), 
-                crate::model::file_entry::format_size(self.dest.size))),
-            ConflictStatus::DifferentSizeDestNewer => ("⚠", format!("Different size (Source: {}, Dest: {})", 
-                crate::model::file_entry::format_size(self.source.size), 
-                crate::model::file_entry::format_size(self.dest.size))),
+            ConflictStatus::SameSizeDestNewer => {
+                ("⚠", "Same size, Destination is newer".to_string())
+            }
+            ConflictStatus::DifferentSizeSourceNewer => (
+                "⚠",
+                format!(
+                    "Different size (Source: {}, Dest: {})",
+                    crate::model::file_entry::format_size(self.source.size),
+                    crate::model::file_entry::format_size(self.dest.size)
+                ),
+            ),
+            ConflictStatus::DifferentSizeDestNewer => (
+                "⚠",
+                format!(
+                    "Different size (Source: {}, Dest: {})",
+                    crate::model::file_entry::format_size(self.source.size),
+                    crate::model::file_entry::format_size(self.dest.size)
+                ),
+            ),
             ConflictStatus::DirectoryMerge => ("⚠", "Will merge directories".to_string()),
         }
     }
@@ -2382,7 +2528,7 @@ impl ConflictPair {
 #[cfg(test)]
 mod custom_function_tests {
     use super::*;
-    
+
     #[test]
     fn test_custom_function_deserialization() {
         let json = r#"{
@@ -2411,10 +2557,13 @@ mod custom_function_tests {
             pipe_to_action: None,
             os_specific: {
                 let mut map = HashMap::new();
-                map.insert("linux".to_string(), OsConfig {
-                    command: "linux command".to_string(),
-                    shell: None,
-                });
+                map.insert(
+                    "linux".to_string(),
+                    OsConfig {
+                        command: "linux command".to_string(),
+                        shell: None,
+                    },
+                );
                 map
             },
             key_binding: None,
@@ -2442,7 +2591,10 @@ impl RegisteredFolderManager {
     }
 
     /// Load registered folders from a JSON file
-    pub fn load_from_file(&mut self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_from_file(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if path.exists() {
             let content = std::fs::read_to_string(path)?;
             self.folders = serde_json::from_str(&content)?;
@@ -2510,7 +2662,11 @@ impl RegisteredFolderManager {
             for cap in pattern.captures_iter(path) {
                 if let Some(var_name) = cap.get(1) {
                     if let Ok(value) = std::env::var(var_name.as_str()) {
-                        all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                        all_replacements.push((
+                            cap.get(0).unwrap().start(),
+                            cap.get(0).unwrap().end(),
+                            value,
+                        ));
                     }
                 }
             }
@@ -2521,7 +2677,11 @@ impl RegisteredFolderManager {
         for cap in ps_pattern.captures_iter(path) {
             if let Some(var_name) = cap.get(1) {
                 if let Ok(value) = std::env::var(var_name.as_str()) {
-                    all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                    all_replacements.push((
+                        cap.get(0).unwrap().start(),
+                        cap.get(0).unwrap().end(),
+                        value,
+                    ));
                 }
             }
         }
@@ -2531,7 +2691,11 @@ impl RegisteredFolderManager {
         for cap in braces_pattern.captures_iter(path) {
             if let Some(var_name) = cap.get(1) {
                 if let Ok(value) = std::env::var(var_name.as_str()) {
-                    all_replacements.push((cap.get(0).unwrap().start(), cap.get(0).unwrap().end(), value));
+                    all_replacements.push((
+                        cap.get(0).unwrap().start(),
+                        cap.get(0).unwrap().end(),
+                        value,
+                    ));
                 }
             }
         }
@@ -2543,22 +2707,22 @@ impl RegisteredFolderManager {
             let full_match = cap.get(0).unwrap();
             let start = full_match.start();
             let end = full_match.end();
-            
+
             // Skip if this is part of $env: (check if "env:" follows the $)
             if path[start..].starts_with("$env:") {
                 continue;
             }
-            
+
             // Skip if this is part of ${ (check if '{' immediately follows the $)
             if path.as_bytes().get(start + 1) == Some(&b'{') {
                 continue;
             }
-            
+
             // Skip if this position is already covered by another replacement
-            let already_covered = all_replacements.iter().any(|(s, e, _)| {
-                (start >= *s && start < *e) || (end > *s && end <= *e)
-            });
-            
+            let already_covered = all_replacements
+                .iter()
+                .any(|(s, e, _)| (start >= *s && start < *e) || (end > *s && end <= *e));
+
             if !already_covered {
                 if let Some(var_name) = cap.get(1) {
                     if let Ok(value) = std::env::var(var_name.as_str()) {
@@ -2634,10 +2798,10 @@ mod registered_folder_tests {
     fn test_manager_add_remove() {
         let mut manager = RegisteredFolderManager::new();
         let folder = RegisteredFolder::new("Test".to_string(), "/test".to_string());
-        
+
         manager.add(folder.clone());
         assert_eq!(manager.folders.len(), 1);
-        
+
         let removed = manager.remove(0);
         assert_eq!(removed, Some(folder));
         assert_eq!(manager.folders.len(), 0);
@@ -2647,10 +2811,10 @@ mod registered_folder_tests {
     fn test_expand_env_vars_unix_simple() {
         let manager = RegisteredFolderManager::new();
         std::env::set_var("TEST_VAR_UNIX_SIMPLE", "test_value");
-        
+
         let result = manager.expand_env_vars("$TEST_VAR_UNIX_SIMPLE/path");
         assert_eq!(result, "test_value/path");
-        
+
         std::env::remove_var("TEST_VAR_UNIX_SIMPLE");
     }
 
@@ -2658,10 +2822,10 @@ mod registered_folder_tests {
     fn test_expand_env_vars_unix_braces() {
         let manager = RegisteredFolderManager::new();
         std::env::set_var("TEST_VAR_UNIX_BRACES", "test_value");
-        
+
         let result = manager.expand_env_vars("${TEST_VAR_UNIX_BRACES}/path");
         assert_eq!(result, "test_value/path");
-        
+
         std::env::remove_var("TEST_VAR_UNIX_BRACES");
     }
 
@@ -2669,10 +2833,10 @@ mod registered_folder_tests {
     fn test_expand_env_vars_powershell() {
         let manager = RegisteredFolderManager::new();
         std::env::set_var("TEST_VAR_POWERSHELL", "test_value");
-        
+
         let result = manager.expand_env_vars("$env:TEST_VAR_POWERSHELL/path");
         assert_eq!(result, "test_value/path");
-        
+
         std::env::remove_var("TEST_VAR_POWERSHELL");
     }
 
@@ -2681,10 +2845,10 @@ mod registered_folder_tests {
     fn test_expand_env_vars_windows() {
         let manager = RegisteredFolderManager::new();
         std::env::set_var("TEST_VAR_WINDOWS", "test_value");
-        
+
         let result = manager.expand_env_vars("%TEST_VAR_WINDOWS%/path");
         assert_eq!(result, "test_value/path");
-        
+
         std::env::remove_var("TEST_VAR_WINDOWS");
     }
 
@@ -2692,20 +2856,27 @@ mod registered_folder_tests {
     fn test_expand_path() {
         let manager = RegisteredFolderManager::new();
         std::env::set_var("TEST_VAR_EXPAND_PATH", "test_value");
-        
-        let folder = RegisteredFolder::new("Test".to_string(), "$TEST_VAR_EXPAND_PATH/path".to_string());
+
+        let folder =
+            RegisteredFolder::new("Test".to_string(), "$TEST_VAR_EXPAND_PATH/path".to_string());
         let expanded = manager.expand_path(&folder);
         assert_eq!(expanded, std::path::PathBuf::from("test_value/path"));
-        
+
         std::env::remove_var("TEST_VAR_EXPAND_PATH");
     }
 
     #[test]
     fn test_filter_empty_query() {
         let mut manager = RegisteredFolderManager::new();
-        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
-        manager.add(RegisteredFolder::new("Work".to_string(), "/work".to_string()));
-        
+        manager.add(RegisteredFolder::new(
+            "Home".to_string(),
+            "/home".to_string(),
+        ));
+        manager.add(RegisteredFolder::new(
+            "Work".to_string(),
+            "/work".to_string(),
+        ));
+
         let filtered = manager.filter("");
         assert_eq!(filtered.len(), 2);
     }
@@ -2713,9 +2884,15 @@ mod registered_folder_tests {
     #[test]
     fn test_filter_by_name() {
         let mut manager = RegisteredFolderManager::new();
-        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
-        manager.add(RegisteredFolder::new("Work".to_string(), "/work".to_string()));
-        
+        manager.add(RegisteredFolder::new(
+            "Home".to_string(),
+            "/home".to_string(),
+        ));
+        manager.add(RegisteredFolder::new(
+            "Work".to_string(),
+            "/work".to_string(),
+        ));
+
         let filtered = manager.filter("home");
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "Home");
@@ -2724,9 +2901,15 @@ mod registered_folder_tests {
     #[test]
     fn test_filter_by_path() {
         let mut manager = RegisteredFolderManager::new();
-        manager.add(RegisteredFolder::new("Home".to_string(), "/home/user".to_string()));
-        manager.add(RegisteredFolder::new("Work".to_string(), "/work/project".to_string()));
-        
+        manager.add(RegisteredFolder::new(
+            "Home".to_string(),
+            "/home/user".to_string(),
+        ));
+        manager.add(RegisteredFolder::new(
+            "Work".to_string(),
+            "/work/project".to_string(),
+        ));
+
         let filtered = manager.filter("project");
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "Work");
@@ -2735,8 +2918,11 @@ mod registered_folder_tests {
     #[test]
     fn test_filter_case_insensitive() {
         let mut manager = RegisteredFolderManager::new();
-        manager.add(RegisteredFolder::new("Home".to_string(), "/home".to_string()));
-        
+        manager.add(RegisteredFolder::new(
+            "Home".to_string(),
+            "/home".to_string(),
+        ));
+
         let filtered = manager.filter("HOME");
         assert_eq!(filtered.len(), 1);
     }

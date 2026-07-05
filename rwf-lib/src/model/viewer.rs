@@ -5,9 +5,9 @@
 //! stores it behind an Arc<Mutex<LineIndex>> shared with the UI thread.
 //! The renderer only decodes the visible viewport window on each frame.
 
-use std::sync::{Arc, Mutex};
-use regex::Regex;
 use crate::model::Location;
+use regex::Regex;
+use std::sync::{Arc, Mutex};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SeekableFile: File + Seek + Read (no mmap). Used for files above threshold.
@@ -20,7 +20,10 @@ pub struct SeekableFile {
 
 impl SeekableFile {
     pub fn new(file: std::fs::File, size: u64) -> Self {
-        Self { file: Arc::new(Mutex::new(file)), size }
+        Self {
+            file: Arc::new(Mutex::new(file)),
+            size,
+        }
     }
 
     /// Read `len` bytes starting at `offset`. Returns fewer bytes if near EOF.
@@ -28,14 +31,18 @@ impl SeekableFile {
         use std::io::{Read, Seek, SeekFrom};
         let available = (self.size.saturating_sub(offset)) as usize;
         let to_read = len.min(available);
-        if to_read == 0 { return Ok(vec![]); }
+        if to_read == 0 {
+            return Ok(vec![]);
+        }
         let mut f = self.file.lock().unwrap();
         f.seek(SeekFrom::Start(offset))?;
         let mut buf = vec![0u8; to_read];
         let mut total = 0;
         while total < to_read {
             let n = f.read(&mut buf[total..])?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total += n;
         }
         buf.truncate(total);
@@ -64,7 +71,9 @@ impl FileBytes {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             FileBytes::InMemory(v) => v,
-            FileBytes::Seekable(_) => unreachable!("Use SeekableFile::read_bytes() for Seekable files"),
+            FileBytes::Seekable(_) => {
+                unreachable!("Use SeekableFile::read_bytes() for Seekable files")
+            }
         }
     }
     pub fn len(&self) -> usize {
@@ -73,7 +82,9 @@ impl FileBytes {
             FileBytes::Seekable(s) => s.size as usize,
         }
     }
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl std::fmt::Debug for FileBytes {
@@ -102,10 +113,16 @@ impl Default for LineIndex {
 
 impl LineIndex {
     pub fn new() -> Self {
-        Self { offsets: vec![0], is_complete: false }
+        Self {
+            offsets: vec![0],
+            is_complete: false,
+        }
     }
     pub fn new_complete_empty() -> Self {
-        Self { offsets: vec![0], is_complete: true }
+        Self {
+            offsets: vec![0],
+            is_complete: true,
+        }
     }
 }
 
@@ -126,7 +143,9 @@ impl ViewerBuffer {
         }
     }
 
-    pub fn total_bytes(&self) -> usize { self.bytes.len() }
+    pub fn total_bytes(&self) -> usize {
+        self.bytes.len()
+    }
 }
 
 impl Clone for ViewerBuffer {
@@ -208,7 +227,10 @@ impl ViewerState {
                 }
             }
         }
-        let line_index = LineIndex { offsets, is_complete: true };
+        let line_index = LineIndex {
+            offsets,
+            is_complete: true,
+        };
         self.buffer = Some(ViewerBuffer::new(FileBytes::InMemory(contents), line_index));
         self.is_loading = false;
     }
@@ -228,7 +250,8 @@ impl ViewerState {
 
     /// Number of lines indexed so far. Grows while the background indexer runs.
     pub fn line_count(&self) -> usize {
-        self.buffer.as_ref()
+        self.buffer
+            .as_ref()
             .and_then(|b| b.line_index.lock().ok())
             .map(|idx| idx.offsets.len())
             .unwrap_or(0)
@@ -236,7 +259,8 @@ impl ViewerState {
 
     /// Whether the line index is fully built.
     pub fn is_index_complete(&self) -> bool {
-        self.buffer.as_ref()
+        self.buffer
+            .as_ref()
             .and_then(|b| b.line_index.lock().ok())
             .map(|idx| idx.is_complete)
             .unwrap_or(false)
@@ -244,7 +268,8 @@ impl ViewerState {
 
     /// Number of hex rows (16 bytes each) based on total file size.
     pub fn hex_line_count(&self) -> usize {
-        self.buffer.as_ref()
+        self.buffer
+            .as_ref()
             .map(|b| b.bytes.len().div_ceil(16))
             .unwrap_or(0)
     }
@@ -258,7 +283,9 @@ impl ViewerState {
         // Release the index lock before any file I/O so Seekable reads don't deadlock.
         let (start, end) = {
             let index = buffer.line_index.lock().ok()?;
-            if line_idx >= index.offsets.len() { return None; }
+            if line_idx >= index.offsets.len() {
+                return None;
+            }
             let start = index.offsets[line_idx] as usize;
             let end = if line_idx + 1 < index.offsets.len() {
                 index.offsets[line_idx + 1] as usize
@@ -290,7 +317,9 @@ impl ViewerState {
         let buffer = self.buffer.as_ref()?;
         let total = buffer.bytes.len();
         let offset = line_idx * 16;
-        if offset >= total { return None; }
+        if offset >= total {
+            return None;
+        }
         let end = (offset + 16).min(total);
         let bytes = match buffer.bytes.as_ref() {
             FileBytes::InMemory(v) => v[offset..end].to_vec(),
@@ -303,7 +332,9 @@ impl ViewerState {
         let buffer = self.buffer.as_ref()?;
         let total = buffer.bytes.len();
         let offset = line_idx * 16;
-        if offset >= total { return None; }
+        if offset >= total {
+            return None;
+        }
         let end = (offset + 16).min(total);
         let bytes = match buffer.bytes.as_ref() {
             FileBytes::InMemory(v) => v[offset..end].to_vec(),
@@ -313,14 +344,23 @@ impl ViewerState {
 
         let mut hex_str = String::new();
         for (i, byte) in bytes.iter().enumerate() {
-            if i > 0 && i % 8 == 0 { hex_str.push(' '); }
+            if i > 0 && i % 8 == 0 {
+                hex_str.push(' ');
+            }
             hex_str.push_str(&format!("{:02X} ", byte));
         }
         let padding = (16 - bytes.len()) * 3 + if bytes.len() <= 8 { 1 } else { 0 };
         hex_str.push_str(&" ".repeat(padding));
 
-        let ascii_str: String = bytes.iter()
-            .map(|&b| if (32..=126).contains(&b) { b as char } else { '.' })
+        let ascii_str: String = bytes
+            .iter()
+            .map(|&b| {
+                if (32..=126).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                }
+            })
             .collect();
 
         Some((offset, hex_str, ascii_str))
@@ -376,7 +416,9 @@ impl ViewerState {
     }
 
     pub fn scroll_up(&mut self) {
-        if self.line_offset > 0 { self.line_offset -= 1; }
+        if self.line_offset > 0 {
+            self.line_offset -= 1;
+        }
     }
 
     pub fn page_down(&mut self, viewport_height: usize) {
@@ -385,8 +427,8 @@ impl ViewerState {
         } else {
             self.line_count()
         };
-        self.line_offset = (self.line_offset + viewport_height)
-            .min(line_count.saturating_sub(viewport_height));
+        self.line_offset =
+            (self.line_offset + viewport_height).min(line_count.saturating_sub(viewport_height));
     }
 
     pub fn page_up(&mut self, viewport_height: usize) {
@@ -411,8 +453,8 @@ impl ViewerState {
         } else {
             self.line_count()
         };
-        self.line_offset = (self.line_offset + lines)
-            .min(line_count.saturating_sub(viewport_height));
+        self.line_offset =
+            (self.line_offset + lines).min(line_count.saturating_sub(viewport_height));
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
@@ -426,7 +468,9 @@ impl ViewerState {
         self.search_match_index = None;
         self.address_query = None;
 
-        if query.is_empty() { return; }
+        if query.is_empty() {
+            return;
+        }
 
         if self.mode == ViewerMode::Hex {
             self.start_hex_search(&query);
@@ -464,10 +508,14 @@ impl ViewerState {
 
         if !self.search_matches.is_empty() {
             let start_idx = if self.search_forward {
-                self.search_matches.iter().position(|&(l, _, _)| l >= self.line_offset)
+                self.search_matches
+                    .iter()
+                    .position(|&(l, _, _)| l >= self.line_offset)
                     .unwrap_or(0)
             } else {
-                self.search_matches.iter().rposition(|&(l, _, _)| l <= self.line_offset)
+                self.search_matches
+                    .iter()
+                    .rposition(|&(l, _, _)| l <= self.line_offset)
                     .unwrap_or(self.search_matches.len() - 1)
             };
             self.search_match_index = Some(start_idx);
@@ -496,10 +544,13 @@ impl ViewerState {
                             self.line_offset = addr / 16;
                             self.address_query = Some(query.to_string());
                         }
-                        let digits = query.trim()
-                            .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
+                        let digits = query
+                            .trim()
+                            .strip_prefix("0x")
+                            .or_else(|| query.trim().strip_prefix("0X"))
                             .unwrap_or(query.trim());
-                        if digits.len() >= 2 && digits.len().is_multiple_of(2)
+                        if digits.len() >= 2
+                            && digits.len().is_multiple_of(2)
                             && digits.chars().all(|c| c.is_ascii_hexdigit())
                         {
                             let needle: Option<Vec<u8>> = (0..digits.len())
@@ -507,14 +558,17 @@ impl ViewerState {
                                 .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
                                 .collect();
                             needle.map(|n| find_byte_pattern(file_bytes, &n))
-                        } else { None }
+                        } else {
+                            None
+                        }
                     }
                     HexSearchPattern::Bytes(needle) => Some(find_byte_pattern(file_bytes, &needle)),
                     HexSearchPattern::Text(needle) => {
                         let hits = if self.case_sensitive {
                             find_byte_pattern(file_bytes, &needle)
                         } else {
-                            let lower: Vec<u8> = needle.iter().map(|b| b.to_ascii_lowercase()).collect();
+                            let lower: Vec<u8> =
+                                needle.iter().map(|b| b.to_ascii_lowercase()).collect();
                             find_byte_pattern_ci(file_bytes, &lower)
                         };
                         Some(hits)
@@ -522,34 +576,35 @@ impl ViewerState {
                 }
             }
             // ── Seekable: chunked read search ────────────────────────────────
-            FileBytes::Seekable(s) => {
-                match parse_hex_query(query) {
-                    HexSearchPattern::Address(addr) => {
-                        if addr < file_size {
-                            self.line_offset = addr / 16;
-                            self.address_query = Some(query.to_string());
-                        }
-                        let digits = query.trim()
-                            .strip_prefix("0x").or_else(|| query.trim().strip_prefix("0X"))
-                            .unwrap_or(query.trim());
-                        if digits.len() >= 2 && digits.len().is_multiple_of(2)
-                            && digits.chars().all(|c| c.is_ascii_hexdigit())
-                        {
-                            let needle: Option<Vec<u8>> = (0..digits.len())
-                                .step_by(2)
-                                .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
-                                .collect();
-                            needle.map(|n| search_seekable_bytes(s, &n, false))
-                        } else { None }
+            FileBytes::Seekable(s) => match parse_hex_query(query) {
+                HexSearchPattern::Address(addr) => {
+                    if addr < file_size {
+                        self.line_offset = addr / 16;
+                        self.address_query = Some(query.to_string());
                     }
-                    HexSearchPattern::Bytes(needle) => {
-                        Some(search_seekable_bytes(s, &needle, false))
-                    }
-                    HexSearchPattern::Text(needle) => {
-                        Some(search_seekable_bytes(s, &needle, !self.case_sensitive))
+                    let digits = query
+                        .trim()
+                        .strip_prefix("0x")
+                        .or_else(|| query.trim().strip_prefix("0X"))
+                        .unwrap_or(query.trim());
+                    if digits.len() >= 2
+                        && digits.len().is_multiple_of(2)
+                        && digits.chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        let needle: Option<Vec<u8>> = (0..digits.len())
+                            .step_by(2)
+                            .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
+                            .collect();
+                        needle.map(|n| search_seekable_bytes(s, &n, false))
+                    } else {
+                        None
                     }
                 }
-            }
+                HexSearchPattern::Bytes(needle) => Some(search_seekable_bytes(s, &needle, false)),
+                HexSearchPattern::Text(needle) => {
+                    Some(search_seekable_bytes(s, &needle, !self.case_sensitive))
+                }
+            },
         };
 
         if let Some(hits) = byte_hits {
@@ -559,9 +614,14 @@ impl ViewerState {
             if !self.search_matches.is_empty() {
                 let cur_offset = self.line_offset * 16;
                 let start_idx = if self.search_forward {
-                    self.search_matches.iter().position(|&(_, s, _)| s >= cur_offset).unwrap_or(0)
+                    self.search_matches
+                        .iter()
+                        .position(|&(_, s, _)| s >= cur_offset)
+                        .unwrap_or(0)
                 } else {
-                    self.search_matches.iter().rposition(|&(_, s, _)| s < cur_offset + 16)
+                    self.search_matches
+                        .iter()
+                        .rposition(|&(_, s, _)| s < cur_offset + 16)
                         .unwrap_or(self.search_matches.len() - 1)
                 };
                 self.search_match_index = Some(start_idx);
@@ -576,7 +636,9 @@ impl ViewerState {
     // ── Hex byte access ───────────────────────────────────────────────────────
 
     pub fn find_next(&mut self) {
-        if self.search_matches.is_empty() { return; }
+        if self.search_matches.is_empty() {
+            return;
+        }
         let next = match self.search_match_index {
             Some(idx) => (idx + 1) % self.search_matches.len(),
             None => 0,
@@ -586,7 +648,9 @@ impl ViewerState {
     }
 
     pub fn find_prev(&mut self) {
-        if self.search_matches.is_empty() { return; }
+        if self.search_matches.is_empty() {
+            return;
+        }
         let prev = match self.search_match_index {
             Some(idx) if idx > 0 => idx - 1,
             _ => self.search_matches.len() - 1,
@@ -597,18 +661,28 @@ impl ViewerState {
 
     /// `n` key: forward in search direction, backward if search_forward=false.
     pub fn find_next_in_dir(&mut self) {
-        if self.search_forward { self.find_next() } else { self.find_prev() }
+        if self.search_forward {
+            self.find_next()
+        } else {
+            self.find_prev()
+        }
     }
 
     /// `N` key: backward in search direction, forward if search_forward=false.
     pub fn find_prev_in_dir(&mut self) {
-        if self.search_forward { self.find_prev() } else { self.find_next() }
+        if self.search_forward {
+            self.find_prev()
+        } else {
+            self.find_next()
+        }
     }
 
     pub fn jump_to_match(&mut self, match_idx: usize) {
         if let Some(&(line, byte_start, byte_end)) = self.search_matches.get(match_idx) {
             self.line_offset = line;
-            if self.mode == ViewerMode::Hex { return; } // hex is fixed-width, no horiz scroll
+            if self.mode == ViewerMode::Hex {
+                return;
+            } // hex is fixed-width, no horiz scroll
             let cw = self.content_width.max(1);
             let col = self.column_offset;
             if byte_end <= cw {
@@ -635,12 +709,21 @@ impl ViewerState {
     /// Call before dispatching the background pattern search.
     pub fn hex_apply_address_jump(&mut self, query: &str, file_size: usize) {
         let trimmed = query.trim();
-        let addr_opt: Option<usize> = if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+        let addr_opt: Option<usize> = if let Some(rest) = trimmed
+            .strip_prefix("0x")
+            .or_else(|| trimmed.strip_prefix("0X"))
+        {
             if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_hexdigit()) {
                 usize::from_str_radix(rest, 16).ok()
-            } else { None }
+            } else {
+                None
+            }
         } else if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-            let padded = if !trimmed.len().is_multiple_of(2) { format!("{}0", trimmed) } else { trimmed.to_string() };
+            let padded = if !trimmed.len().is_multiple_of(2) {
+                format!("{}0", trimmed)
+            } else {
+                trimmed.to_string()
+            };
             usize::from_str_radix(&padded, 16).ok()
         } else {
             None
@@ -673,7 +756,10 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
     let trimmed = query.trim();
 
     // Address: explicit 0x/0X prefix
-    if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+    if let Some(rest) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
         if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_hexdigit()) {
             if let Ok(addr) = usize::from_str_radix(rest, 16) {
                 return HexSearchPattern::Address(addr);
@@ -720,9 +806,14 @@ fn parse_hex_query(query: &str) -> HexSearchPattern {
 /// Address-only queries with odd digit counts are instant jumps with no pattern.
 pub fn hex_query_has_pattern(query: &str) -> bool {
     let trimmed = query.trim();
-    if trimmed.is_empty() { return false; }
+    if trimmed.is_empty() {
+        return false;
+    }
     // Explicit 0x address with even-length digits → also a byte pattern
-    if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+    if let Some(rest) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
         if rest.chars().all(|c| c.is_ascii_hexdigit()) {
             return rest.len() >= 2 && rest.len() % 2 == 0;
         }
@@ -737,10 +828,14 @@ pub fn hex_query_has_pattern(query: &str) -> bool {
 
 /// Simple linear byte-pattern search. Returns (start, end) file offsets.
 fn find_byte_pattern(haystack: &[u8], needle: &[u8]) -> Vec<(usize, usize)> {
-    if needle.is_empty() { return vec![]; }
+    if needle.is_empty() {
+        return vec![];
+    }
     let mut result = Vec::new();
     let n = needle.len();
-    if haystack.len() < n { return result; }
+    if haystack.len() < n {
+        return result;
+    }
     for i in 0..=haystack.len() - n {
         if &haystack[i..i + n] == needle {
             result.push((i, i + n));
@@ -751,12 +846,18 @@ fn find_byte_pattern(haystack: &[u8], needle: &[u8]) -> Vec<(usize, usize)> {
 
 /// Case-insensitive byte-pattern search. `lower_needle` must already be lowercased.
 fn find_byte_pattern_ci(haystack: &[u8], lower_needle: &[u8]) -> Vec<(usize, usize)> {
-    if lower_needle.is_empty() { return vec![]; }
+    if lower_needle.is_empty() {
+        return vec![];
+    }
     let n = lower_needle.len();
-    if haystack.len() < n { return vec![]; }
+    if haystack.len() < n {
+        return vec![];
+    }
     let mut result = Vec::new();
     for i in 0..=haystack.len() - n {
-        if lower_needle.iter().zip(&haystack[i..i + n])
+        if lower_needle
+            .iter()
+            .zip(&haystack[i..i + n])
             .all(|(&a, &b)| a == b.to_ascii_lowercase())
         {
             result.push((i, i + n));
@@ -764,7 +865,6 @@ fn find_byte_pattern_ci(haystack: &[u8], lower_needle: &[u8]) -> Vec<(usize, usi
     }
     result
 }
-
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ViewerMode
@@ -788,16 +888,26 @@ fn trim_to_utf8_boundary(bytes: &[u8]) -> usize {
     let len = bytes.len();
     // Walk backward at most 3 bytes looking for a non-continuation byte.
     for back in 1..=3usize {
-        if back > len { break; }
+        if back > len {
+            break;
+        }
         let i = len - back;
         let b = bytes[i];
-        if b & 0xC0 == 0x80 { continue; } // continuation byte, keep looking
-        // b is ASCII or a lead byte. Check if the sequence it starts fits.
-        let seq_len = if b < 0x80 { 1 }
-                      else if b & 0xE0 == 0xC0 { 2 }
-                      else if b & 0xF0 == 0xE0 { 3 }
-                      else if b & 0xF8 == 0xF0 { 4 }
-                      else { 1 }; // invalid — let from_utf8 reject it
+        if b & 0xC0 == 0x80 {
+            continue;
+        } // continuation byte, keep looking
+          // b is ASCII or a lead byte. Check if the sequence it starts fits.
+        let seq_len = if b < 0x80 {
+            1
+        } else if b & 0xE0 == 0xC0 {
+            2
+        } else if b & 0xF0 == 0xE0 {
+            3
+        } else if b & 0xF8 == 0xF0 {
+            4
+        } else {
+            1
+        }; // invalid — let from_utf8 reject it
         return if i + seq_len > len { i } else { len };
     }
     len
@@ -805,13 +915,19 @@ fn trim_to_utf8_boundary(bytes: &[u8]) -> usize {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TextEncoding {
-    Utf8, Utf16Le, Utf16Be, ShiftJis, EucJp, Iso8859_1, Windows1252,
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+    ShiftJis,
+    EucJp,
+    Iso8859_1,
+    Windows1252,
 }
 
 impl TextEncoding {
     pub fn decode(&self, bytes: &[u8]) -> String {
         match self {
-            TextEncoding::Utf8    => String::from_utf8_lossy(bytes).into_owned(),
+            TextEncoding::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
             TextEncoding::Utf16Le => decode_utf16_le(bytes),
             TextEncoding::Utf16Be => decode_utf16_be(bytes),
             TextEncoding::ShiftJis => {
@@ -837,16 +953,28 @@ impl TextEncoding {
     /// Priority: BOM → UTF-8 validity → Japanese statistical analysis → Latin-1.
     pub fn detect(bytes: &[u8]) -> TextEncoding {
         // BOM detection
-        if bytes.starts_with(b"\xFF\xFE") { return TextEncoding::Utf16Le; }
-        if bytes.starts_with(b"\xFE\xFF") { return TextEncoding::Utf16Be; }
-        let payload = if bytes.starts_with(b"\xEF\xBB\xBF") { &bytes[3..] } else { bytes };
-        if bytes.starts_with(b"\xEF\xBB\xBF") { return TextEncoding::Utf8; }
+        if bytes.starts_with(b"\xFF\xFE") {
+            return TextEncoding::Utf16Le;
+        }
+        if bytes.starts_with(b"\xFE\xFF") {
+            return TextEncoding::Utf16Be;
+        }
+        let payload = if bytes.starts_with(b"\xEF\xBB\xBF") {
+            &bytes[3..]
+        } else {
+            bytes
+        };
+        if bytes.starts_with(b"\xEF\xBB\xBF") {
+            return TextEncoding::Utf8;
+        }
 
         // Strict UTF-8 check: trim the tail to a valid boundary so a sample
         // truncated in the middle of a multi-byte sequence (e.g. Japanese UTF-8
         // cut at 16 KB) doesn't cause a false SJIS detection.
         let utf8_end = trim_to_utf8_boundary(payload);
-        if std::str::from_utf8(&payload[..utf8_end]).is_ok() { return TextEncoding::Utf8; }
+        if std::str::from_utf8(&payload[..utf8_end]).is_ok() {
+            return TextEncoding::Utf8;
+        }
 
         // Statistical analysis for Japanese encodings on a 4 KB sample.
         let sample = &payload[..payload.len().min(4096)];
@@ -860,7 +988,9 @@ impl TextEncoding {
                 if i + 1 < sample.len() {
                     let b2 = sample[i + 1];
                     if (0x40..=0x7E).contains(&b2) || (0x80..=0xFC).contains(&b2) {
-                        sjis += 2; i += 2; continue;
+                        sjis += 2;
+                        i += 2;
+                        continue;
                     }
                 }
                 sjis -= 1;
@@ -868,18 +998,26 @@ impl TextEncoding {
             // EUC-JP lead bytes: 0xA1–0xFE (and SS2 0x8E, SS3 0x8F)
             if (0xA1..=0xFE).contains(&b) {
                 if i + 1 < sample.len() && sample[i + 1] >= 0xA1 && sample[i + 1] <= 0xFE {
-                    eucjp += 2; i += 2; continue;
+                    eucjp += 2;
+                    i += 2;
+                    continue;
                 }
                 eucjp -= 1;
             }
             if b == 0x8E && i + 1 < sample.len() && sample[i + 1] >= 0xA1 {
                 // SS2 half-width kana
-                eucjp += 1; i += 2; continue;
+                eucjp += 1;
+                i += 2;
+                continue;
             }
             i += 1;
         }
         if sjis > 0 || eucjp > 0 {
-            if sjis >= eucjp { TextEncoding::ShiftJis } else { TextEncoding::EucJp }
+            if sjis >= eucjp {
+                TextEncoding::ShiftJis
+            } else {
+                TextEncoding::EucJp
+            }
         } else {
             TextEncoding::Windows1252
         }
@@ -887,24 +1025,24 @@ impl TextEncoding {
 
     pub fn next(&self) -> Self {
         match self {
-            TextEncoding::Utf8        => TextEncoding::Utf16Le,
-            TextEncoding::Utf16Le     => TextEncoding::Utf16Be,
-            TextEncoding::Utf16Be     => TextEncoding::ShiftJis,
-            TextEncoding::ShiftJis    => TextEncoding::EucJp,
-            TextEncoding::EucJp       => TextEncoding::Iso8859_1,
-            TextEncoding::Iso8859_1   => TextEncoding::Windows1252,
+            TextEncoding::Utf8 => TextEncoding::Utf16Le,
+            TextEncoding::Utf16Le => TextEncoding::Utf16Be,
+            TextEncoding::Utf16Be => TextEncoding::ShiftJis,
+            TextEncoding::ShiftJis => TextEncoding::EucJp,
+            TextEncoding::EucJp => TextEncoding::Iso8859_1,
+            TextEncoding::Iso8859_1 => TextEncoding::Windows1252,
             TextEncoding::Windows1252 => TextEncoding::Utf8,
         }
     }
 
     pub fn name(&self) -> &'static str {
         match self {
-            TextEncoding::Utf8        => "UTF-8",
-            TextEncoding::Utf16Le     => "UTF-16 LE",
-            TextEncoding::Utf16Be     => "UTF-16 BE",
-            TextEncoding::ShiftJis    => "Shift-JIS",
-            TextEncoding::EucJp       => "EUC-JP",
-            TextEncoding::Iso8859_1   => "ISO-8859-1",
+            TextEncoding::Utf8 => "UTF-8",
+            TextEncoding::Utf16Le => "UTF-16 LE",
+            TextEncoding::Utf16Be => "UTF-16 BE",
+            TextEncoding::ShiftJis => "Shift-JIS",
+            TextEncoding::EucJp => "EUC-JP",
+            TextEncoding::Iso8859_1 => "ISO-8859-1",
             TextEncoding::Windows1252 => "Windows-1252",
         }
     }
@@ -922,11 +1060,17 @@ impl TextEncoding {
                     // continuation byte) both yield seq_len 1, but represent distinct UTF-8
                     // cases per the spec; kept separate for clarity/correctness, not merged.
                     #[allow(clippy::if_same_then_else)]
-                    let seq_len = if b < 0x80 { 1 }
-                        else if b < 0xC0 { 1 }
-                        else if b < 0xE0 { 2 }
-                        else if b < 0xF0 { 3 }
-                        else { 4 };
+                    let seq_len = if b < 0x80 {
+                        1
+                    } else if b < 0xC0 {
+                        1
+                    } else if b < 0xE0 {
+                        2
+                    } else if b < 0xF0 {
+                        3
+                    } else {
+                        4
+                    };
                     let end = (i + seq_len).min(bytes.len());
                     let ch = std::str::from_utf8(&bytes[i..end])
                         .ok()
@@ -954,15 +1098,24 @@ impl TextEncoding {
                     let b = bytes[i];
                     let is_lead = (0x81..=0x9F).contains(&b) || (0xE0..=0xFC).contains(&b);
                     if is_lead && i + 1 < bytes.len() {
-                        let (s, _) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(&bytes[i..i + 2]);
+                        let (s, _) =
+                            encoding_rs::SHIFT_JIS.decode_without_bom_handling(&bytes[i..i + 2]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 2)
                     } else if is_lead {
                         ('.', 1)
                     } else if (0xA1..=0xDF).contains(&b) {
-                        let (s, _) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(&bytes[i..i + 1]);
+                        let (s, _) =
+                            encoding_rs::SHIFT_JIS.decode_without_bom_handling(&bytes[i..i + 1]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 1)
                     } else {
-                        (if (32..=126).contains(&b) { b as char } else { '\u{FFFD}' }, 1)
+                        (
+                            if (32..=126).contains(&b) {
+                                b as char
+                            } else {
+                                '\u{FFFD}'
+                            },
+                            1,
+                        )
                     }
                 }
                 TextEncoding::EucJp => {
@@ -973,24 +1126,39 @@ impl TextEncoding {
                     // mirror the EUC-JP spec rather than merged for brevity.
                     #[allow(clippy::if_same_then_else)]
                     if (0xA1..=0xFE).contains(&b) && i + 1 < bytes.len() {
-                        let (s, _) = encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 2]);
+                        let (s, _) =
+                            encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 2]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 2)
                     } else if b == 0x8E && i + 1 < bytes.len() {
-                        let (s, _) = encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 2]);
+                        let (s, _) =
+                            encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 2]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 2)
                     } else if b == 0x8F && i + 2 < bytes.len() {
-                        let (s, _) = encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 3]);
+                        let (s, _) =
+                            encoding_rs::EUC_JP.decode_without_bom_handling(&bytes[i..i + 3]);
                         (s.chars().next().unwrap_or('\u{FFFD}'), 3)
                     } else {
-                        (if (32..=126).contains(&b) { b as char } else { '\u{FFFD}' }, 1)
+                        (
+                            if (32..=126).contains(&b) {
+                                b as char
+                            } else {
+                                '\u{FFFD}'
+                            },
+                            1,
+                        )
                     }
                 }
                 TextEncoding::Iso8859_1 | TextEncoding::Windows1252 => {
-                    let (s, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(&bytes[i..i + 1]);
+                    let (s, _) =
+                        encoding_rs::WINDOWS_1252.decode_without_bom_handling(&bytes[i..i + 1]);
                     (s.chars().next().unwrap_or('\u{FFFD}'), 1)
                 }
             };
-            let display = if raw_ch.is_control() || raw_ch == '\u{FFFD}' { '.' } else { raw_ch };
+            let display = if raw_ch.is_control() || raw_ch == '\u{FFFD}' {
+                '.'
+            } else {
+                raw_ch
+            };
             result.push((display, i, i + consumed));
             i += consumed;
         }
@@ -999,14 +1167,16 @@ impl TextEncoding {
 }
 
 fn decode_utf16_le(bytes: &[u8]) -> String {
-    let u16s: Vec<u16> = bytes.chunks_exact(2)
+    let u16s: Vec<u16> = bytes
+        .chunks_exact(2)
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .collect();
     String::from_utf16_lossy(&u16s)
 }
 
 fn decode_utf16_be(bytes: &[u8]) -> String {
-    let u16s: Vec<u16> = bytes.chunks_exact(2)
+    let u16s: Vec<u16> = bytes
+        .chunks_exact(2)
         .map(|c| u16::from_be_bytes([c[0], c[1]]))
         .collect();
     String::from_utf16_lossy(&u16s)
@@ -1028,7 +1198,9 @@ fn search_seekable_bytes(
     let overlap = needle.len().saturating_sub(1);
     let file_size = seekable.size as usize;
     let mut results = Vec::new();
-    if needle.is_empty() || file_size == 0 { return results; }
+    if needle.is_empty() || file_size == 0 {
+        return results;
+    }
 
     let lower_needle: Vec<u8> = if case_insensitive {
         needle.iter().map(|b| b.to_ascii_lowercase()).collect()
@@ -1053,7 +1225,7 @@ fn search_seekable_bytes(
         };
         for (s, e) in hits {
             let abs_start = read_start + s;
-            let abs_end   = read_start + e;
+            let abs_end = read_start + e;
             // Include the match if it ends AFTER chunk_start.
             // Matches with abs_end <= chunk_start were entirely within the previous
             // iteration's read window and were already recorded there.
@@ -1077,7 +1249,9 @@ fn search_seekable_bytes(
 mod tests {
     use super::*;
 
-    fn loc() -> Location { Location::Local(std::path::PathBuf::from("/test/file.txt")) }
+    fn loc() -> Location {
+        Location::Local(std::path::PathBuf::from("/test/file.txt"))
+    }
 
     #[test]
     fn test_viewer_state_creation() {
@@ -1178,9 +1352,8 @@ mod tests {
         let mut v = ViewerState::new(Location::Local(std::path::PathBuf::from("/test/file.bin")));
         v.mode = ViewerMode::Hex;
         v.set_contents(vec![
-            0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F,
-            0x72, 0x6C, 0x64, 0x21, 0x00, 0xFF, 0xAA, 0x55,
-            0x01, 0x02, 0x03,
+            0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00, 0xFF,
+            0xAA, 0x55, 0x01, 0x02, 0x03,
         ]);
         assert_eq!(v.hex_line_count(), 2);
         let (offset, hex, ascii) = v.get_hex_line(0).unwrap();
@@ -1245,7 +1418,10 @@ mod tests {
         let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), 5);
         let buffer = ViewerBuffer::new(
             FileBytes::Seekable(sf),
-            LineIndex { offsets: vec![0], is_complete: true },
+            LineIndex {
+                offsets: vec![0],
+                is_complete: true,
+            },
         );
         let mut vs = ViewerState::new(loc());
         vs.buffer = Some(buffer);
@@ -1262,7 +1438,10 @@ mod tests {
         let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
         let buffer = ViewerBuffer::new(
             FileBytes::Seekable(sf),
-            LineIndex { offsets: vec![0, 9, 18], is_complete: true },
+            LineIndex {
+                offsets: vec![0, 9, 18],
+                is_complete: true,
+            },
         );
         let mut vs = ViewerState::new(loc());
         vs.buffer = Some(buffer);
@@ -1301,13 +1480,17 @@ mod tests {
     fn test_search_on_seekable_file() {
         use std::io::Write;
         let mut tmp = tempfile::NamedTempFile::new().unwrap();
-        tmp.write_all(b"Hello World\nHello Rust\nGoodbye World\n").unwrap();
+        tmp.write_all(b"Hello World\nHello Rust\nGoodbye World\n")
+            .unwrap();
         tmp.flush().unwrap();
         let size = std::fs::metadata(tmp.path()).unwrap().len();
         let sf = SeekableFile::new(std::fs::File::open(tmp.path()).unwrap(), size);
         let buffer = ViewerBuffer::new(
             FileBytes::Seekable(sf),
-            LineIndex { offsets: vec![0, 12, 23], is_complete: true },
+            LineIndex {
+                offsets: vec![0, 12, 23],
+                is_complete: true,
+            },
         );
         let mut vs = ViewerState::new(loc());
         vs.buffer = Some(buffer);

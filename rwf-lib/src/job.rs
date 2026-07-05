@@ -3,12 +3,12 @@
 //! This module implements the JobManager and related types for managing
 //! asynchronous file operations via the rwf Worker Pool.
 
+use crate::model::Location;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-use serde::{Serialize, Deserialize};
-use crate::model::Location;
 
 /// Unique identifier for a job
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -314,7 +314,7 @@ impl BackgroundJob {
     pub fn is_active(&self) -> bool {
         matches!(self.status, JobStatus::Pending | JobStatus::Running)
     }
-    
+
     /// Get status character for display
     pub fn status_char(&self) -> char {
         match self.status {
@@ -366,7 +366,7 @@ impl JobManager {
             total_failed: 0,
         }
     }
-    
+
     /// Enqueue a new job and return its ID
     pub fn enqueue(&mut self, spec: JobSpec) -> JobId {
         let id = spec.id;
@@ -374,7 +374,7 @@ impl JobManager {
         self.total_enqueued += 1;
         id
     }
-    
+
     /// Enqueue multiple jobs in batch (more efficient than individual enqueues)
     pub fn enqueue_batch(&mut self, specs: Vec<JobSpec>) -> Vec<JobId> {
         let mut ids = Vec::with_capacity(specs.len());
@@ -385,20 +385,22 @@ impl JobManager {
         }
         ids
     }
-    
+
     /// Check if a new job can be started
     pub fn can_start_job(&self) -> bool {
         self.active.len() < self.max_parallel && !self.queue.is_empty()
     }
-    
+
     /// Pop the next job from the FIFO queue
     pub fn pop_next_job(&mut self) -> Option<JobSpec> {
         self.queue.pop_front()
     }
-    
+
     /// Pop multiple jobs from the queue (batch operation)
     pub fn pop_next_jobs(&mut self, count: usize) -> Vec<JobSpec> {
-        let available = (self.max_parallel - self.active.len()).min(self.queue.len()).min(count);
+        let available = (self.max_parallel - self.active.len())
+            .min(self.queue.len())
+            .min(count);
         let mut jobs = Vec::with_capacity(available);
         for _ in 0..available {
             if let Some(spec) = self.queue.pop_front() {
@@ -407,13 +409,22 @@ impl JobManager {
         }
         jobs
     }
-    
+
     /// Mark a job as started
     pub fn start_job(&mut self, spec: JobSpec) {
         // Deduplication: Avoid duplicate ReadDirectory jobs for the same pane.
         if let JobKind::ReadDirectory { .. } = &spec.kind {
-            if self.active.values().any(|j| j.spec.kind == spec.kind && j.spec.requesting_pane == spec.requesting_pane) {
-                tracing::info!("[JobManager] Job {:?} (kind={:?}, pane={:?}) already active, skipping.", spec.id, spec.kind, spec.requesting_pane);
+            if self
+                .active
+                .values()
+                .any(|j| j.spec.kind == spec.kind && j.spec.requesting_pane == spec.requesting_pane)
+            {
+                tracing::info!(
+                    "[JobManager] Job {:?} (kind={:?}, pane={:?}) already active, skipping.",
+                    spec.id,
+                    spec.kind,
+                    spec.requesting_pane
+                );
                 return;
             }
         }
@@ -427,7 +438,7 @@ impl JobManager {
         };
         self.active.insert(spec.id, job);
     }
-    
+
     /// Mark multiple jobs as started (batch operation)
     pub fn start_jobs(&mut self, specs: Vec<JobSpec>) {
         for spec in specs {
@@ -441,14 +452,14 @@ impl JobManager {
             self.active.insert(spec.id, job);
         }
     }
-    
+
     /// Update job progress
     pub fn update_progress(&mut self, job_id: JobId, progress: f64) {
         if let Some(job) = self.active.get_mut(&job_id) {
             job.progress = progress;
         }
     }
-    
+
     /// Mark a job as completed
     pub fn complete_job(&mut self, job_id: JobId, result: OpResult) {
         if let Some(job) = self.active.remove(&job_id) {
@@ -458,7 +469,7 @@ impl JobManager {
                 OpResult::Failed(_) => self.total_failed += 1,
                 OpResult::Cancelled => self.total_cancelled += 1,
             }
-            
+
             let job_result = JobResult {
                 id: job_id,
                 kind: job.spec.kind.clone(),
@@ -466,14 +477,14 @@ impl JobManager {
                 result,
             };
             self.completed.push_back(job_result);
-            
+
             // Keep only last 100 completed jobs
             if self.completed.len() > 100 {
                 self.completed.pop_front();
             }
         }
     }
-    
+
     /// Request cancellation of a job
     pub fn request_cancel(&mut self, job_id: JobId) -> bool {
         // Cancel active job
@@ -483,14 +494,14 @@ impl JobManager {
             job.cancel_requested = true;
             return true;
         }
-        
+
         // Remove from queue
         if let Some(pos) = self.queue.iter().position(|spec| spec.id == job_id) {
             let spec = self.queue.remove(pos).unwrap();
             spec.cancel_token.cancel();
-            
+
             self.total_cancelled += 1;
-            
+
             let job_result = JobResult {
                 id: job_id,
                 kind: spec.kind,
@@ -500,15 +511,15 @@ impl JobManager {
             self.completed.push_back(job_result);
             return true;
         }
-        
+
         false
     }
-    
+
     /// Acknowledge job cancellation
     pub fn acknowledge_cancel(&mut self, job_id: JobId) {
         if let Some(job) = self.active.remove(&job_id) {
             self.total_cancelled += 1;
-            
+
             let job_result = JobResult {
                 id: job_id,
                 kind: job.spec.kind,
@@ -518,7 +529,7 @@ impl JobManager {
             self.completed.push_back(job_result);
         }
     }
-    
+
     /// Get job manager statistics
     pub fn stats(&self) -> JobManagerStats {
         JobManagerStats {
@@ -532,7 +543,7 @@ impl JobManager {
             total_failed: self.total_failed,
         }
     }
-    
+
     /// Clear completed jobs older than the specified duration
     pub fn cleanup_old_completed(&mut self, max_age: Duration) {
         let now = SystemTime::now();
@@ -559,12 +570,12 @@ pub struct JobManagerStats {
     pub total_failed: u64,
 }
 
-pub mod job_executor;
 pub mod background_job_manager;
+pub mod job_executor;
 
 #[cfg(test)]
 mod job_properties;
 
-pub use job_executor::JobExecutor;
+pub use background_job_manager::{BackgroundJobEvent, BackgroundJobManager, BackgroundJobStats};
 pub use job_executor::detect_conflicts;
-pub use background_job_manager::{BackgroundJobManager, BackgroundJobEvent, BackgroundJobStats};
+pub use job_executor::JobExecutor;

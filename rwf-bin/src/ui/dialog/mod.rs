@@ -14,9 +14,7 @@ pub use compression::{render_compression_dialog, CompressionDialogState};
 pub use extract_confirm::ExtractionConfirmDialog;
 pub use frame::{centered_rect_abs, render_dialog_buttons, render_dialog_frame};
 pub use job_manager::{
-    render_job_manager_dialog, 
-    JobManagerDialogState, 
-    calculate_job_manager_dialog_min_height,
+    calculate_job_manager_dialog_min_height, render_job_manager_dialog, JobManagerDialogState,
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers};
@@ -27,8 +25,8 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::{Dialog, DialogContent};
 use rwf_lib::config::ViMode;
+use rwf_lib::model::dialog::{Dialog, DialogContent};
 use tracing::debug;
 
 use super::{smart_truncate, SmartText, TruncateMode};
@@ -46,7 +44,10 @@ pub enum DialogAction {
     RotateLanguage,
     DeleteSelected,
     /// Open a second-level menu dialog for a menu-type custom function
-    OpenMenu { title: String, items: Vec<rwf_lib::model::dialog::MenuItem> },
+    OpenMenu {
+        title: String,
+        items: Vec<rwf_lib::model::dialog::MenuItem>,
+    },
 }
 
 fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
@@ -62,7 +63,9 @@ fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
 fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'static>> {
     use unicode_width::UnicodeWidthChar;
     let w = width as usize;
-    if text.is_empty() || w == 0 { return vec![]; }
+    if text.is_empty() || w == 0 {
+        return vec![];
+    }
     let mut out = Vec::new();
     let mut pos = 0;
     while pos < text.len() && out.len() < max_lines as usize {
@@ -72,13 +75,21 @@ fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'stati
         let mut end = pos;
         for c in text[pos..].chars() {
             let cw = c.width().unwrap_or(1);
-            if cols + cw > avail { break; }
+            if cols + cw > avail {
+                break;
+            }
             cols += cw;
             end += c.len_utf8();
         }
-        if end == pos { break; }
+        if end == pos {
+            break;
+        }
         let chunk = &text[pos..end];
-        let s = if out.is_empty() { format!(" {chunk}") } else { chunk.to_string() };
+        let s = if out.is_empty() {
+            format!(" {chunk}")
+        } else {
+            chunk.to_string()
+        };
         out.push(Line::from(s));
         pos = end;
     }
@@ -122,10 +133,15 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // prompt(1) + textbox(1) + hint(1) + spacer(1) + buttons(1) = 5
             5u16
         }
-        DialogContent::HistoryDialog { left_entries, right_entries, active_pane, .. } => {
+        DialogContent::HistoryDialog {
+            left_entries,
+            right_entries,
+            active_pane,
+            ..
+        } => {
             use rwf_lib::model::ui::ActivePane;
             let len = match active_pane {
-                ActivePane::Left  => left_entries.len(),
+                ActivePane::Left => left_entries.len(),
                 ActivePane::Right => right_entries.len(),
             };
             (len as u16 + 2).max(5)
@@ -157,7 +173,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::JumpToFile { suggestions, .. } => {
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
-        DialogContent::FileInfo { link_target, .. } => if link_target.is_some() { 12u16 } else { 11u16 },  // name+path+size+type+3×datetime + hint (+1 for link row)
+        DialogContent::FileInfo { link_target, .. } => {
+            if link_target.is_some() {
+                12u16
+            } else {
+                11u16
+            }
+        } // name+path+size+type+3×datetime + hint (+1 for link row)
         DialogContent::PatternRename { preview, .. } => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
@@ -190,9 +212,19 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Use exact minimum height, but ensure it fits on screen
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::HistoryDialog { .. } | DialogContent::DriveSelection { .. } | DialogContent::PatternRename { .. } | DialogContent::Help { .. } | DialogContent::RegisteredFolderSelector { .. } | DialogContent::CustomFunctionSelector { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } | DialogContent::DeleteConfirm { .. } => {
+        DialogContent::HistoryDialog { .. }
+        | DialogContent::DriveSelection { .. }
+        | DialogContent::PatternRename { .. }
+        | DialogContent::Help { .. }
+        | DialogContent::RegisteredFolderSelector { .. }
+        | DialogContent::CustomFunctionSelector { .. }
+        | DialogContent::JumpToPath { .. }
+        | DialogContent::JumpToFile { .. }
+        | DialogContent::DeleteConfirm { .. } => {
             let percent_height = (screen_height * 80) / 100;
-            percent_height.max(min_dialog_height).min(screen_height.saturating_sub(2))
+            percent_height
+                .max(min_dialog_height)
+                .min(screen_height.saturating_sub(2))
         }
         DialogContent::CustomFunctionMenu { .. } => {
             // Exact size, same as ContextMenu
@@ -202,14 +234,24 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Exact size for context menu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::FileConflict { .. } | DialogContent::SortDialog { .. } | DialogContent::FileMask { .. } | DialogContent::WildcardMark { .. } | DialogContent::SimpleRename { .. } | DialogContent::FileInfo { .. } | DialogContent::ExtractionConfirm { .. } | DialogContent::Error { .. } | DialogContent::Input { .. } => {
+        DialogContent::FileConflict { .. }
+        | DialogContent::SortDialog { .. }
+        | DialogContent::FileMask { .. }
+        | DialogContent::WildcardMark { .. }
+        | DialogContent::SimpleRename { .. }
+        | DialogContent::FileInfo { .. }
+        | DialogContent::ExtractionConfirm { .. }
+        | DialogContent::Error { .. }
+        | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
         _ => {
             // Use 70% of screen or minimum, whichever is larger
             let percent_height = (screen_height * 70) / 100;
-            percent_height.max(min_dialog_height).min(screen_height.saturating_sub(2))
+            percent_height
+                .max(min_dialog_height)
+                .min(screen_height.saturating_sub(2))
         }
     };
 
@@ -227,26 +269,35 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::DriveSelection { .. } | DialogContent::RegisteredFolderSelector { .. } => {
             60u16.min(screen_width.saturating_sub(2)).max(40)
         }
-        DialogContent::CustomFunctionSelector { .. } => {
-            ((screen_width * 70) / 100).max(50).min(screen_width.saturating_sub(2))
-        }
+        DialogContent::CustomFunctionSelector { .. } => ((screen_width * 70) / 100)
+            .max(50)
+            .min(screen_width.saturating_sub(2)),
         DialogContent::CustomFunctionMenu { items, .. } => {
             // label fits with outer_width = max_label + 8 (2 border + 4 indent + 2 margin)
             // hint "[Enter] Execute  [Esc] Close" (29 chars) fits at offset+1 with width-2 when outer>=34
-            let max_label = items.iter().filter(|i| i.is_selectable()).map(|i| i.name.len()).max().unwrap_or(10);
+            let max_label = items
+                .iter()
+                .filter(|i| i.is_selectable())
+                .map(|i| i.name.len())
+                .max()
+                .unwrap_or(10);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
         }
         DialogContent::ContextMenu { options, .. } => {
             let max_label = options.iter().map(|o| o.label.len()).max().unwrap_or(10);
             ((max_label as u16 + 6).max(24)).min(screen_width.saturating_sub(2))
         }
-        DialogContent::PatternRename { .. } | DialogContent::JumpToPath { .. } | DialogContent::JumpToFile { .. } => {
-            ((screen_width * 80) / 100).max(40).min(screen_width.saturating_sub(2))
-        }
-        DialogContent::Help { .. } => {
-            ((screen_width * 70) / 100).max(40).min(screen_width.saturating_sub(2))
-        }
-        _ => ((screen_width * 60) / 100).max(40).min(screen_width.saturating_sub(2)),
+        DialogContent::PatternRename { .. }
+        | DialogContent::JumpToPath { .. }
+        | DialogContent::JumpToFile { .. } => ((screen_width * 80) / 100)
+            .max(40)
+            .min(screen_width.saturating_sub(2)),
+        DialogContent::Help { .. } => ((screen_width * 70) / 100)
+            .max(40)
+            .min(screen_width.saturating_sub(2)),
+        _ => ((screen_width * 60) / 100)
+            .max(40)
+            .min(screen_width.saturating_sub(2)),
     };
 
     let area = centered_rect_abs(dialog_width, dialog_height, frame.area());
@@ -260,7 +311,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Render compression dialog using exact content area (buttons rendered within)
             render_dialog_content(frame, &dialog.content, content_area, true);
         }
-        DialogContent::JobManager { selected_index, focused_field } => {
+        DialogContent::JobManager {
+            selected_index,
+            focused_field,
+        } => {
             // Render Job Manager dialog with its own layout (Part 6.2)
             let dialog_state = JobManagerDialogState {
                 selected_index: *selected_index,
@@ -269,7 +323,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             render_job_manager_dialog(frame, content_area, state, &dialog_state);
         }
-        DialogContent::CloseTabWithActiveJob { tab_name, job_ids, focused_field, .. } => {
+        DialogContent::CloseTabWithActiveJob {
+            tab_name,
+            job_ids,
+            focused_field,
+            ..
+        } => {
             // Render Close Tab confirmation dialog with buttons (compact layout)
             let job_list = if job_ids.len() == 1 {
                 format!("Job #{} is still running.", job_ids[0])
@@ -277,119 +336,318 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 let job_strs: Vec<String> = job_ids.iter().map(|id| format!("#{}", id)).collect();
                 format!("Jobs {} are still running.", job_strs.join(", "))
             };
-            let message = format!("{} {}\nClose this tab and cancel the job(s)?", tab_name, job_list);
+            let message = format!(
+                "{} {}\nClose this tab and cancel the job(s)?",
+                tab_name, job_list
+            );
 
             // Use compact layout: message takes remaining space, buttons fixed at 3 lines
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(2),  // Message (compact)
+                    Constraint::Min(2),    // Message (compact)
                     Constraint::Length(3), // Buttons
                 ])
                 .split(content_area);
 
-            let confirmation = Paragraph::new(message)
-                .style(Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Gray));
+            let confirmation =
+                Paragraph::new(message).style(Style::default().fg(Color::Black).bg(Color::Gray));
 
             frame.render_widget(confirmation, chunks[0]);
 
             // Render buttons (OK/Cancel) with proper focus
             render_dialog_buttons(frame, chunks[1], &dialog.content, *focused_field);
         }
-        DialogContent::FileConflict { conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, .. } => {
+        DialogContent::FileConflict {
+            conflicts,
+            current_index,
+            focused_button,
+            rename_text,
+            rename_cursor,
+            rename_scroll,
+            edit_mode,
+            vi_mode,
+            error_message,
+            ..
+        } => {
             // Render File Conflict dialog with TextInput widget
-            render_file_conflict_dialog(frame, content_area, conflicts, *current_index, *focused_button, rename_text, *rename_cursor, *rename_scroll, *edit_mode, *vi_mode, error_message);
+            render_file_conflict_dialog(
+                frame,
+                content_area,
+                conflicts,
+                *current_index,
+                *focused_button,
+                rename_text,
+                *rename_cursor,
+                *rename_scroll,
+                *edit_mode,
+                *vi_mode,
+                error_message,
+            );
         }
-        DialogContent::SortDialog { selected_mode_index, selected_order_index, focused_section } => {
-            render_sort_dialog(frame, content_area, *selected_mode_index, *selected_order_index, *focused_section);
+        DialogContent::SortDialog {
+            selected_mode_index,
+            selected_order_index,
+            focused_section,
+        } => {
+            render_sort_dialog(
+                frame,
+                content_area,
+                *selected_mode_index,
+                *selected_order_index,
+                *focused_section,
+            );
         }
-        DialogContent::FileMask { input, cursor_pos, scroll_pos, focused_field } => {
-            render_file_mask_dialog(frame, content_area, input, *cursor_pos, *scroll_pos, *focused_field);
+        DialogContent::FileMask {
+            input,
+            cursor_pos,
+            scroll_pos,
+            focused_field,
+        } => {
+            render_file_mask_dialog(
+                frame,
+                content_area,
+                input,
+                *cursor_pos,
+                *scroll_pos,
+                *focused_field,
+            );
         }
-        DialogContent::WildcardMark { input, cursor_pos, scroll_pos, focused_field } => {
-            render_wildcard_mark_dialog(frame, content_area, input, *cursor_pos, *scroll_pos, *focused_field);
+        DialogContent::WildcardMark {
+            input,
+            cursor_pos,
+            scroll_pos,
+            focused_field,
+        } => {
+            render_wildcard_mark_dialog(
+                frame,
+                content_area,
+                input,
+                *cursor_pos,
+                *scroll_pos,
+                *focused_field,
+            );
         }
-        DialogContent::SimpleRename { input, cursor_pos, scroll_pos, focused_field } => {
-            render_simple_rename_dialog(frame, content_area, input, *cursor_pos, *scroll_pos, *focused_field);
+        DialogContent::SimpleRename {
+            input,
+            cursor_pos,
+            scroll_pos,
+            focused_field,
+        } => {
+            render_simple_rename_dialog(
+                frame,
+                content_area,
+                input,
+                *cursor_pos,
+                *scroll_pos,
+                *focused_field,
+            );
         }
         DialogContent::HistoryDialog {
-            left_entries, right_entries,
-            left_selected, right_selected,
-            left_current_pos, right_current_pos,
+            left_entries,
+            right_entries,
+            left_selected,
+            right_selected,
+            left_current_pos,
+            right_current_pos,
             active_pane,
         } => {
             use rwf_lib::model::ui::ActivePane;
             let (entries, selected, current_pos) = match active_pane {
-                ActivePane::Left  => (left_entries.as_slice(),  *left_selected,  *left_current_pos),
-                ActivePane::Right => (right_entries.as_slice(), *right_selected, *right_current_pos),
+                ActivePane::Left => (left_entries.as_slice(), *left_selected, *left_current_pos),
+                ActivePane::Right => (
+                    right_entries.as_slice(),
+                    *right_selected,
+                    *right_current_pos,
+                ),
             };
             render_history_dialog(frame, content_area, entries, selected, current_pos);
         }
-        DialogContent::DriveSelection { drives, selected_index, filter } => {
+        DialogContent::DriveSelection {
+            drives,
+            selected_index,
+            filter,
+        } => {
             render_drive_selection_dialog(frame, content_area, drives, *selected_index, filter);
         }
-        DialogContent::RegisteredFolderSelector { folders, selected_index, filter } => {
-            render_registered_folder_selector(frame, content_area, folders, *selected_index, filter);
+        DialogContent::RegisteredFolderSelector {
+            folders,
+            selected_index,
+            filter,
+        } => {
+            render_registered_folder_selector(
+                frame,
+                content_area,
+                folders,
+                *selected_index,
+                filter,
+            );
         }
-        DialogContent::CustomFunctionSelector { functions, selected_index, filter } => {
-            render_custom_function_selector(frame, content_area, functions, *selected_index, filter);
+        DialogContent::CustomFunctionSelector {
+            functions,
+            selected_index,
+            filter,
+        } => {
+            render_custom_function_selector(
+                frame,
+                content_area,
+                functions,
+                *selected_index,
+                filter,
+            );
         }
-        DialogContent::CustomFunctionMenu { items, selected_index } => {
+        DialogContent::CustomFunctionMenu {
+            items,
+            selected_index,
+        } => {
             render_custom_function_menu(frame, content_area, items, *selected_index);
         }
-        DialogContent::ContextMenu { options, selected_index } => {
+        DialogContent::ContextMenu {
+            options,
+            selected_index,
+        } => {
             render_context_menu_dialog(frame, content_area, options, *selected_index);
         }
-        DialogContent::JumpToPath { query, cursor_pos, suggestions, selected_index, loading_job_id, .. } => {
-            render_jump_to_path_dialog(frame, content_area, query, *cursor_pos, suggestions, *selected_index, loading_job_id.is_some());
+        DialogContent::JumpToPath {
+            query,
+            cursor_pos,
+            suggestions,
+            selected_index,
+            loading_job_id,
+            ..
+        } => {
+            render_jump_to_path_dialog(
+                frame,
+                content_area,
+                query,
+                *cursor_pos,
+                suggestions,
+                *selected_index,
+                loading_job_id.is_some(),
+            );
         }
-        DialogContent::JumpToFile { query, cursor_pos, suggestions, selected_index, loading_job_id, .. } => {
-            render_jump_to_file_dialog(frame, content_area, query, *cursor_pos, suggestions, *selected_index, loading_job_id.is_some());
+        DialogContent::JumpToFile {
+            query,
+            cursor_pos,
+            suggestions,
+            selected_index,
+            loading_job_id,
+            ..
+        } => {
+            render_jump_to_file_dialog(
+                frame,
+                content_area,
+                query,
+                *cursor_pos,
+                suggestions,
+                *selected_index,
+                loading_job_id.is_some(),
+            );
         }
         DialogContent::FileInfo {
-            file_name, file_path, size, created, modified, accessed,
-            is_dir, is_readonly,
-            #[cfg(unix)] permissions,
-            #[cfg(unix)] owner,
-            #[cfg(unix)] group,
+            file_name,
+            file_path,
+            size,
+            created,
+            modified,
+            accessed,
+            is_dir,
+            is_readonly,
+            #[cfg(unix)]
+            permissions,
+            #[cfg(unix)]
+            owner,
+            #[cfg(unix)]
+            group,
             link_target,
             link_kind,
             ..
         } => {
             render_file_info_dialog(
-                frame, content_area,
-                file_name, file_path, *size, *created, *modified, *accessed,
-                *is_dir, *is_readonly,
-                #[cfg(unix)] *permissions,
-                #[cfg(unix)] owner.as_deref(),
-                #[cfg(unix)] group.as_deref(),
+                frame,
+                content_area,
+                file_name,
+                file_path,
+                *size,
+                *created,
+                *modified,
+                *accessed,
+                *is_dir,
+                *is_readonly,
+                #[cfg(unix)]
+                *permissions,
+                #[cfg(unix)]
+                owner.as_deref(),
+                #[cfg(unix)]
+                group.as_deref(),
                 link_target.as_deref(),
                 link_kind.as_ref(),
             );
         }
         DialogContent::PatternRename {
-            find, find_cursor_pos, find_scroll_pos,
-            replace, replace_cursor_pos, replace_scroll_pos,
-            use_regex, case_sensitive,
-            preview, focused_field, preview_scroll, preview_horizontal_scroll,
-            error_message, preview_mode, show_all,
+            find,
+            find_cursor_pos,
+            find_scroll_pos,
+            replace,
+            replace_cursor_pos,
+            replace_scroll_pos,
+            use_regex,
+            case_sensitive,
+            preview,
+            focused_field,
+            preview_scroll,
+            preview_horizontal_scroll,
+            error_message,
+            preview_mode,
+            show_all,
         } => {
             render_pattern_rename_dialog(
-                frame, content_area,
-                find, *find_cursor_pos, *find_scroll_pos,
-                replace, *replace_cursor_pos, *replace_scroll_pos,
-                *use_regex, *case_sensitive,
-                preview, *focused_field, *preview_scroll, *preview_horizontal_scroll,
+                frame,
+                content_area,
+                find,
+                *find_cursor_pos,
+                *find_scroll_pos,
+                replace,
+                *replace_cursor_pos,
+                *replace_scroll_pos,
+                *use_regex,
+                *case_sensitive,
+                preview,
+                *focused_field,
+                *preview_scroll,
+                *preview_horizontal_scroll,
                 error_message.as_deref(),
-                *preview_mode, *show_all,
+                *preview_mode,
+                *show_all,
             );
         }
-        DialogContent::Help { entries, query, regex_mode, show_unbound, active_tab, scroll_pos, language, .. } => {
-            render_help_dialog(frame, content_area, area, entries, query, *regex_mode, *show_unbound, active_tab, *scroll_pos, language);
+        DialogContent::Help {
+            entries,
+            query,
+            regex_mode,
+            show_unbound,
+            active_tab,
+            scroll_pos,
+            language,
+            ..
+        } => {
+            render_help_dialog(
+                frame,
+                content_area,
+                area,
+                entries,
+                query,
+                *regex_mode,
+                *show_unbound,
+                active_tab,
+                *scroll_pos,
+                language,
+            );
         }
-        DialogContent::DeleteConfirm { targets, scroll_offset } => {
+        DialogContent::DeleteConfirm {
+            targets,
+            scroll_offset,
+        } => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -400,15 +658,21 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 ])
                 .split(content_area);
 
-            let base  = Style::default().fg(Color::Black).bg(Color::Gray);
-            let dir_s = Style::default().fg(Color::Black).bg(Color::Gray).add_modifier(Modifier::BOLD);
-            let hint  = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+            let base = Style::default().fg(Color::Black).bg(Color::Gray);
+            let dir_s = Style::default()
+                .fg(Color::Black)
+                .bg(Color::Gray)
+                .add_modifier(Modifier::BOLD);
+            let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
             let w = content_area.width.saturating_sub(2) as usize;
             let total = targets.len();
 
             // Header
-            let header_txt = if total == 1 { "Delete this item?".to_string() }
-                             else { format!("Delete these {} items?", total) };
+            let header_txt = if total == 1 {
+                "Delete this item?".to_string()
+            } else {
+                format!("Delete these {} items?", total)
+            };
             frame.render_widget(
                 Paragraph::new(smart_truncate(&header_txt, w, "…")).style(base),
                 Rect::new(chunks[0].x + 1, chunks[0].y, w as u16, 1),
@@ -419,7 +683,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let max_scroll = total.saturating_sub(list_h);
             let scroll = (*scroll_offset).min(max_scroll);
             let remaining_below = total.saturating_sub(scroll + list_h);
-            let show_up   = scroll > 0;
+            let show_up = scroll > 0;
             let show_down = remaining_below > 0;
 
             // Up indicator in row 1 (the blank line), never displaces items
@@ -433,14 +697,21 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Items always start at row 2, no offset for indicators
             for row in 0..list_h {
                 let item_idx = scroll + row;
-                if item_idx >= total { break; }
+                if item_idx >= total {
+                    break;
+                }
                 let y = chunks[0].y + 2 + row as u16;
                 let (loc, is_dir) = &targets[item_idx];
-                let raw_name = loc.path()
+                let raw_name = loc
+                    .path()
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| loc.display_path());
-                let label = if *is_dir { format!("  {}/", raw_name) } else { format!("  {}", raw_name) };
+                let label = if *is_dir {
+                    format!("  {}/", raw_name)
+                } else {
+                    format!("  {}", raw_name)
+                };
                 let truncated = smart_truncate(&label, w, "…");
                 frame.render_widget(
                     Paragraph::new(truncated).style(if *is_dir { dir_s } else { base }),
@@ -457,8 +728,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             }
 
             // Hint (chunks[2])
-            let hint_txt = if total > 1 { "↑↓:scroll  Enter:delete  Esc:cancel" }
-                           else { "Enter:delete  Esc:cancel" };
+            let hint_txt = if total > 1 {
+                "↑↓:scroll  Enter:delete  Esc:cancel"
+            } else {
+                "Enter:delete  Esc:cancel"
+            };
             frame.render_widget(
                 Paragraph::new(smart_truncate(hint_txt, w, "…")).style(hint),
                 Rect::new(chunks[2].x + 1, chunks[2].y, w as u16, 1),
@@ -476,7 +750,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(5),  // Content
+                    Constraint::Min(5),    // Content
                     Constraint::Length(3), // Buttons
                 ])
                 .split(content_area);
@@ -506,19 +780,32 @@ fn render_file_conflict_dialog(
     let current = &conflicts[current_index];
     let (indicator, message) = current.get_status_message();
     let content_width = area.width.saturating_sub(4) as usize; // 2 chars margin on each side
-    let textbox_width = area.width.saturating_sub(20) as usize;  // Leave space for button
+    let textbox_width = area.width.saturating_sub(20) as usize; // Leave space for button
 
     // Line 0: Filename
-    let filename_line = format!("Filename: {}", smart_truncate(&current.source.name, content_width.saturating_sub(10), "..."));
-    let filename_para = Paragraph::new(filename_line)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(filename_para, Rect::new(area.x + 2, area.y, content_width as u16, 1));
+    let filename_line = format!(
+        "Filename: {}",
+        smart_truncate(
+            &current.source.name,
+            content_width.saturating_sub(10),
+            "..."
+        )
+    );
+    let filename_para =
+        Paragraph::new(filename_line).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    frame.render_widget(
+        filename_para,
+        Rect::new(area.x + 2, area.y, content_width as u16, 1),
+    );
 
     // --- FROM SECTION (Lines 1-4) ---
     // Line 1: "From:" label
-    let from_label = Paragraph::new("From:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(from_label, Rect::new(area.x + 2, area.y + 1, content_width as u16, 1));
+    let from_label =
+        Paragraph::new("From:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+    frame.render_widget(
+        from_label,
+        Rect::new(area.x + 2, area.y + 1, content_width as u16, 1),
+    );
 
     // Line 2-3: From path (2 lines) using SmartText
     let from_full_path = current.source_path.display_path();
@@ -526,23 +813,39 @@ fn render_file_conflict_dialog(
         .style(Style::default().fg(Color::Black).bg(Color::Gray))
         .max_lines(2)
         .mode(TruncateMode::Path);
-    from_path_widget.render(frame, Rect::new(area.x + 4, area.y + 2, content_width.saturating_sub(2) as u16, 2));
+    from_path_widget.render(
+        frame,
+        Rect::new(
+            area.x + 4,
+            area.y + 2,
+            content_width.saturating_sub(2) as u16,
+            2,
+        ),
+    );
 
     // Line 4: From size,date
-    let from_info = format!("  Size,Date: {} Bytes, {}",
+    let from_info = format!(
+        "  Size,Date: {} Bytes, {}",
         current.source.size,
-        chrono::DateTime::<chrono::Local>::from(current.source.modified).format("%Y-%m-%d %H:%M:%S"));
-    let from_info_para = Paragraph::new(from_info)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(from_info_para, Rect::new(area.x + 2, area.y + 4, content_width as u16, 1));
+        chrono::DateTime::<chrono::Local>::from(current.source.modified)
+            .format("%Y-%m-%d %H:%M:%S")
+    );
+    let from_info_para =
+        Paragraph::new(from_info).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    frame.render_widget(
+        from_info_para,
+        Rect::new(area.x + 2, area.y + 4, content_width as u16, 1),
+    );
 
     // Line 5: Blank
 
     // --- TO SECTION (Lines 6-9) ---
     // Line 6: "To:" label
-    let to_label = Paragraph::new("To:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(to_label, Rect::new(area.x + 2, area.y + 6, content_width as u16, 1));
+    let to_label = Paragraph::new("To:").style(Style::default().fg(Color::Black).bg(Color::Gray));
+    frame.render_widget(
+        to_label,
+        Rect::new(area.x + 2, area.y + 6, content_width as u16, 1),
+    );
 
     // Line 7-8: To path (2 lines) using SmartText
     let to_full_path = current.dest_path.display_path();
@@ -550,15 +853,28 @@ fn render_file_conflict_dialog(
         .style(Style::default().fg(Color::Black).bg(Color::Gray))
         .max_lines(2)
         .mode(TruncateMode::Path);
-    to_path_widget.render(frame, Rect::new(area.x + 4, area.y + 7, content_width.saturating_sub(2) as u16, 2));
+    to_path_widget.render(
+        frame,
+        Rect::new(
+            area.x + 4,
+            area.y + 7,
+            content_width.saturating_sub(2) as u16,
+            2,
+        ),
+    );
 
     // Line 9: To size,date
-    let to_info = format!("  Size,Date: {} Bytes, {}",
+    let to_info = format!(
+        "  Size,Date: {} Bytes, {}",
         current.dest.size,
-        chrono::DateTime::<chrono::Local>::from(current.dest.modified).format("%Y-%m-%d %H:%M:%S"));
-    let to_info_para = Paragraph::new(to_info)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
-    frame.render_widget(to_info_para, Rect::new(area.x + 2, area.y + 9, content_width as u16, 1));
+        chrono::DateTime::<chrono::Local>::from(current.dest.modified).format("%Y-%m-%d %H:%M:%S")
+    );
+    let to_info_para =
+        Paragraph::new(to_info).style(Style::default().fg(Color::Black).bg(Color::Gray));
+    frame.render_widget(
+        to_info_para,
+        Rect::new(area.x + 2, area.y + 9, content_width as u16, 1),
+    );
 
     // Line 10: Blank
 
@@ -569,9 +885,11 @@ fn render_file_conflict_dialog(
     } else {
         Style::default().fg(Color::Yellow).bg(Color::Gray)
     };
-    let status_para = Paragraph::new(status_line)
-        .style(status_style);
-    frame.render_widget(status_para, Rect::new(area.x + 2, area.y + 11, content_width as u16, 1));
+    let status_para = Paragraph::new(status_line).style(status_style);
+    frame.render_widget(
+        status_para,
+        Rect::new(area.x + 2, area.y + 11, content_width as u16, 1),
+    );
 
     // Line 12: Blank
 
@@ -598,21 +916,28 @@ fn render_file_conflict_dialog(
         if i == 3 {
             // Rename label + Textbox
             let label_style = if button_is_focused {
-                Style::default().fg(Color::Yellow).bg(Color::Gray).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(Color::Gray)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Black).bg(Color::Gray)
             };
 
             // Render "Rename:" label
             let label_para = Paragraph::new(label.to_string()).style(label_style);
-            frame.render_widget(label_para, Rect::new(area.x + 2, button_y, label.len() as u16, 1));
+            frame.render_widget(
+                label_para,
+                Rect::new(area.x + 2, button_y, label.len() as u16, 1),
+            );
 
             // Render textbox using TextInput widget (dedicated focus field 3)
             let textbox_x = area.x + 2 + label.len() as u16 + 1;
             let textbox_width_u16 = textbox_width.saturating_sub(label.len()) as u16;
 
             // Create TextInput widget for rendering
-            let mut text_input = crate::ui::text_input::TextInput::new(Some(rename_text.to_string()), edit_mode);
+            let mut text_input =
+                crate::ui::text_input::TextInput::new(Some(rename_text.to_string()), edit_mode);
             // Restore Vi mode state
             if let Some(vm) = vi_mode {
                 text_input.set_vi_mode(vm);
@@ -620,15 +945,25 @@ fn render_file_conflict_dialog(
             text_input.set_width(textbox_width_u16);
             text_input.set_cursor(rename_cursor);
             text_input.set_scroll(rename_scroll);
-            text_input.render(frame, Rect::new(textbox_x, button_y, textbox_width_u16, 1), button_is_focused);
+            text_input.render(
+                frame,
+                Rect::new(textbox_x, button_y, textbox_width_u16, 1),
+                button_is_focused,
+            );
         } else {
             let button_style = if button_is_focused {
-                Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Black).bg(Color::Gray)
             };
             let button_para = Paragraph::new(button_text.clone()).style(button_style);
-            frame.render_widget(button_para, Rect::new(area.x + 2, button_y, button_text.len() as u16, 1));
+            frame.render_widget(
+                button_para,
+                Rect::new(area.x + 2, button_y, button_text.len() as u16, 1),
+            );
         }
 
         button_y += 1;
@@ -638,15 +973,30 @@ fn render_file_conflict_dialog(
     if focused_button == 0 || focused_button == 1 || focused_button == 2 {
         let hint = Paragraph::new("(Shift+Enter for the rest)")
             .style(Style::default().fg(Color::DarkGray).bg(Color::Gray));
-        frame.render_widget(hint, Rect::new(area.x + 2, button_y, content_width as u16, 1));
+        frame.render_widget(
+            hint,
+            Rect::new(area.x + 2, button_y, content_width as u16, 1),
+        );
     }
 
     // Error message line - ALWAYS AT BOTTOM OF DIALOG AREA
     if let Some(error) = error_message {
-        let error_para = Paragraph::new(format!("Error: {}", error))
-            .style(Style::default().fg(Color::Red).bg(Color::Gray).add_modifier(Modifier::BOLD));
+        let error_para = Paragraph::new(format!("Error: {}", error)).style(
+            Style::default()
+                .fg(Color::Red)
+                .bg(Color::Gray)
+                .add_modifier(Modifier::BOLD),
+        );
         // Place at the last line of the provided area
-        frame.render_widget(error_para, Rect::new(area.x + 2, area.y + area.height - 1, content_width as u16, 1));
+        frame.render_widget(
+            error_para,
+            Rect::new(
+                area.x + 2,
+                area.y + area.height - 1,
+                content_width as u16,
+                1,
+            ),
+        );
     }
 }
 
@@ -701,7 +1051,11 @@ fn render_file_mask_dialog(
         ti.set_cursor(cursor_pos);
         ti.set_scroll(scroll_pos);
         ti.set_width(item_width);
-        ti.render(frame, Rect::new(area.x + 2, chunks[2].y, item_width, 1), focused_field == 0);
+        ti.render(
+            frame,
+            Rect::new(area.x + 2, chunks[2].y, item_width, 1),
+            focused_field == 0,
+        );
     }
 
     // Hint lines
@@ -720,15 +1074,25 @@ fn render_file_mask_dialog(
 
     // Buttons [*OK*] [Cancel]
     let focused_item = Style::default().fg(Color::Black).bg(Color::White);
-    let ok_style     = if focused_field == 1 { focused_item } else { base_style };
-    let cancel_style = if focused_field == 2 { focused_item } else { base_style };
+    let ok_style = if focused_field == 1 {
+        focused_item
+    } else {
+        base_style
+    };
+    let cancel_style = if focused_field == 2 {
+        focused_item
+    } else {
+        base_style
+    };
     let btn_line = Line::from(vec![
         Span::styled("[*OK*]", ok_style),
         Span::raw("  "),
         Span::styled("[Cancel]", cancel_style),
     ]);
     frame.render_widget(
-        Paragraph::new(btn_line).alignment(Alignment::Center).style(base_style),
+        Paragraph::new(btn_line)
+            .alignment(Alignment::Center)
+            .style(base_style),
         chunks[7],
     );
 }
@@ -770,7 +1134,11 @@ fn render_wildcard_mark_dialog(
         ti.set_cursor(cursor_pos);
         ti.set_scroll(scroll_pos);
         ti.set_width(item_width);
-        ti.render(frame, Rect::new(area.x + 2, chunks[1].y, item_width, 1), focused_field == 0);
+        ti.render(
+            frame,
+            Rect::new(area.x + 2, chunks[1].y, item_width, 1),
+            focused_field == 0,
+        );
     }
 
     frame.render_widget(
@@ -779,15 +1147,25 @@ fn render_wildcard_mark_dialog(
     );
 
     let focused_item = Style::default().fg(Color::Black).bg(Color::White);
-    let ok_style     = if focused_field == 1 { focused_item } else { base_style };
-    let cancel_style = if focused_field == 2 { focused_item } else { base_style };
+    let ok_style = if focused_field == 1 {
+        focused_item
+    } else {
+        base_style
+    };
+    let cancel_style = if focused_field == 2 {
+        focused_item
+    } else {
+        base_style
+    };
     let btn_line = Line::from(vec![
         Span::styled("[*OK*]", ok_style),
         Span::raw("  "),
         Span::styled("[Cancel]", cancel_style),
     ]);
     frame.render_widget(
-        Paragraph::new(btn_line).alignment(Alignment::Center).style(base_style),
+        Paragraph::new(btn_line)
+            .alignment(Alignment::Center)
+            .style(base_style),
         chunks[4],
     );
 }
@@ -829,7 +1207,11 @@ fn render_simple_rename_dialog(
         ti.set_cursor(cursor_pos);
         ti.set_scroll(scroll_pos);
         ti.set_width(item_width);
-        ti.render(frame, Rect::new(area.x + 2, chunks[1].y, item_width, 1), focused_field == 0);
+        ti.render(
+            frame,
+            Rect::new(area.x + 2, chunks[1].y, item_width, 1),
+            focused_field == 0,
+        );
     }
 
     frame.render_widget(
@@ -838,15 +1220,25 @@ fn render_simple_rename_dialog(
     );
 
     let focused_item = Style::default().fg(Color::Black).bg(Color::White);
-    let ok_style     = if focused_field == 1 { focused_item } else { base_style };
-    let cancel_style = if focused_field == 2 { focused_item } else { base_style };
+    let ok_style = if focused_field == 1 {
+        focused_item
+    } else {
+        base_style
+    };
+    let cancel_style = if focused_field == 2 {
+        focused_item
+    } else {
+        base_style
+    };
     let btn_line = Line::from(vec![
         Span::styled("[*OK*]", ok_style),
         Span::raw("  "),
         Span::styled("[Cancel]", cancel_style),
     ]);
     frame.render_widget(
-        Paragraph::new(btn_line).alignment(Alignment::Center).style(base_style),
+        Paragraph::new(btn_line)
+            .alignment(Alignment::Center)
+            .style(base_style),
         chunks[4],
     );
 }
@@ -858,10 +1250,16 @@ fn render_history_dialog(
     selected_index: usize,
     current_pos: usize,
 ) {
-    let base_style   = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint_style   = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let current_marker_style = Style::default().fg(Color::Yellow).bg(Color::Gray).add_modifier(Modifier::BOLD);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let current_marker_style = Style::default()
+        .fg(Color::Yellow)
+        .bg(Color::Gray)
+        .add_modifier(Modifier::BOLD);
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -919,10 +1317,13 @@ fn render_drive_selection_dialog(
     selected_index: usize,
     filter: &str,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let search_style   = Style::default().fg(Color::Black).bg(Color::Gray);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let search_style = Style::default().fg(Color::Black).bg(Color::Gray);
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -931,20 +1332,24 @@ fn render_drive_selection_dialog(
         drives.iter().collect()
     } else {
         let lower = filter.to_lowercase();
-        drives.iter().filter(|d| {
-            d.display_label().to_lowercase().contains(&lower)
-                || d.path.to_lowercase().contains(&lower)
-        }).collect()
+        drives
+            .iter()
+            .filter(|d| {
+                d.display_label().to_lowercase().contains(&lower)
+                    || d.path.to_lowercase().contains(&lower)
+            })
+            .collect()
     };
 
     let clamped_sel = selected_index.min(filtered.len().saturating_sub(1));
 
     // Hint line (second-to-last row) and search line (last row)
-    let hint_y   = area.y + area.height.saturating_sub(2);
+    let hint_y = area.y + area.height.saturating_sub(2);
     let search_y = area.y + area.height.saturating_sub(1);
 
     frame.render_widget(
-        Paragraph::new("Enter: go  Esc: cancel  ↑↓: select  Bksp: del char  ^K: clear").style(hint_style),
+        Paragraph::new("Enter: go  Esc: cancel  ↑↓: select  Bksp: del char  ^K: clear")
+            .style(hint_style),
         Rect::new(area.x + 2, hint_y, item_width as u16, 1),
     );
     frame.render_widget(
@@ -962,10 +1367,16 @@ fn render_drive_selection_dialog(
 
     for row in 0..list_height {
         let fi = scroll_start + row;
-        if fi >= filtered.len() { break; }
+        if fi >= filtered.len() {
+            break;
+        }
         let drive = filtered[fi];
         let label = smart_truncate(&drive.display_label(), item_width.saturating_sub(2), "…");
-        let style = if fi == clamped_sel { selected_style } else { base_style };
+        let style = if fi == clamped_sel {
+            selected_style
+        } else {
+            base_style
+        };
         frame.render_widget(
             Paragraph::new(format!(" {}", label)).style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
@@ -980,9 +1391,12 @@ fn render_registered_folder_selector(
     selected_index: usize,
     filter: &str,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -991,20 +1405,23 @@ fn render_registered_folder_selector(
         folders.iter().collect()
     } else {
         let lower = filter.to_lowercase();
-        folders.iter().filter(|f| {
-            f.name.to_lowercase().contains(&lower)
-                || f.path.to_lowercase().contains(&lower)
-        }).collect()
+        folders
+            .iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&lower) || f.path.to_lowercase().contains(&lower)
+            })
+            .collect()
     };
 
     let clamped_sel = selected_index.min(filtered.len().saturating_sub(1));
 
     // Hint line (second-to-last row) and search line (last row)
-    let hint_y   = area.y + area.height.saturating_sub(2);
+    let hint_y = area.y + area.height.saturating_sub(2);
     let search_y = area.y + area.height.saturating_sub(1);
 
     frame.render_widget(
-        Paragraph::new("[Enter] Jump to folder [Delete] Remove selected [Esc] Cancel").style(hint_style),
+        Paragraph::new("[Enter] Jump to folder [Delete] Remove selected [Esc] Cancel")
+            .style(hint_style),
         Rect::new(area.x + 2, hint_y, item_width as u16, 1),
     );
     frame.render_widget(
@@ -1022,14 +1439,24 @@ fn render_registered_folder_selector(
 
     for row in 0..list_height {
         let fi = scroll_start + row;
-        if fi >= filtered.len() { break; }
+        if fi >= filtered.len() {
+            break;
+        }
         let folder = filtered[fi];
         let label = if folder.name.is_empty() {
             smart_truncate(&folder.path, item_width.saturating_sub(2), "…")
         } else {
-            smart_truncate(&format!("{} — {}", folder.name, folder.path), item_width.saturating_sub(2), "…")
+            smart_truncate(
+                &format!("{} — {}", folder.name, folder.path),
+                item_width.saturating_sub(2),
+                "…",
+            )
         };
-        let style = if fi == clamped_sel { selected_style } else { base_style };
+        let style = if fi == clamped_sel {
+            selected_style
+        } else {
+            base_style
+        };
         frame.render_widget(
             Paragraph::new(format!(" {}", label)).style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
@@ -1044,9 +1471,12 @@ fn render_custom_function_selector(
     selected_index: usize,
     filter: &str,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -1054,15 +1484,22 @@ fn render_custom_function_selector(
         functions.iter().collect()
     } else {
         let lower = filter.to_lowercase();
-        functions.iter().filter(|f| {
-            f.name.to_lowercase().contains(&lower)
-                || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
-        }).collect()
+        functions
+            .iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&lower)
+                    || f.description
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&lower)
+            })
+            .collect()
     };
 
     let clamped_sel = selected_index.min(filtered.len().saturating_sub(1));
 
-    let hint_y   = area.y + area.height.saturating_sub(2);
+    let hint_y = area.y + area.height.saturating_sub(2);
     let search_y = area.y + area.height.saturating_sub(1);
 
     frame.render_widget(
@@ -1083,20 +1520,30 @@ fn render_custom_function_selector(
 
     for row in 0..list_height {
         let fi = scroll_start + row;
-        if fi >= filtered.len() { break; }
+        if fi >= filtered.len() {
+            break;
+        }
         let func = filtered[fi];
         let name_w = item_width.saturating_sub(2);
         let label = if let Some(desc) = &func.description {
             let desc_w = name_w.saturating_sub(func.name.len() + 3);
             if desc_w > 4 {
-                format!("{:<name_w$}", format!("{}  {}", func.name, smart_truncate(desc, desc_w, "…")), name_w = name_w)
+                format!(
+                    "{:<name_w$}",
+                    format!("{}  {}", func.name, smart_truncate(desc, desc_w, "…")),
+                    name_w = name_w
+                )
             } else {
                 smart_truncate(&func.name, name_w, "…")
             }
         } else {
             smart_truncate(&func.name, name_w, "…")
         };
-        let style = if fi == clamped_sel { selected_style } else { base_style };
+        let style = if fi == clamped_sel {
+            selected_style
+        } else {
+            base_style
+        };
         frame.render_widget(
             Paragraph::new(format!(" {}", label)).style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
@@ -1110,10 +1557,13 @@ fn render_custom_function_menu(
     items: &[rwf_lib::model::dialog::MenuItem],
     selected_index: usize,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
 
     // item_width = inner width - 4 (2 left-indent + 2 right-margin for items)
     let item_width = area.width.saturating_sub(4) as usize;
@@ -1134,7 +1584,9 @@ fn render_custom_function_menu(
 
     for row in 0..list_height {
         let ii = scroll_start + row;
-        if ii >= items.len() { break; }
+        if ii >= items.len() {
+            break;
+        }
         let item = &items[ii];
         if item.is_separator() {
             // Separator spans item_width
@@ -1145,7 +1597,11 @@ fn render_custom_function_menu(
             );
         } else {
             // No truncation: dialog is sized to fit the longest label
-            let style = if ii == selected_index { selected_style } else { base_style };
+            let style = if ii == selected_index {
+                selected_style
+            } else {
+                base_style
+            };
             frame.render_widget(
                 Paragraph::new(format!(" {}", item.name)).style(style),
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
@@ -1162,10 +1618,13 @@ fn render_context_menu_dialog(
 ) {
     use rwf_lib::model::dialog::ContextMenuAction;
 
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
 
     let item_width = area.width.saturating_sub(4) as usize;
 
@@ -1186,7 +1645,9 @@ fn render_context_menu_dialog(
 
     for row in 0..list_height {
         let oi = scroll_start + row;
-        if oi >= options.len() { break; }
+        if oi >= options.len() {
+            break;
+        }
         let opt = &options[oi];
         let is_sep = matches!(opt.action, ContextMenuAction::Separator);
         if is_sep {
@@ -1197,7 +1658,11 @@ fn render_context_menu_dialog(
             );
         } else {
             let label = smart_truncate(&opt.label, item_width.saturating_sub(2), "…");
-            let style = if oi == selected_index { selected_style } else { base_style };
+            let style = if oi == selected_index {
+                selected_style
+            } else {
+                base_style
+            };
             frame.render_widget(
                 Paragraph::new(format!(" {}", label)).style(style),
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
@@ -1215,21 +1680,35 @@ fn render_jump_to_path_dialog(
     selected_index: usize,
     is_loading: bool,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let input_style    = Style::default().fg(Color::White).bg(Color::Black);
-    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let preview_style  = Style::default().fg(Color::White).bg(Color::Black);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let input_style = Style::default().fg(Color::White).bg(Color::Black);
+    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let preview_style = Style::default().fg(Color::White).bg(Color::Black);
 
-    let clamped_sel = if suggestions.is_empty() { 0 } else { selected_index.min(suggestions.len() - 1) };
+    let clamped_sel = if suggestions.is_empty() {
+        0
+    } else {
+        selected_index.min(suggestions.len() - 1)
+    };
     let item_width = area.width.saturating_sub(4) as usize;
 
     // ── Row 0: input field + hit count ────────────────────────────────────
     let status = if is_loading {
-        if suggestions.is_empty() { "searching…".to_string() } else { format!("{}+ hits", suggestions.len()) }
-    } else if suggestions.is_empty() { "No match".to_string() }
-    else { format!("{} hits", suggestions.len()) };
+        if suggestions.is_empty() {
+            "searching…".to_string()
+        } else {
+            format!("{}+ hits", suggestions.len())
+        }
+    } else if suggestions.is_empty() {
+        "No match".to_string()
+    } else {
+        format!("{} hits", suggestions.len())
+    };
     let status_width: u16 = 10;
     let input_width = area.width.saturating_sub(status_width + 3).max(4);
     // Horizontal scroll: show the end of the query when cursor is near it
@@ -1243,7 +1722,8 @@ fn render_jump_to_path_dialog(
         Rect::new(area.x + 1, area.y, input_width, 1),
     );
     frame.render_widget(
-        Paragraph::new(format!("{:>width$}", status, width = status_width as usize)).style(base_style),
+        Paragraph::new(format!("{:>width$}", status, width = status_width as usize))
+            .style(base_style),
         Rect::new(area.x + 1 + input_width, area.y, status_width, 1),
     );
 
@@ -1265,13 +1745,24 @@ fn render_jump_to_path_dialog(
     };
     for row in 0..list_height {
         let si = scroll_start + row;
-        if si >= suggestions.len() { break; }
+        if si >= suggestions.len() {
+            break;
+        }
         let path = &suggestions[si];
         let label = smart_truncate(path, item_width.saturating_sub(2), "…");
-        let style = if si == clamped_sel { selected_style } else { base_style };
+        let style = if si == clamped_sel {
+            selected_style
+        } else {
+            base_style
+        };
         frame.render_widget(
             Paragraph::new(format!(" {}", label)).style(style),
-            Rect::new(area.x + 2, area.y + header_rows + row as u16, item_width as u16, 1),
+            Rect::new(
+                area.x + 2,
+                area.y + header_rows + row as u16,
+                item_width as u16,
+                1,
+            ),
         );
     }
 
@@ -1287,9 +1778,15 @@ fn render_jump_to_path_dialog(
     let preview_w = area.width.saturating_sub(2);
     let preview_lines = if !suggestions.is_empty() && clamped_sel < suggestions.len() {
         let raw = &suggestions[clamped_sel];
-        let text = if raw.len() > 1024 { &raw[..1024] } else { raw.as_str() };
+        let text = if raw.len() > 1024 {
+            &raw[..1024]
+        } else {
+            raw.as_str()
+        };
         chunk_path_preview(text, preview_w, 4)
-    } else { vec![] };
+    } else {
+        vec![]
+    };
     frame.render_widget(
         Paragraph::new(preview_lines).style(preview_style),
         Rect::new(area.x + 1, preview_y, preview_w, 4),
@@ -1317,21 +1814,35 @@ fn render_jump_to_file_dialog(
     selected_index: usize,
     is_loading: bool,
 ) {
-    let base_style     = Style::default().fg(Color::Black).bg(Color::Gray);
-    let selected_style = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
-    let hint_style     = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let input_style    = Style::default().fg(Color::White).bg(Color::Black);
-    let sep_style      = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let preview_style  = Style::default().fg(Color::White).bg(Color::Black);
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let hint_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let input_style = Style::default().fg(Color::White).bg(Color::Black);
+    let sep_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let preview_style = Style::default().fg(Color::White).bg(Color::Black);
 
-    let clamped_sel = if suggestions.is_empty() { 0 } else { selected_index.min(suggestions.len() - 1) };
+    let clamped_sel = if suggestions.is_empty() {
+        0
+    } else {
+        selected_index.min(suggestions.len() - 1)
+    };
     let item_width = area.width.saturating_sub(4) as usize;
 
     // ── Row 0: input field + hit count ────────────────────────────────────
     let status = if is_loading {
-        if suggestions.is_empty() { "searching…".to_string() } else { format!("{}+ hits", suggestions.len()) }
-    } else if suggestions.is_empty() { "No match".to_string() }
-    else { format!("{} hits", suggestions.len()) };
+        if suggestions.is_empty() {
+            "searching…".to_string()
+        } else {
+            format!("{}+ hits", suggestions.len())
+        }
+    } else if suggestions.is_empty() {
+        "No match".to_string()
+    } else {
+        format!("{} hits", suggestions.len())
+    };
     let status_width: u16 = 10;
     let input_width = area.width.saturating_sub(status_width + 3).max(4);
     let q_chars: Vec<char> = query.chars().collect();
@@ -1344,7 +1855,8 @@ fn render_jump_to_file_dialog(
         Rect::new(area.x + 1, area.y, input_width, 1),
     );
     frame.render_widget(
-        Paragraph::new(format!("{:>width$}", status, width = status_width as usize)).style(base_style),
+        Paragraph::new(format!("{:>width$}", status, width = status_width as usize))
+            .style(base_style),
         Rect::new(area.x + 1 + input_width, area.y, status_width, 1),
     );
 
@@ -1366,19 +1878,33 @@ fn render_jump_to_file_dialog(
     };
     for row in 0..list_height {
         let si = scroll_start + row;
-        if si >= suggestions.len() { break; }
+        if si >= suggestions.len() {
+            break;
+        }
         let path = &suggestions[si];
         // Show a trailing '/' hint for directories
         let is_dir = std::path::Path::new(path.as_str()).is_dir();
         let display = if is_dir {
-            format!("{}/", smart_truncate(path, item_width.saturating_sub(3), "…"))
+            format!(
+                "{}/",
+                smart_truncate(path, item_width.saturating_sub(3), "…")
+            )
         } else {
             smart_truncate(path, item_width.saturating_sub(2), "…")
         };
-        let style = if si == clamped_sel { selected_style } else { base_style };
+        let style = if si == clamped_sel {
+            selected_style
+        } else {
+            base_style
+        };
         frame.render_widget(
             Paragraph::new(format!(" {}", display)).style(style),
-            Rect::new(area.x + 2, area.y + header_rows + row as u16, item_width as u16, 1),
+            Rect::new(
+                area.x + 2,
+                area.y + header_rows + row as u16,
+                item_width as u16,
+                1,
+            ),
         );
     }
 
@@ -1394,9 +1920,15 @@ fn render_jump_to_file_dialog(
     let preview_w = area.width.saturating_sub(2);
     let preview_lines = if !suggestions.is_empty() && clamped_sel < suggestions.len() {
         let raw = &suggestions[clamped_sel];
-        let text = if raw.len() > 1024 { &raw[..1024] } else { raw.as_str() };
+        let text = if raw.len() > 1024 {
+            &raw[..1024]
+        } else {
+            raw.as_str()
+        };
         chunk_path_preview(text, preview_w, 4)
-    } else { vec![] };
+    } else {
+        vec![]
+    };
     frame.render_widget(
         Paragraph::new(preview_lines).style(preview_style),
         Rect::new(area.x + 1, preview_y, preview_w, 4),
@@ -1459,14 +1991,14 @@ fn render_file_info_dialog(
     link_target: Option<&str>,
     link_kind: Option<&rwf_lib::model::LinkKind>,
 ) {
-    let base  = Style::default().fg(Color::Black).bg(Color::Gray);
+    let base = Style::default().fg(Color::Black).bg(Color::Gray);
     let label = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let hint  = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
     let w = area.width.saturating_sub(4) as usize;
 
     let type_label = match link_kind {
         Some(rwf_lib::model::LinkKind::Junction) => "Junction",
-        Some(rwf_lib::model::LinkKind::Symlink)  => "Symlink",
+        Some(rwf_lib::model::LinkKind::Symlink) => "Symlink",
         None if is_dir => "Directory",
         None => "File",
     };
@@ -1477,33 +2009,42 @@ fn render_file_info_dialog(
     };
 
     let mut rows: Vec<(&str, String)> = vec![
-        ("Name",     smart_truncate(file_name, w.saturating_sub(8), "…")),
-        ("Path",     smart_truncate(file_path, w.saturating_sub(8), "…")),
-        ("Size",     fmt_size(size)),
-        ("Type",     type_str),
+        ("Name", smart_truncate(file_name, w.saturating_sub(8), "…")),
+        ("Path", smart_truncate(file_path, w.saturating_sub(8), "…")),
+        ("Size", fmt_size(size)),
+        ("Type", type_str),
     ];
 
     if let Some(target) = link_target {
         rows.push(("Target", smart_truncate(target, w.saturating_sub(8), "…")));
     }
 
-    rows.push(("",         String::new()));
-    rows.push(("Created",  fmt_time(created)));
+    rows.push(("", String::new()));
+    rows.push(("Created", fmt_time(created)));
     rows.push(("Modified", fmt_time(Some(modified))));
     rows.push(("Accessed", fmt_time(accessed)));
 
     let col_w = 9u16; // label column width ("Modified" = 8 chars + space)
     for (row_i, (lbl, val)) in rows.iter().enumerate() {
         let y = area.y + row_i as u16;
-        if y + 1 >= area.y + area.height { break; }
-        if lbl.is_empty() { continue; }
+        if y + 1 >= area.y + area.height {
+            break;
+        }
+        if lbl.is_empty() {
+            continue;
+        }
         frame.render_widget(
             Paragraph::new(format!("{:<col_w$}", lbl, col_w = col_w as usize)).style(label),
             Rect::new(area.x + 2, y, col_w, 1),
         );
         frame.render_widget(
             Paragraph::new(val.as_str()).style(base),
-            Rect::new(area.x + 2 + col_w, y, w.saturating_sub(col_w as usize) as u16, 1),
+            Rect::new(
+                area.x + 2 + col_w,
+                y,
+                w.saturating_sub(col_w as usize) as u16,
+                1,
+            ),
         );
     }
 
@@ -1535,23 +2076,38 @@ fn render_pattern_rename_dialog(
     preview_mode: u8,
     show_all: bool,
 ) {
-    let base   = Style::default().fg(Color::Black).bg(Color::Gray);
-    let hint   = Style::default().fg(Color::DarkGray).bg(Color::Gray);
-    let active = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let base = Style::default().fg(Color::Black).bg(Color::Gray);
+    let hint = Style::default().fg(Color::DarkGray).bg(Color::Gray);
+    let active = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
     let w = area.width as usize;
 
     // Helper: render one labeled textbox row
-    let render_textbox = |frame: &mut Frame, y: u16, label: &str, text: &str, cursor: usize, scroll: usize, focused: bool| {
+    let render_textbox = |frame: &mut Frame,
+                          y: u16,
+                          label: &str,
+                          text: &str,
+                          cursor: usize,
+                          scroll: usize,
+                          focused: bool| {
         let label_len = label.len() as u16;
         let tw = area.width.saturating_sub(label_len + 2) as usize;
-        frame.render_widget(Paragraph::new(label.to_string()).style(base), Rect::new(area.x, y, label_len, 1));
+        frame.render_widget(
+            Paragraph::new(label.to_string()).style(base),
+            Rect::new(area.x, y, label_len, 1),
+        );
         let visible: String = text.chars().skip(scroll).take(tw).collect();
         let input_style = if focused {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
             Style::default().fg(Color::Black).bg(Color::White)
         };
-        frame.render_widget(Paragraph::new(visible).style(input_style), Rect::new(area.x + label_len, y, tw as u16, 1));
+        frame.render_widget(
+            Paragraph::new(visible).style(input_style),
+            Rect::new(area.x + label_len, y, tw as u16, 1),
+        );
         if focused {
             let cx = area.x + label_len + cursor.saturating_sub(scroll) as u16;
             frame.set_cursor_position((cx.min(area.x + area.width.saturating_sub(1)), y));
@@ -1559,15 +2115,34 @@ fn render_pattern_rename_dialog(
     };
 
     // Row 0: Find field
-    render_textbox(frame, area.y, "Find:    ", find, find_cursor_pos, find_scroll_pos, focused_field == 0);
+    render_textbox(
+        frame,
+        area.y,
+        "Find:    ",
+        find,
+        find_cursor_pos,
+        find_scroll_pos,
+        focused_field == 0,
+    );
 
     // Row 1: Replace field
-    render_textbox(frame, area.y + 1, "Replace: ", replace, replace_cursor_pos, replace_scroll_pos, focused_field == 1);
+    render_textbox(
+        frame,
+        area.y + 1,
+        "Replace: ",
+        replace,
+        replace_cursor_pos,
+        replace_scroll_pos,
+        focused_field == 1,
+    );
 
     // Row 2: regex/case flags + expert syntax hint
     let regex_mark = if use_regex { "[●]" } else { "[○]" };
-    let case_mark  = if case_sensitive { "[●]" } else { "[○]" };
-    let flags_line = format!("{} Regex (Alt+R) {} Case (Alt+S) | s/find/repl/[gi] tr/from/to/", regex_mark, case_mark);
+    let case_mark = if case_sensitive { "[●]" } else { "[○]" };
+    let flags_line = format!(
+        "{} Regex (Alt+R) {} Case (Alt+S) | s/find/repl/[gi] tr/from/to/",
+        regex_mark, case_mark
+    );
     frame.render_widget(
         Paragraph::new(smart_truncate(&flags_line, w.saturating_sub(1), "…")).style(hint),
         Rect::new(area.x, area.y + 2, area.width, 1),
@@ -1578,7 +2153,9 @@ fn render_pattern_rename_dialog(
         let modes = ["SIDE-BY-SIDE", "Preview", "Original"];
         let mut spans: Vec<Span> = Vec::new();
         for (i, &name) in modes.iter().enumerate() {
-            if i > 0 { spans.push(Span::styled("  ", hint)); }
+            if i > 0 {
+                spans.push(Span::styled("  ", hint));
+            }
             if preview_mode == i as u8 {
                 spans.push(Span::styled(format!("[{}]", name), active));
             } else {
@@ -1607,7 +2184,10 @@ fn render_pattern_rename_dialog(
     let (sep_style, sep_line) = if focused_field == 2 {
         let dashes: String = std::iter::repeat_n('─', w.saturating_sub(9)).collect();
         (
-            Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
             format!("▶ LIST {}", dashes),
         )
     } else {
@@ -1629,27 +2209,56 @@ fn render_pattern_rename_dialog(
     let effective_scroll = preview_scroll.min(max_scroll);
     let col_w = w.saturating_sub(5) / 2; // 2=indicator+space, 3=" ║ "
 
-    for (i, (original, renamed)) in filtered.iter().skip(effective_scroll).take(preview_area_h as usize).enumerate() {
+    for (i, (original, renamed)) in filtered
+        .iter()
+        .skip(effective_scroll)
+        .take(preview_area_h as usize)
+        .enumerate()
+    {
         let y = area.y + 5 + i as u16;
-        if y >= area.y + area.height.saturating_sub(1) { break; }
+        if y >= area.y + area.height.saturating_sub(1) {
+            break;
+        }
         let changed = original != renamed;
         let indicator = if changed { "√" } else { "╴" };
         // Horizontal scroll applied to content only; indicator and ║ stay fixed
         let line = match preview_mode {
             0 => {
                 // Side-by-side: scroll both columns independently, separator stays put
-                let orig: String = original.chars().skip(preview_horizontal_scroll).take(col_w).collect();
-                let new_name: String = renamed.chars().skip(preview_horizontal_scroll).take(col_w).collect();
-                format!("{} {:<col_w$} ║ {}", indicator, orig, new_name, col_w = col_w)
+                let orig: String = original
+                    .chars()
+                    .skip(preview_horizontal_scroll)
+                    .take(col_w)
+                    .collect();
+                let new_name: String = renamed
+                    .chars()
+                    .skip(preview_horizontal_scroll)
+                    .take(col_w)
+                    .collect();
+                format!(
+                    "{} {:<col_w$} ║ {}",
+                    indicator,
+                    orig,
+                    new_name,
+                    col_w = col_w
+                )
             }
             1 => {
                 let content_w = area.width.saturating_sub(2) as usize;
-                let scrolled: String = renamed.chars().skip(preview_horizontal_scroll).take(content_w).collect();
+                let scrolled: String = renamed
+                    .chars()
+                    .skip(preview_horizontal_scroll)
+                    .take(content_w)
+                    .collect();
                 format!("{} {}", indicator, scrolled)
             }
             _ => {
                 let content_w = area.width.saturating_sub(2) as usize;
-                let scrolled: String = original.chars().skip(preview_horizontal_scroll).take(content_w).collect();
+                let scrolled: String = original
+                    .chars()
+                    .skip(preview_horizontal_scroll)
+                    .take(content_w)
+                    .collect();
                 format!("{} {}", indicator, scrolled)
             }
         };
@@ -1674,7 +2283,10 @@ fn render_pattern_rename_dialog(
         );
     } else {
         let match_count = preview.iter().filter(|(a, b)| a != b).count();
-        let status = format!(" Matches: {}  Alt+R/S: regex/case  Enter: OK  Esc: cancel", match_count);
+        let status = format!(
+            " Matches: {}  Alt+R/S: regex/case  Enter: OK  Esc: cancel",
+            match_count
+        );
         frame.render_widget(
             Paragraph::new(smart_truncate(&status, w.saturating_sub(1), "…")).style(hint),
             Rect::new(area.x, status_y, area.width, 1),
@@ -1689,7 +2301,8 @@ fn help_filter_entries<'a>(
     query: &str,
     regex_mode: bool,
 ) -> Vec<&'a rwf_lib::model::dialog::HelpEntry> {
-    let tab_filtered: Vec<&rwf_lib::model::dialog::HelpEntry> = entries.iter()
+    let tab_filtered: Vec<&rwf_lib::model::dialog::HelpEntry> = entries
+        .iter()
         .filter(|e| e.tab == *active_tab)
         .filter(|e| show_unbound || !e.keys.is_empty())
         .collect();
@@ -1700,20 +2313,27 @@ fn help_filter_entries<'a>(
 
     if regex_mode {
         if let Ok(re) = regex::Regex::new(&format!("(?i){}", query)) {
-            tab_filtered.into_iter().filter(|e| {
-                let haystack = format!("{} {} {}", e.category, e.description, e.keys.join(" "));
-                re.is_match(&haystack)
-            }).collect()
+            tab_filtered
+                .into_iter()
+                .filter(|e| {
+                    let haystack = format!("{} {} {}", e.category, e.description, e.keys.join(" "));
+                    re.is_match(&haystack)
+                })
+                .collect()
         } else {
             tab_filtered
         }
     } else {
         // AND search: each space-separated token must appear in the row text
         let tokens: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
-        tab_filtered.into_iter().filter(|e| {
-            let haystack = format!("{} {} {}", e.category, e.description, e.keys.join(" ")).to_lowercase();
-            tokens.iter().all(|tok| haystack.contains(tok.as_str()))
-        }).collect()
+        tab_filtered
+            .into_iter()
+            .filter(|e| {
+                let haystack =
+                    format!("{} {} {}", e.category, e.description, e.keys.join(" ")).to_lowercase();
+                tokens.iter().all(|tok| haystack.contains(tok.as_str()))
+            })
+            .collect()
     }
 }
 
@@ -1730,11 +2350,14 @@ fn render_help_dialog(
     scroll_pos: usize,
     language: &str,
 ) {
-    use unicode_width::UnicodeWidthStr;
     use rwf_lib::model::dialog::HelpTab;
+    use unicode_width::UnicodeWidthStr;
 
-    let base  = Style::default().fg(Color::Black).bg(Color::Gray);
-    let tab_active  = Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD);
+    let base = Style::default().fg(Color::Black).bg(Color::Gray);
+    let tab_active = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
     let tab_inactive = Style::default().fg(Color::DarkGray).bg(Color::Gray);
     let search_style = Style::default().fg(Color::White).bg(Color::DarkGray);
     let unbound_style = Style::default().fg(Color::DarkGray).bg(Color::Gray);
@@ -1745,15 +2368,17 @@ fn render_help_dialog(
     // ── Row 0: Tab bar ──────────────────────────────────────────────────────
     if area.height >= 1 {
         let tabs = [
-            (HelpTab::NormalMode,      "^1:Normal"),
-            (HelpTab::ViewerMode,      "^2:Viewer"),
-            (HelpTab::LeapMode,        "^3:Leap"),
-            (HelpTab::DialogMode,      "^4:Dialog"),
+            (HelpTab::NormalMode, "^1:Normal"),
+            (HelpTab::ViewerMode, "^2:Viewer"),
+            (HelpTab::LeapMode, "^3:Leap"),
+            (HelpTab::DialogMode, "^4:Dialog"),
             (HelpTab::CustomFunctions, "^5:Custom"),
         ];
         let mut spans: Vec<Span> = Vec::new();
         for (i, (tab, label)) in tabs.iter().enumerate() {
-            if i > 0 { spans.push(Span::styled("  ", base)); }
+            if i > 0 {
+                spans.push(Span::styled("  ", base));
+            }
             if tab == active_tab {
                 spans.push(Span::styled(format!("[{}]", label), tab_active));
             } else {
@@ -1792,23 +2417,32 @@ fn render_help_dialog(
     let min_desc_w: usize = 20;
     let min_keys_w: usize = 8;
 
-    let (max_cat_w, _max_desc_w, max_keys_w) = filtered.iter().fold(
-        (min_cat_w, min_desc_w, min_keys_w),
-        |(mc, md, mk), e| {
-            let kw = if e.keys.is_empty() { "(unbound)".len() } else { e.keys.join(", ").len() };
-            (mc.max(UnicodeWidthStr::width(e.category.as_str())),
-             md.max(UnicodeWidthStr::width(e.description.as_str())),
-             mk.max(kw))
-        },
-    );
+    let (max_cat_w, _max_desc_w, max_keys_w) =
+        filtered
+            .iter()
+            .fold((min_cat_w, min_desc_w, min_keys_w), |(mc, md, mk), e| {
+                let kw = if e.keys.is_empty() {
+                    "(unbound)".len()
+                } else {
+                    e.keys.join(", ").len()
+                };
+                (
+                    mc.max(UnicodeWidthStr::width(e.category.as_str())),
+                    md.max(UnicodeWidthStr::width(e.description.as_str())),
+                    mk.max(kw),
+                )
+            });
 
     // Distribute space: 2 chars separator between columns
     // Total = cat_w + 2 + desc_w + 2 + keys_w; cap at w
     let avail = w.saturating_sub(4); // 2 separators of 2 chars each
-    // Keys column is smallest — let description flex, cap category
-    let cat_w  = max_cat_w.min(avail / 4).max(min_cat_w);
+                                     // Keys column is smallest — let description flex, cap category
+    let cat_w = max_cat_w.min(avail / 4).max(min_cat_w);
     let keys_w = max_keys_w.min(avail / 4).max(min_keys_w);
-    let desc_w = avail.saturating_sub(cat_w).saturating_sub(keys_w).max(min_desc_w);
+    let desc_w = avail
+        .saturating_sub(cat_w)
+        .saturating_sub(keys_w)
+        .max(min_desc_w);
 
     // ── Rows 2..height-2: entry list ─────────────────────────────────────────
     let list_start_y = area.y + 2;
@@ -1821,17 +2455,28 @@ fn render_help_dialog(
         0
     };
 
-    for (row, entry) in filtered.iter().skip(effective_scroll).take(list_height).enumerate() {
+    for (row, entry) in filtered
+        .iter()
+        .skip(effective_scroll)
+        .take(list_height)
+        .enumerate()
+    {
         let y = list_start_y + row as u16;
-        if y >= area.y + area.height.saturating_sub(1) { break; }
+        if y >= area.y + area.height.saturating_sub(1) {
+            break;
+        }
 
-        let keys_str = if entry.keys.is_empty() { "(unbound)".to_string() } else { entry.keys.join(", ") };
+        let keys_str = if entry.keys.is_empty() {
+            "(unbound)".to_string()
+        } else {
+            entry.keys.join(", ")
+        };
         let is_unbound = entry.keys.is_empty();
 
         // Truncate each column to its width
-        let cat_s  = smart_truncate(&entry.category,    cat_w,  "…");
+        let cat_s = smart_truncate(&entry.category, cat_w, "…");
         let desc_s = smart_truncate(&entry.description, desc_w, "…");
-        let keys_s = smart_truncate(&keys_str,          keys_w, "…");
+        let keys_s = smart_truncate(&keys_str, keys_w, "…");
 
         let row_style = if is_unbound { unbound_style } else { base };
 
@@ -1842,16 +2487,20 @@ fn render_help_dialog(
             Span::styled("  ", row_style),
             Span::styled(keys_s, row_style),
         ]);
-        frame.render_widget(
-            Paragraph::new(line),
-            Rect::new(area.x + 1, y, w as u16, 1),
-        );
+        frame.render_widget(Paragraph::new(line), Rect::new(area.x + 1, y, w as u16, 1));
     }
 
     // ── Last row: hint line ──────────────────────────────────────────────────
     let hint_y = area.y + area.height.saturating_sub(1);
-    let unbound_indicator = if show_unbound { "u:hide unbound" } else { "u:show unbound" };
-    let hint_text = format!("({})  {}  L:lang({})  Ctrl+R:regex", count, unbound_indicator, language);
+    let unbound_indicator = if show_unbound {
+        "u:hide unbound"
+    } else {
+        "u:show unbound"
+    };
+    let hint_text = format!(
+        "({})  {}  L:lang({})  Ctrl+R:regex",
+        count, unbound_indicator, language
+    );
     frame.render_widget(
         Paragraph::new(smart_truncate(&hint_text, w, "…")).style(hint_style),
         Rect::new(area.x + 1, hint_y, w as u16, 1),
@@ -1879,13 +2528,13 @@ fn render_sort_dialog(
         .split(area);
 
     let sort_keys = ["Name", "Size", "Date", "Extension"];
-    let orders    = ["Ascending", "Descending"];
+    let orders = ["Ascending", "Descending"];
 
     // Spec colors: focused item = Black/White, unfocused = Black/Gray
-    let base_style    = Style::default().fg(Color::Black).bg(Color::Gray);
-    let focused_item  = Style::default().fg(Color::Black).bg(Color::White);  // spec: White bg
-    let label_style   = Style::default().fg(Color::Black).bg(Color::Gray);
-    let item_width    = chunks[0].width.saturating_sub(4); // 2-char margin each side
+    let base_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let focused_item = Style::default().fg(Color::Black).bg(Color::White); // spec: White bg
+    let label_style = Style::default().fg(Color::Black).bg(Color::Gray);
+    let item_width = chunks[0].width.saturating_sub(4); // 2-char margin each side
 
     // --- Sort key section ---
     // Label on line 0 (no Block — avoids overlapping items)
@@ -1895,10 +2544,10 @@ fn render_sort_dialog(
     );
     // Items on lines 1-4
     for (i, label) in sort_keys.iter().enumerate() {
-        let is_selected  = i == selected_mode_index;
-        let is_cursor    = focused_section == 0 && i == selected_mode_index;
+        let is_selected = i == selected_mode_index;
+        let is_cursor = focused_section == 0 && i == selected_mode_index;
         let marker = if is_selected { "● " } else { "○ " };
-        let text   = format!("{}{}", marker, label);
+        let text = format!("{}{}", marker, label);
         // Full-width paragraph so highlight covers entire row uniformly
         let row_style = if is_cursor { focused_item } else { base_style };
         let para = Paragraph::new(text).style(row_style);
@@ -1915,9 +2564,9 @@ fn render_sort_dialog(
     );
     for (i, label) in orders.iter().enumerate() {
         let is_selected = i == selected_order_index;
-        let is_cursor   = focused_section == 1 && i == selected_order_index;
+        let is_cursor = focused_section == 1 && i == selected_order_index;
         let marker = if is_selected { "● " } else { "○ " };
-        let text   = format!("{}{}", marker, label);
+        let text = format!("{}{}", marker, label);
         // Same item_width → identical highlight width for "Ascending" and "Descending"
         let row_style = if is_cursor { focused_item } else { base_style };
         let para = Paragraph::new(text).style(row_style);
@@ -1929,8 +2578,16 @@ fn render_sort_dialog(
 
     // --- Buttons [*OK*] [Cancel] ---
     // Base row is Gray; only the button text spans receive focus color (not padding)
-    let ok_style     = if focused_section == 2 { focused_item } else { base_style };
-    let cancel_style = if focused_section == 3 { focused_item } else { base_style };
+    let ok_style = if focused_section == 2 {
+        focused_item
+    } else {
+        base_style
+    };
+    let cancel_style = if focused_section == 3 {
+        focused_item
+    } else {
+        base_style
+    };
 
     let btn_line = Line::from(vec![
         Span::styled("[*OK*]", ok_style),
@@ -1940,7 +2597,7 @@ fn render_sort_dialog(
     frame.render_widget(
         Paragraph::new(btn_line)
             .alignment(Alignment::Center)
-            .style(base_style),  // Gray bg for the whole row
+            .style(base_style), // Gray bg for the whole row
         chunks[4],
     );
 }
@@ -1976,7 +2633,11 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
             render_compression_dialog(frame, area, &state, focused);
         }
 
-        DialogContent::ExtractionConfirm { archive, dest, file_count } => {
+        DialogContent::ExtractionConfirm {
+            archive,
+            dest,
+            file_count,
+        } => {
             let dialog = ExtractionConfirmDialog {
                 archive_name: archive.display_path(),
                 dest_path: dest.display_path(),
@@ -1987,7 +2648,9 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
         DialogContent::DeleteConfirm { .. } => {
             // Rendered by the dedicated arm in render_dialog — not reached via render_dialog_content.
         }
-        DialogContent::Error { message, details, .. } => {
+        DialogContent::Error {
+            message, details, ..
+        } => {
             use ratatui::text::{Line, Span};
             use ratatui::widgets::{Paragraph, Wrap};
             let mut lines: Vec<Line> = message
@@ -2001,12 +2664,15 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
                     Style::default().add_modifier(ratatui::style::Modifier::DIM),
                 )));
             }
-            frame.render_widget(
-                Paragraph::new(lines).wrap(Wrap { trim: false }),
-                area,
-            );
+            frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         }
-        DialogContent::Input { prompt, input, cursor_pos, scroll_pos, .. } => {
+        DialogContent::Input {
+            prompt,
+            input,
+            cursor_pos,
+            scroll_pos,
+            ..
+        } => {
             use ratatui::layout::Alignment;
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -2030,10 +2696,16 @@ fn render_dialog_content(frame: &mut Frame, content: &DialogContent, area: Rect,
                 ti.set_cursor(*cursor_pos);
                 ti.set_scroll(*scroll_pos);
                 ti.set_width(item_width);
-                ti.render(frame, Rect::new(area.x + 2, chunks[1].y, item_width, 1), focused);
+                ti.render(
+                    frame,
+                    Rect::new(area.x + 2, chunks[1].y, item_width, 1),
+                    focused,
+                );
             }
             frame.render_widget(
-                Paragraph::new("(Enter to confirm, Esc to cancel)").style(hint_style).alignment(Alignment::Left),
+                Paragraph::new("(Enter to confirm, Esc to cancel)")
+                    .style(hint_style)
+                    .alignment(Alignment::Left),
                 Rect::new(area.x + 2, chunks[2].y, item_width, 1),
             );
         }
@@ -2048,32 +2720,35 @@ fn validate_filename(rename_text: &str, original_name: &str) -> Option<String> {
     if rename_text.is_empty() {
         return Some("Filename cannot be empty".to_string());
     }
-    
+
     // Check if same as original
     if rename_text == original_name {
         return Some("Same filename - no change needed".to_string());
     }
-    
+
     // Windows invalid characters: < > : " / \ | ? *
     let win_invalid = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
     if rename_text.chars().any(|c| win_invalid.contains(&c)) {
         return Some("Invalid chars for Windows: < > : \" / \\ | ? *".to_string());
     }
-    
+
     // Mac invalid character: :
     let mac_invalid = [':'];
     if rename_text.chars().any(|c| mac_invalid.contains(&c)) {
         return Some("Invalid char for Mac: :".to_string());
     }
-    
+
     // Linux invalid character: /
     let linux_invalid = ['/'];
     if rename_text.chars().any(|c| linux_invalid.contains(&c)) {
         return Some("Invalid char for Linux: /".to_string());
     }
-    
+
     // Check reserved names (Windows)
-    let reserved_names = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
+    let reserved_names = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
     let name_without_ext = std::path::Path::new(rename_text)
         .file_stem()
         .map(|s| s.to_string_lossy().to_uppercase())
@@ -2081,8 +2756,8 @@ fn validate_filename(rename_text: &str, original_name: &str) -> Option<String> {
     if reserved_names.contains(&name_without_ext.as_str()) {
         return Some("Reserved system name".to_string());
     }
-    
-    None  // Valid
+
+    None // Valid
 }
 
 /// Handle File Conflict dialog input with TextInput widget
@@ -2106,8 +2781,8 @@ fn handle_file_conflict_input(
     history_index: &mut usize,
     key: KeyEvent,
 ) -> DialogAction {
-    use crossterm::event::KeyCode;
     use crate::ui::text_input::{TextInput, TextInputAction};
+    use crossterm::event::KeyCode;
     use rwf_lib::config::ViMode;
 
     let is_textbox_focused = *focused_button == 3;
@@ -2196,7 +2871,7 @@ fn handle_file_conflict_input(
                     None => {
                         *error_message = None;
                         decisions.push(rwf_lib::model::dialog::ConflictAction::Rename {
-                            new_name: rename_text.clone()
+                            new_name: rename_text.clone(),
                         });
                         return DialogAction::Confirm;
                     }
@@ -2228,7 +2903,11 @@ fn handle_file_conflict_input(
                 return DialogAction::None;
             }
             TextInputAction::PrevField => {
-                *focused_button = if *focused_button == 0 { 4 } else { *focused_button - 1 };
+                *focused_button = if *focused_button == 0 {
+                    4
+                } else {
+                    *focused_button - 1
+                };
                 return DialogAction::None;
             }
             TextInputAction::None => return DialogAction::None,
@@ -2267,19 +2946,23 @@ fn handle_file_conflict_input(
             } else {
                 DialogAction::Cancel
             }
-            }
+        }
 
-            KeyCode::Tab => {
-            *focused_button = (*focused_button + 1) % 5;  // 5 fields now
+        KeyCode::Tab => {
+            *focused_button = (*focused_button + 1) % 5; // 5 fields now
             DialogAction::None
-            }
+        }
 
-            KeyCode::BackTab => {
-            *focused_button = if *focused_button == 0 { 4 } else { *focused_button - 1 }; 
+        KeyCode::BackTab => {
+            *focused_button = if *focused_button == 0 {
+                4
+            } else {
+                *focused_button - 1
+            };
             DialogAction::None
-            }
+        }
 
-            KeyCode::Enter => {
+        KeyCode::Enter => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
                 // Shift+Enter: Apply to ALL remaining
                 let action = button_index_to_action(*focused_button);
@@ -2303,7 +2986,7 @@ fn handle_file_conflict_input(
                     _ => DialogAction::None,
                 }
             }
-            }
+        }
         _ => DialogAction::None,
     }
 }
@@ -2314,15 +2997,20 @@ fn button_index_to_action(index: usize) -> rwf_lib::model::dialog::ConflictActio
         0 => rwf_lib::model::dialog::ConflictAction::Force,
         1 => rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer,
         2 => rwf_lib::model::dialog::ConflictAction::Skip,
-        3 => rwf_lib::model::dialog::ConflictAction::Rename { new_name: String::new() },  // Placeholder, name synced from textbox
-        4 => rwf_lib::model::dialog::ConflictAction::Skip,  // Cancel = skip this file
+        3 => rwf_lib::model::dialog::ConflictAction::Rename {
+            new_name: String::new(),
+        }, // Placeholder, name synced from textbox
+        4 => rwf_lib::model::dialog::ConflictAction::Skip, // Cancel = skip this file
         _ => rwf_lib::model::dialog::ConflictAction::Skip,
     }
 }
 
-
 /// Handle dialog input centrally
-pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&rwf_lib::model::SearchModel>) -> DialogAction {
+pub fn handle_dialog_input(
+    dialog: &mut Dialog,
+    key: KeyEvent,
+    search: Option<&rwf_lib::model::SearchModel>,
+) -> DialogAction {
     // Note: Esc handling is delegated to individual dialog handlers
     // - FileConflict: Esc cancels (Emacs) or switches to Normal mode (Vi)
     // - Other dialogs: Esc cancels
@@ -2330,19 +3018,22 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     // Enter = Confirm (but depends on focused field for JobManager / SortDialog)
     if key.code == crossterm::event::KeyCode::Enter {
         // SortDialog: Enter confirms only when OK (2) or Cancel (3) section is focused
-        if let DialogContent::SortDialog { focused_section, .. } = &dialog.content {
+        if let DialogContent::SortDialog {
+            focused_section, ..
+        } = &dialog.content
+        {
             match *focused_section {
-                2 => return DialogAction::Confirm,  // OK button
-                3 => return DialogAction::Cancel,   // Cancel button
-                _ => return DialogAction::None,     // List section — Enter does nothing
+                2 => return DialogAction::Confirm, // OK button
+                3 => return DialogAction::Cancel,  // Cancel button
+                _ => return DialogAction::None,    // List section — Enter does nothing
             }
         }
         // For JobManager dialog, check which field has focus
         if let DialogContent::JobManager { focused_field, .. } = &dialog.content {
             match *focused_field {
-                1 => return DialogAction::Confirm,  // Close button focused
-                2 => return DialogAction::Confirm,  // Cancel Job button focused
-                _ => {}                              // Job List focused, Enter does nothing
+                1 => return DialogAction::Confirm, // Close button focused
+                2 => return DialogAction::Confirm, // Cancel Job button focused
+                _ => {}                            // Job List focused, Enter does nothing
             }
         } else if let DialogContent::FileConflict { .. } = &dialog.content {
             // FileConflict dialog handles Enter internally (for buttons and textbox)
@@ -2375,13 +3066,23 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // FileMask dialog — text input with Tab navigation and Enter/Esc handling
-    if let DialogContent::FileMask { input, cursor_pos, scroll_pos, focused_field } = &mut dialog.content {
-        use crossterm::event::KeyCode;
+    if let DialogContent::FileMask {
+        input,
+        cursor_pos,
+        scroll_pos,
+        focused_field,
+    } = &mut dialog.content
+    {
         use crate::ui::text_input::{TextInput, TextInputAction};
+        use crossterm::event::KeyCode;
         // Tab cycles: 0 (textbox) → 1 (OK) → 2 (Cancel) → 0
         if key.code == KeyCode::Tab {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 { 2 } else { *focused_field - 1 };
+                *focused_field = if *focused_field == 0 {
+                    2
+                } else {
+                    *focused_field - 1
+                };
             } else {
                 *focused_field = (*focused_field + 1) % 3;
             }
@@ -2408,7 +3109,7 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             *scroll_pos = ti.scroll();
             match action {
                 TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel  => return DialogAction::Cancel,
+                TextInputAction::Cancel => return DialogAction::Cancel,
                 _ => return DialogAction::None,
             }
         }
@@ -2416,12 +3117,22 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // WildcardMark dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::WildcardMark { input, cursor_pos, scroll_pos, focused_field } = &mut dialog.content {
-        use crossterm::event::KeyCode;
+    if let DialogContent::WildcardMark {
+        input,
+        cursor_pos,
+        scroll_pos,
+        focused_field,
+    } = &mut dialog.content
+    {
         use crate::ui::text_input::{TextInput, TextInputAction};
+        use crossterm::event::KeyCode;
         if key.code == KeyCode::Tab {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 { 2 } else { *focused_field - 1 };
+                *focused_field = if *focused_field == 0 {
+                    2
+                } else {
+                    *focused_field - 1
+                };
             } else {
                 *focused_field = (*focused_field + 1) % 3;
             }
@@ -2447,7 +3158,7 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             *scroll_pos = ti.scroll();
             match action {
                 TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel  => return DialogAction::Cancel,
+                TextInputAction::Cancel => return DialogAction::Cancel,
                 _ => return DialogAction::None,
             }
         }
@@ -2455,9 +3166,15 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
-    if let DialogContent::Input { input, cursor_pos, scroll_pos, .. } = &mut dialog.content {
-        use crossterm::event::KeyCode;
+    if let DialogContent::Input {
+        input,
+        cursor_pos,
+        scroll_pos,
+        ..
+    } = &mut dialog.content
+    {
         use crate::ui::text_input::{TextInput, TextInputAction};
+        use crossterm::event::KeyCode;
         if key.code == KeyCode::Esc {
             return DialogAction::Cancel;
         }
@@ -2474,18 +3191,28 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         *scroll_pos = ti.scroll();
         match action {
             TextInputAction::Confirm => return DialogAction::Confirm,
-            TextInputAction::Cancel  => return DialogAction::Cancel,
+            TextInputAction::Cancel => return DialogAction::Cancel,
             _ => return DialogAction::None,
         }
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::SimpleRename { input, cursor_pos, scroll_pos, focused_field } = &mut dialog.content {
-        use crossterm::event::KeyCode;
+    if let DialogContent::SimpleRename {
+        input,
+        cursor_pos,
+        scroll_pos,
+        focused_field,
+    } = &mut dialog.content
+    {
         use crate::ui::text_input::{TextInput, TextInputAction};
+        use crossterm::event::KeyCode;
         if key.code == KeyCode::Tab {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 { 2 } else { *focused_field - 1 };
+                *focused_field = if *focused_field == 0 {
+                    2
+                } else {
+                    *focused_field - 1
+                };
             } else {
                 *focused_field = (*focused_field + 1) % 3;
             }
@@ -2511,7 +3238,7 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             *scroll_pos = ti.scroll();
             match action {
                 TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel  => return DialogAction::Cancel,
+                TextInputAction::Cancel => return DialogAction::Cancel,
                 _ => return DialogAction::None,
             }
         }
@@ -2520,14 +3247,25 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 
     // PatternRename dialog — Find/Replace textboxes + Alt+R/S flag toggles + preview scroll
     if let DialogContent::PatternRename {
-        find, find_cursor_pos, find_scroll_pos,
-        replace, replace_cursor_pos, replace_scroll_pos,
-        use_regex, case_sensitive,
-        focused_field, preview_scroll, preview_horizontal_scroll,
-        preview, error_message, preview_mode, show_all,
-    } = &mut dialog.content {
-        use crossterm::event::KeyCode;
+        find,
+        find_cursor_pos,
+        find_scroll_pos,
+        replace,
+        replace_cursor_pos,
+        replace_scroll_pos,
+        use_regex,
+        case_sensitive,
+        focused_field,
+        preview_scroll,
+        preview_horizontal_scroll,
+        preview,
+        error_message,
+        preview_mode,
+        show_all,
+    } = &mut dialog.content
+    {
         use crate::ui::text_input::{TextInput, TextInputAction};
+        use crossterm::event::KeyCode;
 
         // Alt+R → toggle regex mode
         if key.modifiers.contains(KeyModifiers::ALT) && key.code == KeyCode::Char('r') {
@@ -2558,26 +3296,37 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         // Tab / BackTab: cycle find(0) → replace(1) → filelist(2) → find(0)
         if key.code == KeyCode::Tab {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 { 2 } else { *focused_field - 1 };
+                *focused_field = if *focused_field == 0 {
+                    2
+                } else {
+                    *focused_field - 1
+                };
             } else {
                 *focused_field = (*focused_field + 1) % 3;
             }
             return DialogAction::None;
         }
         if key.code == KeyCode::BackTab {
-            *focused_field = if *focused_field == 0 { 2 } else { *focused_field - 1 };
+            *focused_field = if *focused_field == 0 {
+                2
+            } else {
+                *focused_field - 1
+            };
             return DialogAction::None;
         }
 
-        if key.code == KeyCode::Esc { return DialogAction::Cancel; }
+        if key.code == KeyCode::Esc {
+            return DialogAction::Cancel;
+        }
         if key.code == KeyCode::Enter {
             // Detect duplicate target names before executing
             let mut seen = std::collections::HashSet::new();
-            let has_collision = preview.iter().any(|(orig, new_name)| {
-                orig != new_name && !seen.insert(new_name.clone())
-            });
+            let has_collision = preview
+                .iter()
+                .any(|(orig, new_name)| orig != new_name && !seen.insert(new_name.clone()));
             if has_collision {
-                *error_message = Some("Multiple files would be renamed to the same name".to_string());
+                *error_message =
+                    Some("Multiple files would be renamed to the same name".to_string());
                 return DialogAction::None;
             }
             return DialogAction::Confirm;
@@ -2614,14 +3363,22 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         if *focused_field == 2 {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match key.code {
-                    KeyCode::Left  => { *preview_horizontal_scroll = 0; }
-                    KeyCode::Right => { *preview_horizontal_scroll = 500; } // clamped at render
+                    KeyCode::Left => {
+                        *preview_horizontal_scroll = 0;
+                    }
+                    KeyCode::Right => {
+                        *preview_horizontal_scroll = 500;
+                    } // clamped at render
                     _ => {}
                 }
             } else if key.modifiers == KeyModifiers::NONE {
                 match key.code {
-                    KeyCode::Left  => { *preview_horizontal_scroll = preview_horizontal_scroll.saturating_sub(1); }
-                    KeyCode::Right => { *preview_horizontal_scroll = preview_horizontal_scroll.saturating_add(1); }
+                    KeyCode::Left => {
+                        *preview_horizontal_scroll = preview_horizontal_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Right => {
+                        *preview_horizontal_scroll = preview_horizontal_scroll.saturating_add(1);
+                    }
                     _ => {}
                 }
             }
@@ -2633,7 +3390,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             let (text, cursor, scroll) = if *focused_field == 0 {
                 (find as &mut String, find_cursor_pos, find_scroll_pos)
             } else {
-                (replace as &mut String, replace_cursor_pos, replace_scroll_pos)
+                (
+                    replace as &mut String,
+                    replace_cursor_pos,
+                    replace_scroll_pos,
+                )
             };
             let mut ti = TextInput::new(Some(text.clone()), rwf_lib::config::EditMode::Emacs);
             ti.set_original_text(text.clone());
@@ -2647,8 +3408,14 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             *scroll = ti.scroll();
             match action {
                 TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel  => return DialogAction::Cancel,
-                _ => return if changed { DialogAction::PatternChanged } else { DialogAction::None },
+                TextInputAction::Cancel => return DialogAction::Cancel,
+                _ => {
+                    return if changed {
+                        DialogAction::PatternChanged
+                    } else {
+                        DialogAction::None
+                    }
+                }
             }
         }
         return DialogAction::None;
@@ -2656,13 +3423,21 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 
     // Help dialog — full input handler
     if let DialogContent::Help {
-        entries, query, regex_mode, show_unbound, active_tab, scroll_pos, ..
-    } = &mut dialog.content {
+        entries,
+        query,
+        regex_mode,
+        show_unbound,
+        active_tab,
+        scroll_pos,
+        ..
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         use rwf_lib::model::dialog::HelpTab;
 
         // Compute filtered count for scroll clamping
-        let filtered_count = help_filter_entries(entries, active_tab, *show_unbound, query, *regex_mode).len();
+        let filtered_count =
+            help_filter_entries(entries, active_tab, *show_unbound, query, *regex_mode).len();
         let list_height_estimate: usize = 20; // conservative; true height used in render
 
         match key.code {
@@ -2710,11 +3485,15 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 
             // Scroll — Up/Down arrow only (j/k are search input)
             KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
-                if *scroll_pos > 0 { *scroll_pos -= 1; }
+                if *scroll_pos > 0 {
+                    *scroll_pos -= 1;
+                }
             }
             KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
                 let max_scroll = filtered_count.saturating_sub(list_height_estimate);
-                if *scroll_pos < max_scroll { *scroll_pos += 1; }
+                if *scroll_pos < max_scroll {
+                    *scroll_pos += 1;
+                }
             }
             KeyCode::PageUp => {
                 *scroll_pos = scroll_pos.saturating_sub(list_height_estimate);
@@ -2723,8 +3502,12 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 let max_scroll = filtered_count.saturating_sub(list_height_estimate);
                 *scroll_pos = (*scroll_pos + list_height_estimate).min(max_scroll);
             }
-            KeyCode::Home => { *scroll_pos = 0; }
-            KeyCode::End  => { *scroll_pos = filtered_count.saturating_sub(list_height_estimate); }
+            KeyCode::Home => {
+                *scroll_pos = 0;
+            }
+            KeyCode::End => {
+                *scroll_pos = filtered_count.saturating_sub(list_height_estimate);
+            }
 
             // u: toggle show_unbound
             KeyCode::Char('u') if key.modifiers == KeyModifiers::NONE => {
@@ -2733,8 +3516,8 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             }
 
             // L: switch language
-            KeyCode::Char('L') if key.modifiers == KeyModifiers::NONE
-                                || key.modifiers == KeyModifiers::SHIFT =>
+            KeyCode::Char('L')
+                if key.modifiers == KeyModifiers::NONE || key.modifiers == KeyModifiers::SHIFT =>
             {
                 return DialogAction::RotateLanguage;
             }
@@ -2768,9 +3551,8 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             // Printable chars: append to query
             KeyCode::Char(c)
                 if !key.modifiers.contains(KeyModifiers::CONTROL)
-                && !key.modifiers.contains(KeyModifiers::ALT)
-                && !key.modifiers.contains(KeyModifiers::SUPER)
-                =>
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
             {
                 query.push(c);
                 *scroll_pos = 0;
@@ -2783,28 +3565,44 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 
     // HistoryDialog — Up/Down/j/k: navigate, Tab/Left/Right/h/l: switch pane, Enter: jump, Esc: cancel
     // DriveSelection dialog — incremental search + arrow navigation
-    if let DialogContent::DriveSelection { drives, selected_index, filter } = &mut dialog.content {
+    if let DialogContent::DriveSelection {
+        drives,
+        selected_index,
+        filter,
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         let filtered_count = if filter.is_empty() {
             drives.len()
         } else {
             let lower = filter.to_lowercase();
-            drives.iter().filter(|d| {
-                d.display_label().to_lowercase().contains(&lower)
-                    || d.path.to_lowercase().contains(&lower)
-            }).count()
+            drives
+                .iter()
+                .filter(|d| {
+                    d.display_label().to_lowercase().contains(&lower)
+                        || d.path.to_lowercase().contains(&lower)
+                })
+                .count()
         };
         match key.code {
-            KeyCode::Esc  => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
             KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 { *selected_index -= 1; }
+                if *selected_index > 0 {
+                    *selected_index -= 1;
+                }
             }
             KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index + 1 < filtered_count { *selected_index += 1; }
+                if *selected_index + 1 < filtered_count {
+                    *selected_index += 1;
+                }
             }
-            KeyCode::Home => { *selected_index = 0; }
-            KeyCode::End  => { *selected_index = filtered_count.saturating_sub(1); }
+            KeyCode::Home => {
+                *selected_index = 0;
+            }
+            KeyCode::End => {
+                *selected_index = filtered_count.saturating_sub(1);
+            }
             KeyCode::Backspace => {
                 if !filter.is_empty() {
                     let mut chars = filter.chars();
@@ -2822,9 +3620,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 filter.clear();
             }
             // Printable chars: add to search filter (reset to top for new search)
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
-                              && !key.modifiers.contains(KeyModifiers::ALT)
-                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 filter.push(c);
                 *selected_index = 0;
             }
@@ -2834,21 +3634,33 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // JumpToPath — text input + AND-filter suggestions + arrow navigation
-    if let DialogContent::JumpToPath { query, cursor_pos, suggestions, selected_index, candidates, .. } = &mut dialog.content {
+    if let DialogContent::JumpToPath {
+        query,
+        cursor_pos,
+        suggestions,
+        selected_index,
+        candidates,
+        ..
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         match key.code {
-            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
-            KeyCode::Up    if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 { *selected_index -= 1; }
+            KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index > 0 {
+                    *selected_index -= 1;
+                }
             }
-            KeyCode::Down  if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
                 if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
                     *selected_index += 1;
                 }
             }
-            KeyCode::Home => { *selected_index = 0; }
-            KeyCode::End  => {
+            KeyCode::Home => {
+                *selected_index = 0;
+            }
+            KeyCode::End => {
                 *selected_index = suggestions.len().saturating_sub(1);
             }
             KeyCode::PageUp => {
@@ -2864,7 +3676,9 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                     let mut chars = query.chars();
                     chars.next_back();
                     *query = chars.as_str().to_string();
-                    if *cursor_pos > 0 { *cursor_pos -= 1; }
+                    if *cursor_pos > 0 {
+                        *cursor_pos -= 1;
+                    }
                     *suggestions = if let Some(s) = search {
                         s.filter_paths(candidates, query)
                     } else {
@@ -2885,9 +3699,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 *suggestions = candidates.clone();
                 *selected_index = 0;
             }
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
-                              && !key.modifiers.contains(KeyModifiers::ALT)
-                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 query.push(c);
                 *cursor_pos += 1;
                 *suggestions = if let Some(s) = search {
@@ -2903,21 +3719,33 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // JumpToFile — text input + AND-filter suggestions (files + dirs) + arrow navigation
-    if let DialogContent::JumpToFile { query, cursor_pos, suggestions, selected_index, candidates, .. } = &mut dialog.content {
+    if let DialogContent::JumpToFile {
+        query,
+        cursor_pos,
+        suggestions,
+        selected_index,
+        candidates,
+        ..
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         match key.code {
-            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
-            KeyCode::Up    if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 { *selected_index -= 1; }
+            KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
+                if *selected_index > 0 {
+                    *selected_index -= 1;
+                }
             }
-            KeyCode::Down  if key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
                 if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
                     *selected_index += 1;
                 }
             }
-            KeyCode::Home => { *selected_index = 0; }
-            KeyCode::End  => {
+            KeyCode::Home => {
+                *selected_index = 0;
+            }
+            KeyCode::End => {
                 *selected_index = suggestions.len().saturating_sub(1);
             }
             KeyCode::PageUp => {
@@ -2933,7 +3761,9 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                     let mut chars = query.chars();
                     chars.next_back();
                     *query = chars.as_str().to_string();
-                    if *cursor_pos > 0 { *cursor_pos -= 1; }
+                    if *cursor_pos > 0 {
+                        *cursor_pos -= 1;
+                    }
                     *suggestions = if let Some(s) = search {
                         s.filter_paths(candidates, query)
                     } else {
@@ -2954,9 +3784,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 *suggestions = candidates.clone();
                 *selected_index = 0;
             }
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
-                              && !key.modifiers.contains(KeyModifiers::ALT)
-                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 query.push(c);
                 *cursor_pos += 1;
                 *suggestions = if let Some(s) = search {
@@ -2972,20 +3804,32 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // CustomFunctionSelector — incremental search + arrow navigation
-    if let DialogContent::CustomFunctionSelector { functions, selected_index, filter } = &mut dialog.content {
+    if let DialogContent::CustomFunctionSelector {
+        functions,
+        selected_index,
+        filter,
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         let lower = filter.to_lowercase();
         let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
             functions.iter().collect()
         } else {
-            functions.iter().filter(|f| {
-                f.name.to_lowercase().contains(&lower)
-                    || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
-            }).collect()
+            functions
+                .iter()
+                .filter(|f| {
+                    f.name.to_lowercase().contains(&lower)
+                        || f.description
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&lower)
+                })
+                .collect()
         };
         let filtered_count = filtered.len();
         match key.code {
-            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => {
                 if let Some(func) = filtered.get(*selected_index) {
                     if func.is_menu() {
@@ -2997,13 +3841,21 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 return DialogAction::Confirm;
             }
             KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 { *selected_index -= 1; }
+                if *selected_index > 0 {
+                    *selected_index -= 1;
+                }
             }
             KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index + 1 < filtered_count { *selected_index += 1; }
+                if *selected_index + 1 < filtered_count {
+                    *selected_index += 1;
+                }
             }
-            KeyCode::Home => { *selected_index = 0; }
-            KeyCode::End  => { *selected_index = filtered_count.saturating_sub(1); }
+            KeyCode::Home => {
+                *selected_index = 0;
+            }
+            KeyCode::End => {
+                *selected_index = filtered_count.saturating_sub(1);
+            }
             KeyCode::Backspace => {
                 if !filter.is_empty() {
                     let mut chars = filter.chars();
@@ -3012,11 +3864,17 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                     *selected_index = 0;
                 }
             }
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => { filter.clear(); }
-            KeyCode::Char('\x0b') => { filter.clear(); }
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
-                              && !key.modifiers.contains(KeyModifiers::ALT)
-                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                filter.clear();
+            }
+            KeyCode::Char('\x0b') => {
+                filter.clear();
+            }
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 filter.push(c);
                 *selected_index = 0;
             }
@@ -3026,19 +3884,28 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // ContextMenu — arrow navigation (skip separators)
-    if let DialogContent::ContextMenu { options, selected_index } = &mut dialog.content {
+    if let DialogContent::ContextMenu {
+        options,
+        selected_index,
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         use rwf_lib::model::dialog::ContextMenuAction;
-        let selectable_count = options.iter().filter(|o| !matches!(o.action, ContextMenuAction::Separator)).count();
+        let selectable_count = options
+            .iter()
+            .filter(|o| !matches!(o.action, ContextMenuAction::Separator))
+            .count();
         let _ = selectable_count;
         match key.code {
-            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
             KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
                 // Move up, skip separators
                 let mut idx = *selected_index;
                 loop {
-                    if idx == 0 { break; }
+                    if idx == 0 {
+                        break;
+                    }
                     idx -= 1;
                     if !matches!(options[idx].action, ContextMenuAction::Separator) {
                         *selected_index = idx;
@@ -3049,7 +3916,9 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
                 let mut idx = *selected_index;
                 loop {
-                    if idx + 1 >= options.len() { break; }
+                    if idx + 1 >= options.len() {
+                        break;
+                    }
                     idx += 1;
                     if !matches!(options[idx].action, ContextMenuAction::Separator) {
                         *selected_index = idx;
@@ -3081,35 +3950,55 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // CustomFunctionMenu — second-level menu with separator skipping and char-jump
-    if let DialogContent::CustomFunctionMenu { items, selected_index } = &mut dialog.content {
+    if let DialogContent::CustomFunctionMenu {
+        items,
+        selected_index,
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         match key.code {
-            KeyCode::Esc   => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
             KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
                 let mut idx = *selected_index;
                 loop {
-                    if idx == 0 { break; }
+                    if idx == 0 {
+                        break;
+                    }
                     idx -= 1;
-                    if items[idx].is_selectable() { *selected_index = idx; break; }
+                    if items[idx].is_selectable() {
+                        *selected_index = idx;
+                        break;
+                    }
                 }
             }
             KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
                 let mut idx = *selected_index;
                 loop {
-                    if idx + 1 >= items.len() { break; }
+                    if idx + 1 >= items.len() {
+                        break;
+                    }
                     idx += 1;
-                    if items[idx].is_selectable() { *selected_index = idx; break; }
+                    if items[idx].is_selectable() {
+                        *selected_index = idx;
+                        break;
+                    }
                 }
             }
             KeyCode::Home => {
                 for (i, item) in items.iter().enumerate() {
-                    if item.is_selectable() { *selected_index = i; break; }
+                    if item.is_selectable() {
+                        *selected_index = i;
+                        break;
+                    }
                 }
             }
             KeyCode::End => {
                 for (i, item) in items.iter().enumerate().rev() {
-                    if item.is_selectable() { *selected_index = i; break; }
+                    if item.is_selectable() {
+                        *selected_index = i;
+                        break;
+                    }
                 }
             }
             KeyCode::Char(c) if key.modifiers == KeyModifiers::NONE => {
@@ -3131,29 +4020,44 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // RegisteredFolderSelector — incremental search + arrow navigation
-    if let DialogContent::RegisteredFolderSelector { folders, selected_index, filter } = &mut dialog.content {
+    if let DialogContent::RegisteredFolderSelector {
+        folders,
+        selected_index,
+        filter,
+    } = &mut dialog.content
+    {
         use crossterm::event::KeyCode;
         let filtered_count = if filter.is_empty() {
             folders.len()
         } else {
             let lower = filter.to_lowercase();
-            folders.iter().filter(|f| {
-                f.name.to_lowercase().contains(&lower)
-                    || f.path.to_lowercase().contains(&lower)
-            }).count()
+            folders
+                .iter()
+                .filter(|f| {
+                    f.name.to_lowercase().contains(&lower) || f.path.to_lowercase().contains(&lower)
+                })
+                .count()
         };
         match key.code {
-            KeyCode::Esc  => return DialogAction::Cancel,
+            KeyCode::Esc => return DialogAction::Cancel,
             KeyCode::Enter => return DialogAction::Confirm,
             KeyCode::Delete => return DialogAction::DeleteSelected,
             KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 { *selected_index -= 1; }
+                if *selected_index > 0 {
+                    *selected_index -= 1;
+                }
             }
             KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index + 1 < filtered_count { *selected_index += 1; }
+                if *selected_index + 1 < filtered_count {
+                    *selected_index += 1;
+                }
             }
-            KeyCode::Home => { *selected_index = 0; }
-            KeyCode::End  => { *selected_index = filtered_count.saturating_sub(1); }
+            KeyCode::Home => {
+                *selected_index = 0;
+            }
+            KeyCode::End => {
+                *selected_index = filtered_count.saturating_sub(1);
+            }
             KeyCode::Backspace => {
                 if !filter.is_empty() {
                     let mut chars = filter.chars();
@@ -3171,9 +4075,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 filter.clear();
             }
             // Printable chars: add to search filter (reset to top for new search)
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL)
-                              && !key.modifiers.contains(KeyModifiers::ALT)
-                              && !key.modifiers.contains(KeyModifiers::SUPER) => {
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
+            {
                 filter.push(c);
                 *selected_index = 0;
             }
@@ -3189,15 +4095,18 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         // ── Pane switch (Tab, Left arrow, Right arrow, h, l) ──────────────
         let switch_to: Option<ActivePane> = match key.code {
             KeyCode::Tab => {
-                let cur = if let DialogContent::HistoryDialog { active_pane, .. } = &dialog.content {
+                let cur = if let DialogContent::HistoryDialog { active_pane, .. } = &dialog.content
+                {
                     *active_pane
-                } else { unreachable!() };
+                } else {
+                    unreachable!()
+                };
                 Some(match cur {
-                    ActivePane::Left  => ActivePane::Right,
+                    ActivePane::Left => ActivePane::Right,
                     ActivePane::Right => ActivePane::Left,
                 })
             }
-            KeyCode::Left  | KeyCode::Char('h') => Some(ActivePane::Left),
+            KeyCode::Left | KeyCode::Char('h') => Some(ActivePane::Left),
             KeyCode::Right | KeyCode::Char('l') => Some(ActivePane::Right),
             _ => None,
         };
@@ -3208,7 +4117,10 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
                 *active_pane = new_pane;
             }
             // update title separately (no borrow conflict — different fields)
-            let pane_label = match new_pane { ActivePane::Left => "Left", ActivePane::Right => "Right" };
+            let pane_label = match new_pane {
+                ActivePane::Left => "Left",
+                ActivePane::Right => "Right",
+            };
             if let Some(bar) = dialog.title.rfind('|') {
                 let prefix = dialog.title[..bar].to_string();
                 dialog.title = format!("{}| {}]", prefix, pane_label);
@@ -3218,21 +4130,37 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 
         // ── Cursor navigation ──────────────────────────────────────────────
         if let DialogContent::HistoryDialog {
-            left_entries, right_entries,
-            left_selected, right_selected,
-            active_pane, ..
-        } = &mut dialog.content {
+            left_entries,
+            right_entries,
+            left_selected,
+            right_selected,
+            active_pane,
+            ..
+        } = &mut dialog.content
+        {
             let (sel, total) = match active_pane {
-                ActivePane::Left  => (left_selected,  left_entries.len()),
+                ActivePane::Left => (left_selected, left_entries.len()),
                 ActivePane::Right => (right_selected, right_entries.len()),
             };
             match key.code {
-                KeyCode::Esc            => return DialogAction::Cancel,
-                KeyCode::Enter          => return DialogAction::Confirm,
-                KeyCode::Up   | KeyCode::Char('k') => { if *sel + 1 < total { *sel += 1; } }
-                KeyCode::Down | KeyCode::Char('j') => { if *sel > 0 { *sel -= 1; } }
-                KeyCode::Home | KeyCode::Char('g') => { *sel = total.saturating_sub(1); }
-                KeyCode::End  | KeyCode::Char('G') => { *sel = 0; }
+                KeyCode::Esc => return DialogAction::Cancel,
+                KeyCode::Enter => return DialogAction::Confirm,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if *sel + 1 < total {
+                        *sel += 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if *sel > 0 {
+                        *sel -= 1;
+                    }
+                }
+                KeyCode::Home | KeyCode::Char('g') => {
+                    *sel = total.saturating_sub(1);
+                }
+                KeyCode::End | KeyCode::Char('G') => {
+                    *sel = 0;
+                }
                 _ => {}
             }
         }
@@ -3240,12 +4168,53 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // FileConflict dialog - custom input handling with textbox
-    if let DialogContent::FileConflict { conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, history, history_index, .. } = &mut dialog.content {
-        return handle_file_conflict_input(conflicts, current_index, focused_button, rename_text, rename_cursor, rename_scroll, edit_mode, vi_mode, error_message, decisions, vi_pending_find_backward, vi_pending_operator, vi_pending_ctrl_x, history, history_index, key);
+    if let DialogContent::FileConflict {
+        conflicts,
+        current_index,
+        focused_button,
+        rename_text,
+        rename_cursor,
+        rename_scroll,
+        edit_mode,
+        vi_mode,
+        error_message,
+        decisions,
+        vi_pending_find_backward,
+        vi_pending_operator,
+        vi_pending_ctrl_x,
+        history,
+        history_index,
+        ..
+    } = &mut dialog.content
+    {
+        return handle_file_conflict_input(
+            conflicts,
+            current_index,
+            focused_button,
+            rename_text,
+            rename_cursor,
+            rename_scroll,
+            edit_mode,
+            vi_mode,
+            error_message,
+            decisions,
+            vi_pending_find_backward,
+            vi_pending_operator,
+            vi_pending_ctrl_x,
+            history,
+            history_index,
+            key,
+        );
     }
 
     // Compression dialog - Vi mode support for Esc (when textbox not focused)
-    if let DialogContent::Compression { edit_mode, vi_mode, focused_field, .. } = &mut dialog.content {
+    if let DialogContent::Compression {
+        edit_mode,
+        vi_mode,
+        focused_field,
+        ..
+    } = &mut dialog.content
+    {
         if key.code == crossterm::event::KeyCode::Esc && *focused_field != 2 {
             debug!("Esc pressed in Compression dialog (non-textbox), edit_mode={:?}, current vi_mode={:?}", edit_mode, vi_mode);
             if *edit_mode == rwf_lib::config::EditMode::Vi {
@@ -3265,14 +4234,22 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
     }
 
     // Tab navigation - cycles through dialog fields
-    if key.code == crossterm::event::KeyCode::Tab || key.code == crossterm::event::KeyCode::BackTab {
+    if key.code == crossterm::event::KeyCode::Tab || key.code == crossterm::event::KeyCode::BackTab
+    {
         let backward = key.code == crossterm::event::KeyCode::BackTab
             || key.modifiers.contains(KeyModifiers::SHIFT);
 
         // SortDialog: Tab cycles 0→1→2→3→0 (sort-key list→order list→OK→Cancel)
-        if let DialogContent::SortDialog { focused_section, .. } = &mut dialog.content {
+        if let DialogContent::SortDialog {
+            focused_section, ..
+        } = &mut dialog.content
+        {
             if backward {
-                *focused_section = if *focused_section == 0 { 3 } else { *focused_section - 1 };
+                *focused_section = if *focused_section == 0 {
+                    3
+                } else {
+                    *focused_section - 1
+                };
             } else {
                 *focused_section = (*focused_section + 1) % 4;
             }
@@ -3284,16 +4261,16 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
             // Cycle: 0→1→2→0 (Job List→Close→Cancel→Job List)
             if backward {
                 *focused_field = match *focused_field {
-                    0 => 2,  // Job List → Cancel
-                    1 => 0,  // Close → Job List
-                    2 => 1,  // Cancel → Close
+                    0 => 2, // Job List → Cancel
+                    1 => 0, // Close → Job List
+                    2 => 1, // Cancel → Close
                     _ => 0,
                 };
             } else {
                 *focused_field = match *focused_field {
-                    0 => 1,  // Job List → Close
-                    1 => 2,  // Close → Cancel
-                    2 => 0,  // Cancel → Job List
+                    0 => 1, // Job List → Close
+                    1 => 2, // Close → Cancel
+                    2 => 0, // Cancel → Job List
                     _ => 0,
                 };
             }
@@ -3304,7 +4281,11 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
         if let DialogContent::Compression { focused_field, .. } = &mut dialog.content {
             // Cycle: 0→1→2→3→4→0 (format→compression→name→OK→Cancel→format)
             if backward {
-                *focused_field = if *focused_field == 0 { 4 } else { *focused_field - 1 };
+                *focused_field = if *focused_field == 0 {
+                    4
+                } else {
+                    *focused_field - 1
+                };
             } else {
                 *focused_field = (*focused_field + 1) % 5;
             }
@@ -3330,37 +4311,64 @@ pub fn handle_dialog_input(dialog: &mut Dialog, key: KeyEvent, search: Option<&r
 /// Handle content-specific input
 fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAction {
     match content {
-        DialogContent::SortDialog { selected_mode_index, selected_order_index, focused_section } => {
+        DialogContent::SortDialog {
+            selected_mode_index,
+            selected_order_index,
+            focused_section,
+        } => {
             use crossterm::event::KeyCode;
             match key.code {
                 KeyCode::Up => {
                     match *focused_section {
-                        0 => { if *selected_mode_index > 0 { *selected_mode_index -= 1; } }
-                        1 => { if *selected_order_index > 0 { *selected_order_index -= 1; } }
+                        0 => {
+                            if *selected_mode_index > 0 {
+                                *selected_mode_index -= 1;
+                            }
+                        }
+                        1 => {
+                            if *selected_order_index > 0 {
+                                *selected_order_index -= 1;
+                            }
+                        }
                         _ => {}
                     }
                     DialogAction::None
                 }
                 KeyCode::Down => {
                     match *focused_section {
-                        0 => { if *selected_mode_index < 3 { *selected_mode_index += 1; } }
-                        1 => { if *selected_order_index < 1 { *selected_order_index += 1; } }
+                        0 => {
+                            if *selected_mode_index < 3 {
+                                *selected_mode_index += 1;
+                            }
+                        }
+                        1 => {
+                            if *selected_order_index < 1 {
+                                *selected_order_index += 1;
+                            }
+                        }
                         _ => {}
                     }
                     DialogAction::None
                 }
                 KeyCode::Left => {
-                    if *focused_section > 0 { *focused_section -= 1; }
+                    if *focused_section > 0 {
+                        *focused_section -= 1;
+                    }
                     DialogAction::None
                 }
                 KeyCode::Right => {
-                    if *focused_section < 3 { *focused_section += 1; }
+                    if *focused_section < 3 {
+                        *focused_section += 1;
+                    }
                     DialogAction::None
                 }
                 _ => DialogAction::None,
             }
         }
-        DialogContent::JobManager { selected_index, focused_field } => {
+        DialogContent::JobManager {
+            selected_index,
+            focused_field,
+        } => {
             // Job Manager dialog input handling (Part 6.6, 6.7)
 
             // Up/Down navigation in Job List (only when Job List is focused)
@@ -3492,9 +4500,14 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
                                 let new_ext = archive_ext_for_format(new_fmt);
                                 let old_ext = archive_ext_for_format(*format);
                                 // Handle double extension .tar.gz
-                                let base = if old_ext == "tar" && archive_name.to_lowercase().ends_with(".tar.gz") {
+                                let base = if old_ext == "tar"
+                                    && archive_name.to_lowercase().ends_with(".tar.gz")
+                                {
                                     &archive_name[..archive_name.len() - ".tar.gz".len()]
-                                } else if archive_name.to_lowercase().ends_with(&format!(".{}", old_ext)) {
+                                } else if archive_name
+                                    .to_lowercase()
+                                    .ends_with(&format!(".{}", old_ext))
+                                {
                                     &archive_name[..archive_name.len() - old_ext.len() - 1]
                                 } else {
                                     archive_name.as_str()
@@ -3536,7 +4549,10 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
             // Simple confirmation - only global shortcuts apply
             DialogAction::None
         }
-        DialogContent::DeleteConfirm { targets, scroll_offset } => {
+        DialogContent::DeleteConfirm {
+            targets,
+            scroll_offset,
+        } => {
             let total = targets.len();
             // Mirror the render-side height formula exactly (now using centered_rect_abs, no rounding loss)
             // min_content = total.min(12) + 7; min_dialog = min_content + 2 = total.min(12) + 9
@@ -3545,7 +4561,9 @@ fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAct
             let screen_h = crossterm::terminal::size().map(|(_, h)| h).unwrap_or(24);
             let min_content = total.min(12) as u16 + 7;
             let min_dialog = min_content + 2;
-            let dialog_h = (screen_h * 80 / 100).max(min_dialog).min(screen_h.saturating_sub(2));
+            let dialog_h = (screen_h * 80 / 100)
+                .max(min_dialog)
+                .min(screen_h.saturating_sub(2));
             let list_h = dialog_h.saturating_sub(9).max(1) as usize;
             let visible_rows = total.min(list_h);
             let max_scroll = total.saturating_sub(visible_rows);
@@ -3573,12 +4591,19 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
     // Step 1: resolve actual folder index from the filtered selection (borrow ends at block close).
     let folder_index: Option<usize> = {
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::RegisteredFolderSelector { folders, selected_index, filter } = &dialog.content {
+            if let DialogContent::RegisteredFolderSelector {
+                folders,
+                selected_index,
+                filter,
+            } = &dialog.content
+            {
                 let lower = filter.to_lowercase();
                 let filtered_indices: Vec<usize> = if filter.is_empty() {
                     (0..folders.len()).collect()
                 } else {
-                    folders.iter().enumerate()
+                    folders
+                        .iter()
+                        .enumerate()
                         .filter(|(_, f)| {
                             f.name.to_lowercase().contains(&lower)
                                 || f.path.to_lowercase().contains(&lower)
@@ -3587,8 +4612,12 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
                         .collect()
                 };
                 filtered_indices.get(*selected_index).copied()
-            } else { None }
-        } else { None }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     };
 
     let idx = folder_index?;
@@ -3600,7 +4629,12 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
 
     // Step 3: mirror removal in the dialog's own snapshot.
     if let Some(dialog) = state.dialogs.current_mut() {
-        if let DialogContent::RegisteredFolderSelector { folders, selected_index, .. } = &mut dialog.content {
+        if let DialogContent::RegisteredFolderSelector {
+            folders,
+            selected_index,
+            ..
+        } = &mut dialog.content
+        {
             if idx < folders.len() {
                 folders.remove(idx);
             }
@@ -3625,8 +4659,17 @@ pub fn delete_job_name(targets: &[rwf_lib::Location]) -> String {
     match targets.len() {
         0 => "Delete".to_string(),
         1 => format!("Delete '{}'", file_name(&targets[0])),
-        2 => format!("Delete '{}', '{}'", file_name(&targets[0]), file_name(&targets[1])),
-        n => format!("Delete {} files: '{}', '{}'...", n, file_name(&targets[0]), file_name(&targets[1])),
+        2 => format!(
+            "Delete '{}', '{}'",
+            file_name(&targets[0]),
+            file_name(&targets[1])
+        ),
+        n => format!(
+            "Delete {} files: '{}', '{}'...",
+            n,
+            file_name(&targets[0]),
+            file_name(&targets[1])
+        ),
     }
 }
 
@@ -3637,7 +4680,9 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
     // Input dialogs: extract title and embedded input first so the borrow on state.dialogs ends
     // before we call update_state.
-    let input_dialog_info: Option<(String, String)> = state.dialogs.current()
+    let input_dialog_info: Option<(String, String)> = state
+        .dialogs
+        .current()
         .filter(|d| matches!(d.content, DialogContent::Input { .. }))
         .map(|d| {
             let embedded = if let DialogContent::Input { input, .. } = &d.content {
@@ -3652,12 +4697,17 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
         match title.as_str() {
             "Register Folder" if !input.is_empty() => {
                 let path = state.active_pane().current_location.display_path();
-                rwf_lib::state::update_state(state, rwf_lib::state::Transition::RegisterCurrentFolder { name: input, path });
+                rwf_lib::state::update_state(
+                    state,
+                    rwf_lib::state::Transition::RegisterCurrentFolder { name: input, path },
+                );
             }
             "Create Directory" if !input.is_empty() => {
                 let current_location = state.active_pane().current_location.clone();
                 let new_dir_loc = current_location.join(&input);
-                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Mkdir { location: new_dir_loc }));
+                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Mkdir {
+                    location: new_dir_loc,
+                }));
             }
             "Custom Function Input" => {
                 if let Some(func) = state.pending_custom_function_input.take() {
@@ -3668,12 +4718,14 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         // Pop the CustomFunctionSelector sitting below this Input dialog;
                         // app.rs will pop the Input dialog itself after we return.
                         state.dialogs.pop_below_top();
-                        return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
-                            command,
-                            working_dir,
-                            pipe_to_action: func.pipe_to_action.clone(),
-                            shell,
-                        }));
+                        return Some(rwf_lib::job::JobSpec::new(
+                            rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                command,
+                                working_dir,
+                                pipe_to_action: func.pipe_to_action.clone(),
+                                shell,
+                            },
+                        ));
                     }
                 }
             }
@@ -3683,9 +4735,16 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
     }
 
     if let Some(dialog) = state.dialogs.current() {
-        debug!("Dialog content type: {:?}", std::mem::discriminant(&dialog.content));
+        debug!(
+            "Dialog content type: {:?}",
+            std::mem::discriminant(&dialog.content)
+        );
         match &dialog.content {
-            DialogContent::SortDialog { selected_mode_index, selected_order_index, .. } => {
+            DialogContent::SortDialog {
+                selected_mode_index,
+                selected_order_index,
+                ..
+            } => {
                 use rwf_lib::model::{SortMode, SortOrder};
                 let mode = match *selected_mode_index {
                     0 => SortMode::Name,
@@ -3693,24 +4752,44 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     2 => SortMode::Date,
                     _ => SortMode::Extension,
                 };
-                let order = if *selected_order_index == 0 { SortOrder::Ascending } else { SortOrder::Descending };
+                let order = if *selected_order_index == 0 {
+                    SortOrder::Ascending
+                } else {
+                    SortOrder::Descending
+                };
                 let pane = state.ui.active_pane;
                 // Apply both mode and order directly (no job needed)
-                rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeSortMode { pane, mode });
-                rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeSortOrder { pane, order });
+                rwf_lib::state::update_state(
+                    state,
+                    rwf_lib::state::Transition::ChangeSortMode { pane, mode },
+                );
+                rwf_lib::state::update_state(
+                    state,
+                    rwf_lib::state::Transition::ChangeSortOrder { pane, order },
+                );
                 return None;
             }
             DialogContent::FileMask { input, .. } => {
-                let mask = if input.is_empty() { None } else { Some(input.clone()) };
+                let mask = if input.is_empty() {
+                    None
+                } else {
+                    Some(input.clone())
+                };
                 let pane = state.ui.active_pane;
                 // Do NOT pop here — app.rs pops after process_dialog_confirmation returns
-                rwf_lib::state::update_state(state, rwf_lib::state::Transition::SetFileMask { pane, mask });
+                rwf_lib::state::update_state(
+                    state,
+                    rwf_lib::state::Transition::SetFileMask { pane, mask },
+                );
                 return None;
             }
             DialogContent::WildcardMark { input, .. } => {
                 if !input.is_empty() {
                     let pattern = input.clone();
-                    rwf_lib::state::update_state(state, rwf_lib::state::Transition::MarkPattern { pattern });
+                    rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::MarkPattern { pattern },
+                    );
                 }
                 return None;
             }
@@ -3719,69 +4798,101 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 if !new_name.is_empty() {
                     if let Some(entry) = state.active_pane().current_entry() {
                         let from = entry.location.clone();
-                        let to = from.parent()
+                        let to = from
+                            .parent()
                             .map(|parent| parent.join(&new_name))
                             .unwrap_or_else(|| from.clone());
-                        let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Rename { from, to });
+                        let job_spec =
+                            rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Rename { from, to });
                         return Some(job_spec);
                     }
                 }
                 return None;
             }
-            DialogContent::DriveSelection { drives, selected_index, filter } => {
+            DialogContent::DriveSelection {
+                drives,
+                selected_index,
+                filter,
+            } => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::DriveInfo> = if filter.is_empty() {
                     drives.iter().collect()
                 } else {
-                    drives.iter().filter(|d| {
-                        d.display_label().to_lowercase().contains(&lower)
-                            || d.path.to_lowercase().contains(&lower)
-                    }).collect()
+                    drives
+                        .iter()
+                        .filter(|d| {
+                            d.display_label().to_lowercase().contains(&lower)
+                                || d.path.to_lowercase().contains(&lower)
+                        })
+                        .collect()
                 };
                 if let Some(drive) = filtered.get(*selected_index) {
                     let path = drive.path.clone();
                     let pane = state.ui.active_pane;
                     let location = rwf_lib::Location::Local(std::path::PathBuf::from(&path));
-                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeLocation { pane, location });
+                    let result = rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::ChangeLocation { pane, location },
+                    );
                     return result.jobs_to_start.into_iter().next();
                 }
                 return None;
             }
             DialogContent::HistoryDialog {
-                left_entries, right_entries,
-                left_selected, right_selected,
-                active_pane, ..
+                left_entries,
+                right_entries,
+                left_selected,
+                right_selected,
+                active_pane,
+                ..
             } => {
                 use rwf_lib::model::ui::ActivePane;
                 let (entries, selected_index, pane) = match active_pane {
-                    ActivePane::Left  => (left_entries.as_slice(),  *left_selected,  ActivePane::Left),
-                    ActivePane::Right => (right_entries.as_slice(), *right_selected, ActivePane::Right),
+                    ActivePane::Left => (left_entries.as_slice(), *left_selected, ActivePane::Left),
+                    ActivePane::Right => {
+                        (right_entries.as_slice(), *right_selected, ActivePane::Right)
+                    }
                 };
                 if entries.get(selected_index).is_some() {
-                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::NavigateToHistoryIndex {
-                        pane,
-                        index: selected_index,
-                    });
+                    let result = rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::NavigateToHistoryIndex {
+                            pane,
+                            index: selected_index,
+                        },
+                    );
                     return result.jobs_to_start.into_iter().next();
                 }
                 return None;
             }
-            DialogContent::JumpToPath { suggestions, selected_index, query, search_root, loading_job_id, .. } => {
-                let path_str: Option<String> = if !suggestions.is_empty() && *selected_index < suggestions.len() {
-                    Some(suggestions[*selected_index].clone())
-                } else if !query.is_empty() {
-                    // Fallback: interpret typed text as a direct path
-                    let candidate = std::path::PathBuf::from(query.as_str());
-                    if candidate.is_absolute() && candidate.is_dir() {
-                        Some(query.clone())
+            DialogContent::JumpToPath {
+                suggestions,
+                selected_index,
+                query,
+                search_root,
+                loading_job_id,
+                ..
+            } => {
+                let path_str: Option<String> =
+                    if !suggestions.is_empty() && *selected_index < suggestions.len() {
+                        Some(suggestions[*selected_index].clone())
+                    } else if !query.is_empty() {
+                        // Fallback: interpret typed text as a direct path
+                        let candidate = std::path::PathBuf::from(query.as_str());
+                        if candidate.is_absolute() && candidate.is_dir() {
+                            Some(query.clone())
+                        } else {
+                            let combined =
+                                std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
+                            if combined.is_dir() {
+                                Some(combined.to_string_lossy().into_owned())
+                            } else {
+                                None
+                            }
+                        }
                     } else {
-                        let combined = std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
-                        if combined.is_dir() { Some(combined.to_string_lossy().into_owned()) }
-                        else { None }
-                    }
-                } else {
-                    None
-                };
+                        None
+                    };
                 let pending_job = *loading_job_id;
                 if let Some(path) = path_str {
                     let location = rwf_lib::Location::Local(std::path::PathBuf::from(&path));
@@ -3790,30 +4901,42 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     if let Some(job_id) = pending_job {
                         state.jobs.request_cancel(job_id);
                     }
-                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeLocation { pane, location });
+                    let result = rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::ChangeLocation { pane, location },
+                    );
                     return result.jobs_to_start.into_iter().next();
                 }
                 return None;
             }
-            DialogContent::JumpToFile { suggestions, selected_index, query, search_root, loading_job_id, .. } => {
-                let path_str: Option<String> = if !suggestions.is_empty() && *selected_index < suggestions.len() {
-                    Some(suggestions[*selected_index].clone())
-                } else if !query.is_empty() {
-                    // Fallback: interpret typed text as a direct path
-                    let candidate = std::path::PathBuf::from(query.as_str());
-                    if candidate.is_absolute() && (candidate.is_file() || candidate.is_dir()) {
-                        Some(query.clone())
-                    } else {
-                        let combined = std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
-                        if combined.is_file() || combined.is_dir() {
-                            Some(combined.to_string_lossy().into_owned())
+            DialogContent::JumpToFile {
+                suggestions,
+                selected_index,
+                query,
+                search_root,
+                loading_job_id,
+                ..
+            } => {
+                let path_str: Option<String> =
+                    if !suggestions.is_empty() && *selected_index < suggestions.len() {
+                        Some(suggestions[*selected_index].clone())
+                    } else if !query.is_empty() {
+                        // Fallback: interpret typed text as a direct path
+                        let candidate = std::path::PathBuf::from(query.as_str());
+                        if candidate.is_absolute() && (candidate.is_file() || candidate.is_dir()) {
+                            Some(query.clone())
                         } else {
-                            None
+                            let combined =
+                                std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
+                            if combined.is_file() || combined.is_dir() {
+                                Some(combined.to_string_lossy().into_owned())
+                            } else {
+                                None
+                            }
                         }
-                    }
-                } else {
-                    None
-                };
+                    } else {
+                        None
+                    };
                 let pending_job = *loading_job_id;
                 // For a file selection, record the filename to position cursor after navigation.
                 let target_file_name: Option<String> = path_str.as_ref().and_then(|p| {
@@ -3842,18 +4965,23 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     if let Some(job_id) = pending_job {
                         state.jobs.request_cancel(job_id);
                     }
-                    let result = rwf_lib::state::update_state(state, rwf_lib::state::Transition::ChangeLocation { pane, location });
+                    let result = rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::ChangeLocation { pane, location },
+                    );
                     if let Some(name) = target_file_name {
                         let pane_height = state.ui.layout.pane_height;
                         let scroll_margin = state.config.ui.scroll_offset;
                         let tab = state.current_tab_mut();
                         let pane_model = match pane {
-                            rwf_lib::model::ActivePane::Left  => &mut tab.left_pane,
+                            rwf_lib::model::ActivePane::Left => &mut tab.left_pane,
                             rwf_lib::model::ActivePane::Right => &mut tab.right_pane,
                         };
                         if pane_model.is_loading {
                             pane_model.pending_cursor_name = Some(name);
-                        } else if let Some(pos) = pane_model.entries.iter().position(|e| e.name == name) {
+                        } else if let Some(pos) =
+                            pane_model.entries.iter().position(|e| e.name == name)
+                        {
                             pane_model.cursor = pos;
                             pane_model.update_scroll(pane_height, scroll_margin);
                         }
@@ -3870,34 +4998,57 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 compression_level,
                 ..
             } => {
-                debug!("Compression dialog confirmed: {} sources, archive_name='{}'", sources.len(), archive_name);
-                debug!("Selected format index: {}, compression level: {}", selected_format_index, compression_level);
+                debug!(
+                    "Compression dialog confirmed: {} sources, archive_name='{}'",
+                    sources.len(),
+                    archive_name
+                );
+                debug!(
+                    "Selected format index: {}, compression level: {}",
+                    selected_format_index, compression_level
+                );
 
                 // Ensure archive name has the correct extension for the selected format
                 let ext = archive_ext_for_format(*format);
-                let archive_name_with_ext = if archive_name.to_lowercase().ends_with(&format!(".{}", ext)) {
+                let archive_name_with_ext = if archive_name
+                    .to_lowercase()
+                    .ends_with(&format!(".{}", ext))
+                {
                     archive_name.clone()
                 } else {
                     // Strip any mismatched extension before adding the correct one
-                    let base = ["zip", "7z", "tar", "tgz"].iter().find_map(|old_ext| {
-                        archive_name.to_lowercase()
-                            .ends_with(&format!(".{}", old_ext))
-                            .then(|| &archive_name[..archive_name.len() - old_ext.len() - 1])
-                    }).unwrap_or(archive_name.as_str());
+                    let base = ["zip", "7z", "tar", "tgz"]
+                        .iter()
+                        .find_map(|old_ext| {
+                            archive_name
+                                .to_lowercase()
+                                .ends_with(&format!(".{}", old_ext))
+                                .then(|| &archive_name[..archive_name.len() - old_ext.len() - 1])
+                        })
+                        .unwrap_or(archive_name.as_str());
                     format!("{}.{}", base, ext)
                 };
                 debug!("Archive name with extension: '{}'", archive_name_with_ext);
 
                 // Build destination path in opposite pane
-                let dest_path = state.opposite_pane().current_location.path()
-                    .unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+                let dest_path = state
+                    .opposite_pane()
+                    .current_location
+                    .path()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .to_path_buf();
                 let dest = rwf_lib::Location::Local(dest_path.join(&archive_name_with_ext));
-                debug!("Destination path: {:?}", dest_path.join(&archive_name_with_ext));
+                debug!(
+                    "Destination path: {:?}",
+                    dest_path.join(&archive_name_with_ext)
+                );
 
                 // Calculate original size for compression ratio
-                let original_size: u64 = sources.iter()
+                let original_size: u64 = sources
+                    .iter()
                     .filter_map(|loc| {
-                        state.active_pane()
+                        state
+                            .active_pane()
                             .entries
                             .iter()
                             .find(|e| &e.location == loc)
@@ -3907,40 +5058,43 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     .sum();
                 debug!("Original size: {} bytes", original_size);
 
-                let job_spec = rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::CreateArchive {
-                        sources: sources.clone(),
-                        dest,
-                        original_size,
-                    }
-                );
+                let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::CreateArchive {
+                    sources: sources.clone(),
+                    dest,
+                    original_size,
+                });
                 debug!("Job spec created: {:?}", job_spec.kind);
 
                 return Some(job_spec);
             }
             DialogContent::ExtractionConfirm { archive, dest, .. } => {
                 // Create extraction job - dest is already a Location
-                let job_spec = rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::ExtractArchive {
-                        archive: archive.clone(),
-                        dest: dest.clone(),
-                    }
-                );
+                let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExtractArchive {
+                    archive: archive.clone(),
+                    dest: dest.clone(),
+                });
 
                 return Some(job_spec);
             }
             DialogContent::DeleteConfirm { targets, .. } => {
-                let locations: Vec<rwf_lib::Location> = targets.iter().map(|(loc, _)| loc.clone()).collect();
-                return Some(rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::Delete { targets: locations }
-                ));
+                let locations: Vec<rwf_lib::Location> =
+                    targets.iter().map(|(loc, _)| loc.clone()).collect();
+                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Delete {
+                    targets: locations,
+                }));
             }
-            DialogContent::RegisteredFolderSelector { folders, selected_index, filter } => {
+            DialogContent::RegisteredFolderSelector {
+                folders,
+                selected_index,
+                filter,
+            } => {
                 let lower = filter.to_lowercase();
                 let filtered_indices: Vec<usize> = if filter.is_empty() {
                     (0..folders.len()).collect()
                 } else {
-                    folders.iter().enumerate()
+                    folders
+                        .iter()
+                        .enumerate()
                         .filter(|(_, f)| {
                             f.name.to_lowercase().contains(&lower)
                                 || f.path.to_lowercase().contains(&lower)
@@ -3950,40 +5104,73 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 };
                 if let Some(&folder_index) = filtered_indices.get(*selected_index) {
                     if state.active_pane().marking.count() > 0 {
-                        rwf_lib::state::update_state(state, rwf_lib::state::Transition::MoveToRegisteredFolder { folder_index });
+                        rwf_lib::state::update_state(
+                            state,
+                            rwf_lib::state::Transition::MoveToRegisteredFolder { folder_index },
+                        );
                     } else {
-                        rwf_lib::state::update_state(state, rwf_lib::state::Transition::NavigateToRegisteredFolder { folder_index });
+                        rwf_lib::state::update_state(
+                            state,
+                            rwf_lib::state::Transition::NavigateToRegisteredFolder { folder_index },
+                        );
                     }
                 }
                 return None;
             }
-            DialogContent::PatternRename { find, replace, use_regex, case_sensitive, .. } => {
-                if find.is_empty() { return None; }
-                let (find, replace, use_regex, case_sensitive) = (find.clone(), replace.clone(), *use_regex, *case_sensitive);
+            DialogContent::PatternRename {
+                find,
+                replace,
+                use_regex,
+                case_sensitive,
+                ..
+            } => {
+                if find.is_empty() {
+                    return None;
+                }
+                let (find, replace, use_regex, case_sensitive) =
+                    (find.clone(), replace.clone(), *use_regex, *case_sensitive);
                 let pane = state.active_pane();
                 let targets: Vec<rwf_lib::Location> = if pane.marking.count() > 0 {
-                    pane.entries.iter()
+                    pane.entries
+                        .iter()
                         .filter(|e| pane.marking.is_marked(&e.location))
                         .map(|e| e.location.clone())
                         .collect()
                 } else {
                     pane.entries.iter().map(|e| e.location.clone()).collect()
                 };
-                if targets.is_empty() { return None; }
+                if targets.is_empty() {
+                    return None;
+                }
                 let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::PatternRename {
-                    targets, find, replace, use_regex, case_sensitive,
+                    targets,
+                    find,
+                    replace,
+                    use_regex,
+                    case_sensitive,
                 });
                 return Some(job_spec);
             }
-            DialogContent::CustomFunctionSelector { functions, selected_index, filter } => {
+            DialogContent::CustomFunctionSelector {
+                functions,
+                selected_index,
+                filter,
+            } => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
                     functions.iter().collect()
                 } else {
-                    functions.iter().filter(|f| {
-                        f.name.to_lowercase().contains(&lower)
-                            || f.description.as_deref().unwrap_or("").to_lowercase().contains(&lower)
-                    }).collect()
+                    functions
+                        .iter()
+                        .filter(|f| {
+                            f.name.to_lowercase().contains(&lower)
+                                || f.description
+                                    .as_deref()
+                                    .unwrap_or("")
+                                    .to_lowercase()
+                                    .contains(&lower)
+                        })
+                        .collect()
                 };
                 if let Some(&func) = filtered.get(*selected_index) {
                     let func = func.clone();
@@ -3992,20 +5179,25 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         Ok(command) => {
                             let working_dir = state.active_pane().current_location.clone();
                             let shell = func.shell.clone();
-                            return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                command,
-                                working_dir,
-                                pipe_to_action: func.pipe_to_action.clone(),
-                                shell,
-                            }));
+                            return Some(rwf_lib::job::JobSpec::new(
+                                rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                    command,
+                                    working_dir,
+                                    pipe_to_action: func.pipe_to_action.clone(),
+                                    shell,
+                                },
+                            ));
                         }
                         Err(_) => {
                             // Command requires $I user input — push an Input dialog.
                             let prompt = rwf_lib::macro_expander::MacroExpander::extract_i_prompt(
-                                func.get_command().unwrap_or("")
-                            ).unwrap_or_else(|| "Enter input".to_string());
+                                func.get_command().unwrap_or(""),
+                            )
+                            .unwrap_or_else(|| "Enter input".to_string());
                             state.dialogs.push(rwf_lib::model::Dialog::input(
-                                "Custom Function Input", &prompt, ""
+                                "Custom Function Input",
+                                &prompt,
+                                "",
                             ));
                             state.pending_custom_function_input = Some(func);
                             state.suppress_next_dialog_pop = true;
@@ -4015,12 +5207,18 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::ContextMenu { options, selected_index } => {
+            DialogContent::ContextMenu {
+                options,
+                selected_index,
+            } => {
                 use rwf_lib::model::dialog::ContextMenuAction;
                 if let Some(opt) = options.get(*selected_index) {
                     match opt.action.clone() {
                         ContextMenuAction::Copy => {
-                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Copy);
+                            let transitions = rwf_lib::input::action_to_transitions(
+                                state,
+                                &rwf_lib::input::Action::Copy,
+                            );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
                                 if let Some(job) = result.jobs_to_start.into_iter().next() {
@@ -4029,7 +5227,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             }
                         }
                         ContextMenuAction::Move => {
-                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Move);
+                            let transitions = rwf_lib::input::action_to_transitions(
+                                state,
+                                &rwf_lib::input::Action::Move,
+                            );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
                                 if let Some(job) = result.jobs_to_start.into_iter().next() {
@@ -4038,7 +5239,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             }
                         }
                         ContextMenuAction::Delete => {
-                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Delete);
+                            let transitions = rwf_lib::input::action_to_transitions(
+                                state,
+                                &rwf_lib::input::Action::Delete,
+                            );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
                                 if let Some(job) = result.jobs_to_start.into_iter().next() {
@@ -4047,7 +5251,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             }
                         }
                         ContextMenuAction::Rename => {
-                            let transitions = rwf_lib::input::action_to_transitions(state, &rwf_lib::input::Action::Rename);
+                            let transitions = rwf_lib::input::action_to_transitions(
+                                state,
+                                &rwf_lib::input::Action::Rename,
+                            );
                             for t in transitions {
                                 rwf_lib::state::update_state(state, t);
                             }
@@ -4056,23 +5263,34 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             if let Some(entry) = state.active_pane().current_entry() {
                                 if !entry.is_dir {
                                     let loc = entry.location.clone();
-                                    rwf_lib::state::update_state(state, rwf_lib::state::Transition::OpenTextViewer { location: loc });
+                                    rwf_lib::state::update_state(
+                                        state,
+                                        rwf_lib::state::Transition::OpenTextViewer {
+                                            location: loc,
+                                        },
+                                    );
                                 }
                             }
                         }
                         ContextMenuAction::CustomFunction(name) => {
-                            let func = state.custom_functions.iter().find(|f| f.name == name).cloned();
+                            let func = state
+                                .custom_functions
+                                .iter()
+                                .find(|f| f.name == name)
+                                .cloned();
                             if let Some(func) = func {
                                 let expander = rwf_lib::macro_expander::MacroExpander::new();
                                 if let Ok(command) = expander.expand(state, &func) {
                                     let working_dir = state.active_pane().current_location.clone();
                                     let shell = func.shell.clone();
-                                    return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                        command,
-                                        working_dir,
-                                        pipe_to_action: func.pipe_to_action.clone(),
-                                        shell,
-                                    }));
+                                    return Some(rwf_lib::job::JobSpec::new(
+                                        rwf_lib::job::JobKind::ExecuteCustomFunction {
+                                            command,
+                                            working_dir,
+                                            pipe_to_action: func.pipe_to_action.clone(),
+                                            shell,
+                                        },
+                                    ));
                                 }
                             }
                         }
@@ -4081,7 +5299,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::CustomFunctionMenu { items, selected_index } => {
+            DialogContent::CustomFunctionMenu {
+                items,
+                selected_index,
+            } => {
                 let items = items.clone();
                 let idx = *selected_index;
                 if let Some(item) = items.get(idx) {
@@ -4104,14 +5325,17 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
 /// Resolve a menu item's `Action` string to a job spec.
 /// First tries built-in action names, then looks up a custom function by name.
-fn resolve_menu_item_action(state: &mut rwf_lib::AppState, action_name: &str) -> Option<rwf_lib::job::JobSpec> {
+fn resolve_menu_item_action(
+    state: &mut rwf_lib::AppState,
+    action_name: &str,
+) -> Option<rwf_lib::job::JobSpec> {
     let builtin: Option<rwf_lib::input::Action> = match action_name {
         "DeleteFile" | "Delete" => Some(rwf_lib::input::Action::Delete),
-        "MoveFile"   | "Move"   => Some(rwf_lib::input::Action::Move),
-        "CopyFile"   | "Copy"   => Some(rwf_lib::input::Action::Copy),
+        "MoveFile" | "Move" => Some(rwf_lib::input::Action::Move),
+        "CopyFile" | "Copy" => Some(rwf_lib::input::Action::Copy),
         "ViewFileAsText" | "View" => Some(rwf_lib::input::Action::OpenTextViewer),
-        "ViewFileAsHex"  => Some(rwf_lib::input::Action::OpenHexViewer),
-        "ReloadConfiguration"        => Some(rwf_lib::input::Action::ReloadConfig),
+        "ViewFileAsHex" => Some(rwf_lib::input::Action::OpenHexViewer),
+        "ReloadConfiguration" => Some(rwf_lib::input::Action::ReloadConfig),
         "EditConfigFile" => Some(rwf_lib::input::Action::EditConfigFile),
         _ => None,
     };
@@ -4121,7 +5345,9 @@ fn resolve_menu_item_action(state: &mut rwf_lib::AppState, action_name: &str) ->
         for t in transitions {
             let result = rwf_lib::state::update_state(state, t);
             // Collect logs and reload-keybindings flag into staging fields on AppState
-            state.pending_confirmation_logs.extend(result.task_panel_logs);
+            state
+                .pending_confirmation_logs
+                .extend(result.task_panel_logs);
             if result.reload_keybindings {
                 state.confirmation_needs_keybinding_reload = true;
             }
@@ -4133,19 +5359,25 @@ fn resolve_menu_item_action(state: &mut rwf_lib::AppState, action_name: &str) ->
     }
 
     // Fall back: find by custom function name and execute its command
-    let func = state.custom_functions.iter().find(|f| f.name == action_name).cloned();
+    let func = state
+        .custom_functions
+        .iter()
+        .find(|f| f.name == action_name)
+        .cloned();
     if let Some(func) = func {
         if func.is_command() {
             let expander = rwf_lib::macro_expander::MacroExpander::new();
             if let Ok(command) = expander.expand(state, &func) {
                 let working_dir = state.active_pane().current_location.clone();
                 let shell = func.shell.clone();
-                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteCustomFunction {
-                    command,
-                    working_dir,
-                    pipe_to_action: func.pipe_to_action.clone(),
-                    shell,
-                }));
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::ExecuteCustomFunction {
+                        command,
+                        working_dir,
+                        pipe_to_action: func.pipe_to_action.clone(),
+                        shell,
+                    },
+                ));
             }
         }
     }
@@ -4197,9 +5429,15 @@ mod conflict_tests {
         }
     }
 
-    fn enter_key() -> KeyEvent { KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE) }
-    fn shift_enter_key() -> KeyEvent { KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT) }
-    fn esc_key() -> KeyEvent { KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE) }
+    fn enter_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+    }
+    fn shift_enter_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)
+    }
+    fn esc_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    }
 
     // ---- validate_filename tests -------------------------------------------
 
@@ -4217,7 +5455,11 @@ mod conflict_tests {
     fn test_validate_filename_windows_invalid_chars() {
         for ch in ['<', '>', ':', '"', '|', '?', '*'] {
             let bad = format!("fi{}le.txt", ch);
-            assert!(validate_filename(&bad, "orig.txt").is_some(), "char '{}' should be rejected", ch);
+            assert!(
+                validate_filename(&bad, "orig.txt").is_some(),
+                "char '{}' should be rejected",
+                ch
+            );
         }
     }
 
@@ -4238,7 +5480,7 @@ mod conflict_tests {
     fn test_force_button_enter_pushes_force_decision() {
         let mut conflicts = vec![make_conflict("a.txt", "a.txt")];
         let mut current_index = 0usize;
-        let mut focused_button = 0usize;  // Force
+        let mut focused_button = 0usize; // Force
         let mut rename_text = "a.txt".to_string();
         let mut rename_cursor = 5usize;
         let mut rename_scroll = 0usize;
@@ -4253,11 +5495,22 @@ mod conflict_tests {
         let mut history_index = 0usize;
 
         let action = handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, enter_key(),
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            enter_key(),
         );
 
         assert_eq!(action, DialogAction::Confirm);
@@ -4271,7 +5524,7 @@ mod conflict_tests {
     fn test_skip_button_enter_pushes_skip_decision() {
         let mut conflicts = vec![make_conflict("b.txt", "b.txt")];
         let mut current_index = 0usize;
-        let mut focused_button = 2usize;  // Skip
+        let mut focused_button = 2usize; // Skip
         let mut rename_text = "b.txt".to_string();
         let mut rename_cursor = 5usize;
         let mut rename_scroll = 0usize;
@@ -4286,11 +5539,22 @@ mod conflict_tests {
         let mut history_index = 0usize;
 
         let action = handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, enter_key(),
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            enter_key(),
         );
 
         assert_eq!(action, DialogAction::Confirm);
@@ -4303,7 +5567,7 @@ mod conflict_tests {
     fn test_cancel_button_enter_returns_confirm_with_skip_decision() {
         let mut conflicts = vec![make_conflict("c.txt", "c.txt")];
         let mut current_index = 0usize;
-        let mut focused_button = 4usize;  // Cancel
+        let mut focused_button = 4usize; // Cancel
         let mut rename_text = "c.txt".to_string();
         let mut rename_cursor = 5usize;
         let mut rename_scroll = 0usize;
@@ -4318,11 +5582,22 @@ mod conflict_tests {
         let mut history_index = 0usize;
 
         let action = handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, enter_key(),
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            enter_key(),
         );
 
         assert_eq!(action, DialogAction::Confirm);
@@ -4350,11 +5625,22 @@ mod conflict_tests {
         let mut history_index = 0usize;
 
         let action = handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, esc_key(),
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            esc_key(),
         );
 
         assert_eq!(action, DialogAction::Cancel);
@@ -4370,7 +5656,7 @@ mod conflict_tests {
             make_conflict("e2.txt", "e2.txt"),
             make_conflict("e3.txt", "e3.txt"),
         ];
-        let mut current_index = 1usize;  // at second conflict
+        let mut current_index = 1usize; // at second conflict
         let mut focused_button = 2usize; // Skip
         let mut rename_text = "e2.txt".to_string();
         let mut rename_cursor = 6usize;
@@ -4386,11 +5672,22 @@ mod conflict_tests {
         let mut history_index = 0usize;
 
         let action = handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, shift_enter_key(),
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            shift_enter_key(),
         );
 
         assert_eq!(action, DialogAction::ConfirmAll);
@@ -4422,13 +5719,27 @@ mod conflict_tests {
 
         let tab_key = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
         handle_file_conflict_input(
-            &mut conflicts, &mut current_index, &mut focused_button,
-            &mut rename_text, &mut rename_cursor, &mut rename_scroll,
-            &mut edit_mode, &mut vi_mode, &mut error_message, &mut decisions,
-            &mut pending_fwd, &mut pending_op, &mut pending_cx,
-            &mut history, &mut history_index, tab_key,
+            &mut conflicts,
+            &mut current_index,
+            &mut focused_button,
+            &mut rename_text,
+            &mut rename_cursor,
+            &mut rename_scroll,
+            &mut edit_mode,
+            &mut vi_mode,
+            &mut error_message,
+            &mut decisions,
+            &mut pending_fwd,
+            &mut pending_op,
+            &mut pending_cx,
+            &mut history,
+            &mut history_index,
+            tab_key,
         );
 
-        assert_eq!(focused_button, 0, "Tab from last field (4) should wrap to 0");
+        assert_eq!(
+            focused_button, 0,
+            "Tab from last field (4) should wrap to 0"
+        );
     }
 }

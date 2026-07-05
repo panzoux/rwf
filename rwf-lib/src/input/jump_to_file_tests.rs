@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
-    use crate::model::dialog::{DialogContent, filter_jump_to_file_suggestions};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::input::{Action, KeyBindings};
+    use crate::model::dialog::{filter_jump_to_file_suggestions, DialogContent};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
 
     fn open_dialog(state: &mut AppState) {
         update_state(state, Transition::ShowJumpToFileDialog);
@@ -72,9 +72,17 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile { candidates, suggestions, .. } = &dialog.content {
-            assert_eq!(candidates.len(), suggestions.len(),
-                "initial suggestions must equal candidates (no filter applied yet)");
+        if let DialogContent::JumpToFile {
+            candidates,
+            suggestions,
+            ..
+        } = &dialog.content
+        {
+            assert_eq!(
+                candidates.len(),
+                suggestions.len(),
+                "initial suggestions must equal candidates (no filter applied yet)"
+            );
         } else {
             panic!("expected JumpToFile dialog");
         }
@@ -153,10 +161,7 @@ mod tests {
 
     #[test]
     fn test_filter_case_insensitive() {
-        let candidates = vec![
-            "/home/user/README.md".to_string(),
-            "/tmp/notes".to_string(),
-        ];
+        let candidates = vec!["/home/user/README.md".to_string(), "/tmp/notes".to_string()];
         let result = filter_jump_to_file_suggestions(&candidates, "readme");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "/home/user/README.md");
@@ -164,11 +169,12 @@ mod tests {
 
     #[test]
     fn test_filter_whitespace_only_returns_all() {
-        let candidates = vec![
-            "/home/user/a.txt".to_string(),
-            "/tmp/b.rs".to_string(),
-        ];
+        let candidates = vec!["/home/user/a.txt".to_string(), "/tmp/b.rs".to_string()];
         let result = filter_jump_to_file_suggestions(&candidates, "   ");
-        assert_eq!(result.len(), 2, "whitespace-only query returns all candidates");
+        assert_eq!(
+            result.len(),
+            2,
+            "whitespace-only query returns all candidates"
+        );
     }
 }

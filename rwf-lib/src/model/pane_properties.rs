@@ -2,9 +2,9 @@
 //!
 //! **Validates: Requirements 2.2, 2.3, 2.4, 2.5, 2.6, 2.7**
 
-use super::pane::PaneModel;
-use super::location::Location;
 use super::file_entry::FileEntry;
+use super::location::Location;
+use super::pane::PaneModel;
 use proptest::prelude::*;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -59,39 +59,40 @@ impl CursorMove {
 
 // Strategy for generating valid file names
 fn file_name() -> impl Strategy<Value = String> {
-    "[a-zA-Z0-9_-]{1,20}\\.[a-z]{2,4}"
-        .prop_map(|s| s.to_string())
+    "[a-zA-Z0-9_-]{1,20}\\.[a-z]{2,4}".prop_map(|s| s.to_string())
 }
 
 // Strategy for generating FileEntry
 fn file_entry() -> impl Strategy<Value = FileEntry> {
-    (file_name(), any::<bool>(), any::<bool>(), 0u64..1_000_000_000u64)
-        .prop_map(|(name, is_dir, is_hidden, size)| {
-            FileEntry {
-                name,
-                location: Location::Local(PathBuf::from("/tmp/test")),
-                size,
-                is_dir,
-                is_hidden,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
+    (
+        file_name(),
+        any::<bool>(),
+        any::<bool>(),
+        0u64..1_000_000_000u64,
+    )
+        .prop_map(|(name, is_dir, is_hidden, size)| FileEntry {
+            name,
+            location: Location::Local(PathBuf::from("/tmp/test")),
+            size,
+            is_dir,
+            is_hidden,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            }
         })
 }
 
 // Strategy for generating a PaneModel with N entries
 fn pane_with_entries(min_entries: usize, max_entries: usize) -> impl Strategy<Value = PaneModel> {
-    prop::collection::vec(file_entry(), min_entries..=max_entries)
-        .prop_map(|entries| {
-            let mut pane = PaneModel::new(Location::Local(PathBuf::from("/tmp")));
-            pane.entries = entries;
-            pane.cursor = 0;
-            pane
-        })
+    prop::collection::vec(file_entry(), min_entries..=max_entries).prop_map(|entries| {
+        let mut pane = PaneModel::new(Location::Local(PathBuf::from("/tmp")));
+        pane.entries = entries;
+        pane.cursor = 0;
+        pane
+    })
 }
 
 // Strategy for generating cursor movement operations
@@ -116,7 +117,7 @@ proptest! {
     #[test]
     fn prop_cursor_always_within_bounds(pane in pane_with_entries(1, 100)) {
         let len = pane.entries.len();
-        
+
         // Initial cursor should be within bounds
         prop_assert!(
             pane.cursor < len,
@@ -124,7 +125,7 @@ proptest! {
             pane.cursor,
             len
         );
-        
+
         // Test that cursor stays within bounds after initialization
         prop_assert!(
             pane.cursor <= len.saturating_sub(1),
@@ -142,12 +143,12 @@ proptest! {
     #[test]
     fn prop_cursor_up_respects_lower_bound(mut pane in pane_with_entries(1, 100), moves in 1usize..50) {
         let initial_cursor = pane.cursor;
-        
+
         // Apply multiple up movements
         for _ in 0..moves {
             CursorMove::Up.apply(&mut pane);
         }
-        
+
         // Cursor should never go below 0
         prop_assert_eq!(
             pane.cursor,
@@ -166,12 +167,12 @@ proptest! {
     #[test]
     fn prop_cursor_down_respects_upper_bound(mut pane in pane_with_entries(1, 100), moves in 1usize..200) {
         let len = pane.entries.len();
-        
+
         // Apply multiple down movements
         for _ in 0..moves {
             CursorMove::Down.apply(&mut pane);
         }
-        
+
         // Cursor should never exceed len - 1
         prop_assert!(
             pane.cursor < len,
@@ -180,7 +181,7 @@ proptest! {
             pane.cursor,
             len
         );
-        
+
         prop_assert!(
             pane.cursor < len,
             "After {} down moves, cursor {} should be <= {}",
@@ -188,7 +189,7 @@ proptest! {
             pane.cursor,
             len - 1
         );
-        
+
         // After enough moves, cursor should be at the last position
         if moves >= len {
             prop_assert_eq!(
@@ -210,10 +211,10 @@ proptest! {
     fn prop_cursor_home_moves_to_first(mut pane in pane_with_entries(1, 100)) {
         // Set cursor to some arbitrary position
         pane.cursor = pane.entries.len() / 2;
-        
+
         // Apply Home movement
         CursorMove::Home.apply(&mut pane);
-        
+
         // Cursor should be at 0
         prop_assert_eq!(
             pane.cursor,
@@ -230,10 +231,10 @@ proptest! {
     #[test]
     fn prop_cursor_end_moves_to_last(mut pane in pane_with_entries(1, 100)) {
         let len = pane.entries.len();
-        
+
         // Apply End movement
         CursorMove::End.apply(&mut pane);
-        
+
         // Cursor should be at len - 1
         prop_assert_eq!(
             pane.cursor,
@@ -241,7 +242,7 @@ proptest! {
             "End should move cursor to {} (len-1)",
             len - 1
         );
-        
+
         prop_assert!(
             pane.cursor < len,
             "Cursor {} should be < len {}",
@@ -260,10 +261,10 @@ proptest! {
         // Set cursor to middle of list
         pane.cursor = pane.entries.len() / 2;
         let initial_cursor = pane.cursor;
-        
+
         // Apply Page Up
         CursorMove::PageUp(page_size).apply(&mut pane);
-        
+
         // Cursor should be within bounds
         prop_assert!(
             pane.cursor < pane.entries.len(),
@@ -271,7 +272,7 @@ proptest! {
             pane.cursor,
             pane.entries.len()
         );
-        
+
         // Cursor should have moved up (or stayed at 0)
         prop_assert!(
             pane.cursor <= initial_cursor,
@@ -279,7 +280,7 @@ proptest! {
             pane.cursor,
             initial_cursor
         );
-        
+
         // If page_size >= initial_cursor, cursor should be at 0
         if page_size >= initial_cursor {
             prop_assert_eq!(
@@ -303,10 +304,10 @@ proptest! {
         // Set cursor to middle of list
         pane.cursor = len / 2;
         let initial_cursor = pane.cursor;
-        
+
         // Apply Page Down
         CursorMove::PageDown(page_size).apply(&mut pane);
-        
+
         // Cursor should be within bounds
         prop_assert!(
             pane.cursor < len,
@@ -314,14 +315,14 @@ proptest! {
             pane.cursor,
             len
         );
-        
+
         prop_assert!(
             pane.cursor < len,
             "Cursor {} should be <= {}",
             pane.cursor,
             len - 1
         );
-        
+
         // Cursor should have moved down (or stayed at len-1)
         prop_assert!(
             pane.cursor >= initial_cursor,
@@ -343,11 +344,11 @@ proptest! {
         movements in prop::collection::vec(cursor_move_op(), 1..50)
     ) {
         let len = pane.entries.len();
-        
+
         // Apply each movement in sequence
         for movement in movements.iter() {
             movement.apply(&mut pane);
-            
+
             // After each movement, cursor should be within bounds
             prop_assert!(
                 pane.cursor < len,
@@ -356,7 +357,7 @@ proptest! {
                 pane.cursor,
                 len
             );
-            
+
             prop_assert!(
                 pane.cursor <= len.saturating_sub(1),
                 "After movement {:?}, cursor {} should be <= {}",
@@ -380,11 +381,11 @@ proptest! {
         // Pane has no entries
         prop_assert_eq!(pane.entries.len(), 0);
         prop_assert_eq!(pane.cursor, 0);
-        
+
         // Apply movements
         for movement in movements.iter() {
             movement.apply(&mut pane);
-            
+
             // Cursor should remain at 0
             prop_assert_eq!(
                 pane.cursor,
@@ -403,49 +404,51 @@ mod unit_tests {
     #[test]
     fn test_cursor_up_at_boundary() {
         let mut pane = PaneModel::new(Location::Local(PathBuf::from("/tmp")));
-        pane.entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/tmp/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
+        pane.entries = vec![FileEntry {
+            name: "file1.txt".to_string(),
+            location: Location::Local(PathBuf::from("/tmp/file1.txt")),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            },
-        ];
+        }];
         pane.cursor = 0;
 
         CursorMove::Up.apply(&mut pane);
-        assert_eq!(pane.cursor, 0, "Cursor should stay at 0 when already at top");
+        assert_eq!(
+            pane.cursor, 0,
+            "Cursor should stay at 0 when already at top"
+        );
     }
 
     #[test]
     fn test_cursor_down_at_boundary() {
         let mut pane = PaneModel::new(Location::Local(PathBuf::from("/tmp")));
-        pane.entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/tmp/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::now(),
-                marked: false,
-                calculated_size: None,
+        pane.entries = vec![FileEntry {
+            name: "file1.txt".to_string(),
+            location: Location::Local(PathBuf::from("/tmp/file1.txt")),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            },
-        ];
+        }];
         pane.cursor = 0;
 
         CursorMove::Down.apply(&mut pane);
-        assert_eq!(pane.cursor, 0, "Cursor should stay at 0 when only one entry");
+        assert_eq!(
+            pane.cursor, 0,
+            "Cursor should stay at 0 when only one entry"
+        );
     }
 
     #[test]

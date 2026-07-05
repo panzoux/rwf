@@ -5,10 +5,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::job::{JobManager, JobSpec, JobKind};
-    use crate::model::{Location, FileEntry, MarkingModel, ActivePane};
-    use crate::state::{AppState, Transition, update_state};
     use crate::config::AppConfig;
+    use crate::job::{JobKind, JobManager, JobSpec};
+    use crate::model::{ActivePane, FileEntry, Location, MarkingModel};
+    use crate::state::{update_state, AppState, Transition};
     use proptest::prelude::*;
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -26,11 +26,11 @@ mod tests {
         proptest!(|(operations in prop::collection::vec(0u8..10, 0..20))| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Pane is empty, cursor should be 0
             let tab = state.current_tab();
             prop_assert_eq!(tab.left_pane.cursor, 0);
-            
+
             // Apply various cursor operations
             for op in operations {
                 let transition = match op % 5 {
@@ -41,9 +41,9 @@ mod tests {
                     4 => Transition::CursorMove { pane: ActivePane::Left, delta: 10 },
                     _ => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
                 };
-                
+
                 let _ = update_state(&mut state, transition);
-                
+
                 // Cursor should always remain at 0 for empty pane
                 let tab = state.current_tab();
                 prop_assert_eq!(tab.left_pane.cursor, 0, "Cursor should remain at 0 for empty pane");
@@ -60,7 +60,7 @@ mod tests {
         proptest!(|(operations in prop::collection::vec(0u8..10, 0..20))| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Add single entry
             state.current_tab_mut().left_pane.entries = vec![FileEntry {
                 name: "file.txt".to_string(),
@@ -75,7 +75,7 @@ mod tests {
             link_target: None,
             link_kind: None,
             }];
-            
+
             for op in operations {
                 let transition = match op % 5 {
                     0 => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
@@ -85,9 +85,9 @@ mod tests {
                     4 => Transition::CursorMove { pane: ActivePane::Left, delta: 10 },
                     _ => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
                 };
-                
+
                 let _ = update_state(&mut state, transition);
-                
+
                 // Cursor should always be 0 for single-entry pane
                 let tab = state.current_tab();
                 prop_assert_eq!(tab.left_pane.cursor, 0, "Cursor should remain at 0 for single-entry pane");
@@ -107,7 +107,7 @@ mod tests {
         )| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create entries
             let entries: Vec<FileEntry> = (0..entry_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -122,20 +122,20 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
-            
+
             // Perform many down operations
             for _ in 0..down_operations {
-                let _ = update_state(&mut state, Transition::CursorMove { 
-                    pane: ActivePane::Left, 
-                    delta: 1 
+                let _ = update_state(&mut state, Transition::CursorMove {
+                    pane: ActivePane::Left,
+                    delta: 1
                 });
             }
-            
+
             // Cursor should be at most entries.len() - 1
             let tab = state.current_tab();
-            prop_assert!(tab.left_pane.cursor < entry_count, 
+            prop_assert!(tab.left_pane.cursor < entry_count,
                 "Cursor {} should be less than entry count {}", tab.left_pane.cursor, entry_count);
         });
     }
@@ -152,7 +152,7 @@ mod tests {
         )| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create entries
             let entries: Vec<FileEntry> = (0..entry_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -167,32 +167,32 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
-            
+
             // Start at end
-            let _ = update_state(&mut state, Transition::CursorJump { 
-                pane: ActivePane::Left, 
-                position: entry_count - 1 
+            let _ = update_state(&mut state, Transition::CursorJump {
+                pane: ActivePane::Left,
+                position: entry_count - 1
             });
-            
+
             // Perform many up operations
             for _ in 0..up_operations {
-                let _ = update_state(&mut state, Transition::CursorMove { 
-                    pane: ActivePane::Left, 
-                    delta: -1 
+                let _ = update_state(&mut state, Transition::CursorMove {
+                    pane: ActivePane::Left,
+                    delta: -1
                 });
             }
-            
+
             // Cursor should be at 0 after enough up operations (usize can't be negative)
             let tab = state.current_tab();
-            prop_assert!(tab.left_pane.cursor < entry_count, 
+            prop_assert!(tab.left_pane.cursor < entry_count,
                 "Cursor {} should be within bounds (0..{})", tab.left_pane.cursor, entry_count);
-            
+
             // If we did more up operations than the entry count, cursor should be at 0
             if up_operations >= entry_count {
-                prop_assert_eq!(tab.left_pane.cursor, 0, 
-                    "Cursor should be 0 after {} up operations from position {}", 
+                prop_assert_eq!(tab.left_pane.cursor, 0,
+                    "Cursor should be 0 after {} up operations from position {}",
                     up_operations, entry_count - 1);
             }
         });
@@ -209,18 +209,18 @@ mod tests {
     fn prop_job_cancellation_idempotence() {
         proptest!(|(cancel_count in 1usize..10)| {
             let mut manager = JobManager::new(4);
-            
+
             // Enqueue a job
             let id = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
                 location: Location::Local(PathBuf::from("/test")),
             }));
-            
+
             // Cancel the job multiple times
             let mut results = Vec::new();
             for _ in 0..cancel_count {
                 results.push(manager.request_cancel(id));
             }
-            
+
             // First cancellation should succeed, rest should fail
             prop_assert!(results[0], "First cancellation should succeed");
             for result in results.iter().take(cancel_count).skip(1) {
@@ -237,24 +237,24 @@ mod tests {
     fn prop_invalid_job_cancellation() {
         proptest!(|(_invalid_id in 1000u64..10000u64)| {
             let mut manager = JobManager::new(4);
-            
+
             // Enqueue a few jobs
             for i in 0..5 {
                 manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
                     location: Location::Local(PathBuf::from(format!("/test{}", i))),
                 }));
             }
-            
+
             let initial_queue_len = manager.queue.len();
-            
+
             // Try to cancel a non-existent job (generate a random UUID that won't match)
             let result = manager.request_cancel(crate::job::JobId::new());
-            
+
             // Should return false
             prop_assert!(!result, "Cancelling invalid job should return false");
-            
+
             // Queue should be unchanged
-            prop_assert_eq!(manager.queue.len(), initial_queue_len, 
+            prop_assert_eq!(manager.queue.len(), initial_queue_len,
                 "Queue length should be unchanged");
         });
     }
@@ -266,20 +266,20 @@ mod tests {
     fn prop_marking_nonexistent_files() {
         proptest!(|(paths in prop::collection::vec("[a-z]{3,10}", 1..20))| {
             let mut marking = MarkingModel::new();
-            
+
             // Mark non-existent locations
             for path in &paths {
                 let location = Location::Local(PathBuf::from(format!("/nonexistent/{}", path)));
                 marking.mark(location.clone());
             }
-            
+
             // Count should match unique paths (marking is a set; duplicates collapse)
             let unique_count = paths.iter().collect::<std::collections::HashSet<_>>().len();
             prop_assert_eq!(marking.count(), unique_count);
-            
+
             // Unmark all
             marking.unmark_all();
-            
+
             // Count should be 0
             prop_assert_eq!(marking.count(), 0);
         });
@@ -300,7 +300,7 @@ mod tests {
             dequeue_count in 0usize..50
         )| {
             let mut manager = JobManager::new(4);
-            
+
             // Enqueue jobs
             let mut enqueued_ids = Vec::new();
             for i in 0..enqueue_count {
@@ -309,7 +309,7 @@ mod tests {
                 }));
                 enqueued_ids.push(id);
             }
-            
+
             // Dequeue jobs
             let mut dequeued_ids = Vec::new();
             for _ in 0..dequeue_count.min(enqueue_count) {
@@ -317,11 +317,11 @@ mod tests {
                     dequeued_ids.push(spec.id);
                 }
             }
-            
+
             // Dequeued IDs should match first N enqueued IDs
             let dequeued_len = dequeued_ids.len();
             prop_assert_eq!(dequeued_ids, enqueued_ids[..dequeued_len].to_vec());
-            
+
             // Remaining queue size should be correct
             prop_assert_eq!(manager.queue.len(), enqueue_count - dequeued_len);
         });
@@ -337,7 +337,7 @@ mod tests {
             let locations: Vec<_> = (0..10)
                 .map(|i| Location::Local(PathBuf::from(format!("/test/file{}.txt", i))))
                 .collect();
-            
+
             // Apply operations
             for (op, idx) in operations {
                 let location = &locations[idx];
@@ -347,16 +347,16 @@ mod tests {
                     _ => {}
                 }
             }
-            
+
             // Verify count matches actual marked locations
             let actual_marked: std::collections::HashSet<_> = marking.marked_locations.clone();
             prop_assert_eq!(marking.count(), actual_marked.len());
-            
+
             // Verify all marked locations are in the set
             for location in &locations {
                 let is_marked = marking.is_marked(location);
                 let in_set = actual_marked.contains(location);
-                prop_assert_eq!(is_marked, in_set, 
+                prop_assert_eq!(is_marked, in_set,
                     "is_marked should match set membership");
             }
         });
@@ -370,7 +370,7 @@ mod tests {
         proptest!(|(transitions in prop::collection::vec(0u8..5, 1..30))| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Initialize with some entries
             let entries: Vec<FileEntry> = (0..10).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -385,25 +385,25 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
-            
+
             // Apply transitions
             for t in transitions {
                 let transition = match t % 5 {
                     0 => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
                     1 => Transition::CursorMove { pane: ActivePane::Left, delta: -1 },
                     2 => Transition::SwitchPane,
-                    3 => Transition::ToggleMark { 
-                        location: state.current_tab().left_pane.entries[0].location.clone() 
+                    3 => Transition::ToggleMark {
+                        location: state.current_tab().left_pane.entries[0].location.clone()
                     },
                     4 => Transition::CursorJump { pane: ActivePane::Left, position: 0 },
                     _ => Transition::CursorMove { pane: ActivePane::Left, delta: 1 },
                 };
-                
+
                 let _ = update_state(&mut state, transition);
             }
-            
+
             // Verify invariants
             let tab = state.current_tab();
             prop_assert!(tab.left_pane.cursor < tab.left_pane.entries.len().max(1),
@@ -425,7 +425,7 @@ mod tests {
         proptest!(|(entry_count in 1000usize..5000)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create many entries
             let entries: Vec<FileEntry> = (0..entry_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -440,19 +440,19 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
-            
+
             // Operations should still work
-            let _ = update_state(&mut state, Transition::CursorJump { 
-                pane: ActivePane::Left, 
-                position: entry_count - 1 
+            let _ = update_state(&mut state, Transition::CursorJump {
+                pane: ActivePane::Left,
+                position: entry_count - 1
             });
             prop_assert_eq!(state.current_tab().left_pane.cursor, entry_count - 1);
-            
-            let _ = update_state(&mut state, Transition::CursorJump { 
-                pane: ActivePane::Left, 
-                position: 0 
+
+            let _ = update_state(&mut state, Transition::CursorJump {
+                pane: ActivePane::Left,
+                position: 0
             });
             prop_assert_eq!(state.current_tab().left_pane.cursor, 0);
         });
@@ -465,7 +465,7 @@ mod tests {
     fn prop_large_job_queue() {
         proptest!(|(job_count in 100usize..500)| {
             let mut manager = JobManager::new(4);
-            
+
             // Enqueue many jobs
             let mut ids = Vec::new();
             for i in 0..job_count {
@@ -474,16 +474,16 @@ mod tests {
                 }));
                 ids.push(id);
             }
-            
+
             // Queue size should match
             prop_assert_eq!(manager.queue.len(), job_count);
-            
+
             // Dequeue all and verify order
             let mut dequeued = Vec::new();
             while let Some(spec) = manager.pop_next_job() {
                 dequeued.push(spec.id);
             }
-            
+
             prop_assert_eq!(dequeued, ids, "FIFO order should be maintained");
         });
     }
@@ -496,7 +496,7 @@ mod tests {
         proptest!(|(file_count in 1usize..20)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create zero-size entries
             let entries: Vec<FileEntry> = (0..file_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -511,16 +511,16 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries.clone();
-            
+
             // Mark all
             for entry in &entries {
-                let _ = update_state(&mut state, Transition::ToggleMark { 
-                    location: entry.location.clone() 
+                let _ = update_state(&mut state, Transition::ToggleMark {
+                    location: entry.location.clone()
                 });
             }
-            
+
             // Total size should be 0
             let entries = state.current_tab().left_pane.entries.clone();
             let total = state.current_tab_mut().left_pane.marking.total_size(&entries);
@@ -540,15 +540,15 @@ mod tests {
         proptest!(|(close_attempts in 1usize..10)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Should start with 1 tab
             prop_assert_eq!(state.tabs.tabs.len(), 1);
-            
+
             // Try to close tab multiple times
             for _ in 0..close_attempts {
                 let _ = update_state(&mut state, Transition::CloseTab { index: 0 });
             }
-            
+
             // Should still have 1 tab
             prop_assert_eq!(state.tabs.tabs.len(), 1, "Last tab should not be closeable");
         });
@@ -565,7 +565,7 @@ mod tests {
         )| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create multiple tabs
             for _ in 1..initial_tabs {
                 state.last_tab_created = None;
@@ -573,14 +573,14 @@ mod tests {
             }
 
             prop_assert_eq!(state.tabs.tabs.len(), initial_tabs);
-            
+
             // Close a tab if index is valid
             if close_index < initial_tabs && initial_tabs > 1 {
                 let _ = update_state(&mut state, Transition::CloseTab { index: close_index });
-                
+
                 // Active index should be valid
                 prop_assert!(state.tabs.active_index < state.tabs.tabs.len(),
-                    "Active index {} should be less than tab count {}", 
+                    "Active index {} should be less than tab count {}",
                     state.tabs.active_index, state.tabs.tabs.len());
             }
         });
@@ -594,20 +594,20 @@ mod tests {
         proptest!(|(tab_count in 2usize..10)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create tabs
             for _ in 1..tab_count {
                 state.last_tab_created = None;
                 let _ = update_state(&mut state, Transition::CreateTab);
             }
-            
+
             // Switch to last tab
             state.tabs.active_index = tab_count - 1;
-            
+
             // Switch to next (should wrap to 0)
             state.tabs.switch_to_next();
             prop_assert_eq!(state.tabs.active_index, 0, "Should wrap to first tab");
-            
+
             // Switch to previous (should wrap to last)
             state.tabs.switch_to_prev();
             prop_assert_eq!(state.tabs.active_index, tab_count - 1, "Should wrap to last tab");
@@ -625,13 +625,13 @@ mod tests {
     fn prop_mark_all_empty_pane() {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Pane is empty
         assert_eq!(state.current_tab().left_pane.entries.len(), 0);
-        
+
         // Mark all should not panic
         let _ = update_state(&mut state, Transition::MarkAll);
-        
+
         // Count should be 0
         assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
     }
@@ -647,7 +647,7 @@ mod tests {
         )| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create and mark files
             let entries: Vec<FileEntry> = (0..file_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -662,15 +662,15 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
             let _ = update_state(&mut state, Transition::MarkAll);
-            
+
             // Unmark all multiple times
             for _ in 0..unmark_count {
                 let _ = update_state(&mut state, Transition::UnmarkAll);
             }
-            
+
             // Count should be 0
             prop_assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0);
         });
@@ -684,7 +684,7 @@ mod tests {
         proptest!(|(file_count in 1usize..20)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create files
             let entries: Vec<FileEntry> = (0..file_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -699,16 +699,16 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries.clone();
-            
+
             // Toggle each file twice
             for entry in &entries {
                 let location = entry.location.clone();
                 let _ = update_state(&mut state, Transition::ToggleMark { location: location.clone() });
                 let _ = update_state(&mut state, Transition::ToggleMark { location });
             }
-            
+
             // All should be unmarked
             prop_assert_eq!(state.current_tab_mut().left_pane.marking.count(), 0, "All files should be unmarked after double toggle");
         });
@@ -725,7 +725,7 @@ mod tests {
     fn prop_job_completion_cleanup() {
         proptest!(|(job_count in 1usize..20)| {
             let mut manager = JobManager::new(4);
-            
+
             // Enqueue and start jobs
             let mut ids = Vec::new();
             for i in 0..job_count {
@@ -733,16 +733,16 @@ mod tests {
                     location: Location::Local(PathBuf::from(format!("/test{}", i))),
                 }));
                 ids.push(id);
-                
+
                 if manager.can_start_job() {
                     if let Some(spec) = manager.pop_next_job() {
                         manager.start_job(spec);
                     }
                 }
             }
-            
+
             let active_count = manager.active.len();
-            
+
             // Complete all active jobs
             let active_ids: Vec<_> = manager.active.keys().copied().collect();
             for id in active_ids {
@@ -750,12 +750,12 @@ mod tests {
                     crate::job::SuccessData::None
                 ));
             }
-            
+
             // Active should be empty
             prop_assert_eq!(manager.active.len(), 0, "Active jobs should be empty after completion");
-            
+
             // Completed should have the jobs
-            prop_assert!(manager.completed.len() >= active_count, 
+            prop_assert!(manager.completed.len() >= active_count,
                 "Completed should contain at least {} jobs", active_count);
         });
     }
@@ -770,24 +770,24 @@ mod tests {
             job_count in 10usize..50
         )| {
             let mut manager = JobManager::new(max_parallel);
-            
+
             // Enqueue many jobs
             for i in 0..job_count {
                 manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
                     location: Location::Local(PathBuf::from(format!("/test{}", i))),
                 }));
             }
-            
+
             // Start as many as possible
             while manager.can_start_job() {
                 if let Some(spec) = manager.pop_next_job() {
                     manager.start_job(spec);
                 }
             }
-            
+
             // Active count should not exceed max_parallel
             prop_assert!(manager.active.len() <= max_parallel,
-                "Active jobs {} should not exceed max_parallel {}", 
+                "Active jobs {} should not exceed max_parallel {}",
                 manager.active.len(), max_parallel);
         });
     }
@@ -799,13 +799,13 @@ mod tests {
     fn prop_completed_jobs_limited() {
         proptest!(|(job_count in 150usize..200)| {
             let mut manager = JobManager::new(4);
-            
+
             // Complete many jobs
             for i in 0..job_count {
                 let id = manager.enqueue(JobSpec::new(JobKind::ReadDirectory {
                     location: Location::Local(PathBuf::from(format!("/test{}", i))),
                 }));
-                
+
                 if let Some(spec) = manager.pop_next_job() {
                     manager.start_job(spec);
                     manager.complete_job(id, crate::job::OpResult::Success(
@@ -813,7 +813,7 @@ mod tests {
                     ));
                 }
             }
-            
+
             // Completed should be limited to 100
             prop_assert!(manager.completed.len() <= 100,
                 "Completed jobs {} should not exceed 100", manager.completed.len());
@@ -831,13 +831,18 @@ mod tests {
     fn prop_parent_at_root() {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Set location to root
         state.current_tab_mut().left_pane.current_location = Location::Local(PathBuf::from("/"));
-        
+
         // Try to navigate up (parent)
-        let _ = update_state(&mut state, Transition::NavigateUp { pane: ActivePane::Left });
-        
+        let _ = update_state(
+            &mut state,
+            Transition::NavigateUp {
+                pane: ActivePane::Left,
+            },
+        );
+
         // Should still be at root (or handle gracefully)
         // The exact behavior depends on implementation, but should not panic
     }
@@ -850,21 +855,21 @@ mod tests {
         proptest!(|(switch_count in 1usize..100)| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             let initial_pane = state.ui.active_pane;
-            
+
             // Switch many times
             for _ in 0..switch_count {
                 let _ = update_state(&mut state, Transition::SwitchPane);
             }
-            
+
             // Parity should match
             let expected_pane = if switch_count % 2 == 0 {
                 initial_pane
             } else {
                 initial_pane.opposite()
             };
-            
+
             prop_assert_eq!(state.ui.active_pane, expected_pane,
                 "Active pane should match expected after {} switches", switch_count);
         });
@@ -885,7 +890,7 @@ mod tests {
         )| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Create entries
             let entries: Vec<FileEntry> = (0..entry_count).map(|i| FileEntry {
                 name: format!("file{}.txt", i),
@@ -900,18 +905,18 @@ mod tests {
             link_target: None,
             link_kind: None,
             }).collect();
-            
+
             state.current_tab_mut().left_pane.entries = entries;
-            
+
             // Move cursor
             let actual_pos = cursor_pos.min(entry_count - 1);
-            let _ = update_state(&mut state, Transition::CursorJump { 
-                pane: ActivePane::Left, 
-                position: actual_pos 
+            let _ = update_state(&mut state, Transition::CursorJump {
+                pane: ActivePane::Left,
+                position: actual_pos
             });
-            
+
             let pane = &state.current_tab().left_pane;
-            
+
             // Cursor should be within scroll window
             // (This assumes a reasonable page size, actual implementation may vary)
             prop_assert!(pane.cursor >= pane.scroll_offset,
@@ -931,7 +936,7 @@ mod tests {
         proptest!(|(operations in prop::collection::vec(0u8..9, 1..30))| {
             let config = AppConfig::default();
             let mut state = AppState::new(config);
-            
+
             // Apply various transitions that might fail
             for op in operations {
                 let transition = match op % 9 {
@@ -946,15 +951,15 @@ mod tests {
                     8 => Transition::CreateTab,
                     _ => Transition::SwitchPane,
                 };
-                
+
                 let _ = update_state(&mut state, transition);
             }
-            
+
             // Verify basic invariants
             prop_assert!(!state.tabs.tabs.is_empty(), "Should have at least one tab");
-            prop_assert!(state.tabs.active_index < state.tabs.tabs.len(), 
+            prop_assert!(state.tabs.active_index < state.tabs.tabs.len(),
                 "Active tab index should be valid");
-            
+
             let tab = state.current_tab();
             prop_assert!(tab.left_pane.cursor < tab.left_pane.entries.len().max(1),
                 "Left cursor should be valid");

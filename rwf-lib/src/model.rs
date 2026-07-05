@@ -2,19 +2,19 @@
 //!
 //! This module defines the core data structures used throughout the application.
 
-pub mod location;
+pub mod cache;
+pub mod dialog;
 pub mod file_entry;
-pub mod pane;
-pub mod tab;
-pub mod search;
+pub mod leap;
+pub mod location;
 pub mod marking;
 pub mod navigation;
-pub mod ui;
-pub mod dialog;
-pub mod cache;
-pub mod viewer;
 pub mod navigation_cache;
-pub mod leap;
+pub mod pane;
+pub mod search;
+pub mod tab;
+pub mod ui;
+pub mod viewer;
 
 #[cfg(test)]
 mod location_properties;
@@ -34,21 +34,21 @@ mod registered_folder_properties;
 #[cfg(test)]
 mod cache_properties;
 
+pub use cache::{CacheStats, CachedDirectory, DirectoryCache};
+pub use dialog::{
+    ContextMenuAction, ContextMenuOption, CustomFunction, CustomFunctionSelector, Dialog,
+    DialogContent, DialogStack, DriveInfo, DriveType, ErrorType, JobInfo, JobKind,
+    JobManagerDialog, JobState, OsConfig, PatternRenameDialog, PipeToAction, RegisteredFolder,
+    RegisteredFolderManager, RegisteredFolderSelector, SplitJoinMode, TabSelector,
+};
+pub use file_entry::{format_size, FileEntry, LinkKind};
+pub use leap::{BackspaceResult, LeapState};
 pub use location::Location;
-pub use file_entry::{FileEntry, format_size, LinkKind};
-pub use pane::{PaneModel, SortMode, SortOrder, DisplayMode};
-pub use tab::{TabState, TabManager, TabViewerState};
-pub use search::SearchModel;
 pub use marking::MarkingModel;
 pub use navigation::NavigationHistory;
-pub use ui::{UIState, ActivePane, UIMode, ViewerLayout};
-pub use dialog::{
-    DialogStack, Dialog, DialogContent, CustomFunction, RegisteredFolder, RegisteredFolderManager,
-    PipeToAction, OsConfig, JobInfo, JobKind, JobState, JobManagerDialog,
-    CustomFunctionSelector, RegisteredFolderSelector, TabSelector, PatternRenameDialog,
-    ErrorType, SplitJoinMode, ContextMenuOption, ContextMenuAction, DriveInfo, DriveType
-};
-pub use cache::{DirectoryCache, CachedDirectory, CacheStats};
-pub use viewer::{ViewerState, ViewerMode, TextEncoding, ViewerBuffer, LineIndex, FileBytes};
 pub use navigation_cache::NavigationStateCache;
-pub use leap::{LeapState, BackspaceResult};
+pub use pane::{DisplayMode, PaneModel, SortMode, SortOrder};
+pub use search::SearchModel;
+pub use tab::{TabManager, TabState, TabViewerState};
+pub use ui::{ActivePane, UIMode, UIState, ViewerLayout};
+pub use viewer::{FileBytes, LineIndex, TextEncoding, ViewerBuffer, ViewerMode, ViewerState};

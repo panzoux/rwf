@@ -1,5 +1,6 @@
 //! Compression dialog with improved layout
 
+use crate::ui::text_input::TextInput;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -7,18 +8,17 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::ArchiveFormat;
-use crate::ui::text_input::TextInput;
 
 /// Archive format options (name + format enum)
 pub const ARCHIVE_FORMATS: &[(&str, ArchiveFormat)] = &[
     ("ZIP", ArchiveFormat::ZIP),
-    ("7Z",  ArchiveFormat::SevenZip),
+    ("7Z", ArchiveFormat::SevenZip),
     ("TGZ", ArchiveFormat::TarGz),
     ("TAR", ArchiveFormat::Tar),
     ("LZH", ArchiveFormat::ZIP),  // Future: LZH
     ("CAB", ArchiveFormat::ZIP),  // Future: CAB
-    ("XZ",  ArchiveFormat::ZIP),  // Future: XZ
-    ("LZMA",ArchiveFormat::ZIP),  // Future: LZMA
+    ("XZ", ArchiveFormat::ZIP),   // Future: XZ
+    ("LZMA", ArchiveFormat::ZIP), // Future: LZMA
 ];
 
 /// Compression level options: (level, display name)
@@ -37,8 +37,8 @@ pub struct CompressionDialogState {
     pub archive_name: String,
     pub selected_format_index: usize,
     pub selected_compression_index: usize,
-    pub focused_field: usize,  // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
-    pub format_focus_index: usize,      // Which format has focus (0-7)
+    pub focused_field: usize, // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
+    pub format_focus_index: usize, // Which format has focus (0-7)
     pub compression_focus_index: usize, // Which compression level has focus (0-5)
     pub cursor_pos: usize,
     pub scroll_pos: usize,
@@ -48,7 +48,6 @@ pub struct CompressionDialogState {
 }
 
 impl CompressionDialogState {
-
     fn render_format_list(&self, _area: Rect) -> Vec<ListItem<'_>> {
         ARCHIVE_FORMATS
             .iter()
@@ -56,21 +55,17 @@ impl CompressionDialogState {
             .map(|(i, (name, _))| {
                 let is_focused = (self.focused_field == 0) && (i == self.format_focus_index);
                 let is_selected = i == self.selected_format_index;
-                
+
                 // Selection indicator: "●" vs "○"
                 // Focus indicator: white background on focused item ONLY (when section has focus)
                 let radio = if is_selected { "●" } else { "○" };
-                
+
                 // Focused item (only when format section has focus): black text on white background
                 // Unfocused items: black text on gray (transparent)
                 let style = if is_focused {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::White)
+                    Style::default().fg(Color::Black).bg(Color::White)
                 } else {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Gray)
+                    Style::default().fg(Color::Black).bg(Color::Gray)
                 };
 
                 ListItem::new(format!("{}{}", radio, name)).style(style)
@@ -89,18 +84,14 @@ impl CompressionDialogState {
                 // Selection indicator: "●" vs "○"
                 // Focus indicator: white background on focused item ONLY (when section has focus)
                 let radio = if is_selected { "●" } else { "○" };
-                
+
                 // Focused item (only when compression section has focus): black text on white background
                 // Unfocused items: black text on gray (transparent)
                 // No indent
                 let style = if is_focused {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::White)
+                    Style::default().fg(Color::Black).bg(Color::White)
                 } else {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Gray)
+                    Style::default().fg(Color::Black).bg(Color::Gray)
                 };
 
                 ListItem::new(format!("{}{} ({})", radio, name, level)).style(style)
@@ -113,13 +104,13 @@ impl CompressionDialogState {
 /// Returns the sum of all constraint lengths (minimum content height)
 pub fn get_compression_dialog_constraints() -> Vec<Constraint> {
     vec![
-        Constraint::Length(9),   // Archive format: 1 label + 8 items
-        Constraint::Length(1),   // Spacing
-        Constraint::Length(7),   // Compression levels: 1 label + 6 items
-        Constraint::Length(1),   // Spacing
-        Constraint::Length(2),   // Archive name: 1 label + 1 input
-        Constraint::Length(1),   // Spacing
-        Constraint::Length(1),   // Buttons
+        Constraint::Length(9), // Archive format: 1 label + 8 items
+        Constraint::Length(1), // Spacing
+        Constraint::Length(7), // Compression levels: 1 label + 6 items
+        Constraint::Length(1), // Spacing
+        Constraint::Length(2), // Archive name: 1 label + 1 input
+        Constraint::Length(1), // Spacing
+        Constraint::Length(1), // Buttons
     ]
 }
 
@@ -149,8 +140,8 @@ pub fn render_compression_dialog(
         .split(area);
 
     // Render archive format label (black text, no background)
-    let format_label = Paragraph::new("Archive Format:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let format_label =
+        Paragraph::new("Archive Format:").style(Style::default().fg(Color::Black).bg(Color::Gray));
     frame.render_widget(format_label, chunks[0]);
 
     // Render archive format (vertical list, all 8 formats shown)
@@ -171,8 +162,8 @@ pub fn render_compression_dialog(
     frame.render_widget(compression_list, compression_area);
 
     // Render archive name input using TextInput widget
-    let name_label = Paragraph::new("Archive Name:")
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
+    let name_label =
+        Paragraph::new("Archive Name:").style(Style::default().fg(Color::Black).bg(Color::Gray));
     frame.render_widget(name_label, chunks[4]);
 
     let textbox_is_focused = state.focused_field == 2;
@@ -185,21 +176,28 @@ pub fn render_compression_dialog(
     text_input.set_scroll(state.scroll_pos);
     // Since we don't have all pending states here in the transient render call,
     // we just do a basic render. Full state is handled in handle_input and mod.rs render.
-    text_input.render(frame, Rect::new(chunks[4].x, chunks[4].y + 1, chunks[4].width, 1), textbox_is_focused);
+    text_input.render(
+        frame,
+        Rect::new(chunks[4].x, chunks[4].y + 1, chunks[4].width, 1),
+        textbox_is_focused,
+    );
 
     // Render buttons directly
     // OK is field 3, Cancel is field 4 in the dialog state
     let buttons = [
-        ("OK", 3, true),    // (label, focused_field value, is_default)
+        ("OK", 3, true), // (label, focused_field value, is_default)
         ("Cancel", 4, false),
     ];
-    let total_width: u16 = buttons.iter().map(|(label, _, _)| label.len() as u16 + 4).sum();
+    let total_width: u16 = buttons
+        .iter()
+        .map(|(label, _, _)| label.len() as u16 + 4)
+        .sum();
     let start_x = chunks[6].x + (chunks[6].width.saturating_sub(total_width)) / 2;
     let mut current_x = start_x;
 
     for (label, field_idx, is_default) in buttons.iter() {
         let is_focused = dialog_focused && state.focused_field == *field_idx;
-        
+
         // Format button text: [*Label*] for default, [Label] for others
         let button_text = if *is_default {
             format!("[*{}*]", label)
@@ -210,17 +208,12 @@ pub fn render_compression_dialog(
         // Focused button: black text on white background
         // Unfocused: black text on gray
         let button_style = if is_focused {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
+            Style::default().fg(Color::Black).bg(Color::White)
         } else {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Gray)
+            Style::default().fg(Color::Black).bg(Color::Gray)
         };
 
-        let button = Paragraph::new(format!(" {} ", button_text))
-            .style(button_style);
+        let button = Paragraph::new(format!(" {} ", button_text)).style(button_style);
         let button_width = button_text.len() as u16 + 2;
         let button_area = Rect::new(current_x, chunks[6].y, button_width, 1);
         frame.render_widget(button, button_area);

@@ -2,16 +2,19 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
+    use crate::input::{Action, KeyBindings};
     use crate::model::dialog::DialogContent;
-    use crate::state::{AppState, AppConfig, Transition, update_state};
     use crate::model::Dialog;
+    use crate::state::{update_state, AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn open_help(state: &mut AppState) {
-        update_state(state, Transition::ShowDialog {
-            dialog: Dialog::help_with_language("en"),
-        });
+        update_state(
+            state,
+            Transition::ShowDialog {
+                dialog: Dialog::help_with_language("en"),
+            },
+        );
     }
 
     // ---- Key bindings -------------------------------------------------------
@@ -47,7 +50,10 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(!dialog.title.is_empty(), "help dialog title should not be empty");
+        assert!(
+            !dialog.title.is_empty(),
+            "help dialog title should not be empty"
+        );
     }
 
     // ---- Initial state ------------------------------------------------------
@@ -70,7 +76,10 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(matches!(dialog.content, DialogContent::Help { .. }), "Expected Help dialog");
+        assert!(
+            matches!(dialog.content, DialogContent::Help { .. }),
+            "Expected Help dialog"
+        );
     }
 
     #[test]
@@ -96,12 +105,17 @@ mod tests {
             let dialog = state.dialogs.current().expect("dialog must be open");
             if let DialogContent::Help { language, .. } = &dialog.content {
                 language.clone()
-            } else { panic!("Expected Help") }
+            } else {
+                panic!("Expected Help")
+            }
         };
 
         update_state(&mut state, Transition::RotateHelpLanguage);
 
-        let dialog = state.dialogs.current().expect("dialog must still be open after rotate");
+        let dialog = state
+            .dialogs
+            .current()
+            .expect("dialog must still be open after rotate");
         if let DialogContent::Help { language, .. } = &dialog.content {
             // After rotate, language may be same (only 1 lang available) or different —
             // the important invariant is the dialog stays open
@@ -119,7 +133,13 @@ mod tests {
         open_help(&mut state);
         update_state(&mut state, Transition::RotateHelpLanguage);
 
-        let dialog = state.dialogs.current().expect("dialog must still be open after rotate");
-        assert!(matches!(dialog.content, DialogContent::Help { .. }), "Expected Help dialog after rotate");
+        let dialog = state
+            .dialogs
+            .current()
+            .expect("dialog must still be open after rotate");
+        assert!(
+            matches!(dialog.content, DialogContent::Help { .. }),
+            "Expected Help dialog after rotate"
+        );
     }
 }

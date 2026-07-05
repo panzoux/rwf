@@ -3,44 +3,43 @@
 //! Displays active and recent background jobs with cancel functionality.
 //! Following DIALOG_DESIGN_SPEC.md Part 6 specifications.
 
+use crate::ui::unicode_utils::smart_truncate;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style, Color},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use rwf_lib::{AppState, job::BackgroundJob};
-use crate::ui::unicode_utils::smart_truncate;
+use rwf_lib::{job::BackgroundJob, AppState};
 
 /// Job Manager Dialog state
-/// 
+///
 /// Focus Fields (Part 6.7):
 /// - 0: Job List (Up/Down moves selection)
 /// - 1: Close Button
 /// - 2: Cancel Job Button
-/// 
+///
 /// Tab Order: 0 → 1 → 2 → 0 (wraps)
 pub struct JobManagerDialogState {
-    pub selected_index: usize,      // Selected job index in list
-    pub focused_field: usize,       // 0=Job List, 1=Close, 2=Cancel
+    pub selected_index: usize,       // Selected job index in list
+    pub focused_field: usize,        // 0=Job List, 1=Close, 2=Cancel
     pub job_list_focus_index: usize, // Which job has focus in the list
 }
 
-
 /// Get layout constraints for Job Manager Dialog (Part 6.2)
-/// 
+///
 /// Content Area Height: 21 lines (inside the frame)
 /// Frame: 2 lines (top border+title + bottom border)
 /// Total Dialog Height: 23 lines (21 + 2)
 pub fn get_job_manager_dialog_constraints() -> Vec<Constraint> {
     vec![
-        Constraint::Length(1),   // Spacing after title
-        Constraint::Length(6),   // Job List: 4 items minimum + borders removed = 6 lines
-        Constraint::Length(1),   // Detail label
-        Constraint::Length(10),  // Detail view
-        Constraint::Length(1),   // Spacing
-        Constraint::Length(1),   // Buttons (WITHIN content area)
+        Constraint::Length(1),  // Spacing after title
+        Constraint::Length(6),  // Job List: 4 items minimum + borders removed = 6 lines
+        Constraint::Length(1),  // Detail label
+        Constraint::Length(10), // Detail view
+        Constraint::Length(1),  // Spacing
+        Constraint::Length(1),  // Buttons (WITHIN content area)
     ]
 }
 
@@ -52,7 +51,8 @@ pub fn calculate_job_manager_dialog_min_height() -> u16 {
             Constraint::Length(n) => *n,
             _ => 0,
         })
-        .sum::<u16>() + 2  // Add 2 for top and bottom borders
+        .sum::<u16>()
+        + 2 // Add 2 for top and bottom borders
 }
 
 /// Render the Job Manager dialog
@@ -71,9 +71,7 @@ pub fn render_job_manager_dialog(
     let colors = &state.config.display.colors;
 
     // Get all jobs
-    let jobs: Vec<BackgroundJob> = state.background_jobs.get_all_jobs()
-        .cloned()
-        .collect();
+    let jobs: Vec<BackgroundJob> = state.background_jobs.get_all_jobs().cloned().collect();
 
     // Split area using constraints (buttons WITHIN content area - Part 1.3)
     // Constraints: [0]=Spacing, [1]=Job List, [2]=Detail label,
@@ -89,33 +87,20 @@ pub fn render_job_manager_dialog(
         chunks[1],
         &jobs,
         dialog_state.job_list_focus_index,
-        dialog_state.focused_field == 0,  // Is job list focused?
+        dialog_state.focused_field == 0, // Is job list focused?
         colors,
     );
 
     // Render detail label (chunk[2])
     let detail_label = Paragraph::new("Selected Job Details:")
-        .style(Style::default()
-            .fg(Color::Black)
-            .bg(Color::Gray));
+        .style(Style::default().fg(Color::Black).bg(Color::Gray));
     frame.render_widget(detail_label, chunks[2]);
 
     // Render detail view (chunk[3]) - Gray background, Black text (Part 2.2, 6.11)
-    render_job_detail(
-        frame,
-        chunks[3],
-        &jobs,
-        dialog_state.selected_index,
-        colors,
-    );
+    render_job_detail(frame, chunks[3], &jobs, dialog_state.selected_index, colors);
 
     // Render buttons (chunk[5] - WITHIN content area per Part 1.3)
-    render_buttons(
-        frame,
-        chunks[5],
-        dialog_state.focused_field,
-        colors,
-    );
+    render_buttons(frame, chunks[5], dialog_state.focused_field, colors);
 }
 
 /// Render the job list (Part 6.3)
@@ -132,7 +117,7 @@ fn render_job_list(
     _colors: &rwf_lib::config::ColorScheme,
 ) {
     let mut y_offset = 0;
-    
+
     if jobs.is_empty() {
         // Show "No active jobs" with focus (Part 6.10 - Empty State)
         let style = if is_focused {
@@ -143,20 +128,21 @@ fn render_job_list(
                 .add_modifier(Modifier::BOLD)
         } else {
             // Unfocused: Black on Gray (Part 2.2)
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Gray)
+            Style::default().fg(Color::Black).bg(Color::Gray)
         };
-        
+
         let line = Line::from(Span::styled("> No active jobs", style));
-        frame.render_widget(Paragraph::new(line), Rect::new(area.x, area.y + y_offset, area.width, 1));
+        frame.render_widget(
+            Paragraph::new(line),
+            Rect::new(area.x, area.y + y_offset, area.width, 1),
+        );
         y_offset += 1;
     } else {
         for (idx, job) in jobs.iter().enumerate() {
             if y_offset >= area.height {
                 break;
             }
-            
+
             // Show progress percentage (always show, even at 0%)
             let percent = format!(" - {:.0}%", job.progress_percent * 100.0);
 
@@ -189,17 +175,18 @@ fn render_job_list(
                     .add_modifier(Modifier::BOLD)
             } else {
                 // Unfocused: Black on Gray (Part 2.2) - NOT white on dark gray!
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Gray)
+                Style::default().fg(Color::Black).bg(Color::Gray)
             };
 
             let line = Line::from(Span::styled(line_text, style));
-            frame.render_widget(Paragraph::new(line), Rect::new(area.x, area.y + y_offset, area.width, 1));
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(area.x, area.y + y_offset, area.width, 1),
+            );
             y_offset += 1;
         }
     }
-    
+
     // Fill remaining space with gray background.
     // `y_offset` is only used here as a row counter for positioning, not to
     // shrink the loop range (the range bound is captured once at loop start,
@@ -210,7 +197,10 @@ fn render_job_list(
             " ".repeat(area.width as usize),
             Style::default().bg(Color::Gray),
         ));
-        frame.render_widget(Paragraph::new(blank), Rect::new(area.x, area.y + y_offset, area.width, 1));
+        frame.render_widget(
+            Paragraph::new(blank),
+            Rect::new(area.x, area.y + y_offset, area.width, 1),
+        );
         y_offset += 1;
     }
 }
@@ -251,13 +241,13 @@ fn render_job_detail(
     };
 
     let detail = Paragraph::new(detail_text)
-        .block(Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Black)))
-        .style(Style::default()
-            .fg(Color::Black)
-            .bg(Color::Gray))  // Gray background, Black text (Part 2.2, 6.11)
-        .wrap(ratatui::widgets::Wrap { trim: false });  // Enable text wrapping
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Black)),
+        )
+        .style(Style::default().fg(Color::Black).bg(Color::Gray)) // Gray background, Black text (Part 2.2, 6.11)
+        .wrap(ratatui::widgets::Wrap { trim: false }); // Enable text wrapping
 
     frame.render_widget(detail, area);
 }
@@ -291,9 +281,7 @@ fn render_buttons(
             .add_modifier(Modifier::BOLD)
     } else {
         // Unfocused: Black on Gray
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Gray)
+        Style::default().fg(Color::Black).bg(Color::Gray)
     };
 
     let terminate_style = if terminate_focused {
@@ -302,15 +290,13 @@ fn render_buttons(
             .bg(Color::White)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Gray)
+        Style::default().fg(Color::Black).bg(Color::Gray)
     };
 
     // Button display: [*Close*] is ALWAYS default (Part 2.3)
     // Focus is shown by WHITE background, NOT asterisks
-    let close_text = "[*Close*]";  // Always default
-    let terminate_text = "[Terminate Job]";  // Never default
+    let close_text = "[*Close*]"; // Always default
+    let terminate_text = "[Terminate Job]"; // Never default
 
     // Center buttons horizontally
     let total_width = close_text.len() + 2 + terminate_text.len();
@@ -319,10 +305,9 @@ fn render_buttons(
     let line = Line::from(vec![
         Span::raw(" ".repeat(padding)),
         Span::styled(close_text, close_style),
-        Span::raw("  "),  // 2 spaces between buttons (Part 6.5)
+        Span::raw("  "), // 2 spaces between buttons (Part 6.5)
         Span::styled(terminate_text, terminate_style),
     ]);
 
     frame.render_widget(Paragraph::new(line), area);
 }
-

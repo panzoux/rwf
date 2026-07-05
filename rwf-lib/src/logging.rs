@@ -10,7 +10,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::Level;
-use tracing_subscriber::{fmt, fmt::MakeWriter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    fmt, fmt::MakeWriter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 /// Log level configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -73,10 +75,7 @@ impl RotatingFileWriter {
             fs::create_dir_all(parent)?;
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(RotatingFileWriterInner {
@@ -91,21 +90,21 @@ impl RotatingFileWriter {
 impl Write for RotatingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut inner = self.inner.lock().unwrap();
-        
+
         // Check if rotation is needed
         let needs_rotation = {
             let metadata = inner.file.metadata()?;
             metadata.len() >= inner.max_size
         };
-        
+
         if needs_rotation {
             // Get path before dropping lock
             let path = inner.path.clone();
             let old_path = path.with_extension("log.old");
-            
+
             // Release lock before file operations
             drop(inner);
-            
+
             // Rotate the log file
             if old_path.exists() {
                 fs::remove_file(&old_path)?;
@@ -118,7 +117,7 @@ impl Write for RotatingFileWriter {
                 .create(true)
                 .append(true)
                 .open(&inner.path)?;
-            
+
             inner.file.write(buf)
         } else {
             inner.file.write(buf)
@@ -151,7 +150,11 @@ pub fn init_logging(log_level: LogLevel, log_dir: &Path) -> anyhow::Result<()> {
     let mut writer = RotatingFileWriter::new(log_file)?;
 
     // Write session start marker
-    let _ = writeln!(writer, "\n=== Log session started at {} ===", chrono::Local::now());
+    let _ = writeln!(
+        writer,
+        "\n=== Log session started at {} ===",
+        chrono::Local::now()
+    );
 
     // Create filter
     let filter = EnvFilter::try_from_default_env()
@@ -204,13 +207,16 @@ mod tests {
     fn test_rotating_file_writer_basic() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("test.log");
-        
+
         let mut writer = RotatingFileWriter::new(log_path.clone()).unwrap();
         writer.write_all(b"Test log entry\n").unwrap();
         writer.flush().unwrap();
 
         let mut content = String::new();
-        File::open(&log_path).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&log_path)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains("Test log entry"));
     }
 
@@ -218,14 +224,16 @@ mod tests {
     fn test_rotating_file_writer_rotation() {
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("test.log");
-        
+
         let mut writer = RotatingFileWriter::new(log_path.clone()).unwrap();
         // Set small size for testing
         writer.inner.lock().unwrap().max_size = 100;
 
         // Write enough data to trigger rotation
         for _ in 0..20 {
-            writer.write_all(b"Test log entry that is long enough\n").unwrap();
+            writer
+                .write_all(b"Test log entry that is long enough\n")
+                .unwrap();
         }
         writer.flush().unwrap();
 

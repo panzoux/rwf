@@ -3,6 +3,7 @@
 //! Provides CJK-aware text rendering with multiple truncation modes
 //! and smart multi-line wrapping (e.g., at path separators).
 
+use crate::ui::unicode_utils::{shorten_path, truncate_to_width};
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -10,7 +11,6 @@ use ratatui::{
     widgets::{Paragraph, Widget},
     Frame,
 };
-use crate::ui::unicode_utils::{truncate_to_width, shorten_path};
 
 /// Truncation modes for SmartText
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,9 +82,11 @@ impl<'a> SmartText<'a> {
             let split_idx = self.find_split_point(remaining, width);
             lines.push(remaining[..split_idx].to_string());
             remaining = &remaining[split_idx..];
-            
+
             // Skip leading separators on new lines if they were at the split point
-            if (remaining.starts_with('/') || remaining.starts_with('\\')) && lines.last().is_some_and(|l| !l.is_empty()) {
+            if (remaining.starts_with('/') || remaining.starts_with('\\'))
+                && lines.last().is_some_and(|l| !l.is_empty())
+            {
                 // Optional: keep separator on the previous line or move to next
                 // For paths, keeping separator as part of the next component is often clearer
             }
@@ -131,8 +133,13 @@ impl<'a> SmartText<'a> {
     /// Render using a Frame (convenience method)
     pub fn render(self, frame: &mut Frame, area: Rect) {
         let lines = self.split_to_lines(area.width as usize);
-        let paragraph = Paragraph::new(lines.iter().map(|l| Line::from(l.as_str())).collect::<Vec<_>>())
-            .style(self.style);
+        let paragraph = Paragraph::new(
+            lines
+                .iter()
+                .map(|l| Line::from(l.as_str()))
+                .collect::<Vec<_>>(),
+        )
+        .style(self.style);
         frame.render_widget(paragraph, area);
     }
 }
@@ -140,8 +147,13 @@ impl<'a> SmartText<'a> {
 impl<'a> Widget for SmartText<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
         let lines = self.split_to_lines(area.width as usize);
-        let paragraph = Paragraph::new(lines.iter().map(|l| Line::from(l.as_str())).collect::<Vec<_>>())
-            .style(self.style);
+        let paragraph = Paragraph::new(
+            lines
+                .iter()
+                .map(|l| Line::from(l.as_str()))
+                .collect::<Vec<_>>(),
+        )
+        .style(self.style);
         paragraph.render(area, buf);
     }
 }
@@ -176,5 +188,4 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[0].ends_with('\\') || lines[1].starts_with('\\'));
     }
-
 }

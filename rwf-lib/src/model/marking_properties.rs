@@ -2,7 +2,7 @@
 //!
 //! **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
-use crate::model::{MarkingModel, Location, FileEntry};
+use crate::model::{FileEntry, Location, MarkingModel};
 use proptest::prelude::*;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -35,14 +35,14 @@ mod unit_tests {
     fn test_toggle_idempotence_simple() {
         let mut model = MarkingModel::new();
         let location = Location::Local(PathBuf::from("/test/file.txt"));
-        
+
         // Start unmarked
         assert!(!model.is_marked(&location));
-        
+
         // Toggle twice
         model.toggle(location.clone());
         model.toggle(location.clone());
-        
+
         // Should be unmarked again
         assert!(!model.is_marked(&location));
     }
@@ -60,9 +60,9 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "file2.txt".to_string(),
@@ -73,14 +73,14 @@ mod unit_tests {
                 modified: SystemTime::UNIX_EPOCH,
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ];
-        
+
         model.mark_all(&entries);
-        
+
         // All should be marked
         assert!(model.is_marked(&entries[0].location));
         assert!(model.is_marked(&entries[1].location));
@@ -90,27 +90,25 @@ mod unit_tests {
     #[test]
     fn test_unmark_all_completeness_simple() {
         let mut model = MarkingModel::new();
-        let entries = vec![
-            FileEntry {
-                name: "file1.txt".to_string(),
-                location: Location::Local(PathBuf::from("/test/file1.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::UNIX_EPOCH,
-                marked: false,
-                calculated_size: None,
+        let entries = vec![FileEntry {
+            name: "file1.txt".to_string(),
+            location: Location::Local(PathBuf::from("/test/file1.txt")),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::UNIX_EPOCH,
+            marked: false,
+            calculated_size: None,
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            },
-        ];
-        
+        }];
+
         model.mark_all(&entries);
         assert_eq!(model.count(), 1);
-        
+
         model.unmark_all();
-        
+
         // None should be marked
         assert!(!model.is_marked(&entries[0].location));
         assert_eq!(model.count(), 0);
@@ -119,35 +117,35 @@ mod unit_tests {
     #[test]
     fn test_marking_persistence() {
         let mut model = MarkingModel::new();
-        
+
         // Mark some locations
         let loc1 = Location::Local(PathBuf::from("/dir1/file1.txt"));
         let loc2 = Location::Local(PathBuf::from("/dir1/file2.txt"));
-        
+
         model.mark(loc1.clone());
         model.mark(loc2.clone());
-        
+
         assert_eq!(model.count(), 2);
-        
+
         // Simulate navigation - marks should persist
         assert!(model.is_marked(&loc1));
         assert!(model.is_marked(&loc2));
-        
+
         // Even if we check with a different entry list
         let _different_entries = [FileEntry {
-                name: "other.txt".to_string(),
-                location: Location::Local(PathBuf::from("/dir2/other.txt")),
-                size: 100,
-                is_dir: false,
-                is_hidden: false,
-                modified: SystemTime::UNIX_EPOCH,
-                marked: false,
-                calculated_size: None,
+            name: "other.txt".to_string(),
+            location: Location::Local(PathBuf::from("/dir2/other.txt")),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::UNIX_EPOCH,
+            marked: false,
+            calculated_size: None,
             is_symlink: false,
             link_target: None,
             link_kind: None,
-            }];
-        
+        }];
+
         // Original marks still exist
         assert!(model.is_marked(&loc1));
         assert!(model.is_marked(&loc2));

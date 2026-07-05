@@ -10,7 +10,7 @@
 //!
 //! ## Usage Rules
 //! 1. **Initialization**: Use `TextInput::new(text, mode)` and `set_original_text(text)` to enable Vi 'U' command.
-//! 2. **State Persistence**: If the widget is reconstructed every frame (e.g. in a dynamic dialog), 
+//! 2. **State Persistence**: If the widget is reconstructed every frame (e.g. in a dynamic dialog),
 //!    certain internal states MUST be persisted externally and restored:
 //!    - `vi_mode`, `pending_operator`, `pending_find_backward`, `pending_ctrl_x`
 //!    - `history` and `history_index` (if undo/redo must persist)
@@ -26,28 +26,28 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use rwf_lib::config::{EditMode, ViMode};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Result of text input handling
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextInputAction {
-    None,           // Input consumed, no action
-    Confirm,        // Enter pressed
-    Cancel,         // Escape pressed
-    NextField,      // Tab pressed
-    PrevField,      // Shift+Tab pressed
-    TextChanged,    // Text was modified
-    CursorMoved,    // Cursor position changed (navigation)
-    ModeToggled,    // Edit mode switched (Ctrl+X)
-    ModeChanged,    // Vi sub-mode changed (Normal/Insert)
+    None,        // Input consumed, no action
+    Confirm,     // Enter pressed
+    Cancel,      // Escape pressed
+    NextField,   // Tab pressed
+    PrevField,   // Shift+Tab pressed
+    TextChanged, // Text was modified
+    CursorMoved, // Cursor position changed (navigation)
+    ModeToggled, // Edit mode switched (Ctrl+X)
+    ModeChanged, // Vi sub-mode changed (Normal/Insert)
 }
 
 /// Vi operator for pending operations (c{motion}, d{motion})
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ViOperator {
-    Change,  // c - delete and enter Insert mode
-    Delete,  // d - delete
+    Change, // c - delete and enter Insert mode
+    Delete, // d - delete
 }
 
 /// Vi find state for ; and , commands
@@ -60,28 +60,28 @@ struct ViFind {
 /// Reusable single-line text input widget
 pub struct TextInput {
     text: String,
-    cursor: usize,           // Character index (not byte index!)
-    scroll: usize,           // Display width offset
+    cursor: usize, // Character index (not byte index!)
+    scroll: usize, // Display width offset
     mode: EditMode,
-    vi_mode: ViMode,         // Only used when mode == Vi
-    kill_buffer: String,     // Internal clipboard
-    width: u16,              // Display width of widget
+    vi_mode: ViMode,     // Only used when mode == Vi
+    kill_buffer: String, // Internal clipboard
+    width: u16,          // Display width of widget
     // Vi mode state
-    pending_operator: Option<ViOperator>,  // Pending c{motion} or d{motion}
-    last_find: Option<ViFind>,             // Last f/F search
-    pending_find_backward: Option<bool>,   // Pending f/F input (true=F, false=f)
-    pending_ctrl_x: bool,                  // Pending Ctrl+X for Ctrl+X U sequence
+    pending_operator: Option<ViOperator>, // Pending c{motion} or d{motion}
+    last_find: Option<ViFind>,            // Last f/F search
+    pending_find_backward: Option<bool>,  // Pending f/F input (true=F, false=f)
+    pending_ctrl_x: bool,                 // Pending Ctrl+X for Ctrl+X U sequence
     // Undo/Redo history
-    history: Vec<String>,    // History stack
-    history_index: usize,    // Current position in history (0 = oldest)
-    original_text: String,   // Text when dialog opened (for Vi U command)
+    history: Vec<String>,  // History stack
+    history_index: usize,  // Current position in history (0 = oldest)
+    original_text: String, // Text when dialog opened (for Vi U command)
 }
 
 impl TextInput {
     /// Create new text input with optional initial text
     pub fn new(text: Option<String>, mode: EditMode) -> Self {
         let text = text.unwrap_or_default();
-        let cursor = text.chars().count();  // Start at end
+        let cursor = text.chars().count(); // Start at end
         Self {
             text: text.clone(),
             cursor,
@@ -89,7 +89,7 @@ impl TextInput {
             mode,
             vi_mode: ViMode::Insert,
             kill_buffer: String::new(),
-            width: 40,  // Default width
+            width: 40, // Default width
             pending_operator: None,
             last_find: None,
             pending_find_backward: None,
@@ -114,7 +114,6 @@ impl TextInput {
     pub fn text(&self) -> &str {
         &self.text
     }
-
 
     /// Get cursor position (character index)
     pub fn cursor(&self) -> usize {
@@ -149,7 +148,7 @@ impl TextInput {
             EditMode::Vi => EditMode::Emacs,
         };
         if self.mode == EditMode::Vi {
-            self.vi_mode = ViMode::Normal;  // Start in Normal mode when switching to Vi
+            self.vi_mode = ViMode::Normal; // Start in Normal mode when switching to Vi
         }
     }
 
@@ -293,7 +292,8 @@ impl TextInput {
 
     /// Calculate display width of text up to character index
     fn text_width_to_cursor(&self) -> usize {
-        self.text.chars()
+        self.text
+            .chars()
             .take(self.cursor)
             .map(Self::char_width)
             .sum()
@@ -302,7 +302,7 @@ impl TextInput {
     /// Update scroll offset to keep cursor visible
     fn update_scroll(&mut self) {
         let cursor_x = self.text_width_to_cursor();
-        let visible_width = self.width as usize - 1;  // Leave 1 char for cursor
+        let visible_width = self.width as usize - 1; // Leave 1 char for cursor
 
         if cursor_x < self.scroll {
             // Cursor moved left of visible area
@@ -346,7 +346,10 @@ impl TextInput {
                 .add_modifier(Modifier::BOLD);
             let indicator_x = area.x + area.width.saturating_sub(1);
             let indicator_para = Paragraph::new(indicator).style(indicator_style);
-            frame.render_widget(indicator_para, Rect::new(indicator_x, area.y, indicator.len() as u16, 1));
+            frame.render_widget(
+                indicator_para,
+                Rect::new(indicator_x, area.y, indicator.len() as u16, 1),
+            );
         }
     }
 
@@ -407,20 +410,19 @@ impl TextInput {
         }
 
         // If cursor is at end, add cursor block
-        let total_visible_width: usize = visible_text.chars()
-            .map(Self::char_width)
-            .sum();
+        let total_visible_width: usize = visible_text.chars().map(Self::char_width).sum();
         if visible_cursor >= total_visible_width && is_focused {
             spans.push(Span::styled(
                 "█",
-                Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
 
         // Pad to fill width
-        let current_width: usize = spans.iter()
-            .map(|s| s.content.width())
-            .sum();
+        let current_width: usize = spans.iter().map(|s| s.content.width()).sum();
         if current_width < self.width as usize {
             spans.push(Span::raw(" ".repeat(self.width as usize - current_width)));
         }
@@ -434,7 +436,9 @@ impl TextInput {
     /// Insert character at cursor
     fn insert_char(&mut self, c: char) {
         self.save_to_history();
-        let byte_pos: usize = self.text.chars()
+        let byte_pos: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -445,7 +449,9 @@ impl TextInput {
     /// Delete character at cursor
     fn delete_char_at_cursor(&mut self) {
         self.save_to_history();
-        let byte_pos: usize = self.text.chars()
+        let byte_pos: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -466,7 +472,9 @@ impl TextInput {
 
     /// Kill to end of line (Ctrl+K)
     fn kill_to_end(&mut self) {
-        let byte_pos: usize = self.text.chars()
+        let byte_pos: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -476,7 +484,9 @@ impl TextInput {
 
     /// Kill to beginning of line (Ctrl+U)
     fn kill_to_start(&mut self) {
-        let byte_pos: usize = self.text.chars()
+        let byte_pos: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -488,7 +498,9 @@ impl TextInput {
     /// Yank (paste) from kill buffer (Ctrl+Y)
     fn yank(&mut self) {
         if !self.kill_buffer.is_empty() {
-            let byte_pos: usize = self.text.chars()
+            let byte_pos: usize = self
+                .text
+                .chars()
                 .take(self.cursor)
                 .map(|ch| ch.len_utf8())
                 .sum();
@@ -511,11 +523,10 @@ impl TextInput {
             pos -= 1;
         }
 
-        let byte_start: usize = self.text.chars()
-            .take(pos)
-            .map(|ch| ch.len_utf8())
-            .sum();
-        let byte_end: usize = self.text.chars()
+        let byte_start: usize = self.text.chars().take(pos).map(|ch| ch.len_utf8()).sum();
+        let byte_end: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -530,15 +541,21 @@ impl TextInput {
         if self.cursor < 2 {
             return;
         }
-        let byte_pos_1: usize = self.text.chars()
+        let byte_pos_1: usize = self
+            .text
+            .chars()
             .take(self.cursor - 2)
             .map(|ch| ch.len_utf8())
             .sum();
-        let byte_pos_2: usize = self.text.chars()
+        let byte_pos_2: usize = self
+            .text
+            .chars()
             .take(self.cursor - 1)
             .map(|ch| ch.len_utf8())
             .sum();
-        let byte_pos_3: usize = self.text.chars()
+        let byte_pos_3: usize = self
+            .text
+            .chars()
             .take(self.cursor)
             .map(|ch| ch.len_utf8())
             .sum();
@@ -546,7 +563,8 @@ impl TextInput {
         let c1 = self.text[byte_pos_1..byte_pos_2].to_string();
         let c2 = self.text[byte_pos_2..byte_pos_3].to_string();
 
-        self.text.replace_range(byte_pos_1..byte_pos_3, &format!("{}{}", c2, c1));
+        self.text
+            .replace_range(byte_pos_1..byte_pos_3, &format!("{}{}", c2, c1));
     }
 }
 
@@ -776,9 +794,7 @@ impl TextInput {
             (KeyCode::Char('^'), _) => {
                 // First non-blank character of line
                 let chars: Vec<char> = self.text.chars().collect();
-                let first_nonblank = chars.iter()
-                    .position(|c| !c.is_whitespace())
-                    .unwrap_or(0);
+                let first_nonblank = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
                 self.cursor = first_nonblank;
                 self.update_scroll();
                 TextInputAction::CursorMoved
@@ -946,7 +962,11 @@ impl TextInput {
             _ => return TextInputAction::None,
         };
 
-        let (del_start, del_end) = if start <= end { (start, end) } else { (end, start) };
+        let (del_start, del_end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
         self.delete_range(del_start, del_end);
 
         if op == ViOperator::Change {
@@ -965,14 +985,8 @@ impl TextInput {
         self.save_to_history();
         let end = end.min(self.text.chars().count());
 
-        let byte_start: usize = self.text.chars()
-            .take(start)
-            .map(|ch| ch.len_utf8())
-            .sum();
-        let byte_end: usize = self.text.chars()
-            .take(end)
-            .map(|ch| ch.len_utf8())
-            .sum();
+        let byte_start: usize = self.text.chars().take(start).map(|ch| ch.len_utf8()).sum();
+        let byte_end: usize = self.text.chars().take(end).map(|ch| ch.len_utf8()).sum();
 
         // Save to kill buffer
         self.kill_buffer = self.text[byte_start..byte_end].to_string();
@@ -998,20 +1012,26 @@ impl TextInput {
                 }
             }
         }
-        from  // Not found, stay in place
+        from // Not found, stay in place
     }
 
     /// Find next occurrence of char and update state
     fn find_next_char(&mut self, c: char) {
         self.cursor = self.find_char(c, false, self.cursor);
-        self.last_find = Some(ViFind { char: c, backward: false });
+        self.last_find = Some(ViFind {
+            char: c,
+            backward: false,
+        });
         self.update_scroll();
     }
 
     /// Find previous occurrence of char and update state
     fn find_prev_char(&mut self, c: char) {
         self.cursor = self.find_char(c, true, self.cursor);
-        self.last_find = Some(ViFind { char: c, backward: true });
+        self.last_find = Some(ViFind {
+            char: c,
+            backward: true,
+        });
         self.update_scroll();
     }
 
@@ -1044,7 +1064,11 @@ impl TextInput {
         }
 
         // Move back one to get to end of word
-        if i > 0 { i - 1 } else { 0 }
+        if i > 0 {
+            i - 1
+        } else {
+            0
+        }
     }
 
     /// Check if character is a word character (alphanumeric + underscore)

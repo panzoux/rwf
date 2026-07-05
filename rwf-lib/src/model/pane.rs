@@ -1,8 +1,8 @@
 //! Pane model and display modes
 
-use super::{Location, FileEntry, MarkingModel};
-use std::path::Path;
+use super::{FileEntry, Location, MarkingModel};
 use regex;
+use std::path::Path;
 
 /// Represents the state of a single pane
 #[derive(Debug)]
@@ -46,38 +46,44 @@ impl PaneModel {
 
     pub fn set_loading(&mut self, loading: bool) {
         if self.is_loading != loading {
-            tracing::info!("[PaneModel] is_loading changed from {} to {} for pane at {:p}", self.is_loading, loading, self as *const _);
+            tracing::info!(
+                "[PaneModel] is_loading changed from {} to {} for pane at {:p}",
+                self.is_loading,
+                loading,
+                self as *const _
+            );
         }
         self.is_loading = loading;
     }
-    
+
     /// Get the current entry under cursor
     pub fn current_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.cursor)
     }
-    
+
     /// Get all marked entries
     pub fn marked_entries(&self) -> Vec<&FileEntry> {
         self.entries.iter().filter(|e| e.marked).collect()
     }
-    
+
     /// Apply current sort mode and order to entries (and raw_entries if populated)
     pub fn apply_sort(&mut self) {
         let mode = self.sort_mode;
         let order = self.sort_order;
         self.entries.sort_by(|a, b| cmp_entries(a, b, mode, order));
         if !self.raw_entries.is_empty() {
-            self.raw_entries.sort_by(|a, b| cmp_entries(a, b, mode, order));
+            self.raw_entries
+                .sort_by(|a, b| cmp_entries(a, b, mode, order));
         }
     }
-    
+
     /// Apply file mask filter to entries
     /// Filters entries based on wildcard pattern (* and ?)
     pub fn apply_filter(&mut self, mask: &str) {
         if mask.is_empty() {
             return;
         }
-        
+
         let pattern = wildcard_to_regex(mask);
         if let Ok(re) = regex::Regex::new(&pattern) {
             self.entries.retain(|entry| {
@@ -86,7 +92,7 @@ impl PaneModel {
             });
         }
     }
-    
+
     /// Get filtered entries based on current file mask
     /// Returns all entries if no mask is set, otherwise returns only matching entries
     pub fn get_filtered_entries(&self) -> Vec<&FileEntry> {
@@ -94,7 +100,9 @@ impl PaneModel {
             if !mask.is_empty() {
                 let pattern = wildcard_to_regex(mask);
                 if let Ok(re) = regex::Regex::new(&pattern) {
-                    return self.entries.iter()
+                    return self
+                        .entries
+                        .iter()
                         .filter(|entry| {
                             // Always show directories
                             entry.is_dir || re.is_match(&entry.name)
@@ -103,11 +111,11 @@ impl PaneModel {
                 }
             }
         }
-        
+
         // No filter or invalid pattern - return all entries
         self.entries.iter().collect()
     }
-    
+
     /// Apply the current file mask filter to entries (modifies entries in place).
     /// Restores from raw_entries first so re-applying a mask never double-filters.
     pub fn apply_current_filter(&mut self) {
@@ -150,7 +158,7 @@ impl PaneModel {
 
         // 2. Apply smooth scrolling logic (maintain margin)
         let cursor_in_view = self.cursor.saturating_sub(self.scroll_offset);
-        
+
         // Scroll UP if cursor too close to top
         if cursor_in_view < scroll_margin && self.cursor > 0 {
             self.scroll_offset = self.cursor.saturating_sub(scroll_margin);
@@ -159,10 +167,10 @@ impl PaneModel {
         else if visible_height > scroll_margin {
             let bottom_trigger = visible_height.saturating_sub(scroll_margin + 1);
             let max_offset = self.entries.len().saturating_sub(visible_height);
-            
+
             // Check if we're in the "end zone" where scroll_margin can't be maintained
             let end_zone_start = self.entries.len().saturating_sub(scroll_margin + 1);
-            
+
             if self.cursor >= end_zone_start {
                 // Near the end - just set scroll to max_offset to avoid blank lines
                 self.scroll_offset = max_offset;
@@ -175,7 +183,12 @@ impl PaneModel {
     }
 }
 
-fn cmp_entries(a: &FileEntry, b: &FileEntry, mode: SortMode, order: SortOrder) -> std::cmp::Ordering {
+fn cmp_entries(
+    a: &FileEntry,
+    b: &FileEntry,
+    mode: SortMode,
+    order: SortOrder,
+) -> std::cmp::Ordering {
     match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
@@ -185,12 +198,22 @@ fn cmp_entries(a: &FileEntry, b: &FileEntry, mode: SortMode, order: SortOrder) -
                 SortMode::Size => a.size.cmp(&b.size),
                 SortMode::Date => a.modified.cmp(&b.modified),
                 SortMode::Extension => {
-                    let ext_a = Path::new(&a.name).extension().and_then(|s| s.to_str()).unwrap_or("");
-                    let ext_b = Path::new(&b.name).extension().and_then(|s| s.to_str()).unwrap_or("");
+                    let ext_a = Path::new(&a.name)
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    let ext_b = Path::new(&b.name)
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
                     ext_a.cmp(ext_b)
                 }
             };
-            if order == SortOrder::Descending { base.reverse() } else { base }
+            if order == SortOrder::Descending {
+                base.reverse()
+            } else {
+                base
+            }
         }
     }
 }

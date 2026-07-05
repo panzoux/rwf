@@ -2,12 +2,14 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action};
+    use crate::input::{Action, KeyBindings};
     use crate::model::dialog::{DialogContent, RegisteredFolder};
-    use crate::state::{AppState, AppConfig, Transition, update_state};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
 
     fn add_folder(state: &mut AppState, name: &str, path: &str) {
-        state.registered_folders.add(RegisteredFolder::new(name.to_string(), path.to_string()));
+        state
+            .registered_folders
+            .add(RegisteredFolder::new(name.to_string(), path.to_string()));
     }
 
     fn open_dialog(state: &mut AppState) {
@@ -35,14 +37,20 @@ mod tests {
         add_folder(&mut state, "Home", "/home/user");
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(matches!(dialog.content, DialogContent::RegisteredFolderSelector { .. }));
+        assert!(matches!(
+            dialog.content,
+            DialogContent::RegisteredFolderSelector { .. }
+        ));
     }
 
     #[test]
     fn test_dialog_opens_with_empty_folders() {
         let mut state = AppState::new(AppConfig::default());
         open_dialog(&mut state);
-        assert!(state.dialogs.current().is_some(), "dialog opens even with no folders");
+        assert!(
+            state.dialogs.current().is_some(),
+            "dialog opens even with no folders"
+        );
     }
 
     // ---- Initial state ------------------------------------------------------
@@ -81,7 +89,7 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         let initial_count = state.registered_folders.folders.len();
         add_folder(&mut state, "Alpha", "/alpha");
-        add_folder(&mut state, "Beta",  "/beta");
+        add_folder(&mut state, "Beta", "/beta");
         add_folder(&mut state, "Gamma", "/gamma");
         open_dialog(&mut state);
 
@@ -100,10 +108,13 @@ mod tests {
         let mut state = AppState::new(AppConfig::default());
         let initial_count = state.registered_folders.folders.len();
         let path = state.active_pane().current_location.display_path();
-        update_state(&mut state, Transition::RegisterCurrentFolder {
-            name: "MyFolder".to_string(),
-            path,
-        });
+        update_state(
+            &mut state,
+            Transition::RegisterCurrentFolder {
+                name: "MyFolder".to_string(),
+                path,
+            },
+        );
         assert_eq!(state.registered_folders.folders.len(), initial_count + 1);
         let last = state.registered_folders.folders.last().unwrap();
         assert_eq!(last.name, "MyFolder");

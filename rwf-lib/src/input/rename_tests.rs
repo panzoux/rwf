@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{KeyBindings, Action, action_to_transitions};
+    use crate::input::{action_to_transitions, Action, KeyBindings};
     use crate::model::{FileEntry, Location};
-    use crate::state::{AppState, AppConfig, Transition};
+    use crate::state::{AppConfig, AppState, Transition};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::SystemTime;
@@ -73,7 +73,12 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::Rename);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::SimpleRename { input, focused_field, .. } = &dialog.content {
+            if let crate::model::dialog::DialogContent::SimpleRename {
+                input,
+                focused_field,
+                ..
+            } = &dialog.content
+            {
                 assert_eq!(input, "hello.txt");
                 assert_eq!(*focused_field, 0, "textbox should be focused by default");
             } else {
@@ -91,8 +96,15 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::Rename);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::SimpleRename { input, cursor_pos, .. } = &dialog.content {
-                assert_eq!(*cursor_pos, input.chars().count(), "cursor should start at end of name");
+            if let crate::model::dialog::DialogContent::SimpleRename {
+                input, cursor_pos, ..
+            } = &dialog.content
+            {
+                assert_eq!(
+                    *cursor_pos,
+                    input.chars().count(),
+                    "cursor should start at end of name"
+                );
             } else {
                 panic!("Expected SimpleRename content");
             }

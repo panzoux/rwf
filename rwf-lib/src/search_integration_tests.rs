@@ -1,5 +1,5 @@
 //! Integration tests for search functionality
-//! 
+//!
 //! Tests Requirements 11.1-11.8 and 30.1-30.10
 
 #[cfg(test)]
@@ -19,9 +19,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "Test.rs".to_string(),
@@ -32,9 +32,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "example.md".to_string(),
@@ -45,9 +45,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "data.json".to_string(),
@@ -58,9 +58,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "README.txt".to_string(),
@@ -71,9 +71,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ]
     }
@@ -356,9 +356,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "file+txt".to_string(),
@@ -369,9 +369,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ];
 
@@ -430,11 +430,11 @@ mod tests {
         // Validates: Requirements 30.6
         // Note: This test requires a migemo dictionary file to be present
         let mut search = SearchModel::new();
-        
+
         // Try to load migemo dictionary
         if search.load_migemo_dict_auto(None).is_ok() {
             search.use_migemo = true;
-            
+
             let entries = vec![
                 FileEntry {
                     name: "日本.txt".to_string(),
@@ -445,9 +445,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                    is_symlink: false,
+                    link_target: None,
+                    link_kind: None,
                 },
                 FileEntry {
                     name: "nihon.txt".to_string(),
@@ -458,9 +458,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                    is_symlink: false,
+                    link_target: None,
+                    link_kind: None,
                 },
                 FileEntry {
                     name: "test.txt".to_string(),
@@ -471,9 +471,9 @@ mod tests {
                     modified: SystemTime::now(),
                     marked: false,
                     calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                    is_symlink: false,
+                    link_target: None,
+                    link_kind: None,
                 },
             ];
 
@@ -497,12 +497,12 @@ mod tests {
         // Test toggling migemo mode on and off
         // Validates: Requirements 30.6
         let mut search = SearchModel::new();
-        
+
         assert!(!search.use_migemo);
-        
+
         search.use_migemo = true;
         assert!(search.use_migemo);
-        
+
         search.use_migemo = false;
         assert!(!search.use_migemo);
     }

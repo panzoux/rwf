@@ -1,28 +1,28 @@
 //! LEAP bar — rendered in place of the pane summary line while in UIMode::Leap.
 
 use ratatui::{
-    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
+    Frame,
 };
 use rwf_lib::config::NoMatchFeedback;
 use rwf_lib::model::{FileEntry, LeapState};
 
-const LABEL:        &str = "LEAP";
-const SCROLL_IND:   &str = "◂";
+const LABEL: &str = "LEAP";
+const SCROLL_IND: &str = "◂";
 const NO_MATCH_STR: &str = " (no match)";
 // Cursor block: one styled space shown at the typing position
 const CURSOR_BLOCK: &str = " ";
 
-const COL_LABEL:     Color = Color::Rgb(243, 139, 168); // catppuccin red
-const COL_SPINNER:   Color = Color::Rgb(249, 226, 175); // yellow — matches local filter
-const COL_TRAIL:     Color = Color::Rgb(88,  91,  112); // dim gray
-const COL_SEP:       Color = Color::Rgb(108, 112, 134); // mid gray
-const COL_LOCAL:     Color = Color::Rgb(249, 226, 175); // yellow
-const COL_CURSOR_FG: Color = Color::Rgb(30,  30,  46);  // dark bg (cursor text)
-const COL_NO_MATCH:  Color = Color::Rgb(108, 112, 134); // mid gray
+const COL_LABEL: Color = Color::Rgb(243, 139, 168); // catppuccin red
+const COL_SPINNER: Color = Color::Rgb(249, 226, 175); // yellow — matches local filter
+const COL_TRAIL: Color = Color::Rgb(88, 91, 112); // dim gray
+const COL_SEP: Color = Color::Rgb(108, 112, 134); // mid gray
+const COL_LOCAL: Color = Color::Rgb(249, 226, 175); // yellow
+const COL_CURSOR_FG: Color = Color::Rgb(30, 30, 46); // dark bg (cursor text)
+const COL_NO_MATCH: Color = Color::Rgb(108, 112, 134); // mid gray
 
 /// Render the LEAP bar into `area`.
 ///
@@ -40,7 +40,9 @@ pub fn render_leap_bar(
     spinner_frame_ms: u64,
 ) {
     let width = area.width as usize;
-    if width < 8 { return; }
+    if width < 8 {
+        return;
+    }
 
     let spinner_char = if is_loading {
         super::spinner::current_frame(spinner_frames, spinner_frame_ms)
@@ -50,15 +52,18 @@ pub fn render_leap_bar(
 
     // "LEAP " = 5 chars; when loading we add one spinner char → 6 total for label zone.
     let label_width = if is_loading {
-        LABEL.len() + 1 + spinner_char.chars().count() + 1  // "LEAP ⠋ "
+        LABEL.len() + 1 + spinner_char.chars().count() + 1 // "LEAP ⠋ "
     } else {
-        LABEL.len() + 1  // "LEAP "
+        LABEL.len() + 1 // "LEAP "
     };
 
     // Right anchor: "(no match)" when Inline feedback and empty result
     let right_str: Option<String> = match no_match_feedback {
-        NoMatchFeedback::Inline if visible_entries.is_empty()
-            && !leap.local_filter().is_empty() => Some(NO_MATCH_STR.to_string()),
+        NoMatchFeedback::Inline
+            if visible_entries.is_empty() && !leap.local_filter().is_empty() =>
+        {
+            Some(NO_MATCH_STR.to_string())
+        }
         _ => None,
     };
     let right_width = right_str.as_ref().map(|s| s.chars().count()).unwrap_or(0);
@@ -67,8 +72,8 @@ pub fn render_leap_bar(
     let scroll_zone = width.saturating_sub(label_width + right_width + 1); // +1 for scroll indicator slot
 
     // Build visible buffer content: trail + local_filter + cursor block
-    let trail   = leap.trail();
-    let local   = leap.local_filter();
+    let trail = leap.trail();
+    let local = leap.local_filter();
     let full_buf: String = format!("{}{}{}", trail, local, CURSOR_BLOCK);
     let full_len = full_buf.chars().count();
 
@@ -79,13 +84,15 @@ pub fn render_leap_bar(
     };
 
     // Build spans
-    let label_style   = Style::default().fg(COL_LABEL).add_modifier(Modifier::BOLD);
-    let spinner_style = Style::default().fg(COL_SPINNER).add_modifier(Modifier::BOLD);
-    let trail_style   = Style::default().fg(COL_TRAIL);
-    let sep_style     = Style::default().fg(COL_SEP);
-    let local_style   = Style::default().fg(COL_LOCAL);
-    let cursor_style  = Style::default().fg(COL_CURSOR_FG).bg(COL_LOCAL);
-    let no_match_style= Style::default().fg(COL_NO_MATCH);
+    let label_style = Style::default().fg(COL_LABEL).add_modifier(Modifier::BOLD);
+    let spinner_style = Style::default()
+        .fg(COL_SPINNER)
+        .add_modifier(Modifier::BOLD);
+    let trail_style = Style::default().fg(COL_TRAIL);
+    let sep_style = Style::default().fg(COL_SEP);
+    let local_style = Style::default().fg(COL_LOCAL);
+    let cursor_style = Style::default().fg(COL_CURSOR_FG).bg(COL_LOCAL);
+    let no_match_style = Style::default().fg(COL_NO_MATCH);
 
     let mut spans: Vec<Span> = Vec::new();
 
@@ -106,7 +113,7 @@ pub fn render_leap_bar(
 
     let mut _char_idx = 0usize;
     let mut trail_span = String::new();
-    let mut sep_span   = String::new();
+    let mut sep_span = String::new();
     let mut local_span = String::new();
 
     for (ci, c) in trail.char_indices().map(|(_, c)| c).enumerate() {
@@ -128,8 +135,12 @@ pub fn render_leap_bar(
         }
         _char_idx += 1;
     }
-    if !trail_span.is_empty() { spans.push(Span::styled(trail_span, trail_style)); }
-    if !sep_span.is_empty()   { spans.push(Span::styled(sep_span, sep_style)); }
+    if !trail_span.is_empty() {
+        spans.push(Span::styled(trail_span, trail_style));
+    }
+    if !sep_span.is_empty() {
+        spans.push(Span::styled(sep_span, sep_style));
+    }
 
     let local_start = trail_len;
     for (ci, c) in local.chars().enumerate() {
@@ -139,7 +150,9 @@ pub fn render_leap_bar(
         }
         _char_idx += 1;
     }
-    if !local_span.is_empty() { spans.push(Span::styled(local_span, local_style)); }
+    if !local_span.is_empty() {
+        spans.push(Span::styled(local_span, local_style));
+    }
 
     // Cursor block
     let cursor_start = trail_len + local_len;
@@ -154,7 +167,6 @@ pub fn render_leap_bar(
 
     let line = Line::from(spans);
     let bg_color = Color::Rgb(24, 24, 37);
-    let para = Paragraph::new(line)
-        .style(Style::default().bg(bg_color));
+    let para = Paragraph::new(line).style(Style::default().bg(bg_color));
     frame.render_widget(para, area);
 }

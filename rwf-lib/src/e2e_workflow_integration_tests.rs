@@ -57,8 +57,16 @@ mod tests {
             Location::Local(PathBuf::from("/source"));
 
         // Mark files 2 and 3
-        state.current_tab_mut().left_pane.marking.mark(file2_loc.clone());
-        state.current_tab_mut().left_pane.marking.mark(file3_loc.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(file2_loc.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(file3_loc.clone());
 
         // Setup: Set right pane destination
         state.current_tab_mut().right_pane.current_location =
@@ -67,7 +75,10 @@ mod tests {
         // Step 1: User initiates copy operation (CreatePendingFileJob — no dialog)
         let transitions = action_to_transitions(&state, &Action::Copy);
         assert_eq!(transitions.len(), 1);
-        assert!(matches!(transitions[0], Transition::CreatePendingFileJob { .. }));
+        assert!(matches!(
+            transitions[0],
+            Transition::CreatePendingFileJob { .. }
+        ));
 
         let result = update_state(&mut state, transitions.into_iter().next().unwrap());
 
@@ -124,7 +135,6 @@ mod tests {
         let completed = &state.jobs.completed[0];
         assert!(matches!(completed.result, OpResult::Success(_)));
     }
-
 
     /// Test complete file move workflow
     /// **Validates: Requirements 7.1-7.12**
@@ -204,8 +214,16 @@ mod tests {
         state.current_tab_mut().left_pane.cursor = 0;
 
         // Mark files 1 and 2
-        state.current_tab_mut().left_pane.marking.mark(file1_loc.clone());
-        state.current_tab_mut().left_pane.marking.mark(file2_loc.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(file1_loc.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(file2_loc.clone());
 
         // Step 1: User initiates delete operation
         let transitions = action_to_transitions(&state, &Action::Delete);
@@ -474,8 +492,12 @@ mod tests {
         let mut state = AppState::new(config);
 
         // Setup: Add file to left pane
-        state.current_tab_mut().left_pane.entries =
-            vec![create_test_file_entry("oldname.txt", "/test/oldname.txt", false, false)];
+        state.current_tab_mut().left_pane.entries = vec![create_test_file_entry(
+            "oldname.txt",
+            "/test/oldname.txt",
+            false,
+            false,
+        )];
         state.current_tab_mut().left_pane.cursor = 0;
 
         // Step 1: User initiates rename operation

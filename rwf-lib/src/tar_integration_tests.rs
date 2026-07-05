@@ -2,11 +2,11 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::backend::archive::{ArchiveHandler, TarArchiveHandler, MultiFormatArchiveHandler};
+    use crate::backend::archive::{ArchiveHandler, MultiFormatArchiveHandler, TarArchiveHandler};
     use crate::model::Location;
     use std::path::PathBuf;
-    use tokio_util::sync::CancellationToken;
     use tempfile::TempDir;
+    use tokio_util::sync::CancellationToken;
 
     /// Build a simple directory tree in `base` and return source Locations.
     fn setup_sources(base: &std::path::Path) -> Vec<Location> {
@@ -55,14 +55,20 @@ mod tests {
         let dest = Location::Local(archive.clone());
         let cancel = CancellationToken::new();
 
-        TarArchiveHandler::new().create_archive(&sources, &dest, &cancel).await.unwrap();
+        TarArchiveHandler::new()
+            .create_archive(&sources, &dest, &cancel)
+            .await
+            .unwrap();
         assert!(archive.exists());
 
         let loc = Location::Archive {
             archive_path: Box::new(Location::Local(archive)),
             inner_path: PathBuf::new(),
         };
-        let entries = TarArchiveHandler::new().list_entries(&loc, &cancel).await.unwrap();
+        let entries = TarArchiveHandler::new()
+            .list_entries(&loc, &cancel)
+            .await
+            .unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"readme.txt"), "got: {:?}", names);
         assert!(names.contains(&"docs"), "got: {:?}", names);
@@ -78,13 +84,17 @@ mod tests {
         let cancel = CancellationToken::new();
         TarArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let loc = Location::Archive {
             archive_path: Box::new(Location::Local(archive)),
             inner_path: PathBuf::from("docs"),
         };
-        let entries = TarArchiveHandler::new().list_entries(&loc, &cancel).await.unwrap();
+        let entries = TarArchiveHandler::new()
+            .list_entries(&loc, &cancel)
+            .await
+            .unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"manual.txt"), "got: {:?}", names);
         assert!(names.contains(&"guide.txt"), "got: {:?}", names);
@@ -100,12 +110,18 @@ mod tests {
         let cancel = CancellationToken::new();
         TarArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let dest = temp.path().join("out");
         TarArchiveHandler::new()
-            .extract_all(&Location::Local(archive), &Location::Local(dest.clone()), &cancel)
-            .await.unwrap();
+            .extract_all(
+                &Location::Local(archive),
+                &Location::Local(dest.clone()),
+                &cancel,
+            )
+            .await
+            .unwrap();
 
         assert!(dest.join("readme.txt").exists());
         let content = std::fs::read_to_string(dest.join("readme.txt")).unwrap();
@@ -121,17 +137,21 @@ mod tests {
         let cancel = CancellationToken::new();
         TarArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let out_file = temp.path().join("extracted_readme.txt");
-        TarArchiveHandler::new().extract_file(
-            &Location::Archive {
-                archive_path: Box::new(Location::Local(archive)),
-                inner_path: PathBuf::from("readme.txt"),
-            },
-            &Location::Local(out_file.clone()),
-            &cancel,
-        ).await.unwrap();
+        TarArchiveHandler::new()
+            .extract_file(
+                &Location::Archive {
+                    archive_path: Box::new(Location::Local(archive)),
+                    inner_path: PathBuf::from("readme.txt"),
+                },
+                &Location::Local(out_file.clone()),
+                &cancel,
+            )
+            .await
+            .unwrap();
 
         assert!(out_file.exists());
         assert_eq!(std::fs::read_to_string(&out_file).unwrap(), "hello tar");
@@ -148,17 +168,26 @@ mod tests {
 
         TarArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
         assert!(archive.exists());
         assert!(archive.metadata().unwrap().len() > 0);
 
         let dest = temp.path().join("tgz_out");
         TarArchiveHandler::new()
-            .extract_all(&Location::Local(archive), &Location::Local(dest.clone()), &cancel)
-            .await.unwrap();
+            .extract_all(
+                &Location::Local(archive),
+                &Location::Local(dest.clone()),
+                &cancel,
+            )
+            .await
+            .unwrap();
 
         assert!(dest.join("readme.txt").exists());
-        assert_eq!(std::fs::read_to_string(dest.join("readme.txt")).unwrap(), "hello tar");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("readme.txt")).unwrap(),
+            "hello tar"
+        );
     }
 
     #[tokio::test]
@@ -169,13 +198,17 @@ mod tests {
         let cancel = CancellationToken::new();
         TarArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let loc = Location::Archive {
             archive_path: Box::new(Location::Local(archive)),
             inner_path: PathBuf::new(),
         };
-        let entries = TarArchiveHandler::new().list_entries(&loc, &cancel).await.unwrap();
+        let entries = TarArchiveHandler::new()
+            .list_entries(&loc, &cancel)
+            .await
+            .unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"readme.txt"), "tgz root: {:?}", names);
         assert!(names.contains(&"docs"), "tgz root: {:?}", names);
@@ -192,14 +225,17 @@ mod tests {
 
         MultiFormatArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let loc = Location::Archive {
             archive_path: Box::new(Location::Local(archive)),
             inner_path: PathBuf::new(),
         };
         let entries = MultiFormatArchiveHandler::new()
-            .list_entries(&loc, &cancel).await.unwrap();
+            .list_entries(&loc, &cancel)
+            .await
+            .unwrap();
         assert!(!entries.is_empty(), "MultiFormat should list TAR entries");
     }
 
@@ -212,12 +248,18 @@ mod tests {
 
         MultiFormatArchiveHandler::new()
             .create_archive(&sources, &Location::Local(archive.clone()), &cancel)
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let dest = temp.path().join("tgz_multi_out");
         MultiFormatArchiveHandler::new()
-            .extract_all(&Location::Local(archive), &Location::Local(dest.clone()), &cancel)
-            .await.unwrap();
+            .extract_all(
+                &Location::Local(archive),
+                &Location::Local(dest.clone()),
+                &cancel,
+            )
+            .await
+            .unwrap();
 
         assert!(dest.join("readme.txt").exists());
     }

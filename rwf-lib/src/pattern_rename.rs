@@ -94,7 +94,11 @@ fn apply_s_command(filename: &str, command: &str) -> String {
     }
     let search = unescape_slash(&parts[1]);
     let replacement = normalize_replacement(&unescape_slash(&parts[2]));
-    let flags = if parts.len() > 3 { parts[3].as_str() } else { "" };
+    let flags = if parts.len() > 3 {
+        parts[3].as_str()
+    } else {
+        ""
+    };
 
     let global = flags.contains('g');
     let ignore_case = flags.contains('i');
@@ -151,7 +155,8 @@ fn normalize_replacement(replace: &str) -> String {
     let re = Regex::new(r"\$(\d+)").unwrap();
     re.replace_all(replace, |caps: &regex::Captures| {
         format!("${{{}}}", &caps[1])
-    }).to_string()
+    })
+    .to_string()
 }
 
 fn split_slash_command(command: &str) -> Vec<String> {
@@ -289,14 +294,17 @@ mod tests {
 
     #[test]
     fn test_generate_preview_all_files() {
-        let files = vec![
-            "file1.txt".to_string(),
-            "image.jpg".to_string(),
-        ];
+        let files = vec!["file1.txt".to_string(), "image.jpg".to_string()];
         let preview = generate_preview(&files, r"\.txt$", ".bak", true, true);
         assert_eq!(preview.len(), 2);
-        assert_eq!(preview[0], ("file1.txt".to_string(), "file1.bak".to_string()));
+        assert_eq!(
+            preview[0],
+            ("file1.txt".to_string(), "file1.bak".to_string())
+        );
         // jpg unchanged — still in preview
-        assert_eq!(preview[1], ("image.jpg".to_string(), "image.jpg".to_string()));
+        assert_eq!(
+            preview[1],
+            ("image.jpg".to_string(), "image.jpg".to_string())
+        );
     }
 }

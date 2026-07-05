@@ -3,11 +3,11 @@
 //! This module implements the rwf Worker Pool that executes jobs
 //! asynchronously on a fixed number of worker threads.
 
-use crate::job::{JobSpec, JobId, JobExecutor};
-use crate::backend::{FilesystemBackend, ArchiveHandler};
-use tokio::sync::mpsc;
-use std::sync::Arc;
+use crate::backend::{ArchiveHandler, FilesystemBackend};
+use crate::job::{JobExecutor, JobId, JobSpec};
 use std::marker::PhantomData;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// Events sent from workers to the UI thread
 #[derive(Debug, Clone)]
@@ -28,7 +28,11 @@ pub enum JobEvent {
     /// Sent immediately so the UI can render the first visible lines before
     /// the full line index is built. The ViewerBuffer's line_index Arc is
     /// shared with the background indexer — no copy, just Arc::clone.
-    ViewerReady(JobId, crate::model::viewer::ViewerBuffer, crate::model::viewer::TextEncoding),
+    ViewerReady(
+        JobId,
+        crate::model::viewer::ViewerBuffer,
+        crate::model::viewer::TextEncoding,
+    ),
     /// Background viewer search completed. Contains the match list.
     ViewerSearchComplete(JobId, Vec<(usize, usize, usize)>),
 }
@@ -54,41 +58,42 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
     /// # Returns
     ///
     /// A new WorkerPool instance ready to accept jobs
-    pub fn new(
-        worker_count: usize,
-        backend: Arc<B>,
-        archive_handler: Arc<A>,
-    ) -> Self {
+    pub fn new(worker_count: usize, backend: Arc<B>, archive_handler: Arc<A>) -> Self {
         let (job_sender, job_receiver) = mpsc::unbounded_channel::<JobSpec>();
         let (event_sender, event_receiver) = mpsc::unbounded_channel::<JobEvent>();
-        
+
         // Create a shared receiver that all workers can pull from
         let job_receiver = Arc::new(tokio::sync::Mutex::new(job_receiver));
-        
+
         let mut workers = Vec::new();
-        
+
         for worker_id in 0..worker_count {
             let job_rx = Arc::clone(&job_receiver);
             let event_tx = event_sender.clone();
             let backend = Arc::clone(&backend);
             let archive_handler = Arc::clone(&archive_handler);
-            
+
             let handle = tokio::spawn(async move {
                 tracing::debug!("Worker {} started", worker_id);
-                
+
                 // Create a JobExecutor for this worker
                 let executor = JobExecutor::new(backend, archive_handler, event_tx);
-                
+
                 loop {
                     // Lock the receiver and try to get a job
                     let spec = {
                         let mut rx = job_rx.lock().await;
                         rx.recv().await
                     };
-                    
+
                     match spec {
                         Some(spec) => {
-                            tracing::debug!("Worker {} executing job job_id={:?} kind={:?}", worker_id, spec.id, spec.kind);
+                            tracing::debug!(
+                                "Worker {} executing job job_id={:?} kind={:?}",
+                                worker_id,
+                                spec.id,
+                                spec.kind
+                            );
 
                             // Execute the job using the executor
                             executor.execute(spec).await;
@@ -100,10 +105,10 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
                     }
                 }
             });
-            
+
             workers.push(handle);
         }
-        
+
         Self {
             workers,
             job_sender,
@@ -121,7 +126,15 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
         sources: &[crate::model::Location],
         dest: &crate::model::Location,
     ) -> Vec<crate::model::dialog::ConflictPair> {
-        crate::job::detect_conflicts(sources, dest, self.backend.as_ref(), crate::job::JobId::new(), 0).await.unwrap_or_default()
+        crate::job::detect_conflicts(
+            sources,
+            dest,
+            self.backend.as_ref(),
+            crate::job::JobId::new(),
+            0,
+        )
+        .await
+        .unwrap_or_default()
     }
 
     /// Submit a job to the worker pool
@@ -136,21 +149,21 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
             tracing::error!("Failed to submit job: {}", e);
         }
     }
-    
+
     /// Try to receive a job event without blocking
     ///
     /// Returns None if no events are available.
     pub fn try_recv_event(&mut self) -> Option<JobEvent> {
         self.event_receiver.try_recv().ok()
     }
-    
+
     /// Receive a job event, waiting if necessary
     ///
     /// Returns None if the event channel is closed.
     pub async fn recv_event(&mut self) -> Option<JobEvent> {
         self.event_receiver.recv().await
     }
-    
+
     /// Shutdown the worker pool
     ///
     /// Drops the job sender, causing all workers to exit after completing
@@ -158,14 +171,14 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
     pub async fn shutdown(self) {
         // Drop the sender to signal workers to exit
         drop(self.job_sender);
-        
+
         // Wait for all workers to finish
         for worker in self.workers {
             if let Err(e) = worker.await {
                 tracing::error!("Worker panicked during shutdown: {}", e);
             }
         }
-        
+
         tracing::info!("Worker pool shut down");
     }
 }
@@ -173,18 +186,18 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::job::{JobSpec, JobKind};
-    use crate::model::Location;
     use crate::backend::LocalFilesystemBackend;
-    use std::path::PathBuf;
     use crate::backend::MockArchiveHandler;
+    use crate::job::{JobKind, JobSpec};
+    use crate::model::Location;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_worker_pool_creation() {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let pool = WorkerPool::new(4, backend, archive_handler);
-        
+
         // Pool should be created successfully
         assert_eq!(pool.workers.len(), 4);
     }
@@ -194,21 +207,23 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let mut pool = WorkerPool::new(2, backend, archive_handler);
-        
+
         let spec = JobSpec::new(JobKind::ReadDirectory {
             location: Location::Local(PathBuf::from("/test")),
         });
-        
+
         let job_id = spec.id;
         pool.submit_job(spec);
-        
+
         // Should receive started event
         let event = pool.recv_event().await;
         assert!(matches!(event, Some(JobEvent::Started(id)) if id == job_id));
-        
+
         // Should receive completed or failed event (directory may not exist)
         let event = pool.recv_event().await;
-        assert!(matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == job_id));
+        assert!(
+            matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == job_id)
+        );
     }
 
     #[tokio::test]
@@ -216,35 +231,39 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let mut pool = WorkerPool::new(1, backend, archive_handler); // Single worker to ensure FIFO
-        
+
         let spec1 = JobSpec::new(JobKind::ReadDirectory {
             location: Location::Local(PathBuf::from("/test1")),
         });
         let id1 = spec1.id;
-        
+
         let spec2 = JobSpec::new(JobKind::ReadDirectory {
             location: Location::Local(PathBuf::from("/test2")),
         });
         let id2 = spec2.id;
-        
+
         pool.submit_job(spec1);
         pool.submit_job(spec2);
-        
+
         // First job should start first
         let event = pool.recv_event().await;
         assert!(matches!(event, Some(JobEvent::Started(id)) if id == id1));
-        
+
         // First job should complete or fail
         let event = pool.recv_event().await;
-        assert!(matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == id1));
-        
+        assert!(
+            matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == id1)
+        );
+
         // Second job should start
         let event = pool.recv_event().await;
         assert!(matches!(event, Some(JobEvent::Started(id)) if id == id2));
-        
+
         // Second job should complete or fail
         let event = pool.recv_event().await;
-        assert!(matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == id2));
+        assert!(
+            matches!(event, Some(JobEvent::Completed(id, _) | JobEvent::Failed(id, _)) if id == id2)
+        );
     }
 
     #[tokio::test]
@@ -252,7 +271,7 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let pool = WorkerPool::new(2, backend, archive_handler);
-        
+
         // Shutdown should complete without hanging
         pool.shutdown().await;
     }

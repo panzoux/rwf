@@ -3,14 +3,14 @@
 //! This module implements the JobExecutor that dispatches jobs to the
 //! appropriate backend methods and sends JobEvent updates.
 
-use crate::backend::{FilesystemBackend, ArchiveHandler};
-use crate::job::{JobSpec, JobId, JobKind, OpResult, SuccessData, PipeToAction};
+use crate::backend::{ArchiveHandler, FilesystemBackend};
+use crate::job::{JobId, JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
+use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, TextEncoding, ViewerBuffer};
 use crate::model::Location;
-use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, ViewerBuffer, TextEncoding};
 use crate::worker_pool::JobEvent;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use std::sync::Arc;
 use tracing::debug;
 
 /// Executor for processing job specifications
@@ -39,98 +39,181 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             event_sender,
         }
     }
-    
+
     /// Execute a job specification
     ///
     /// Dispatches to the appropriate backend method based on JobKind
     /// and sends JobEvent updates via the event channel.
     pub async fn execute(&self, spec: JobSpec) {
         let job_id = spec.id;
-        
+
         // Always send Started event first
         if let Err(e) = self.event_sender.send(JobEvent::Started(job_id)) {
             tracing::error!("Failed to send job started event for {:?}: {}", job_id, e);
         }
-        
+
         let result = match &spec.kind {
             JobKind::ReadDirectory { location } => {
-                self.execute_read_directory(location, &spec.cancel_token).await
+                self.execute_read_directory(location, &spec.cancel_token)
+                    .await
             }
-            JobKind::Copy { sources, dest } => {
-                self.execute_copy(sources, dest, &spec).await
-            }
-            JobKind::Move { sources, dest } => {
-                self.execute_move(sources, dest, &spec).await
-            }
-            JobKind::Delete { targets } => {
-                self.execute_delete(targets, &spec).await
-            }
-            JobKind::Mkdir { location } => {
-                self.execute_mkdir(location, &spec.cancel_token).await
-            }
-            JobKind::Rename { from, to } => {
-                self.execute_rename(from, to, &spec.cancel_token).await
-            }
+            JobKind::Copy { sources, dest } => self.execute_copy(sources, dest, &spec).await,
+            JobKind::Move { sources, dest } => self.execute_move(sources, dest, &spec).await,
+            JobKind::Delete { targets } => self.execute_delete(targets, &spec).await,
+            JobKind::Mkdir { location } => self.execute_mkdir(location, &spec.cancel_token).await,
+            JobKind::Rename { from, to } => self.execute_rename(from, to, &spec.cancel_token).await,
             JobKind::CalculateSize { location } => {
                 self.execute_calculate_size(location, &spec).await
             }
             JobKind::ExtractArchive { archive, dest } => {
                 self.execute_extract_archive(archive, dest, &spec).await
             }
-            JobKind::CreateArchive { sources, dest, original_size: _ } => {
-                self.execute_create_archive(sources, dest, &spec).await
+            JobKind::CreateArchive {
+                sources,
+                dest,
+                original_size: _,
+            } => self.execute_create_archive(sources, dest, &spec).await,
+            JobKind::ExecuteCustomFunction {
+                command,
+                working_dir,
+                pipe_to_action,
+                shell,
+            } => {
+                self.execute_custom_function(
+                    command,
+                    working_dir,
+                    pipe_to_action,
+                    &spec,
+                    shell.as_deref(),
+                )
+                .await
             }
-            JobKind::ExecuteCustomFunction { command, working_dir, pipe_to_action, shell } => {
-                self.execute_custom_function(command, working_dir, pipe_to_action, &spec, shell.as_deref()).await
+            JobKind::SpawnProcess {
+                program,
+                args,
+                wait,
+            } => {
+                self.execute_spawn_process(program, args, *wait, &spec)
+                    .await
             }
-            JobKind::SpawnProcess { program, args, wait } => {
-                self.execute_spawn_process(program, args, *wait, &spec).await
+            JobKind::Search {
+                location,
+                pattern,
+                recursive,
+            } => {
+                self.execute_search(location, pattern, *recursive, &spec)
+                    .await
             }
-            JobKind::Search { location, pattern, recursive } => {
-                self.execute_search(location, pattern, *recursive, &spec).await
+            JobKind::LoadFileForViewer {
+                location,
+                index_lines,
+                large_file_threshold,
+            } => {
+                self.execute_load_file_for_viewer(
+                    job_id,
+                    location,
+                    *index_lines,
+                    *large_file_threshold,
+                    &spec.cancel_token,
+                )
+                .await
             }
-            JobKind::LoadFileForViewer { location, index_lines, large_file_threshold } => {
-                self.execute_load_file_for_viewer(job_id, location, *index_lines, *large_file_threshold, &spec.cancel_token).await
+            JobKind::ViewerSearch {
+                location,
+                migemo_pattern,
+                query,
+                is_hex_mode,
+                encoding,
+                case_sensitive,
+                large_file_threshold,
+            } => {
+                self.execute_viewer_search(
+                    job_id,
+                    location,
+                    migemo_pattern.as_deref(),
+                    query,
+                    *is_hex_mode,
+                    *encoding,
+                    *case_sensitive,
+                    *large_file_threshold,
+                    &spec.cancel_token,
+                )
+                .await
             }
-            JobKind::ViewerSearch { location, migemo_pattern, query, is_hex_mode, encoding, case_sensitive, large_file_threshold } => {
-                self.execute_viewer_search(job_id, location, migemo_pattern.as_deref(), query, *is_hex_mode, *encoding, *case_sensitive, *large_file_threshold, &spec.cancel_token).await
-            }
-            JobKind::PatternRename { targets, find, replace, use_regex, case_sensitive } => {
-                self.execute_pattern_rename(targets, find, replace, *use_regex, *case_sensitive, &spec).await
+            JobKind::PatternRename {
+                targets,
+                find,
+                replace,
+                use_regex,
+                case_sensitive,
+            } => {
+                self.execute_pattern_rename(
+                    targets,
+                    find,
+                    replace,
+                    *use_regex,
+                    *case_sensitive,
+                    &spec,
+                )
+                .await
             }
             JobKind::CompareFiles { left, right } => {
                 self.execute_compare_files(left, right, &spec).await
             }
-            JobKind::SplitFile { source, dest_dir, chunk_size } => {
-                self.execute_split_file(source, dest_dir, *chunk_size, &spec).await
+            JobKind::SplitFile {
+                source,
+                dest_dir,
+                chunk_size,
+            } => {
+                self.execute_split_file(source, dest_dir, *chunk_size, &spec)
+                    .await
             }
-            JobKind::JoinFiles { parts, dest } => {
-                self.execute_join_files(parts, dest, &spec).await
+            JobKind::JoinFiles { parts, dest } => self.execute_join_files(parts, dest, &spec).await,
+            JobKind::CountDown {
+                duration_secs,
+                start_value,
+            } => {
+                self.execute_countdown(*duration_secs, *start_value, &spec)
+                    .await
             }
-            JobKind::CountDown { duration_secs, start_value } => {
-                self.execute_countdown(*duration_secs, *start_value, &spec).await
-            }
-            JobKind::CollectJumpCandidates { root, include_files, max_results, max_depth } => {
-                self.execute_collect_jump_candidates(root, *include_files, *max_results, *max_depth, &spec.cancel_token).await
+            JobKind::CollectJumpCandidates {
+                root,
+                include_files,
+                max_results,
+                max_depth,
+            } => {
+                self.execute_collect_jump_candidates(
+                    root,
+                    *include_files,
+                    *max_results,
+                    *max_depth,
+                    &spec.cancel_token,
+                )
+                .await
             }
             JobKind::SuspendAndRun { .. } => {
                 // Intercepted in app layer before pool submission — should never arrive here.
-                crate::job::OpResult::Failed("SuspendAndRun reached worker pool unexpectedly".to_string())
+                crate::job::OpResult::Failed(
+                    "SuspendAndRun reached worker pool unexpectedly".to_string(),
+                )
             }
         };
-        
+
         // Send completion event based on result
         let event = match result {
             OpResult::Success(data) => JobEvent::Completed(job_id, data),
             OpResult::Failed(error) => JobEvent::Failed(job_id, error),
             OpResult::Cancelled => JobEvent::Cancelled(job_id),
         };
-        
+
         if let Err(e) = self.event_sender.send(event) {
-            tracing::trace!("Failed to send job completion event (receiver likely closed): {}", e);
+            tracing::trace!(
+                "Failed to send job completion event (receiver likely closed): {}",
+                e
+            );
         }
     }
-    
+
     /// Execute a read directory operation
     async fn execute_read_directory(
         &self,
@@ -140,12 +223,16 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Check if this is an archive location
         match location {
             Location::Archive { .. } => {
                 // Use archive handler for archive locations
-                match self.archive_handler.list_entries(location, cancel_token).await {
+                match self
+                    .archive_handler
+                    .list_entries(location, cancel_token)
+                    .await
+                {
                     Ok(entries) => OpResult::Success(SuccessData::DirectoryRead(entries)),
                     Err(e) => OpResult::Failed(e.to_string()),
                 }
@@ -159,7 +246,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
         }
     }
-    
+
     /// Execute a copy operation
     async fn execute_copy(
         &self,
@@ -178,7 +265,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
             // Check if there's a conflict decision for this file
             let decision = decisions.and_then(|d| d.iter().find(|d| d.source == *source));
-            
+
             // Handle decision
             if let Some(dec) = decision {
                 match &dec.action {
@@ -193,7 +280,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                         } else {
                             dest.clone()
                         };
-                        
+
                         if let (Ok(src_meta), Ok(dst_meta)) = (
                             self.backend.get_entry(source).await,
                             self.backend.get_entry(&dest_location).await,
@@ -208,17 +295,40 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                         // Copy with new name
                         if let Some(dest_path) = dest.path() {
                             let new_dest = Location::Local(dest_path.join(new_name));
-                            if let Err(e) = self.backend.copy_file(source, &new_dest, &spec.cancel_token).await {
-                                return OpResult::Failed(format!("Failed to copy {} as {}: {}",
-                                    self.location_display(source), new_name, e));
+                            if let Err(e) = self
+                                .backend
+                                .copy_file(source, &new_dest, &spec.cancel_token)
+                                .await
+                            {
+                                return OpResult::Failed(format!(
+                                    "Failed to copy {} as {}: {}",
+                                    self.location_display(source),
+                                    new_name,
+                                    e
+                                ));
                             }
-                            debug!("Renamed and copied file: {} -> {}", self.location_display(source), new_name);
-                            
+                            debug!(
+                                "Renamed and copied file: {} -> {}",
+                                self.location_display(source),
+                                new_name
+                            );
+
                             // Progress update
-                            let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
-                                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+                            let progress = if total_files > 0 {
+                                (i + 1) as f64 / total_files as f64
+                            } else {
+                                1.0
+                            };
+                            if let Err(e) = self
+                                .event_sender
+                                .send(JobEvent::Progress(spec.id, progress))
+                            {
+                                tracing::error!(
+                                    "Failed to send job progress event for {:?}: {}",
+                                    spec.id,
+                                    e
+                                );
+                            }
                             continue;
                         }
                     }
@@ -236,9 +346,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Send progress update
-                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
 
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
@@ -248,20 +361,31 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Copy the file
-            if let Err(e) = self.backend.copy_file(source, &dest_location, &spec.cancel_token).await {
-                return OpResult::Failed(format!("Failed to copy {}: {}",
-                    self.location_display(source), e));
+            if let Err(e) = self
+                .backend
+                .copy_file(source, &dest_location, &spec.cancel_token)
+                .await
+            {
+                return OpResult::Failed(format!(
+                    "Failed to copy {}: {}",
+                    self.location_display(source),
+                    e
+                ));
             }
         }
 
         // Send final progress
         if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
-            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+            tracing::error!(
+                "Failed to send job progress event (1.0) for {:?}: {}",
+                spec.id,
+                e
+            );
         }
 
         OpResult::Success(SuccessData::None)
     }
-    
+
     /// Execute a move operation
     async fn execute_move(
         &self,
@@ -280,7 +404,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
             // Check if there's a conflict decision for this file
             let decision = decisions.and_then(|d| d.iter().find(|d| d.source == *source));
-            
+
             // Handle decision
             if let Some(dec) = decision {
                 match &dec.action {
@@ -295,7 +419,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                         } else {
                             dest.clone()
                         };
-                        
+
                         if let (Ok(src_meta), Ok(dst_meta)) = (
                             self.backend.get_entry(source).await,
                             self.backend.get_entry(&dest_location).await,
@@ -310,17 +434,40 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                         // Move with new name
                         if let Some(dest_path) = dest.path() {
                             let new_dest = Location::Local(dest_path.join(new_name));
-                            if let Err(e) = self.backend.move_file(source, &new_dest, &spec.cancel_token).await {
-                                return OpResult::Failed(format!("Failed to move {} as {}: {}",
-                                    self.location_display(source), new_name, e));
+                            if let Err(e) = self
+                                .backend
+                                .move_file(source, &new_dest, &spec.cancel_token)
+                                .await
+                            {
+                                return OpResult::Failed(format!(
+                                    "Failed to move {} as {}: {}",
+                                    self.location_display(source),
+                                    new_name,
+                                    e
+                                ));
                             }
-                            debug!("Renamed and moved file: {} -> {}", self.location_display(source), new_name);
-                            
+                            debug!(
+                                "Renamed and moved file: {} -> {}",
+                                self.location_display(source),
+                                new_name
+                            );
+
                             // Progress update
-                            let progress = if total_files > 0 { (i + 1) as f64 / total_files as f64 } else { 1.0 };
-                                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+                            let progress = if total_files > 0 {
+                                (i + 1) as f64 / total_files as f64
+                            } else {
+                                1.0
+                            };
+                            if let Err(e) = self
+                                .event_sender
+                                .send(JobEvent::Progress(spec.id, progress))
+                            {
+                                tracing::error!(
+                                    "Failed to send job progress event for {:?}: {}",
+                                    spec.id,
+                                    e
+                                );
+                            }
                             continue;
                         }
                     }
@@ -338,9 +485,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Send progress update
-                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
 
             // Determine destination path
             let dest_location = if let Some(filename) = self.get_filename(source) {
@@ -350,61 +500,78 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             };
 
             // Move the file
-            if let Err(e) = self.backend.move_file(source, &dest_location, &spec.cancel_token).await {
-                return OpResult::Failed(format!("Failed to move {}: {}",
-                    self.location_display(source), e));
+            if let Err(e) = self
+                .backend
+                .move_file(source, &dest_location, &spec.cancel_token)
+                .await
+            {
+                return OpResult::Failed(format!(
+                    "Failed to move {}: {}",
+                    self.location_display(source),
+                    e
+                ));
             }
         }
 
         // Send final progress
         if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
-            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+            tracing::error!(
+                "Failed to send job progress event (1.0) for {:?}: {}",
+                spec.id,
+                e
+            );
         }
 
         OpResult::Success(SuccessData::None)
     }
-    
+
     /// Execute a delete operation
-    async fn execute_delete(
-        &self,
-        targets: &[Location],
-        spec: &JobSpec,
-    ) -> OpResult {
+    async fn execute_delete(&self, targets: &[Location], spec: &JobSpec) -> OpResult {
         let total_files = targets.len();
-        
+
         for (i, target) in targets.iter().enumerate() {
             // Check cancellation before each file
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
-            
+
             // Calculate progress
             let progress = if total_files > 0 {
                 (i as f64) / (total_files as f64)
             } else {
                 0.0
             };
-            
+
             // Send progress update
-                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
-            
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
+
             // Delete the file
             if let Err(e) = self.backend.delete_file(target, &spec.cancel_token).await {
-                return OpResult::Failed(format!("Failed to delete {}: {}", 
-                    self.location_display(target), e));
+                return OpResult::Failed(format!(
+                    "Failed to delete {}: {}",
+                    self.location_display(target),
+                    e
+                ));
             }
         }
-        
+
         // Send final progress
         if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
-            tracing::error!("Failed to send job progress event (1.0) for {:?}: {}", spec.id, e);
+            tracing::error!(
+                "Failed to send job progress event (1.0) for {:?}: {}",
+                spec.id,
+                e
+            );
         }
-        
+
         OpResult::Success(SuccessData::None)
     }
-    
+
     /// Execute a mkdir operation
     async fn execute_mkdir(
         &self,
@@ -414,13 +581,13 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         match self.backend.create_directory(location, cancel_token).await {
             Ok(_) => OpResult::Success(SuccessData::None),
             Err(e) => OpResult::Failed(e.to_string()),
         }
     }
-    
+
     /// Execute a rename operation
     async fn execute_rename(
         &self,
@@ -431,44 +598,47 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         match self.backend.rename_file(from, to, cancel_token).await {
             Ok(_) => OpResult::Success(SuccessData::None),
             Err(e) => OpResult::Failed(e.to_string()),
         }
     }
-    
+
     /// Execute a calculate size operation
-    async fn execute_calculate_size(
-        &self,
-        location: &Location,
-        spec: &JobSpec,
-    ) -> OpResult {
+    async fn execute_calculate_size(&self, location: &Location, spec: &JobSpec) -> OpResult {
         // Use the progress callback version to send updates
         let event_sender = self.event_sender.clone();
         let job_id = spec.id;
-        
+
         // Track progress updates
         let last_update = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
-        
-        let result = self.backend.calculate_directory_size_with_progress(
-            location,
-            &spec.cancel_token,
-            Box::new(move |items_processed, _current_size| {
-                // Send progress updates every 100ms to avoid flooding
-                let mut last = last_update.lock().unwrap();
-                if last.elapsed() > std::time::Duration::from_millis(100) {
-                    // We don't know the total, so we can't calculate a percentage
-                    // Send a progress value that indicates activity (oscillating between 0.3 and 0.7)
-                    let progress = 0.5 + 0.2 * ((items_processed % 10) as f64 / 10.0 - 0.5);
-                    if let Err(e) = event_sender.send(JobEvent::Progress(job_id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", job_id, e);
+
+        let result = self
+            .backend
+            .calculate_directory_size_with_progress(
+                location,
+                &spec.cancel_token,
+                Box::new(move |items_processed, _current_size| {
+                    // Send progress updates every 100ms to avoid flooding
+                    let mut last = last_update.lock().unwrap();
+                    if last.elapsed() > std::time::Duration::from_millis(100) {
+                        // We don't know the total, so we can't calculate a percentage
+                        // Send a progress value that indicates activity (oscillating between 0.3 and 0.7)
+                        let progress = 0.5 + 0.2 * ((items_processed % 10) as f64 / 10.0 - 0.5);
+                        if let Err(e) = event_sender.send(JobEvent::Progress(job_id, progress)) {
+                            tracing::error!(
+                                "Failed to send job progress event for {:?}: {}",
+                                job_id,
+                                e
+                            );
+                        }
+                        *last = std::time::Instant::now();
                     }
-                    *last = std::time::Instant::now();
-                }
-            })
-        ).await;
-        
+                }),
+            )
+            .await;
+
         match result {
             Ok(size) => OpResult::Success(SuccessData::SizeCalculated(size)),
             Err(e) => {
@@ -480,7 +650,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
         }
     }
-    
+
     /// Execute an extract archive operation
     async fn execute_extract_archive(
         &self,
@@ -491,8 +661,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
-        match self.archive_handler.extract_all(archive, dest, &spec.cancel_token).await {
+
+        match self
+            .archive_handler
+            .extract_all(archive, dest, &spec.cancel_token)
+            .await
+        {
             Ok(()) => OpResult::Success(SuccessData::None),
             Err(e) => {
                 if spec.cancel_token.is_cancelled() {
@@ -503,7 +677,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
         }
     }
-    
+
     /// Execute a create archive operation
     async fn execute_create_archive(
         &self,
@@ -514,8 +688,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
-        match self.archive_handler.create_archive(sources, dest, &spec.cancel_token).await {
+
+        match self
+            .archive_handler
+            .create_archive(sources, dest, &spec.cancel_token)
+            .await
+        {
             Ok(()) => OpResult::Success(SuccessData::None),
             Err(e) => {
                 if spec.cancel_token.is_cancelled() {
@@ -526,7 +704,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
         }
     }
-    
+
     /// Execute a custom function
     async fn execute_custom_function(
         &self,
@@ -541,36 +719,47 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Location::Local(path) => path.clone(),
             _ => return OpResult::Failed("Custom functions only support local paths".to_string()),
         };
-        
+
         // Check cancellation before starting
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Determine shell to use.
         // On Windows, cmd.exe gets /D before /C to disable AutoRun registry entries
         // (Clink and similar tools hook there; without /D they try to inject into the
         // non-interactive session and may return a non-zero exit code).
         #[derive(PartialEq)]
-        enum ShellKind { Cmd, Other }
+        enum ShellKind {
+            Cmd,
+            Other,
+        }
         let (shell_cmd, shell_arg, shell_kind) = if let Some(shell_name) = shell {
             match shell_name {
                 "bash" => ("bash", "-c", ShellKind::Other),
-                "zsh"  => ("zsh",  "-c", ShellKind::Other),
+                "zsh" => ("zsh", "-c", ShellKind::Other),
                 "powershell" | "powershell.exe" => ("powershell", "-Command", ShellKind::Other),
-                "cmd"  | "cmd.exe" => ("cmd", "/C", ShellKind::Cmd),
+                "cmd" | "cmd.exe" => ("cmd", "/C", ShellKind::Cmd),
                 _ => {
                     #[cfg(target_os = "windows")]
-                    { ("cmd", "/C", ShellKind::Cmd) }
+                    {
+                        ("cmd", "/C", ShellKind::Cmd)
+                    }
                     #[cfg(not(target_os = "windows"))]
-                    { ("sh", "-c", ShellKind::Other) }
+                    {
+                        ("sh", "-c", ShellKind::Other)
+                    }
                 }
             }
         } else {
             #[cfg(target_os = "windows")]
-            { ("cmd", "/C", ShellKind::Cmd) }
+            {
+                ("cmd", "/C", ShellKind::Cmd)
+            }
             #[cfg(not(target_os = "windows"))]
-            { ("sh", "-c", ShellKind::Other) }
+            {
+                ("sh", "-c", ShellKind::Other)
+            }
         };
 
         // Execute the command.
@@ -591,12 +780,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         cmd.arg(shell_arg).arg(command);
         cmd.current_dir(working_path);
         let output = cmd.output().await;
-        
+
         match output {
             Ok(output) => {
                 if output.status.success() {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                    
+
                     // Handle PipeToAction if specified
                     if let Some(_action) = pipe_to_action {
                         // PipeToAction handling will be done by the caller
@@ -613,23 +802,37 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Err(e) => OpResult::Failed(e.to_string()),
         }
     }
-    
+
     /// Spawn a program directly without a shell, avoiding cmd.exe quote-mangling on Windows.
-    async fn execute_spawn_process(&self, program: &str, args: &[String], wait: bool, spec: &JobSpec) -> crate::job::OpResult {
+    async fn execute_spawn_process(
+        &self,
+        program: &str,
+        args: &[String],
+        wait: bool,
+        spec: &JobSpec,
+    ) -> crate::job::OpResult {
         if spec.cancel_token.is_cancelled() {
             return crate::job::OpResult::Cancelled;
         }
         if wait {
             // Block this job (not the UI thread) until the child exits, so callers
             // can react to "editor closed" via the normal job-completion event.
-            match tokio::process::Command::new(program).args(args).status().await {
+            match tokio::process::Command::new(program)
+                .args(args)
+                .status()
+                .await
+            {
                 Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
-                Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
+                Err(e) => {
+                    crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e))
+                }
             }
         } else {
             match tokio::process::Command::new(program).args(args).spawn() {
                 Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
-                Err(e) => crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e)),
+                Err(e) => {
+                    crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e))
+                }
             }
         }
     }
@@ -646,7 +849,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         // This is a placeholder for future implementation
         OpResult::Failed("Search not yet implemented".to_string())
     }
-    
+
     /// Read the entire file into memory on the blocking pool and send ViewerReady.
     /// Using InMemory for all files means the UI thread (Tokio async worker) never
     /// touches OS file handles or mmap pages — eliminating page-fault stalls that
@@ -665,10 +868,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
         let path = match location {
             Location::Local(p) => p.clone(),
-            Location::Archive { .. } =>
-                return OpResult::Failed("Archive file viewing not yet implemented".to_string()),
-            _ =>
-                return OpResult::Failed("Unsupported location type for file viewing".to_string()),
+            Location::Archive { .. } => {
+                return OpResult::Failed("Archive file viewing not yet implemented".to_string())
+            }
+            _ => return OpResult::Failed("Unsupported location type for file viewing".to_string()),
         };
 
         // All file I/O runs on the blocking thread pool so the Tokio async thread
@@ -704,7 +907,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                                 offsets.push((i + 1) as u64);
                             }
                         }
-                        Some(LineIndex { offsets, is_complete: true })
+                        Some(LineIndex {
+                            offsets,
+                            is_complete: true,
+                        })
                     } else {
                         None
                     };
@@ -734,10 +940,14 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         // In both cases we can send ViewerReady immediately and return.
         if !index_lines || complete_index.is_some() {
             let idx = complete_index.unwrap_or_else(|| {
-                let mut i = LineIndex::new(); i.is_complete = true; i
+                let mut i = LineIndex::new();
+                i.is_complete = true;
+                i
             });
             let buffer = ViewerBuffer::new(file_bytes, idx);
-            let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer, encoding));
+            let _ = self
+                .event_sender
+                .send(JobEvent::ViewerReady(job_id, buffer, encoding));
             return OpResult::Success(SuccessData::None);
         }
 
@@ -745,7 +955,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         // before the full index is ready, then build the index on a separate blocking
         // thread using a dedicated file handle (never contends with SeekableFile render handle).
         let buffer = ViewerBuffer::new(file_bytes, LineIndex::new());
-        let _ = self.event_sender.send(JobEvent::ViewerReady(job_id, buffer.clone(), encoding));
+        let _ = self
+            .event_sender
+            .send(JobEvent::ViewerReady(job_id, buffer.clone(), encoding));
 
         let total = buffer.total_bytes();
         if total == 0 {
@@ -775,7 +987,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             let mut abs_offset = 0u64;
 
             loop {
-                if cancel.is_cancelled() { return; }
+                if cancel.is_cancelled() {
+                    return;
+                }
 
                 let n = match index_file.read(&mut read_buf) {
                     Ok(0) => break,
@@ -791,12 +1005,15 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     }
                 }
                 if !local.is_empty() {
-                    buffer_for_scan.line_index.lock().unwrap().offsets.extend_from_slice(&local);
+                    buffer_for_scan
+                        .line_index
+                        .lock()
+                        .unwrap()
+                        .offsets
+                        .extend_from_slice(&local);
                 }
                 abs_offset += n as u64;
-                let _ = event_tx.send(JobEvent::Progress(
-                    job_id, abs_offset as f64 / total as f64,
-                ));
+                let _ = event_tx.send(JobEvent::Progress(job_id, abs_offset as f64 / total as f64));
             }
 
             buffer_for_scan.line_index.lock().unwrap().is_complete = true;
@@ -824,7 +1041,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     ) -> OpResult {
         let path = match location {
             Location::Local(p) => p.clone(),
-            _ => return OpResult::Failed("Viewer search only supported for local files".to_string()),
+            _ => {
+                return OpResult::Failed("Viewer search only supported for local files".to_string())
+            }
         };
         let query = query.to_string();
         let migemo = migemo_pattern.map(|s| s.to_string());
@@ -832,60 +1051,108 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let cancel = cancel_token.clone();
 
         let matches: Vec<(usize, usize, usize)> = tokio::task::spawn_blocking(move || {
-            use std::io::{Read, Seek, SeekFrom};
             use crate::model::viewer::hex_query_has_pattern;
+            use std::io::{Read, Seek, SeekFrom};
 
-            let meta = match std::fs::metadata(&path) { Ok(m) => m, Err(_) => return vec![] };
+            let meta = match std::fs::metadata(&path) {
+                Ok(m) => m,
+                Err(_) => return vec![],
+            };
             let file_size = meta.len() as usize;
 
             if is_hex_mode {
                 // ── Hex search ────────────────────────────────────────────────────────
-                if !hex_query_has_pattern(&query) { return vec![]; }
+                if !hex_query_has_pattern(&query) {
+                    return vec![];
+                }
 
                 let trimmed = query.trim();
                 // Determine the byte needle from the query
-                let needle_opt: Option<Vec<u8>> = if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
-                    if rest.len() >= 2 && rest.len() % 2 == 0 && rest.chars().all(|c| c.is_ascii_hexdigit()) {
-                        (0..rest.len()).step_by(2).map(|i| u8::from_str_radix(&rest[i..i+2], 16).ok()).collect()
-                    } else { None }
-                } else if trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len().is_multiple_of(2) {
-                    (0..trimmed.len()).step_by(2).map(|i| u8::from_str_radix(&trimmed[i..i+2], 16).ok()).collect()
-                } else if trimmed.contains(' ') && trimmed.chars().all(|c| c.is_ascii_hexdigit() || c == ' ') {
+                let needle_opt: Option<Vec<u8>> = if let Some(rest) = trimmed
+                    .strip_prefix("0x")
+                    .or_else(|| trimmed.strip_prefix("0X"))
+                {
+                    if rest.len() >= 2
+                        && rest.len() % 2 == 0
+                        && rest.chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        (0..rest.len())
+                            .step_by(2)
+                            .map(|i| u8::from_str_radix(&rest[i..i + 2], 16).ok())
+                            .collect()
+                    } else {
+                        None
+                    }
+                } else if trimmed.chars().all(|c| c.is_ascii_hexdigit())
+                    && trimmed.len().is_multiple_of(2)
+                {
+                    (0..trimmed.len())
+                        .step_by(2)
+                        .map(|i| u8::from_str_radix(&trimmed[i..i + 2], 16).ok())
+                        .collect()
+                } else if trimmed.contains(' ')
+                    && trimmed.chars().all(|c| c.is_ascii_hexdigit() || c == ' ')
+                {
                     let no_space: String = trimmed.chars().filter(|&c| c != ' ').collect();
                     if no_space.len() >= 2 && no_space.len().is_multiple_of(2) {
-                        (0..no_space.len()).step_by(2).map(|i| u8::from_str_radix(&no_space[i..i+2], 16).ok()).collect()
-                    } else { None }
+                        (0..no_space.len())
+                            .step_by(2)
+                            .map(|i| u8::from_str_radix(&no_space[i..i + 2], 16).ok())
+                            .collect()
+                    } else {
+                        None
+                    }
                 } else {
                     Some(trimmed.as_bytes().to_vec())
                 };
 
-                let needle = match needle_opt { Some(n) if !n.is_empty() => n, _ => return vec![] };
+                let needle = match needle_opt {
+                    Some(n) if !n.is_empty() => n,
+                    _ => return vec![],
+                };
                 let ci = !case_sensitive && needle.iter().any(|&b| b.is_ascii_alphabetic());
-                let lower_needle: Vec<u8> = if ci { needle.iter().map(|b| b.to_ascii_lowercase()).collect() } else { vec![] };
+                let lower_needle: Vec<u8> = if ci {
+                    needle.iter().map(|b| b.to_ascii_lowercase()).collect()
+                } else {
+                    vec![]
+                };
 
                 const CHUNK: usize = 4 * 1024 * 1024;
                 let overlap = needle.len().saturating_sub(1);
                 let mut result = Vec::new();
-                let mut file = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return vec![] };
+                let mut file = match std::fs::File::open(&path) {
+                    Ok(f) => f,
+                    Err(_) => return vec![],
+                };
                 let mut chunk_start = 0usize;
                 while chunk_start < file_size {
-                    if cancel.is_cancelled() { return result; }
+                    if cancel.is_cancelled() {
+                        return result;
+                    }
                     let read_start = chunk_start.saturating_sub(overlap);
                     let read_end = (chunk_start + CHUNK).min(file_size);
-                    if file.seek(SeekFrom::Start(read_start as u64)).is_err() { break; }
+                    if file.seek(SeekFrom::Start(read_start as u64)).is_err() {
+                        break;
+                    }
                     let mut buf = vec![0u8; read_end - read_start];
                     let mut pos = 0;
                     while pos < buf.len() {
-                        match file.read(&mut buf[pos..]) { Ok(0)|Err(_) => break, Ok(n) => pos += n }
+                        match file.read(&mut buf[pos..]) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => pos += n,
+                        }
                     }
                     buf.truncate(pos);
                     let n = needle.len();
                     if buf.len() >= n {
-                        for i in 0..=buf.len()-n {
+                        for i in 0..=buf.len() - n {
                             let matched = if ci {
-                                lower_needle.iter().zip(&buf[i..i+n]).all(|(&a,&b)| a==b.to_ascii_lowercase())
+                                lower_needle
+                                    .iter()
+                                    .zip(&buf[i..i + n])
+                                    .all(|(&a, &b)| a == b.to_ascii_lowercase())
                             } else {
-                                &buf[i..i+n] == needle.as_slice()
+                                &buf[i..i + n] == needle.as_slice()
                             };
                             if matched {
                                 let abs_s = read_start + i;
@@ -908,58 +1175,107 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 } else {
                     format!("(?i){}", regex::escape(&query))
                 };
-                let re = match regex::Regex::new(&pattern) { Ok(r) => r, Err(_) => return vec![] };
+                let re = match regex::Regex::new(&pattern) {
+                    Ok(r) => r,
+                    Err(_) => return vec![],
+                };
 
                 let mut matches: Vec<(usize, usize, usize)> = Vec::new();
 
                 if file_size <= large_file_threshold {
                     // Small file: read all at once
-                    let bytes = match std::fs::read(&path) { Ok(b) => b, Err(_) => return vec![] };
+                    let bytes = match std::fs::read(&path) {
+                        Ok(b) => b,
+                        Err(_) => return vec![],
+                    };
                     let mut line_idx = 0usize;
                     let mut line_start = 0usize;
                     while line_start <= bytes.len() {
-                        if cancel.is_cancelled() { return matches; }
-                        let line_end = bytes[line_start..].iter().position(|&b| b == b'\n')
+                        if cancel.is_cancelled() {
+                            return matches;
+                        }
+                        let line_end = bytes[line_start..]
+                            .iter()
+                            .position(|&b| b == b'\n')
                             .map(|p| line_start + p + 1)
                             .unwrap_or(bytes.len());
                         let raw = &bytes[line_start..line_end.min(bytes.len())];
-                        let raw = if raw.last() == Some(&b'\n') { &raw[..raw.len()-1] } else { raw };
-                        let raw = if raw.last() == Some(&b'\r') { &raw[..raw.len()-1] } else { raw };
+                        let raw = if raw.last() == Some(&b'\n') {
+                            &raw[..raw.len() - 1]
+                        } else {
+                            raw
+                        };
+                        let raw = if raw.last() == Some(&b'\r') {
+                            &raw[..raw.len() - 1]
+                        } else {
+                            raw
+                        };
                         let decoded = encoding.decode(raw);
                         for m in re.find_iter(&decoded) {
                             matches.push((line_idx, m.start(), m.end()));
                         }
-                        if line_end >= bytes.len() { break; }
+                        if line_end >= bytes.len() {
+                            break;
+                        }
                         line_start = line_end;
                         line_idx += 1;
                     }
                 } else {
                     // Large file: two-pass (build line index, then search)
-                    let mut file = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return vec![] };
+                    let mut file = match std::fs::File::open(&path) {
+                        Ok(f) => f,
+                        Err(_) => return vec![],
+                    };
                     const CHUNK: usize = 4 * 1024 * 1024;
                     let mut line_offsets: Vec<u64> = vec![0];
                     let mut buf = vec![0u8; CHUNK];
                     let mut abs = 0u64;
                     loop {
-                        if cancel.is_cancelled() { return matches; }
-                        let n = match file.read(&mut buf) { Ok(0)|Err(_) => break, Ok(n) => n };
+                        if cancel.is_cancelled() {
+                            return matches;
+                        }
+                        let n = match file.read(&mut buf) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => n,
+                        };
                         for (i, &byte) in buf.iter().enumerate().take(n) {
-                            if byte == b'\n' { line_offsets.push(abs + i as u64 + 1); }
+                            if byte == b'\n' {
+                                line_offsets.push(abs + i as u64 + 1);
+                            }
                         }
                         abs += n as u64;
                     }
-                    let mut file2 = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return matches };
+                    let mut file2 = match std::fs::File::open(&path) {
+                        Ok(f) => f,
+                        Err(_) => return matches,
+                    };
                     for (line_idx, &start) in line_offsets.iter().enumerate() {
-                        if cancel.is_cancelled() { return matches; }
-                        let end = line_offsets.get(line_idx + 1).copied().unwrap_or(file_size as u64);
+                        if cancel.is_cancelled() {
+                            return matches;
+                        }
+                        let end = line_offsets
+                            .get(line_idx + 1)
+                            .copied()
+                            .unwrap_or(file_size as u64);
                         let len = (end - start) as usize;
-                        if len == 0 { continue; }
-                        if file2.seek(SeekFrom::Start(start)).is_err() { break; }
+                        if len == 0 {
+                            continue;
+                        }
+                        if file2.seek(SeekFrom::Start(start)).is_err() {
+                            break;
+                        }
                         let mut raw = vec![0u8; len.min(65536)];
                         let mut pos = 0;
-                        while pos < raw.len() { match file2.read(&mut raw[pos..]) { Ok(0)|Err(_) => break, Ok(n) => pos+=n } }
+                        while pos < raw.len() {
+                            match file2.read(&mut raw[pos..]) {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => pos += n,
+                            }
+                        }
                         raw.truncate(pos);
-                        while matches!(raw.last(), Some(&b'\n') | Some(&b'\r')) { raw.pop(); }
+                        while matches!(raw.last(), Some(&b'\n') | Some(&b'\r')) {
+                            raw.pop();
+                        }
                         let decoded = encoding.decode(&raw);
                         for m in re.find_iter(&decoded) {
                             matches.push((line_idx, m.start(), m.end()));
@@ -968,7 +1284,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 }
                 matches
             }
-        }).await.unwrap_or_default();
+        })
+        .await
+        .unwrap_or_default();
 
         let _ = event_tx.send(JobEvent::ViewerSearchComplete(job_id, matches));
         OpResult::Success(SuccessData::None)
@@ -1005,14 +1323,18 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
             // Apply the pattern to get the new name
             let new_name = crate::pattern_rename::apply_rename_pattern(
-                &current_name, find, replace, use_regex, case_sensitive,
+                &current_name,
+                find,
+                replace,
+                use_regex,
+                case_sensitive,
             );
 
             // Skip if the name hasn't changed
             if new_name == current_name {
                 continue;
             }
-            
+
             // Get the parent location and create the new location
             let new_location = match location.parent() {
                 Some(parent) => parent.join(&new_name),
@@ -1023,30 +1345,39 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     ));
                 }
             };
-            
+
             // Perform the rename
-            match self.backend.rename_file(location, &new_location, &spec.cancel_token).await {
+            match self
+                .backend
+                .rename_file(location, &new_location, &spec.cancel_token)
+                .await
+            {
                 Ok(_) => {
                     // Report progress
                     let progress = (index + 1) as f64 / total as f64;
-                            if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+                    if let Err(e) = self
+                        .event_sender
+                        .send(JobEvent::Progress(spec.id, progress))
+                    {
+                        tracing::error!(
+                            "Failed to send job progress event for {:?}: {}",
+                            spec.id,
+                            e
+                        );
                     }
                 }
                 Err(e) => {
                     return OpResult::Failed(format!(
                         "Failed to rename {} to {}: {}",
-                        current_name,
-                        new_name,
-                        e
+                        current_name, new_name, e
                     ));
                 }
             }
         }
-        
+
         OpResult::Success(SuccessData::None)
     }
-    
+
     async fn execute_compare_files(
         &self,
         left: &Location,
@@ -1057,39 +1388,39 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Read both files
         let left_contents = match self.read_file_as_string(left).await {
             Ok(contents) => contents,
             Err(e) => return OpResult::Failed(format!("Failed to read left file: {}", e)),
         };
-        
+
         let right_contents = match self.read_file_as_string(right).await {
             Ok(contents) => contents,
             Err(e) => return OpResult::Failed(format!("Failed to read right file: {}", e)),
         };
-        
+
         // Check for cancellation after reading files
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Split into lines
         let left_lines: Vec<String> = left_contents.lines().map(|s| s.to_string()).collect();
         let right_lines: Vec<String> = right_contents.lines().map(|s| s.to_string()).collect();
-        
+
         // Perform simple line-by-line comparison
         let differences = self.compute_diff(&left_lines, &right_lines);
-        
+
         let diff = crate::job::FileDiff {
             left_path: self.location_display(left),
             right_path: self.location_display(right),
             differences,
         };
-        
+
         OpResult::Success(SuccessData::ComparisonResult(diff))
     }
-    
+
     async fn execute_split_file(
         &self,
         source: &Location,
@@ -1101,75 +1432,84 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Only support local files for now
         let (source_path, dest_path) = match (source, dest_dir) {
             (Location::Local(src), Location::Local(dst)) => (src, dst),
             _ => return OpResult::Failed("Split only supports local files".to_string()),
         };
-        
+
         // Open source file
         let mut file = match tokio::fs::File::open(source_path).await {
             Ok(f) => f,
             Err(e) => return OpResult::Failed(format!("Failed to open source file: {}", e)),
         };
-        
+
         // Get file size
         let metadata = match file.metadata().await {
             Ok(m) => m,
             Err(e) => return OpResult::Failed(format!("Failed to get file metadata: {}", e)),
         };
         let total_size = metadata.len();
-        
+
         // Calculate number of chunks (for potential future use)
         let _num_chunks = total_size.div_ceil(chunk_size);
-        
+
         // Get base filename
-        let base_name = source_path.file_name()
+        let base_name = source_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("file");
-        
+
         // Split the file
         use tokio::io::AsyncReadExt;
         let mut buffer = vec![0u8; chunk_size as usize];
         let mut chunk_index = 0;
         let mut bytes_read_total = 0u64;
-        
+
         loop {
             // Check for cancellation
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
-            
+
             // Read chunk
             let bytes_read = match file.read(&mut buffer).await {
                 Ok(0) => break, // EOF
                 Ok(n) => n,
                 Err(e) => return OpResult::Failed(format!("Failed to read from source: {}", e)),
             };
-            
+
             // Write chunk to file
             let chunk_name = format!("{}.part{:03}", base_name, chunk_index);
             let chunk_path = dest_path.join(&chunk_name);
-            
+
             match tokio::fs::write(&chunk_path, &buffer[..bytes_read]).await {
-                Ok(_) => {},
-                Err(e) => return OpResult::Failed(format!("Failed to write chunk {}: {}", chunk_index, e)),
+                Ok(_) => {}
+                Err(e) => {
+                    return OpResult::Failed(format!(
+                        "Failed to write chunk {}: {}",
+                        chunk_index, e
+                    ))
+                }
             }
-            
+
             chunk_index += 1;
             bytes_read_total += bytes_read as u64;
-            
+
             // Report progress
             let progress = bytes_read_total as f64 / total_size as f64;
-                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
         }
-        
+
         OpResult::Success(SuccessData::None)
     }
-    
+
     async fn execute_join_files(
         &self,
         parts: &[Location],
@@ -1180,88 +1520,95 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
-        
+
         // Only support local files for now
         let dest_path = match dest {
             Location::Local(path) => path,
             _ => return OpResult::Failed("Join only supports local files".to_string()),
         };
-        
+
         // Create destination file
         let mut dest_file = match tokio::fs::File::create(dest_path).await {
             Ok(f) => f,
             Err(e) => return OpResult::Failed(format!("Failed to create destination file: {}", e)),
         };
-        
+
         // Join all parts
         use tokio::io::AsyncWriteExt;
         let total_parts = parts.len();
-        
+
         for (index, part) in parts.iter().enumerate() {
             // Check for cancellation
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
-            
+
             let part_path = match part {
                 Location::Local(path) => path,
                 _ => return OpResult::Failed("All parts must be local files".to_string()),
             };
-            
+
             // Read part
             let contents = match tokio::fs::read(part_path).await {
                 Ok(data) => data,
                 Err(e) => return OpResult::Failed(format!("Failed to read part {}: {}", index, e)),
             };
-            
+
             // Write to destination
             match dest_file.write_all(&contents).await {
-                Ok(_) => {},
-                Err(e) => return OpResult::Failed(format!("Failed to write part {}: {}", index, e)),
+                Ok(_) => {}
+                Err(e) => {
+                    return OpResult::Failed(format!("Failed to write part {}: {}", index, e))
+                }
             }
-            
+
             // Report progress
             let progress = (index + 1) as f64 / total_parts as f64;
-                    if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, progress)) {
-                        tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
-                    }
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
         }
-        
+
         OpResult::Success(SuccessData::None)
     }
-    
+
     // Helper methods for file comparison
-    
+
     async fn read_file_as_string(&self, location: &Location) -> Result<String, String> {
         match location {
-            Location::Local(path) => {
-                tokio::fs::read_to_string(path)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
+            Location::Local(path) => tokio::fs::read_to_string(path)
+                .await
+                .map_err(|e| e.to_string()),
             _ => Err("Only local files supported for comparison".to_string()),
         }
     }
-    
-    fn compute_diff(&self, left_lines: &[String], right_lines: &[String]) -> Vec<crate::job::DiffChunk> {
+
+    fn compute_diff(
+        &self,
+        left_lines: &[String],
+        right_lines: &[String],
+    ) -> Vec<crate::job::DiffChunk> {
         use crate::job::{DiffChunk, DiffType};
-        
+
         let mut chunks = Vec::new();
         let mut left_idx = 0;
         let mut right_idx = 0;
-        
+
         while left_idx < left_lines.len() || right_idx < right_lines.len() {
             // Find matching lines
             let mut equal_lines = Vec::new();
-            while left_idx < left_lines.len() 
-                && right_idx < right_lines.len() 
-                && left_lines[left_idx] == right_lines[right_idx] 
+            while left_idx < left_lines.len()
+                && right_idx < right_lines.len()
+                && left_lines[left_idx] == right_lines[right_idx]
             {
                 equal_lines.push(left_lines[left_idx].clone());
                 left_idx += 1;
                 right_idx += 1;
             }
-            
+
             if !equal_lines.is_empty() {
                 chunks.push(DiffChunk {
                     left_start: left_idx - equal_lines.len(),
@@ -1271,7 +1618,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     chunk_type: DiffType::Equal,
                 });
             }
-            
+
             // Find differences
             if left_idx < left_lines.len() && right_idx < right_lines.len() {
                 // Both have lines - this is a modification
@@ -1279,7 +1626,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 let right_diff = vec![right_lines[right_idx].clone()];
                 left_idx += 1;
                 right_idx += 1;
-                
+
                 chunks.push(DiffChunk {
                     left_start: left_idx - 1,
                     left_lines: left_diff,
@@ -1291,7 +1638,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 // Only left has lines - deletion
                 let deleted = vec![left_lines[left_idx].clone()];
                 left_idx += 1;
-                
+
                 chunks.push(DiffChunk {
                     left_start: left_idx - 1,
                     left_lines: deleted,
@@ -1303,7 +1650,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 // Only right has lines - addition
                 let added = vec![right_lines[right_idx].clone()];
                 right_idx += 1;
-                
+
                 chunks.push(DiffChunk {
                     left_start: left_idx,
                     left_lines: Vec::new(),
@@ -1313,38 +1660,34 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 });
             }
         }
-        
+
         chunks
     }
-    
+
     // Helper methods
-    
+
     /// Get the filename from a location
     fn get_filename(&self, location: &Location) -> Option<String> {
         match location {
-            Location::Local(path) => {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|s| s.to_string())
-            }
-            Location::Ssh { path, .. } => {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|s| s.to_string())
-            }
-            Location::Cloud { path, .. } => {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|s| s.to_string())
-            }
-            Location::Archive { inner_path, .. } => {
-                inner_path.file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|s| s.to_string())
-            }
+            Location::Local(path) => path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|s| s.to_string()),
+            Location::Ssh { path, .. } => path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|s| s.to_string()),
+            Location::Cloud { path, .. } => path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|s| s.to_string()),
+            Location::Archive { inner_path, .. } => inner_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|s| s.to_string()),
         }
     }
-    
+
     /// Join a filename to a location
     fn join_location(&self, location: &Location, filename: &str) -> Location {
         match location {
@@ -1354,12 +1697,19 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 port: *port,
                 path: path.join(filename),
             },
-            Location::Cloud { provider, bucket, path } => Location::Cloud {
+            Location::Cloud {
+                provider,
+                bucket,
+                path,
+            } => Location::Cloud {
                 provider: provider.clone(),
                 bucket: bucket.clone(),
                 path: path.join(filename),
             },
-            Location::Archive { archive_path, inner_path } => Location::Archive {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => Location::Archive {
                 archive_path: archive_path.clone(),
                 inner_path: inner_path.join(filename),
             },
@@ -1373,17 +1723,28 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Location::Ssh { host, port, path } => {
                 format!("ssh://{}:{}{}", host, port, path.display())
             }
-            Location::Cloud { provider, bucket, path } => {
+            Location::Cloud {
+                provider,
+                bucket,
+                path,
+            } => {
                 format!("{}://{}/{}", provider, bucket, path.display())
             }
-            Location::Archive { archive_path, inner_path } => {
-                format!("{}#{}", self.location_display(archive_path), inner_path.display())
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => {
+                format!(
+                    "{}#{}",
+                    self.location_display(archive_path),
+                    inner_path.display()
+                )
             }
         }
     }
 
     /// Execute a countdown test job
-    /// 
+    ///
     /// Counts down from start_value to 0, sleeping 1 second between each count.
     /// Sends progress updates every second.
     /// Supports cancellation via cancel_token.
@@ -1397,34 +1758,42 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         let job_id = spec.id;
         let total = start_value;
 
-        tracing::debug!("CountDownJob: Starting job_id={:?} start_value={}", job_id, start_value);
+        tracing::debug!(
+            "CountDownJob: Starting job_id={:?} start_value={}",
+            job_id,
+            start_value
+        );
 
         // Countdown loop
         for remaining in (0..=start_value).rev() {
             // Check for cancellation
             if spec.cancel_token.is_cancelled() {
-                tracing::debug!("CountDownJob: Cancelled at remaining={} job_id={:?}", remaining, job_id);
+                tracing::debug!(
+                    "CountDownJob: Cancelled at remaining={} job_id={:?}",
+                    remaining,
+                    job_id
+                );
                 return OpResult::Cancelled;
             }
-            
+
             // Calculate progress (0.0 to 1.0)
             let progress = if total > 0 {
                 (total - remaining) as f64 / total as f64
             } else {
                 1.0
             };
-            
+
             // Send progress update with message
             let progress_msg = format!("Countdown: {}/{} seconds", remaining, total);
             let detail_msg = format!("Countdown test job - {} of {} seconds", remaining, total);
-            
+
             let _ = self.event_sender.send(JobEvent::ProgressWithDetail(
                 job_id,
                 progress,
                 progress_msg,
                 detail_msg,
             ));
-            
+
             // Sleep for 1 second (unless cancelled)
             tokio::select! {
                 _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
@@ -1443,7 +1812,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 }
             }
         }
-        
+
         OpResult::Success(SuccessData::None)
     }
 
@@ -1458,8 +1827,16 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         cancel: &CancellationToken,
     ) -> OpResult {
         const IGNORE: &[&str] = &[
-            ".git", ".svn", ".hg", "node_modules", "target", "__pycache__",
-            ".cache", ".tox", "venv", ".venv",
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            "target",
+            "__pycache__",
+            ".cache",
+            ".tox",
+            "venv",
+            ".venv",
         ];
 
         let mut candidates: Vec<String> = Vec::new();
@@ -1520,13 +1897,20 @@ pub async fn detect_conflicts(
 ) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
     use chrono::Local;
 
-    debug!("detect_conflicts: Checking {} sources against dest {:?}", sources.len(), dest);
+    debug!(
+        "detect_conflicts: Checking {} sources against dest {:?}",
+        sources.len(),
+        dest
+    );
     let mut conflicts = Vec::new();
 
     for source in sources {
         // Calculate destination path
         let dest_location = calculate_destination_path(source, dest);
-        debug!("detect_conflicts: Source {:?} -> Dest {:?}", source, dest_location);
+        debug!(
+            "detect_conflicts: Source {:?} -> Dest {:?}",
+            source, dest_location
+        );
 
         // Check if destination exists
         match backend.get_entry(&dest_location).await {
@@ -1536,7 +1920,10 @@ pub async fn detect_conflicts(
                 let source_entry = match backend.get_entry(source).await {
                     Ok(entry) => entry,
                     Err(e) => {
-                        debug!("detect_conflicts: Failed to read source {:?}: {}", source, e);
+                        debug!(
+                            "detect_conflicts: Failed to read source {:?}: {}",
+                            source, e
+                        );
                         continue; // Skip if can't read source
                     }
                 };
@@ -1562,12 +1949,18 @@ pub async fn detect_conflicts(
                     // Note: This log needs to be passed back via StateUpdateResult
                     // For now, we just skip directories
                 } else {
-                    debug!("detect_conflicts: Adding file conflict for {:?}", dest_location);
+                    debug!(
+                        "detect_conflicts: Adding file conflict for {:?}",
+                        dest_location
+                    );
                     conflicts.push(conflict);
                 }
             }
             Err(e) => {
-                debug!("detect_conflicts: Destination does not exist: {:?} ({})", dest_location, e);
+                debug!(
+                    "detect_conflicts: Destination does not exist: {:?} ({})",
+                    dest_location, e
+                );
                 // No conflict - destination doesn't exist
             }
         }
@@ -1601,9 +1994,9 @@ fn calculate_destination_path(source: &Location, dest: &Location) -> Location {
 mod tests {
     use super::*;
     use crate::backend::LocalFilesystemBackend;
-    use crate::job::{JobSpec, JobKind};
-    use tempfile::TempDir;
     use crate::backend::MockArchiveHandler;
+    use crate::job::{JobKind, JobSpec};
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_execute_read_directory() {
@@ -1611,22 +2004,25 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-        
+
         let executor = JobExecutor::new(backend, archive_handler, event_tx);
-        
+
         let spec = JobSpec::new(JobKind::ReadDirectory {
             location: Location::Local(temp_dir.path().to_path_buf()),
         });
-        
+
         executor.execute(spec).await;
-        
+
         // Should receive a started event first
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Started(_))));
-        
+
         // Then a completed event
         let event = event_rx.recv().await;
-        assert!(matches!(event, Some(JobEvent::Completed(_, SuccessData::DirectoryRead(_)))));
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::DirectoryRead(_)))
+        ));
     }
 
     #[tokio::test]
@@ -1635,24 +2031,27 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-        
+
         let executor = JobExecutor::new(backend, archive_handler, event_tx);
-        
+
         let new_dir = temp_dir.path().join("test_dir");
         let spec = JobSpec::new(JobKind::Mkdir {
             location: Location::Local(new_dir.clone()),
         });
-        
+
         executor.execute(spec).await;
-        
+
         // Should receive a started event first
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Started(_))));
-        
+
         // Then a completed event
         let event = event_rx.recv().await;
-        assert!(matches!(event, Some(JobEvent::Completed(_, SuccessData::None))));
-        
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::None))
+        ));
+
         // Directory should exist
         assert!(new_dir.exists());
     }
@@ -1663,27 +2062,29 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-        
+
         let executor = JobExecutor::new(backend, archive_handler, event_tx);
-        
+
         // Create a source file
         let source_file = temp_dir.path().join("source.txt");
-        tokio::fs::write(&source_file, b"test content").await.unwrap();
-        
+        tokio::fs::write(&source_file, b"test content")
+            .await
+            .unwrap();
+
         let dest_dir = temp_dir.path().join("dest");
         tokio::fs::create_dir(&dest_dir).await.unwrap();
-        
+
         let spec = JobSpec::new(JobKind::Copy {
             sources: vec![Location::Local(source_file.clone())],
             dest: Location::Local(dest_dir.clone()),
         });
-        
+
         executor.execute(spec).await;
-        
+
         // Should receive started, progress, and completed events
         let mut received_started = false;
         let mut received_completed = false;
-        
+
         while let Ok(event) = event_rx.try_recv() {
             match event {
                 JobEvent::Started(_) => received_started = true,
@@ -1691,10 +2092,10 @@ mod tests {
                 _ => {}
             }
         }
-        
+
         assert!(received_started);
         assert!(received_completed);
-        
+
         // Destination file should exist
         let dest_file = dest_dir.join("source.txt");
         assert!(dest_file.exists());
@@ -1706,18 +2107,18 @@ mod tests {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-        
+
         let executor = JobExecutor::new(backend, archive_handler, event_tx);
-        
+
         let spec = JobSpec::new(JobKind::ReadDirectory {
             location: Location::Local(temp_dir.path().to_path_buf()),
         });
-        
+
         // Cancel the job before execution
         spec.cancel_token.cancel();
-        
+
         executor.execute(spec).await;
-        
+
         // Should receive a started event first
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Started(_))));

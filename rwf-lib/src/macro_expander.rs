@@ -15,10 +15,11 @@ impl MacroExpander {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Expand all macros in a custom function command
     pub fn expand(&self, state: &AppState, function: &CustomFunction) -> Result<String, String> {
-        let mut command = function.get_command()
+        let mut command = function
+            .get_command()
             .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
             .to_string();
 
@@ -35,24 +36,26 @@ impl MacroExpander {
         command = self.expand_macro(&command, "$P", || {
             state.active_pane().current_location.display_path()
         });
-        
+
         command = self.expand_macro(&command, "$O", || {
             state.opposite_pane().current_location.display_path()
         });
-        
+
         let tab = state.current_tab();
         command = self.expand_macro(&command, "$L", || {
             tab.left_pane.current_location.display_path()
         });
-        
+
         command = self.expand_macro(&command, "$R", || {
             tab.right_pane.current_location.display_path()
         });
-        
+
         // Expand cursor file macros
         if let Some(entry) = state.active_pane().current_entry() {
             command = self.expand_macro(&command, "$F", || entry.name.clone());
-            command = self.expand_macro(&command, "$W", || entry.name_without_extension().to_string());
+            command = self.expand_macro(&command, "$W", || {
+                entry.name_without_extension().to_string()
+            });
             if let Some(ext) = entry.extension() {
                 command = self.expand_macro(&command, "$E", || ext.to_string());
             } else {
@@ -64,11 +67,12 @@ impl MacroExpander {
             command = command.replace("$W", "");
             command = command.replace("$E", "");
         }
-        
+
         // Expand marked files macro
         let marked = state.active_pane().marked_entries();
         if !marked.is_empty() {
-            let marked_list = marked.iter()
+            let marked_list = marked
+                .iter()
                 .map(|e| shell_quote(&e.name))
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -76,30 +80,33 @@ impl MacroExpander {
         } else {
             command = command.replace("$M", "");
         }
-        
+
         // Expand all files macro
-        let all_files = state.active_pane().entries.iter()
+        let all_files = state
+            .active_pane()
+            .entries
+            .iter()
             .map(|e| shell_quote(&e.name))
             .collect::<Vec<_>>()
             .join(" ");
         command = self.expand_macro(&command, "$*", || all_files.clone());
-        
+
         // Expand home directory macro
         if let Some(home) = dirs::home_dir() {
             command = self.expand_macro(&command, "$~", || home.display().to_string());
         }
-        
+
         // Expand file count macro
         command = self.expand_macro(&command, "$#", || {
             state.active_pane().entries.len().to_string()
         });
-        
+
         // Expand environment variables
         command = self.expand_env_vars(&command);
-        
+
         Ok(command)
     }
-    
+
     /// Expand `$V"VARNAME"` patterns — cross-platform env var expansion (TWF-compatible).
     /// `$V"APPDATA"` → value of the APPDATA env var; empty string if not set.
     fn expand_v_macro(command: &str) -> String {
@@ -107,7 +114,8 @@ impl MacroExpander {
         let re = Regex::new(r#"\$V"([^"]+)""#).unwrap();
         re.replace_all(command, |caps: &regex::Captures| {
             std::env::var(&caps[1]).unwrap_or_default()
-        }).into_owned()
+        })
+        .into_owned()
     }
 
     /// Expand a single macro in the command
@@ -121,7 +129,7 @@ impl MacroExpander {
             command.to_string()
         }
     }
-    
+
     /// Expand environment variables in the command.
     /// Supports four formats on all platforms:
     ///   $env:VAR  (PowerShell)   — expanded first to avoid $env matching as bare $VAR
@@ -132,20 +140,28 @@ impl MacroExpander {
     ///             Env vars whose names start with those letters are unreachable via bare $VAR.
     fn expand_env_vars(&self, command: &str) -> String {
         let mut result = command.to_string();
-        result = Self::replace_env_pattern(&result, Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap());
-        result = Self::replace_env_pattern(&result, Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap());
+        result = Self::replace_env_pattern(
+            &result,
+            Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap(),
+        );
+        result = Self::replace_env_pattern(
+            &result,
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap(),
+        );
         result = Self::replace_env_pattern(&result, Regex::new(r"%([^%]+)%").unwrap());
-        result = Self::replace_env_pattern(&result, Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+        result =
+            Self::replace_env_pattern(&result, Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
         result
     }
 
     fn replace_env_pattern(command: &str, re: Regex) -> String {
-        let matches: Vec<_> = re.captures_iter(command)
+        let matches: Vec<_> = re
+            .captures_iter(command)
             .filter_map(|cap| {
                 cap.get(1).and_then(|var_name| {
-                    std::env::var(var_name.as_str()).ok().map(|value| {
-                        (cap[0].to_string(), value)
-                    })
+                    std::env::var(var_name.as_str())
+                        .ok()
+                        .map(|value| (cap[0].to_string(), value))
                 })
             })
             .collect();
@@ -155,7 +171,7 @@ impl MacroExpander {
         }
         result
     }
-    
+
     /// Check if a command contains the $I (user input) macro
     pub fn requires_user_input(&self, function: &CustomFunction) -> bool {
         function.get_command().is_some_and(|c| c.contains("$I"))
@@ -170,8 +186,14 @@ impl MacroExpander {
 
     /// Expand the $I macro with user-provided input.
     /// Replaces the entire `$I"prompt"` / `$I5"prompt"` / bare `$I` pattern with user_input.
-    pub fn expand_with_user_input(&self, state: &AppState, function: &CustomFunction, user_input: &str) -> Result<String, String> {
-        let mut command = function.get_command()
+    pub fn expand_with_user_input(
+        &self,
+        state: &AppState,
+        function: &CustomFunction,
+        user_input: &str,
+    ) -> Result<String, String> {
+        let mut command = function
+            .get_command()
             .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
             .to_string();
 
@@ -182,7 +204,7 @@ impl MacroExpander {
         // Now expand all other macros
         self.expand_impl(state, &command)
     }
-    
+
     /// Internal implementation of expand that works on a command string
     fn expand_impl(&self, state: &AppState, command: &str) -> Result<String, String> {
         let mut result = command.to_string();
@@ -194,24 +216,25 @@ impl MacroExpander {
         result = self.expand_macro(&result, "$P", || {
             state.active_pane().current_location.display_path()
         });
-        
+
         result = self.expand_macro(&result, "$O", || {
             state.opposite_pane().current_location.display_path()
         });
-        
+
         let tab = state.current_tab();
         result = self.expand_macro(&result, "$L", || {
             tab.left_pane.current_location.display_path()
         });
-        
+
         result = self.expand_macro(&result, "$R", || {
             tab.right_pane.current_location.display_path()
         });
-        
+
         // Expand cursor file macros
         if let Some(entry) = state.active_pane().current_entry() {
             result = self.expand_macro(&result, "$F", || entry.name.clone());
-            result = self.expand_macro(&result, "$W", || entry.name_without_extension().to_string());
+            result =
+                self.expand_macro(&result, "$W", || entry.name_without_extension().to_string());
             if let Some(ext) = entry.extension() {
                 result = self.expand_macro(&result, "$E", || ext.to_string());
             } else {
@@ -222,11 +245,12 @@ impl MacroExpander {
             result = result.replace("$W", "");
             result = result.replace("$E", "");
         }
-        
+
         // Expand marked files macro
         let marked = state.active_pane().marked_entries();
         if !marked.is_empty() {
-            let marked_list = marked.iter()
+            let marked_list = marked
+                .iter()
                 .map(|e| shell_quote(&e.name))
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -234,27 +258,30 @@ impl MacroExpander {
         } else {
             result = result.replace("$M", "");
         }
-        
+
         // Expand all files macro
-        let all_files = state.active_pane().entries.iter()
+        let all_files = state
+            .active_pane()
+            .entries
+            .iter()
             .map(|e| shell_quote(&e.name))
             .collect::<Vec<_>>()
             .join(" ");
         result = self.expand_macro(&result, "$*", || all_files.clone());
-        
+
         // Expand home directory macro
         if let Some(home) = dirs::home_dir() {
             result = self.expand_macro(&result, "$~", || home.display().to_string());
         }
-        
+
         // Expand file count macro
         result = self.expand_macro(&result, "$#", || {
             state.active_pane().entries.len().to_string()
         });
-        
+
         // Expand environment variables
         result = self.expand_env_vars(&result);
-        
+
         Ok(result)
     }
 }
@@ -267,13 +294,22 @@ impl Default for MacroExpander {
 
 /// Quote a filename for shell execution if it contains spaces or special characters
 fn shell_quote(filename: &str) -> String {
-    if filename.contains(' ') || filename.contains('&') || filename.contains('|') 
-        || filename.contains(';') || filename.contains('<') || filename.contains('>') 
-        || filename.contains('(') || filename.contains(')') || filename.contains('$')
-        || filename.contains('`') || filename.contains('"') || filename.contains('\'') {
+    if filename.contains(' ')
+        || filename.contains('&')
+        || filename.contains('|')
+        || filename.contains(';')
+        || filename.contains('<')
+        || filename.contains('>')
+        || filename.contains('(')
+        || filename.contains(')')
+        || filename.contains('$')
+        || filename.contains('`')
+        || filename.contains('"')
+        || filename.contains('\'')
+    {
         #[cfg(target_os = "windows")]
         return format!("\"{}\"", filename.replace('"', "\"\""));
-        
+
         #[cfg(not(target_os = "windows"))]
         return format!("'{}'", filename.replace('\'', "'\\''"));
     }
@@ -286,13 +322,13 @@ mod tests {
     use crate::model::FileEntry;
     use crate::model::Location;
     use crate::state::AppConfig;
-    use std::time::SystemTime;
     use std::path::PathBuf;
-    
+    use std::time::SystemTime;
+
     fn create_test_state() -> AppState {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        
+
         // Add some test files
         let test_location = Location::Local(PathBuf::from("/test"));
         state.tabs.tabs[0].left_pane.entries = vec![
@@ -305,9 +341,9 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: false,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
             FileEntry {
                 name: "file2.rs".to_string(),
@@ -318,83 +354,94 @@ mod tests {
                 modified: SystemTime::now(),
                 marked: true,
                 calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
+                is_symlink: false,
+                link_target: None,
+                link_kind: None,
             },
         ];
-        
+
         state
     }
-    
+
     #[test]
     fn test_expand_pane_macros() {
         let state = create_test_state();
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "cd $P");
-        
+
         let result = expander.expand(&state, &function).unwrap();
         // The result should contain "cd" and the expanded path
         assert!(result.starts_with("cd "));
         // The path should be expanded (not contain $P)
         assert!(!result.contains("$P"));
     }
-    
+
     #[test]
     fn test_expand_file_macros() {
         let state = create_test_state();
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "echo $F $W $E");
-        
+
         let result = expander.expand(&state, &function).unwrap();
         assert!(result.contains("file1.txt"));
         assert!(result.contains("file1"));
         assert!(result.contains("txt"));
     }
-    
+
     #[test]
     fn test_expand_marked_files() {
         let state = create_test_state();
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "process $M");
-        
+
         let result = expander.expand(&state, &function).unwrap();
         assert!(result.contains("file2.rs"));
     }
-    
+
     #[test]
     fn test_expand_file_count() {
         let state = create_test_state();
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "echo $#");
-        
+
         let result = expander.expand(&state, &function).unwrap();
         assert!(result.contains("2"));
     }
-    
+
     #[test]
     fn test_requires_user_input() {
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "echo $I");
-        
+
         assert!(expander.requires_user_input(&function));
     }
-    
+
     #[test]
     fn test_expand_with_user_input() {
         let state = create_test_state();
         let expander = MacroExpander::new();
         let function = CustomFunction::new("test", "echo $I");
-        
-        let result = expander.expand_with_user_input(&state, &function, "hello").unwrap();
+
+        let result = expander
+            .expand_with_user_input(&state, &function, "hello")
+            .unwrap();
         assert!(result.contains("hello"));
     }
-    
+
     #[test]
     fn test_extract_i_prompt() {
-        assert_eq!(MacroExpander::extract_i_prompt(r#"cmd /c copy "$P\$F" "$I"Destination path""#), Some("Destination path".to_string()));
-        assert_eq!(MacroExpander::extract_i_prompt(r#"cmd /c ren "$P\$F" "$I"New filename""#), Some("New filename".to_string()));
-        assert_eq!(MacroExpander::extract_i_prompt(r#"$I5"Enter path""#), Some("Enter path".to_string()));
+        assert_eq!(
+            MacroExpander::extract_i_prompt(r#"cmd /c copy "$P\$F" "$I"Destination path""#),
+            Some("Destination path".to_string())
+        );
+        assert_eq!(
+            MacroExpander::extract_i_prompt(r#"cmd /c ren "$P\$F" "$I"New filename""#),
+            Some("New filename".to_string())
+        );
+        assert_eq!(
+            MacroExpander::extract_i_prompt(r#"$I5"Enter path""#),
+            Some("Enter path".to_string())
+        );
         assert_eq!(MacroExpander::extract_i_prompt(r#"echo $I"#), None);
         assert_eq!(MacroExpander::extract_i_prompt("echo $P"), None);
     }
@@ -406,19 +453,25 @@ mod tests {
 
         // $I"prompt" — whole token replaced, prompt text must not appear in result
         let f = CustomFunction::new("t", r#"cmd /c copy "src" "$I"Destination path""#);
-        let r = expander.expand_with_user_input(&state, &f, r#"C:\dest"#).unwrap();
+        let r = expander
+            .expand_with_user_input(&state, &f, r#"C:\dest"#)
+            .unwrap();
         assert!(r.contains(r#"C:\dest"#), "user input missing: {r}");
         assert!(!r.contains("Destination path"), "prompt text leaked: {r}");
         assert!(!r.contains("$I"), "$I not replaced: {r}");
 
         // $I5"prompt" — width variant
         let f = CustomFunction::new("t", r#"notepad $I5"Enter file""#);
-        let r = expander.expand_with_user_input(&state, &f, "out.txt").unwrap();
+        let r = expander
+            .expand_with_user_input(&state, &f, "out.txt")
+            .unwrap();
         assert_eq!(r, "notepad out.txt");
 
         // bare $I — no prompt text
         let f = CustomFunction::new("t", "echo $I");
-        let r = expander.expand_with_user_input(&state, &f, "hello").unwrap();
+        let r = expander
+            .expand_with_user_input(&state, &f, "hello")
+            .unwrap();
         assert_eq!(r, "echo hello");
     }
 
@@ -476,15 +529,14 @@ mod tests {
     #[test]
     fn test_shell_quote() {
         assert_eq!(shell_quote("simple"), "simple");
-        
+
         #[cfg(target_os = "windows")]
         assert_eq!(shell_quote("file with spaces"), "\"file with spaces\"");
-        
+
         #[cfg(not(target_os = "windows"))]
         assert_eq!(shell_quote("file with spaces"), "'file with spaces'");
     }
 }
-
 
 #[cfg(test)]
 mod macro_expander_properties;

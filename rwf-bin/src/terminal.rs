@@ -28,7 +28,7 @@ impl TerminalManager {
         // Create ratatui terminal
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
-        
+
         // Clear the terminal to ensure clean state
         terminal.clear()?;
 

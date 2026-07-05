@@ -1,6 +1,6 @@
 //! Navigation history
 
-use super::{Location, ui::ActivePane};
+use super::{ui::ActivePane, Location};
 
 /// Navigation history per pane
 #[derive(Debug)]
@@ -26,7 +26,7 @@ impl NavigationHistory {
             right_pos: 0,
         }
     }
-    
+
     const MAX_HISTORY: usize = 100;
 
     /// Push a new location to history
@@ -50,7 +50,7 @@ impl NavigationHistory {
             }
         }
     }
-    
+
     /// Go back in history
     pub fn go_back(&mut self, pane: ActivePane) -> Option<Location> {
         match pane {
@@ -72,7 +72,7 @@ impl NavigationHistory {
             }
         }
     }
-    
+
     /// Go forward in history
     pub fn go_forward(&mut self, pane: ActivePane) -> Option<Location> {
         match pane {
@@ -104,7 +104,7 @@ impl NavigationHistory {
     /// Get the history stack and current position for the given pane
     pub fn stack_and_pos(&self, pane: ActivePane) -> (&[Location], usize) {
         match pane {
-            ActivePane::Left  => (&self.left_stack,  self.left_pos),
+            ActivePane::Left => (&self.left_stack, self.left_pos),
             ActivePane::Right => (&self.right_stack, self.right_pos),
         }
     }

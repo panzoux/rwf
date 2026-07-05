@@ -152,7 +152,10 @@ mod tests {
 
         // Last entry should still be there
         let last_loc = Location::Local(PathBuf::from(format!("/test{}", MAX_CACHE_SIZE)));
-        assert_eq!(cache.restore(&last_loc), Some((MAX_CACHE_SIZE, MAX_CACHE_SIZE * 2)));
+        assert_eq!(
+            cache.restore(&last_loc),
+            Some((MAX_CACHE_SIZE, MAX_CACHE_SIZE * 2))
+        );
     }
 
     #[test]
