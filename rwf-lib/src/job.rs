@@ -3,6 +3,8 @@
 //! This module implements the JobManager and related types for managing
 //! asynchronous file operations via the rwf Worker Pool.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::model::Location;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};

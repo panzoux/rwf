@@ -26,7 +26,7 @@ JobManager/WorkerPool による非同期 I/O 分離、rwf-lib/rwf-bin 分離）�
 | render 関数コピペ 18 個 | `rwf-bin/src/ui/dialog/mod.rs` | 4,434 行、スタイル定義インライン 10+ 箇所重複 |
 | UI 状態とデータ混在 | `rwf-lib/src/model/dialog.rs` | 2,743 行、ダイアログ生成に 5+ フィールド手動セット |
 | テスト fixture 重複 | `rwf-lib/src/*_tests.rs` 約 40 ファイル | 推定 2,000 行超の重複セットアップ |
-| 非テストコード unwrap | ワークスペース全体 | 455 箇所（パニックリスク） |
+| 非テストコード unwrap | ワークスペース全体 | grep 概算 455 箇所 → **clippy 実測 35 箇所・9 モジュール**（M1 で確定。差分はテストコード） |
 | clone 過多 | rwf-lib | 799 箇所（ホットパス性能リスク） |
 | ガードレール欠如 | ルート | lint 属性なし、rustfmt.toml/clippy.toml なし、CI に fmt チェックなし |
 | レシピ不在 | docs/ | 「ダイアログ/Transition の追加方法」なし → AI がコピペに走る根本原因 |
@@ -217,8 +217,26 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 - 並列展開前に共有ファイル（mod.rs の宣言等）への変更を先行コミットしコンフリクト面を消す。
 - 大きな move/分割フェーズ（M3/M5）は他作業と並行させない。
 
-## allow ratchet リスト（M1 実施時に記入）
+## allow ratchet リスト（M1 実施時点 = M6 の burn-down リスト）
 
-> M1 で `#![allow(clippy::unwrap_used)]` を挿入したモジュールをここに列挙し、M6 で削除のたびに消し込む。
+> M1 で `#![allow(clippy::unwrap_used)]` を挿入したモジュール。M6 で unwrap を解消するたびに
+> allow を削除し、ここから消し込む。
+>
+> **実測値の注記**: 事前調査の「非テスト unwrap 455 箇所」は grep ベースの概算で、テストコードを
+> 多く含んでいた。clippy.toml の `allow-unwrap-in-tests` 適用後に deny が実際に検出した
+> 非テスト unwrap は **35 箇所・9 モジュール**。M6 の実作業量は当初想定より大幅に小さい。
 
-- （M1 実施時に記入）
+| モジュール | unwrap 数 | 状態 |
+|---|---|---|
+| `rwf-lib/src/model/dialog.rs` | 11 | `[ ]`（M4 で分割後に ratchet） |
+| `rwf-lib/src/macro_expander.rs` | 7 | `[ ]` |
+| `rwf-lib/src/job/job_executor.rs` | 5 | `[ ]` |
+| `rwf-lib/src/state.rs` | 4 | `[ ]`（M5 で分割後に ratchet） |
+| `rwf-lib/src/logging.rs` | 3 | `[ ]` |
+| `rwf-bin/src/ui/viewer.rs` | 2 | `[ ]` |
+| `rwf-lib/src/job.rs` | 1 | `[ ]` |
+| `rwf-lib/src/model/viewer.rs` | 1 | `[ ]` |
+| `rwf-lib/src/pattern_rename.rs` | 1 | `[ ]` |
+
+unsafe_code は `rwf-lib/src/volume_info.rs` のみ `#![allow(unsafe_code)]`（Win32 API、
+全 4 ブロックに SAFETY コメント付与済み）。これは恒久的な scoped allow であり ratchet 対象外。

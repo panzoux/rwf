@@ -2,6 +2,16 @@
 members = ["rwf-bin", "rwf-lib"]
 resolver = "2"
 
+[workspace.lints.rust]
+# volume_info.rs (Win32 API) のみ #![allow(unsafe_code)] + SAFETY コメントで許可
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# 非テストコードの unwrap 禁止（テストは clippy.toml の allow-unwrap-in-tests で除外）。
+# 既存違反モジュールは #![allow(clippy::unwrap_used)] // TODO(M6): ratchet を暫定付与し、
+# M6 で順次撤去する。新規モジュールは即座にこの lint の対象となる。
+unwrap_used = "deny"
+
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.42", features = ["full"] }

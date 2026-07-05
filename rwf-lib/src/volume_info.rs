@@ -3,6 +3,10 @@
 //! Platform-specific logic to extract volume names, labels, and mount points
 //! **Validates: Requirements 39A.1-39A.14**
 
+// Win32 volume APIs require raw FFI. This is the only module in the workspace
+// allowed to use unsafe; every unsafe block must carry a SAFETY comment.
+#![allow(unsafe_code)]
+
 use crate::model::marking::MarkingModel;
 use crate::model::{FileEntry, Location};
 use std::path::Path;
@@ -184,7 +188,8 @@ fn get_volume_label_windows(drive_root: &str) -> Option<String> {
     let mut file_system_flags = 0u32;
     let mut file_system_name_buffer = vec![0u16; 256];
 
-    // Call Windows API
+    // SAFETY: wide_path is null-terminated and outlives the call; all out-buffers
+    // are live local slices/values passed as Option<&mut _> per the windows crate API.
     unsafe {
         let result = GetVolumeInformationW(
             PCWSTR(wide_path.as_ptr()),
@@ -321,6 +326,7 @@ fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
     let mut drives = Vec::new();
 
     // Get logical drive bitmask
+    // SAFETY: GetLogicalDrives takes no arguments and only returns a bitmask.
     let drive_mask = unsafe { GetLogicalDrives() };
 
     // Iterate through all possible drive letters (A-Z)
@@ -334,6 +340,7 @@ fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
             wide_path.push(0);
 
             // Get drive type
+            // SAFETY: wide_path is null-terminated and outlives the call.
             let drive_type_raw = unsafe { GetDriveTypeW(PCWSTR(wide_path.as_ptr())) };
             let drive_type = match drive_type_raw {
                 2 => DriveType::Removable, // DRIVE_REMOVABLE
@@ -351,6 +358,8 @@ fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
             let mut total_bytes = 0u64;
             let mut total_free_bytes = 0u64;
 
+            // SAFETY: wide_path is null-terminated and outlives the call; the three
+            // out-pointers reference live local u64s.
             let space_result = unsafe {
                 GetDiskFreeSpaceExW(
                     PCWSTR(wide_path.as_ptr()),

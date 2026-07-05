@@ -3,6 +3,8 @@
 //! This module defines the central AppState structure and the Transition enum
 //! for explicit state changes following the AppState pattern.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::job::{BackgroundJobManager, JobId, JobManager, JobSpec};
 use crate::log_manager::LogManager;
 use crate::model::{

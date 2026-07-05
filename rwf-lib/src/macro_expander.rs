@@ -3,6 +3,8 @@
 //! This module implements macro expansion for custom function commands,
 //! supporting various macros like $P (active pane path), $F (cursor file), etc.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::model::CustomFunction;
 use crate::state::AppState;
 use regex::Regex;

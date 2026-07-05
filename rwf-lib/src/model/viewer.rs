@@ -5,6 +5,8 @@
 //! stores it behind an Arc<Mutex<LineIndex>> shared with the UI thread.
 //! The renderer only decodes the visible viewport window on each frame.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::model::Location;
 use regex::Regex;
 use std::sync::{Arc, Mutex};

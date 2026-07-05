@@ -5,6 +5,8 @@
 //! - File logging with rotation at 10MB
 //! - Structured logging via tracing
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

@@ -188,12 +188,12 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 
 | # | タスク | 状態 | 概要 |
 |---|---|---|---|
-| M1 | ガードレール導入 | `[ ]` | rustfmt.toml + cargo fmt（独立コミット, blame-ignore）/ clippy.toml（allow-unwrap-in-tests）/ workspace lints（unsafe_code deny, unwrap_used deny + モジュール allow ratchet）/ CI に fmt --check |
+| M1 | ガードレール導入 | `[x]` | **完了（2026-07-05）** rustfmt.toml + cargo fmt 一括適用（独立コミット 2f34739, blame-ignore 登録）/ clippy.toml（allow-unwrap-in-tests）/ workspace lints（unsafe_code deny + volume_info.rs のみ SAFETY 付き allow, unwrap_used deny + 9 モジュール allow ratchet）/ CI に fmt --check 追加 |
 | M2 | 共有部品・ドキュメント基盤 | `[ ]` | rwf-lib test_utils（〜40 テストファイルの fixture 統合）/ ui/dialog/common.rs（スタイル定数・共通レイアウト）/ ルート CLAUDE.md / ARCHITECTURE.md / TESTING.md / stale 参照修正 |
 | M3 | dialog/mod.rs 分割 | `[ ]` | 先に ratatui TestBackend + insta で 18 ダイアログのスナップショット固定 → ダイアログ単位にファイル分割（4,434 行 → mod.rs 〜100 行 + 個別ファイル）+ common.rs 適用 + テストヘルパ移行 |
 | M4 | model/dialog.rs 分割 | `[ ]` | バリアント別 struct 化（enum は維持）/ 共通 DialogUiState 分離 / new() コンストラクタで生成 1 呼び出し化 / DIALOG_DESIGN_SPEC.md 更新 |
 | M5 | state.rs 分割 | `[ ]` | state/handlers/ へハンドラ単位 move-only 分割（unwrap は触らない）。AppState 本体は分割せず所有権マップを文書化（判断根拠は詳細計画参照） |
-| M6 | unwrap/clone 監査 | `[ ]` | 非テスト unwrap 455 を分類（infallible→expect+理由 / 失敗しうる→エラー伝播）しモジュール単位で allow を ratchet 撤去。clone 799 は FileEntry 系・ホットパスに限定して修正 |
+| M6 | unwrap/clone 監査 | `[ ]` | 非テスト unwrap（M1 実測 35 箇所・9 モジュール、ratchet リストは quality_overhaul.md 参照）を分類（infallible→expect+理由 / 失敗しうる→エラー伝播）し allow を撤去。clone 799 は FileEntry 系・ホットパスに限定して修正 |
 | M7 | 仕上げ | `[ ]` | レシピ（add-a-dialog / add-a-transition）確定 / backend・job・model rustdoc / archive.rs TODO 修正（唯一の挙動変更）/ rwf-bin UI スモークテスト / ルート散乱 md 整理 / **凍結解除宣言** |
 
 ---

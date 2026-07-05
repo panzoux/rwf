@@ -1,0 +1,6 @@
+# Mechanical commits to exclude from git blame.
+# Use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub applies this file automatically.)
+
+# style: apply rustfmt across workspace (M1)
+2f34739935da7b8a23114451e7cbbe61e70e9f9f

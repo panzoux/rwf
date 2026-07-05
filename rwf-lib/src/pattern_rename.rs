@@ -9,6 +9,8 @@
 //!
 //! Always returns a `String`; equals the original filename when no match/change.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use regex::Regex;
 
 /// Apply a rename pattern to a filename using TWF-compatible logic.

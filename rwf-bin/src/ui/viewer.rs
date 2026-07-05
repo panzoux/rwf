@@ -4,6 +4,8 @@
 //! The line-offset index grows asynchronously; the status bar shows how many
 //! lines have been indexed so far with a '+' suffix while still loading.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

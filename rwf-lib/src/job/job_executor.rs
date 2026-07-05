@@ -3,6 +3,8 @@
 //! This module implements the JobExecutor that dispatches jobs to the
 //! appropriate backend methods and sends JobEvent updates.
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::backend::{ArchiveHandler, FilesystemBackend};
 use crate::job::{JobId, JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
 use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, TextEncoding, ViewerBuffer};

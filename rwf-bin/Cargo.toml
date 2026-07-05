@@ -3,6 +3,9 @@ name = "rwf"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [features]
 default = []
 migemo = ["rwf-lib/migemo"]

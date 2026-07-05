@@ -1,5 +1,7 @@
 //! Dialog system
 
+#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
+
 use crate::job::JobId;
 pub use crate::job::PipeToAction;
 use crate::model::Location;
