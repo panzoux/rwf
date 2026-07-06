@@ -7,6 +7,12 @@ pub use crate::job::PipeToAction;
 use crate::model::Location;
 use std::collections::HashMap;
 
+mod sort;
+mod version;
+
+pub use sort::SortDialog;
+pub use version::VersionDialog;
+
 /// Which mode tab is active in the help viewer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HelpTab {
@@ -324,19 +330,8 @@ pub enum DialogContent {
         targets: Vec<(crate::model::Location, bool)>,
         scroll_offset: usize,
     },
-    Version {
-        version: String,
-        build_date: String,
-        copyright: String,
-    },
-    SortDialog {
-        /// Currently highlighted sort key (0=Name, 1=Size, 2=Date, 3=Extension)
-        selected_mode_index: usize,
-        /// Currently highlighted order (0=Ascending, 1=Descending)
-        selected_order_index: usize,
-        /// Which section has keyboard focus (0=sort-key list, 1=order list, 2=OK, 3=Cancel)
-        focused_section: usize,
-    },
+    Version(VersionDialog),
+    SortDialog(SortDialog),
     /// File mask filter dialog — single text input for a wildcard pattern
     FileMask {
         /// Current pattern text being edited
@@ -1025,11 +1020,10 @@ impl Dialog {
         };
         Self {
             title: "Sort".to_string(),
-            content: DialogContent::SortDialog {
+            content: DialogContent::SortDialog(SortDialog::new(
                 selected_mode_index,
                 selected_order_index,
-                focused_section: 0,
-            },
+            )),
         }
     }
 
@@ -1145,11 +1139,7 @@ impl Dialog {
 
         Self {
             title: "Version Information".to_string(),
-            content: DialogContent::Version {
-                version,
-                build_date,
-                copyright,
-            },
+            content: DialogContent::Version(VersionDialog::new(version, build_date, copyright)),
         }
     }
 

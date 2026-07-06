@@ -65,7 +65,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::model::dialog::{Dialog, DialogContent, SortDialog};
 use tracing::debug;
 
 use super::smart_truncate;
@@ -424,11 +424,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 error_message,
             );
         }
-        DialogContent::SortDialog {
+        DialogContent::SortDialog(SortDialog {
             selected_mode_index,
             selected_order_index,
             focused_section,
-        } => {
+        }) => {
             render_sort_dialog(
                 frame,
                 content_area,
@@ -811,9 +811,9 @@ pub fn handle_dialog_input(
     // Enter = Confirm (but depends on focused field for JobManager / SortDialog)
     if key.code == crossterm::event::KeyCode::Enter {
         // SortDialog: Enter confirms only when OK (2) or Cancel (3) section is focused
-        if let DialogContent::SortDialog {
+        if let DialogContent::SortDialog(SortDialog {
             focused_section, ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             match *focused_section {
                 2 => return DialogAction::Confirm, // OK button
@@ -2033,9 +2033,9 @@ pub fn handle_dialog_input(
             || key.modifiers.contains(KeyModifiers::SHIFT);
 
         // SortDialog: Tab cycles 0→1→2→3→0 (sort-key list→order list→OK→Cancel)
-        if let DialogContent::SortDialog {
+        if let DialogContent::SortDialog(SortDialog {
             focused_section, ..
-        } = &mut dialog.content
+        }) = &mut dialog.content
         {
             if backward {
                 *focused_section = if *focused_section == 0 {

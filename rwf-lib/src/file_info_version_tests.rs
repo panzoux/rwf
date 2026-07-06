@@ -120,15 +120,11 @@ fn test_show_version_transition() {
 
     // Verify dialog content
     match &dialog.content {
-        DialogContent::Version {
-            version,
-            build_date,
-            copyright,
-        } => {
-            assert!(!version.is_empty());
-            assert!(!build_date.is_empty());
-            assert!(!copyright.is_empty());
-            assert!(copyright.contains("Copyright"));
+        DialogContent::Version(v) => {
+            assert!(!v.version.is_empty());
+            assert!(!v.build_date.is_empty());
+            assert!(!v.copyright.is_empty());
+            assert!(v.copyright.contains("Copyright"));
         }
         _ => panic!("Expected Version dialog content"),
     }
@@ -172,18 +168,14 @@ fn test_version_dialog_creation() {
     assert_eq!(dialog.title, "Version Information");
 
     match dialog.content {
-        DialogContent::Version {
-            version,
-            build_date,
-            copyright,
-        } => {
+        DialogContent::Version(v) => {
             // Version should be from CARGO_PKG_VERSION
-            assert!(!version.is_empty());
+            assert!(!v.version.is_empty());
             // Build date may be "Unknown" in test environment
-            assert!(!build_date.is_empty());
+            assert!(!v.build_date.is_empty());
             // Copyright should contain expected text
-            assert!(copyright.contains("Copyright"));
-            assert!(copyright.contains("RWF Contributors"));
+            assert!(v.copyright.contains("Copyright"));
+            assert!(v.copyright.contains("RWF Contributors"));
         }
         _ => panic!("Expected Version dialog content"),
     }

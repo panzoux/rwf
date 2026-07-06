@@ -12,7 +12,7 @@ use ratatui::{
 
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
-use rwf_lib::model::dialog::DialogContent;
+use rwf_lib::model::dialog::{DialogContent, SortDialog};
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
 use super::extract_confirm::ExtractionConfirmDialog;
@@ -138,11 +138,11 @@ pub(super) fn render_dialog_content(
 /// Handle content-specific input
 pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAction {
     match content {
-        DialogContent::SortDialog {
+        DialogContent::SortDialog(SortDialog {
             selected_mode_index,
             selected_order_index,
             focused_section,
-        } => {
+        }) => {
             use crossterm::event::KeyCode;
             match key.code {
                 KeyCode::Up => {

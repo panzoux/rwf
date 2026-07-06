@@ -3,7 +3,7 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only).
 
-use rwf_lib::model::dialog::DialogContent;
+use rwf_lib::model::dialog::{DialogContent, SortDialog};
 use tracing::debug;
 
 use super::archive_ext_for_format;
@@ -164,11 +164,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
             std::mem::discriminant(&dialog.content)
         );
         match &dialog.content {
-            DialogContent::SortDialog {
+            DialogContent::SortDialog(SortDialog {
                 selected_mode_index,
                 selected_order_index,
                 ..
-            } => {
+            }) => {
                 use rwf_lib::model::{SortMode, SortOrder};
                 let mode = match *selected_mode_index {
                     0 => SortMode::Name,
