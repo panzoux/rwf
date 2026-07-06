@@ -18,6 +18,7 @@ mod delete_confirm;
 mod drive_selection;
 mod error;
 mod extraction_confirm;
+mod file_conflict;
 mod file_info;
 mod file_mask;
 mod help;
@@ -48,6 +49,7 @@ pub use delete_confirm::DeleteConfirmDialog;
 pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
 pub use extraction_confirm::ExtractionConfirmDialog;
+pub use file_conflict::FileConflictDialog;
 pub use file_info::FileInfoDialog;
 pub use file_mask::FileMaskDialog;
 pub use help::HelpDialog;
@@ -221,27 +223,7 @@ pub enum DialogContent {
     ContextMenu(ContextMenuDialog),
     DriveSelection(DriveSelectionDialog),
     FileInfo(FileInfoDialog),
-    FileConflict {
-        conflicts: Vec<ConflictPair>,
-        current_index: usize,
-        focused_button: usize, // 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename (Textbox), 4=Cancel
-        rename_text: String,
-        rename_cursor: usize,
-        rename_scroll: usize,
-        edit_mode: crate::config::EditMode, // Emacs or Vi mode for textbox
-        vi_mode: Option<crate::config::ViMode>, // None = Emacs, Some = Vi mode state
-        decisions: Vec<ConflictAction>,
-        error_message: Option<String>,
-        // Vi pending states (persisted between key presses)
-        vi_pending_find_backward: Option<bool>,
-        vi_pending_operator: Option<u8>, // 0=none, 1=change, 2=delete
-        vi_pending_ctrl_x: bool,
-        // Undo/Redo history
-        history: Vec<String>,
-        history_index: usize,
-        /// "Copy" or "Move" — used in the dialog title
-        operation: String,
-    },
+    FileConflict(FileConflictDialog),
     Compression(CompressionDialog),
     ExtractionConfirm(ExtractionConfirmDialog),
     DeleteConfirm(DeleteConfirmDialog),
@@ -548,53 +530,25 @@ impl Dialog {
             current_index + 1,
             total
         );
-        let rename_text = if !conflicts.is_empty() {
-            conflicts[current_index].source.name.clone()
-        } else {
-            String::new()
-        };
-        let rename_cursor = if !conflicts.is_empty() {
-            conflicts[current_index].source.name.len()
-        } else {
-            0
-        };
-        // Initialize vi_mode based on edit_mode
-        let vi_mode = if edit_mode == crate::config::EditMode::Vi {
-            Some(crate::config::ViMode::Normal)
-        } else {
-            None
-        };
         Self {
             title,
-            content: DialogContent::FileConflict {
+            content: DialogContent::FileConflict(FileConflictDialog::new(
                 conflicts,
                 current_index,
-                focused_button: 3, // Rename button focused by default
-                rename_text: rename_text.clone(),
-                rename_cursor,
-                rename_scroll: 0,
                 edit_mode,
-                vi_mode,
-                decisions: Vec::new(),
-                error_message: None,
-                vi_pending_find_backward: None,
-                vi_pending_operator: None,
-                vi_pending_ctrl_x: false,
-                history: vec![rename_text],
-                history_index: 0,
-                operation: op_name.to_string(),
-            },
+                op_name,
+            )),
         }
     }
 
     /// Update the dialog title with current progress
     pub fn update_file_conflict_title(&mut self) {
-        if let DialogContent::FileConflict {
+        if let DialogContent::FileConflict(FileConflictDialog {
             conflicts,
             current_index,
             operation,
             ..
-        } = &self.content
+        }) = &self.content
         {
             let total = conflicts.len();
             self.title = format!(

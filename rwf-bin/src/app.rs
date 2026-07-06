@@ -746,12 +746,14 @@ impl App {
                     );
                     let mut should_pop = true;
                     match &mut dialog.content {
-                        rwf_lib::model::dialog::DialogContent::FileConflict {
-                            conflicts,
-                            current_index,
-                            decisions,
-                            ..
-                        } => {
+                        rwf_lib::model::dialog::DialogContent::FileConflict(
+                            rwf_lib::model::dialog::FileConflictDialog {
+                                conflicts,
+                                current_index,
+                                decisions,
+                                ..
+                            },
+                        ) => {
                             if *current_index + 1 < conflicts.len() {
                                 *current_index += 1;
                                 dialog.update_file_conflict_title();
@@ -917,9 +919,9 @@ impl App {
                 }
                 crate::ui::dialog::DialogAction::ConfirmAll => {
                     // Shift+Enter: all decisions already pushed by handle_file_conflict_input; submit job now
-                    if let rwf_lib::model::dialog::DialogContent::FileConflict {
-                        decisions, ..
-                    } = &mut dialog.content
+                    if let rwf_lib::model::dialog::DialogContent::FileConflict(
+                        rwf_lib::model::dialog::FileConflictDialog { decisions, .. },
+                    ) = &mut dialog.content
                     {
                         if let Some((job_spec, conflicts_list, job_name, job_desc)) =
                             self.pending_conflict_job.take()

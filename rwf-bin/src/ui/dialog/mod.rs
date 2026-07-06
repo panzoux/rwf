@@ -68,10 +68,10 @@ use ratatui::{
 use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog,
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
-    DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
-    HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
-    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    WildcardMarkDialog,
+    DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
+    HelpDialog, HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog,
+    JumpToPathDialog, PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog,
+    SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -409,7 +409,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Render buttons (OK/Cancel) with proper focus
             render_dialog_buttons(frame, chunks[1], &dialog.content, *focused_field);
         }
-        DialogContent::FileConflict {
+        DialogContent::FileConflict(FileConflictDialog {
             conflicts,
             current_index,
             focused_button,
@@ -420,7 +420,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             vi_mode,
             error_message,
             ..
-        } => {
+        }) => {
             // Render File Conflict dialog with TextInput widget
             render_file_conflict_dialog(
                 frame,
@@ -2000,7 +2000,7 @@ pub fn handle_dialog_input(
     }
 
     // FileConflict dialog - custom input handling with textbox
-    if let DialogContent::FileConflict {
+    if let DialogContent::FileConflict(FileConflictDialog {
         conflicts,
         current_index,
         focused_button,
@@ -2017,7 +2017,7 @@ pub fn handle_dialog_input(
         history,
         history_index,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         return handle_file_conflict_input(
             conflicts,
