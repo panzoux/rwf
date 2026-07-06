@@ -58,7 +58,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 ## バリアント一覧(処理順 = 単純→複雑。チェックボックスで進捗管理)
 
 単純(フィールド少・生成箇所少):
-- [x] Version(S1 テンプレート, commit `2f7e178`) / [ ] Error / [ ] Progress / [ ] Confirmation / [ ] DeleteConfirm
+- [x] Version(S1 テンプレート, commit `2f7e178`) / [x] Error(S2 batch1, commit `fa66b31`) / [x] Progress(S2 batch1, commit `fa66b31`) / [x] Confirmation(S2 batch1, commit `fa66b31`) / [x] DeleteConfirm(S2 batch1, commit `fa66b31`)
 - [ ] ExtractionConfirm / [ ] CloseTabWithActiveJob / [ ] HistoryDialog / [ ] DriveSelection
 - [ ] ContextMenu / [ ] TabSelector / [ ] RegisteredFolderSelector
 中程度:
