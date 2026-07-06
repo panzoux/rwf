@@ -100,7 +100,8 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   個別 match アームに分離する対応が必要だった(`e8c1bb4`/`f4a3c89` 参照)。
   `TabSelectorContent`/`RegisteredFolderSelectorContent` は既存の同名ヘルパー struct との
   衝突を避けるため命名変更(`Dialog`ではなく`Content`サフィックス)。
-  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑、
+  rwf-lib フルテストも緑(1043 passed, 0 failed)。
   次セッションは S3(中程度11件、haiku 直列投入)から開始。
 
 ### S4(sonnet 単独): 複雑 6 バリアント
