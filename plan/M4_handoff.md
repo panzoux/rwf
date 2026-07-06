@@ -104,6 +104,8 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   enum/model.rs だけでなく `git status --short` で変更ファイル一覧全体を必ず確認し、
   タスク対象外のファイル(CLAUDE.md 等)への書き込みがないか毎回チェックすること。
   また「セッション上限」等の完了報告がない場合は grep で全箇所変換済みか必ず再確認する。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑、
+  rwf-lib フルテストも緑(1043 passed, 0 failed)。次セッションは残り4バリアントから継続。
 - **S2 完了(2026-07-06)**: 単純12件すべて struct 化(haiku 3バッチ、直列投入・都度diff監査)。
   commit: batch1 `fa66b31`(Confirmation/Progress/DeleteConfirm/Error)、
   batch2 `e8c1bb4`(ExtractionConfirm/CloseTabWithActiveJob/HistoryDialog/DriveSelection)、
