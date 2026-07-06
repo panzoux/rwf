@@ -31,7 +31,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(matches!(dialog.content, DialogContent::JumpToFile { .. }));
+        assert!(matches!(dialog.content, DialogContent::JumpToFile(_)));
     }
 
     #[test]
@@ -49,7 +49,9 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile { query, .. } = &dialog.content {
+        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog { query, .. }) =
+            &dialog.content
+        {
             assert_eq!(query, "", "initial query must be empty");
         } else {
             panic!("expected JumpToFile dialog");
@@ -61,7 +63,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile { selected_index, .. } = &dialog.content {
+        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
+            selected_index,
+            ..
+        }) = &dialog.content
+        {
             assert_eq!(*selected_index, 0);
         } else {
             panic!("expected JumpToFile dialog");
@@ -73,11 +79,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile {
+        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
             candidates,
             suggestions,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(
                 candidates.len(),
@@ -94,7 +100,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile { search_root, .. } = &dialog.content {
+        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
+            search_root,
+            ..
+        }) = &dialog.content
+        {
             assert!(!search_root.is_empty(), "search_root must not be empty");
         } else {
             panic!("expected JumpToFile dialog");

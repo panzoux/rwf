@@ -19,6 +19,8 @@ mod file_mask;
 mod help;
 mod history_dialog;
 mod input;
+mod jump_to_file;
+mod jump_to_path;
 mod progress;
 mod registered_folder_selector;
 mod simple_rename;
@@ -40,6 +42,8 @@ pub use file_mask::FileMaskDialog;
 pub use help::HelpDialog;
 pub use history_dialog::HistoryDialogContent;
 pub use input::InputDialog;
+pub use jump_to_file::JumpToFileDialog;
+pub use jump_to_path::JumpToPathDialog;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use simple_rename::SimpleRenameDialog;
@@ -298,35 +302,9 @@ pub enum DialogContent {
     /// Navigation history list — holds both panes, switches with Tab/h/l
     HistoryDialog(HistoryDialogContent),
     /// Jump to Directory dialog — AND-filtered directory suggestions
-    JumpToPath {
-        query: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-        /// Fast candidates shown immediately; async job appends disk-walk results
-        candidates: Vec<String>,
-        /// Current AND-filtered subset of candidates
-        suggestions: Vec<String>,
-        selected_index: usize,
-        /// Root path for recursive search and relative-path fallback
-        search_root: String,
-        /// Background job collecting more candidates; None when done
-        loading_job_id: Option<crate::job::JobId>,
-    },
+    JumpToPath(JumpToPathDialog),
     /// Jump to File dialog — AND-filtered file+directory suggestions
-    JumpToFile {
-        query: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-        /// Fast candidates shown immediately; async job appends disk-walk results
-        candidates: Vec<String>,
-        /// Current AND-filtered subset of candidates
-        suggestions: Vec<String>,
-        selected_index: usize,
-        /// Root path for recursive search and relative-path fallback
-        search_root: String,
-        /// Background job collecting more candidates; None when done
-        loading_job_id: Option<crate::job::JobId>,
-    },
+    JumpToFile(JumpToFileDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -954,37 +932,17 @@ impl Dialog {
 
     /// Create a Jump to Directory dialog with pre-fetched candidates
     pub fn jump_to_path(search_root: String, candidates: Vec<String>) -> Self {
-        let suggestions = candidates.clone();
         Self {
             title: "Jump to Directory".to_string(),
-            content: DialogContent::JumpToPath {
-                query: String::new(),
-                cursor_pos: 0,
-                scroll_pos: 0,
-                candidates,
-                suggestions,
-                selected_index: 0,
-                search_root,
-                loading_job_id: None,
-            },
+            content: DialogContent::JumpToPath(JumpToPathDialog::new(search_root, candidates)),
         }
     }
 
     /// Create a Jump to File dialog with pre-fetched candidates (files + dirs)
     pub fn jump_to_file(search_root: String, candidates: Vec<String>) -> Self {
-        let suggestions = candidates.clone();
         Self {
             title: "Jump to File".to_string(),
-            content: DialogContent::JumpToFile {
-                query: String::new(),
-                cursor_pos: 0,
-                scroll_pos: 0,
-                candidates,
-                suggestions,
-                selected_index: 0,
-                search_root,
-                loading_job_id: None,
-            },
+            content: DialogContent::JumpToFile(JumpToFileDialog::new(search_root, candidates)),
         }
     }
 

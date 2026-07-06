@@ -293,14 +293,14 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::JumpToPath {
+            DialogContent::JumpToPath(rwf_lib::model::dialog::JumpToPathDialog {
                 suggestions,
                 selected_index,
                 query,
                 search_root,
                 loading_job_id,
                 ..
-            } => {
+            }) => {
                 let path_str: Option<String> =
                     if !suggestions.is_empty() && *selected_index < suggestions.len() {
                         Some(suggestions[*selected_index].clone())
@@ -337,14 +337,14 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::JumpToFile {
+            DialogContent::JumpToFile(rwf_lib::model::dialog::JumpToFileDialog {
                 suggestions,
                 selected_index,
                 query,
                 search_root,
                 loading_job_id,
                 ..
-            } => {
+            }) => {
                 let path_str: Option<String> =
                     if !suggestions.is_empty() && *selected_index < suggestions.len() {
                         Some(suggestions[*selected_index].clone())

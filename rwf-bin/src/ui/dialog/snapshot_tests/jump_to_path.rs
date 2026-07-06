@@ -38,13 +38,13 @@ fn jump_to_path_query_and_selection() {
             "/test/beta".to_string(),
         ],
     );
-    if let DialogContent::JumpToPath {
+    if let DialogContent::JumpToPath(rwf_lib::model::dialog::JumpToPathDialog {
         query,
         cursor_pos,
         suggestions,
         selected_index,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         *query = "al".to_string();
         *cursor_pos = 2;

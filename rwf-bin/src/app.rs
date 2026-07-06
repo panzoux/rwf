@@ -710,14 +710,12 @@ impl App {
                         self.pattern_rename_pending = None;
                     }
                     let loading_job = match &dialog.content {
-                        rwf_lib::model::dialog::DialogContent::JumpToFile {
-                            loading_job_id,
-                            ..
-                        } => *loading_job_id,
-                        rwf_lib::model::dialog::DialogContent::JumpToPath {
-                            loading_job_id,
-                            ..
-                        } => *loading_job_id,
+                        rwf_lib::model::dialog::DialogContent::JumpToFile(
+                            rwf_lib::model::dialog::JumpToFileDialog { loading_job_id, .. },
+                        ) => *loading_job_id,
+                        rwf_lib::model::dialog::DialogContent::JumpToPath(
+                            rwf_lib::model::dialog::JumpToPathDialog { loading_job_id, .. },
+                        ) => *loading_job_id,
                         _ => None,
                     };
                     if let Some(job_id) = loading_job {

@@ -68,8 +68,8 @@ use ratatui::{
 use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
     DialogUiState, DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
-    HistoryDialogContent, InputDialog, RegisteredFolderSelectorContent, SimpleRenameDialog,
-    SortDialog, WildcardMarkDialog,
+    HistoryDialogContent, InputDialog, JumpToFileDialog, JumpToPathDialog,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -213,11 +213,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // options list + hint(1)
             (options.len() as u16 + 1).max(4)
         }
-        DialogContent::JumpToPath { suggestions, .. } => {
+        DialogContent::JumpToPath(JumpToPathDialog { suggestions, .. }) => {
             // input(1) + sep(1) + list(up to 10) + sep(1) + preview(1) + hint(1) = list+5, min 8
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
-        DialogContent::JumpToFile { suggestions, .. } => {
+        DialogContent::JumpToFile(JumpToFileDialog { suggestions, .. }) => {
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
         DialogContent::FileInfo(FileInfoDialog { link_target, .. }) => {
@@ -265,8 +265,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::Help { .. }
         | DialogContent::RegisteredFolderSelector(_)
         | DialogContent::CustomFunctionSelector { .. }
-        | DialogContent::JumpToPath { .. }
-        | DialogContent::JumpToFile { .. }
+        | DialogContent::JumpToPath(_)
+        | DialogContent::JumpToFile(_)
         | DialogContent::DeleteConfirm(_) => {
             let percent_height = (screen_height * 80) / 100;
             percent_height
@@ -335,8 +335,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             ((max_label as u16 + 6).max(24)).min(screen_width.saturating_sub(2))
         }
         DialogContent::PatternRename { .. }
-        | DialogContent::JumpToPath { .. }
-        | DialogContent::JumpToFile { .. } => ((screen_width * 80) / 100)
+        | DialogContent::JumpToPath(_)
+        | DialogContent::JumpToFile(_) => ((screen_width * 80) / 100)
             .max(40)
             .min(screen_width.saturating_sub(2)),
         DialogContent::Help { .. } => ((screen_width * 70) / 100)
@@ -564,14 +564,14 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }) => {
             render_context_menu_dialog(frame, content_area, options, *selected_index);
         }
-        DialogContent::JumpToPath {
+        DialogContent::JumpToPath(JumpToPathDialog {
             query,
             cursor_pos,
             suggestions,
             selected_index,
             loading_job_id,
             ..
-        } => {
+        }) => {
             render_jump_to_path_dialog(
                 frame,
                 content_area,
@@ -582,14 +582,14 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 loading_job_id.is_some(),
             );
         }
-        DialogContent::JumpToFile {
+        DialogContent::JumpToFile(JumpToFileDialog {
             query,
             cursor_pos,
             suggestions,
             selected_index,
             loading_job_id,
             ..
-        } => {
+        }) => {
             render_jump_to_file_dialog(
                 frame,
                 content_area,
@@ -1456,14 +1456,14 @@ pub fn handle_dialog_input(
     }
 
     // JumpToPath — text input + AND-filter suggestions + arrow navigation
-    if let DialogContent::JumpToPath {
+    if let DialogContent::JumpToPath(JumpToPathDialog {
         query,
         cursor_pos,
         suggestions,
         selected_index,
         candidates,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         match key.code {
@@ -1541,14 +1541,14 @@ pub fn handle_dialog_input(
     }
 
     // JumpToFile — text input + AND-filter suggestions (files + dirs) + arrow navigation
-    if let DialogContent::JumpToFile {
+    if let DialogContent::JumpToFile(JumpToFileDialog {
         query,
         cursor_pos,
         suggestions,
         selected_index,
         candidates,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         match key.code {

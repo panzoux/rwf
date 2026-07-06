@@ -39,13 +39,13 @@ fn jump_to_file_query_and_selection() {
             "/test/docs/guide.md".to_string(),
         ],
     );
-    if let DialogContent::JumpToFile {
+    if let DialogContent::JumpToFile(rwf_lib::model::dialog::JumpToFileDialog {
         query,
         cursor_pos,
         suggestions,
         selected_index,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         *query = "md".to_string();
         *cursor_pos = 2;

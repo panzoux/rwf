@@ -1531,25 +1531,31 @@ impl AppState {
                                 let job_id_val = *job_id;
                                 for dialog in self.dialogs.stack.iter_mut().rev() {
                                     let matched = match &dialog.content {
-                                        crate::model::dialog::DialogContent::JumpToFile {
-                                            loading_job_id,
-                                            ..
-                                        } => *loading_job_id == Some(job_id_val),
-                                        crate::model::dialog::DialogContent::JumpToPath {
-                                            loading_job_id,
-                                            ..
-                                        } => !include_files && *loading_job_id == Some(job_id_val),
+                                        crate::model::dialog::DialogContent::JumpToFile(
+                                            crate::model::dialog::JumpToFileDialog {
+                                                loading_job_id,
+                                                ..
+                                            },
+                                        ) => *loading_job_id == Some(job_id_val),
+                                        crate::model::dialog::DialogContent::JumpToPath(
+                                            crate::model::dialog::JumpToPathDialog {
+                                                loading_job_id,
+                                                ..
+                                            },
+                                        ) => !include_files && *loading_job_id == Some(job_id_val),
                                         _ => false,
                                     };
                                     if matched {
                                         match &mut dialog.content {
-                                            crate::model::dialog::DialogContent::JumpToFile {
-                                                candidates,
-                                                suggestions,
-                                                loading_job_id,
-                                                query,
-                                                ..
-                                            } => {
+                                            crate::model::dialog::DialogContent::JumpToFile(
+                                                crate::model::dialog::JumpToFileDialog {
+                                                    candidates,
+                                                    suggestions,
+                                                    loading_job_id,
+                                                    query,
+                                                    ..
+                                                },
+                                            ) => {
                                                 let mut seen: std::collections::HashSet<String> =
                                                     candidates.iter().cloned().collect();
                                                 for c in new_candidates {
@@ -1561,13 +1567,15 @@ impl AppState {
                                                 *suggestions = crate::model::dialog::filter_jump_to_file_suggestions(candidates, query);
                                                 result_obj.ui_changed = true;
                                             }
-                                            crate::model::dialog::DialogContent::JumpToPath {
-                                                candidates,
-                                                suggestions,
-                                                loading_job_id,
-                                                query,
-                                                ..
-                                            } => {
+                                            crate::model::dialog::DialogContent::JumpToPath(
+                                                crate::model::dialog::JumpToPathDialog {
+                                                    candidates,
+                                                    suggestions,
+                                                    loading_job_id,
+                                                    query,
+                                                    ..
+                                                },
+                                            ) => {
                                                 let mut seen: std::collections::HashSet<String> =
                                                     candidates.iter().cloned().collect();
                                                 for c in new_candidates {
@@ -2188,8 +2196,9 @@ impl AppState {
                     });
                 let job_id = job_spec.id;
                 let mut dialog = crate::model::Dialog::jump_to_path(root, fast_candidates);
-                if let crate::model::dialog::DialogContent::JumpToPath { loading_job_id, .. } =
-                    &mut dialog.content
+                if let crate::model::dialog::DialogContent::JumpToPath(
+                    crate::model::dialog::JumpToPathDialog { loading_job_id, .. },
+                ) = &mut dialog.content
                 {
                     *loading_job_id = Some(job_id);
                 }
@@ -2208,8 +2217,9 @@ impl AppState {
                     });
                 let job_id = job_spec.id;
                 let mut dialog = crate::model::Dialog::jump_to_file(root, fast_candidates);
-                if let crate::model::dialog::DialogContent::JumpToFile { loading_job_id, .. } =
-                    &mut dialog.content
+                if let crate::model::dialog::DialogContent::JumpToFile(
+                    crate::model::dialog::JumpToFileDialog { loading_job_id, .. },
+                ) = &mut dialog.content
                 {
                     *loading_job_id = Some(job_id);
                 }

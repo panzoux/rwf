@@ -31,7 +31,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        assert!(matches!(dialog.content, DialogContent::JumpToPath { .. }));
+        assert!(matches!(dialog.content, DialogContent::JumpToPath(_)));
     }
 
     #[test]
@@ -50,7 +50,9 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath { query, .. } = &dialog.content {
+        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog { query, .. }) =
+            &dialog.content
+        {
             assert_eq!(query, "", "initial query must be empty");
         } else {
             panic!("expected JumpToPath dialog");
@@ -62,7 +64,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath { selected_index, .. } = &dialog.content {
+        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
+            selected_index,
+            ..
+        }) = &dialog.content
+        {
             assert_eq!(*selected_index, 0);
         } else {
             panic!("expected JumpToPath dialog");
@@ -74,11 +80,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath {
+        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
             candidates,
             suggestions,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(
                 candidates.len(),
@@ -95,7 +101,11 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath { search_root, .. } = &dialog.content {
+        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
+            search_root,
+            ..
+        }) = &dialog.content
+        {
             assert!(!search_root.is_empty(), "search_root must not be empty");
         } else {
             panic!("expected JumpToPath dialog");
