@@ -21,9 +21,33 @@
 
 ### S1 で確定した DialogUiState 定義(S1 実施時に記入)
 
-```
-(S1 で記入)
-```
+29 バリアントを実測した結果、共通フィールドは以下の 3 パターンに分かれる(1 つの汎用
+`DialogUiState` には収まらない):
+
+- **テキスト入力 3 点セット** `cursor_pos: usize, scroll_pos: usize, focused_field: usize`
+  (初期値は 0)— `FileMask` / `WildcardMark` / `SimpleRename` が完全一致。`Input` は
+  `cursor_pos`/`scroll_pos` のみ(`focused_field` 無し、Enter で即確定するため)。
+  `JumpToPath` / `JumpToFile` も `cursor_pos`/`scroll_pos` のみ。`PatternRename` /
+  `Compression` は同じ概念だが独自名(`find_cursor_pos` 等)を使うため対象外。
+- **単一フォーカス値** `focused_button: usize`(`Error`, `FileConflict`)や
+  `focused_section: usize`(`SortDialog` のみ)、`focused_field: usize`(`JobManager`,
+  `CloseTabWithActiveJob`)— 意味(何を指すか)がバリアントごとに異なるため統一しない。
+- **選択リスト系** `selected_index: usize`(多数)、`scroll_offset: usize`
+  (`ComparisonView`, `DeleteConfirm`)。
+
+**決定**: `DialogUiState { cursor_pos: usize, scroll_pos: usize, focused_field: usize }`
+を導入し、上記「テキスト入力 3 点セット」に完全一致する `FileMask` / `WildcardMark` /
+`SimpleRename`(S3 で対応)にのみ埋め込む。それ以外のバリアントは共通 struct を使わず、
+固有フィールドをそのまま struct に残す(3.の確定済み設計どおり)。
+
+テンプレート 2 件(`SortDialog`, `Version`)はどちらも上記 3 点セットに一致しないため、
+`DialogUiState` を埋め込まない — 単に「struct 化 + `new()` + enum tuple 化 + 呼び出し側
+置換」という構造変更パターンのみを示す見本とする。
+
+テンプレートコミット: `2f7e178`(SortDialog + Version をまとめて struct 化。理由は
+コミットメッセージ参照 — 同一ファイル `model/dialog/mod.rs` の enum 定義を分割すると
+ビルド不能な中間状態になるため 1 コミットにまとめた)。
+directory 化(move-only)コミット: `f78505b`。
 
 ## 並列化の禁止(重要 — 計画からの変更点)
 
@@ -34,11 +58,11 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 ## バリアント一覧(処理順 = 単純→複雑。チェックボックスで進捗管理)
 
 単純(フィールド少・生成箇所少):
-- [ ] Version / [ ] Error / [ ] Progress / [ ] Confirmation / [ ] DeleteConfirm
+- [x] Version(S1 テンプレート, commit `2f7e178`) / [ ] Error / [ ] Progress / [ ] Confirmation / [ ] DeleteConfirm
 - [ ] ExtractionConfirm / [ ] CloseTabWithActiveJob / [ ] HistoryDialog / [ ] DriveSelection
 - [ ] ContextMenu / [ ] TabSelector / [ ] RegisteredFolderSelector
 中程度:
-- [ ] Input / [ ] Help / [ ] SortDialog / [ ] FileMask / [ ] WildcardMark / [ ] SimpleRename
+- [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [ ] FileMask / [ ] WildcardMark / [ ] SimpleRename
 - [ ] JumpToPath / [ ] JumpToFile / [ ] FileInfo / [ ] CustomFunctionSelector / [ ] CustomFunctionMenu
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [ ] JobManager / [ ] PatternRename / [ ] ComparisonView / [ ] SplitJoinDialog
@@ -53,6 +77,10 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
    struct 定義 + `new()` + enum 変更 + 生成側置換 + rwf-bin 側 match 腕の型合わせ。各 1 コミット。
 4. このコミット 2 件が haiku への見本。見本コミットのハッシュを本ファイルに記録。
 - 完了条件: 検証一式緑(rwf-lib フルはバックグラウンド)、進捗記入、コミット。
+- **S1 実施状況(2026-07-06)**: 上記ディレクトリ化・テンプレート2件・DialogUiState 定義は完了。
+  `cargo fmt --check` / `cargo clippy --all-targets -D warnings` / `cargo test -p rwf --test-threads=1`
+  (145 passed, スナップショット差分ゼロ)は緑を確認済み。`cargo test -p rwf-lib --test-threads=1`
+  はバックグラウンド実行中 — 結果は次セッション冒頭で確認し、赤なら本欄に追記して対処する。
 
 ### S2〜S3(sonnet + 直列 haiku): 単純・中程度バリアント
 - S2: 単純 12 件。haiku 1 体 = 4 件 × 3 体を**直列**投入。
