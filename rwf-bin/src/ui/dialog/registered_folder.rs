@@ -1,10 +1,88 @@
-//! Registered folder selector rendering.
+//! Registered folder selector rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::RegisteredFolderSelectorContent;
+
+use super::DialogAction;
+
+/// Handle key input: incremental search + arrow navigation.
+pub(super) fn handle_input(
+    dialog: &mut RegisteredFolderSelectorContent,
+    key: KeyEvent,
+) -> DialogAction {
+    let RegisteredFolderSelectorContent {
+        folders,
+        selected_index,
+        filter,
+    } = dialog;
+    use crossterm::event::KeyCode;
+    let filtered_count = if filter.is_empty() {
+        folders.len()
+    } else {
+        let lower = filter.to_lowercase();
+        folders
+            .iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&lower) || f.path.to_lowercase().contains(&lower)
+            })
+            .count()
+    };
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter => return DialogAction::Confirm,
+        KeyCode::Delete => return DialogAction::DeleteSelected,
+        KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+            if *selected_index > 0 {
+                *selected_index -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+            if *selected_index + 1 < filtered_count {
+                *selected_index += 1;
+            }
+        }
+        KeyCode::Home => {
+            *selected_index = 0;
+        }
+        KeyCode::End => {
+            *selected_index = filtered_count.saturating_sub(1);
+        }
+        KeyCode::Backspace => {
+            if !filter.is_empty() {
+                let mut chars = filter.chars();
+                chars.next_back();
+                *filter = chars.as_str().to_string();
+                *selected_index = 0;
+            }
+        }
+        // Ctrl+K: clear search (also handle raw \x0b from Windows Console API)
+        // Do NOT reset selected_index — cursor stays on current item.
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            filter.clear();
+        }
+        KeyCode::Char('\x0b') => {
+            filter.clear();
+        }
+        // Printable chars: add to search filter (reset to top for new search)
+        KeyCode::Char(c)
+            if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::SUPER) =>
+        {
+            filter.push(c);
+            *selected_index = 0;
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_registered_folder_selector(
     frame: &mut Frame,

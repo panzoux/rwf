@@ -1,10 +1,77 @@
-//! Context menu dialog rendering.
+//! Context menu dialog rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::ContextMenuDialog;
+
+use super::DialogAction;
+
+/// Handle key input: arrow navigation that skips separators.
+pub(super) fn handle_input(dialog: &mut ContextMenuDialog, key: KeyEvent) -> DialogAction {
+    let ContextMenuDialog {
+        options,
+        selected_index,
+    } = dialog;
+    use crossterm::event::KeyCode;
+    use rwf_lib::model::dialog::ContextMenuAction;
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter => return DialogAction::Confirm,
+        KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+            // Move up, skip separators
+            let mut idx = *selected_index;
+            loop {
+                if idx == 0 {
+                    break;
+                }
+                idx -= 1;
+                if !matches!(options[idx].action, ContextMenuAction::Separator) {
+                    *selected_index = idx;
+                    break;
+                }
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+            let mut idx = *selected_index;
+            loop {
+                if idx + 1 >= options.len() {
+                    break;
+                }
+                idx += 1;
+                if !matches!(options[idx].action, ContextMenuAction::Separator) {
+                    *selected_index = idx;
+                    break;
+                }
+            }
+        }
+        KeyCode::Home => {
+            // Jump to first selectable
+            for (i, o) in options.iter().enumerate() {
+                if !matches!(o.action, ContextMenuAction::Separator) {
+                    *selected_index = i;
+                    break;
+                }
+            }
+        }
+        KeyCode::End => {
+            // Jump to last selectable
+            for (i, o) in options.iter().enumerate().rev() {
+                if !matches!(o.action, ContextMenuAction::Separator) {
+                    *selected_index = i;
+                    break;
+                }
+            }
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_context_menu_dialog(
     frame: &mut Frame,

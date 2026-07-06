@@ -1,10 +1,173 @@
-//! Custom function selector and menu rendering.
+//! Custom function selector and menu rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::{CustomFunctionMenuDialog, CustomFunctionSelectorContent};
+
+use super::DialogAction;
+
+/// Handle key input for the Custom Function Selector: incremental search + arrow navigation.
+pub(super) fn handle_selector_input(
+    dialog: &mut CustomFunctionSelectorContent,
+    key: KeyEvent,
+) -> DialogAction {
+    let CustomFunctionSelectorContent {
+        functions,
+        selected_index,
+        filter,
+    } = dialog;
+    use crossterm::event::KeyCode;
+    let lower = filter.to_lowercase();
+    let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
+        functions.iter().collect()
+    } else {
+        functions
+            .iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&lower)
+                    || f.description
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&lower)
+            })
+            .collect()
+    };
+    let filtered_count = filtered.len();
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter => {
+            if let Some(func) = filtered.get(*selected_index) {
+                if func.is_menu() {
+                    let title = func.name.clone();
+                    let items = func.menu_items().to_vec();
+                    return DialogAction::OpenMenu { title, items };
+                }
+            }
+            return DialogAction::Confirm;
+        }
+        KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+            if *selected_index > 0 {
+                *selected_index -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+            if *selected_index + 1 < filtered_count {
+                *selected_index += 1;
+            }
+        }
+        KeyCode::Home => {
+            *selected_index = 0;
+        }
+        KeyCode::End => {
+            *selected_index = filtered_count.saturating_sub(1);
+        }
+        KeyCode::Backspace => {
+            if !filter.is_empty() {
+                let mut chars = filter.chars();
+                chars.next_back();
+                *filter = chars.as_str().to_string();
+                *selected_index = 0;
+            }
+        }
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            filter.clear();
+        }
+        KeyCode::Char('\x0b') => {
+            filter.clear();
+        }
+        KeyCode::Char(c)
+            if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::SUPER) =>
+        {
+            filter.push(c);
+            *selected_index = 0;
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
+
+/// Handle key input for the Custom Function Menu: second-level menu with separator
+/// skipping and char-jump.
+pub(super) fn handle_menu_input(
+    dialog: &mut CustomFunctionMenuDialog,
+    key: KeyEvent,
+) -> DialogAction {
+    let CustomFunctionMenuDialog {
+        items,
+        selected_index,
+    } = dialog;
+    use crossterm::event::KeyCode;
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter => return DialogAction::Confirm,
+        KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+            let mut idx = *selected_index;
+            loop {
+                if idx == 0 {
+                    break;
+                }
+                idx -= 1;
+                if items[idx].is_selectable() {
+                    *selected_index = idx;
+                    break;
+                }
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+            let mut idx = *selected_index;
+            loop {
+                if idx + 1 >= items.len() {
+                    break;
+                }
+                idx += 1;
+                if items[idx].is_selectable() {
+                    *selected_index = idx;
+                    break;
+                }
+            }
+        }
+        KeyCode::Home => {
+            for (i, item) in items.iter().enumerate() {
+                if item.is_selectable() {
+                    *selected_index = i;
+                    break;
+                }
+            }
+        }
+        KeyCode::End => {
+            for (i, item) in items.iter().enumerate().rev() {
+                if item.is_selectable() {
+                    *selected_index = i;
+                    break;
+                }
+            }
+        }
+        KeyCode::Char(c) if key.modifiers == KeyModifiers::NONE => {
+            // Jump to next selectable item whose name starts with c (case-insensitive)
+            let lower = c.to_lowercase().next().unwrap_or(c);
+            let start = *selected_index + 1;
+            let wrap_iter = (start..items.len()).chain(0..start);
+            for i in wrap_iter {
+                let item = &items[i];
+                if item.is_selectable() && item.name.to_lowercase().starts_with(lower) {
+                    *selected_index = i;
+                    break;
+                }
+            }
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_custom_function_selector(
     frame: &mut Frame,
