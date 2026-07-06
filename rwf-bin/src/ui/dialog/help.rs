@@ -1,6 +1,7 @@
-//! Help dialog rendering and entry filtering.
+//! Help dialog rendering, entry filtering, and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{
     layout::Rect,
@@ -11,6 +12,154 @@ use ratatui::{
 };
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::HelpDialog;
+
+use super::DialogAction;
+
+/// Handle key input for the Help viewer: tab switching, scrolling, search query
+/// editing, regex toggle, and language rotation.
+pub(super) fn handle_input(dialog: &mut HelpDialog, key: KeyEvent) -> DialogAction {
+    let HelpDialog {
+        entries,
+        query,
+        regex_mode,
+        show_unbound,
+        active_tab,
+        scroll_pos,
+        ..
+    } = dialog;
+    use crossterm::event::KeyCode;
+    use rwf_lib::model::dialog::HelpTab;
+
+    // Compute filtered count for scroll clamping
+    let filtered_count =
+        help_filter_entries(entries, active_tab, *show_unbound, query, *regex_mode).len();
+    let list_height_estimate: usize = 20; // conservative; true height used in render
+
+    match key.code {
+        // Close
+        KeyCode::Esc => return DialogAction::Cancel,
+
+        // Tab switching by Ctrl+1-4
+        KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = HelpTab::NormalMode;
+            *scroll_pos = 0;
+            query.clear();
+        }
+        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = HelpTab::ViewerMode;
+            *scroll_pos = 0;
+            query.clear();
+        }
+        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = HelpTab::LeapMode;
+            *scroll_pos = 0;
+            query.clear();
+        }
+        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = HelpTab::DialogMode;
+            *scroll_pos = 0;
+            query.clear();
+        }
+        KeyCode::Char('5') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = HelpTab::CustomFunctions;
+            *scroll_pos = 0;
+            query.clear();
+        }
+
+        // Tab switching Ctrl+PageUp / Ctrl+PageDown
+        KeyCode::PageUp if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = active_tab.prev();
+            *scroll_pos = 0;
+            query.clear();
+        }
+        KeyCode::PageDown if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *active_tab = active_tab.next();
+            *scroll_pos = 0;
+            query.clear();
+        }
+
+        // Scroll — Up/Down arrow only (j/k are search input)
+        KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
+            if *scroll_pos > 0 {
+                *scroll_pos -= 1;
+            }
+        }
+        KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
+            let max_scroll = filtered_count.saturating_sub(list_height_estimate);
+            if *scroll_pos < max_scroll {
+                *scroll_pos += 1;
+            }
+        }
+        KeyCode::PageUp => {
+            *scroll_pos = scroll_pos.saturating_sub(list_height_estimate);
+        }
+        KeyCode::PageDown => {
+            let max_scroll = filtered_count.saturating_sub(list_height_estimate);
+            *scroll_pos = (*scroll_pos + list_height_estimate).min(max_scroll);
+        }
+        KeyCode::Home => {
+            *scroll_pos = 0;
+        }
+        KeyCode::End => {
+            *scroll_pos = filtered_count.saturating_sub(list_height_estimate);
+        }
+
+        // u: toggle show_unbound
+        KeyCode::Char('u') if key.modifiers == KeyModifiers::NONE => {
+            *show_unbound = !*show_unbound;
+            *scroll_pos = 0;
+        }
+
+        // L: switch language
+        KeyCode::Char('L')
+            if key.modifiers == KeyModifiers::NONE || key.modifiers == KeyModifiers::SHIFT =>
+        {
+            return DialogAction::RotateLanguage;
+        }
+
+        // Ctrl+R: toggle regex mode
+        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *regex_mode = !*regex_mode;
+            *scroll_pos = 0;
+        }
+
+        // Ctrl+K: clear query
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            query.clear();
+            *scroll_pos = 0;
+        }
+        KeyCode::Char('\x0b') => {
+            query.clear();
+            *scroll_pos = 0;
+        }
+
+        // Backspace: remove last char from query
+        KeyCode::Backspace if key.modifiers == KeyModifiers::NONE => {
+            if !query.is_empty() {
+                let mut chars = query.chars();
+                chars.next_back();
+                *query = chars.as_str().to_string();
+                *scroll_pos = 0;
+            }
+        }
+
+        // Printable chars: append to query
+        KeyCode::Char(c)
+            if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::SUPER) =>
+        {
+            query.push(c);
+            *scroll_pos = 0;
+        }
+
+        _ => {}
+    }
+    DialogAction::None
+}
 
 pub(super) fn help_filter_entries<'a>(
     entries: &'a [rwf_lib::model::dialog::HelpEntry],

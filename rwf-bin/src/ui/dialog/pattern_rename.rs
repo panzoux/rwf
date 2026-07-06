@@ -1,6 +1,7 @@
-//! Pattern rename dialog rendering.
+//! Pattern rename dialog rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{
     layout::Rect,
@@ -11,6 +12,186 @@ use ratatui::{
 };
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::PatternRenameContent;
+
+use super::DialogAction;
+
+/// Handle key input: Find/Replace textboxes + Alt+R/S flag toggles + preview scroll.
+pub(super) fn handle_input(dialog: &mut PatternRenameContent, key: KeyEvent) -> DialogAction {
+    let PatternRenameContent {
+        find,
+        find_cursor_pos,
+        find_scroll_pos,
+        replace,
+        replace_cursor_pos,
+        replace_scroll_pos,
+        use_regex,
+        case_sensitive,
+        focused_field,
+        preview_scroll,
+        preview_horizontal_scroll,
+        preview,
+        error_message,
+        preview_mode,
+        show_all,
+    } = dialog;
+    use crate::ui::text_input::{TextInput, TextInputAction};
+    use crossterm::event::KeyCode;
+
+    // Alt+R → toggle regex mode
+    if key.modifiers.contains(KeyModifiers::ALT) && key.code == KeyCode::Char('r') {
+        *use_regex = !*use_regex;
+        *error_message = None;
+        return DialogAction::PatternChanged;
+    }
+    // Alt+S → toggle case sensitive
+    if key.modifiers.contains(KeyModifiers::ALT) && key.code == KeyCode::Char('s') {
+        *case_sensitive = !*case_sensitive;
+        *error_message = None;
+        return DialogAction::PatternChanged;
+    }
+    // Alt+P → cycle preview mode: 0=SIDE-BY-SIDE → 1=Preview → 2=Original → 0
+    if key.modifiers.contains(KeyModifiers::ALT) && key.code == KeyCode::Char('p') {
+        *preview_mode = (*preview_mode + 1) % 3;
+        *preview_scroll = 0;
+        *preview_horizontal_scroll = 0;
+        return DialogAction::None;
+    }
+    // Alt+A → toggle show_all (MATCHES ↔ All)
+    if key.modifiers.contains(KeyModifiers::ALT) && key.code == KeyCode::Char('a') {
+        *show_all = !*show_all;
+        *preview_scroll = 0;
+        return DialogAction::None;
+    }
+
+    // Tab / BackTab: cycle find(0) → replace(1) → filelist(2) → find(0)
+    if key.code == KeyCode::Tab {
+        if key.modifiers.contains(KeyModifiers::SHIFT) {
+            *focused_field = if *focused_field == 0 {
+                2
+            } else {
+                *focused_field - 1
+            };
+        } else {
+            *focused_field = (*focused_field + 1) % 3;
+        }
+        return DialogAction::None;
+    }
+    if key.code == KeyCode::BackTab {
+        *focused_field = if *focused_field == 0 {
+            2
+        } else {
+            *focused_field - 1
+        };
+        return DialogAction::None;
+    }
+
+    if key.code == KeyCode::Esc {
+        return DialogAction::Cancel;
+    }
+    if key.code == KeyCode::Enter {
+        // Detect duplicate target names before executing
+        let mut seen = std::collections::HashSet::new();
+        let has_collision = preview
+            .iter()
+            .any(|(orig, new_name)| orig != new_name && !seen.insert(new_name.clone()));
+        if has_collision {
+            *error_message = Some("Multiple files would be renamed to the same name".to_string());
+            return DialogAction::None;
+        }
+        return DialogAction::Confirm;
+    }
+
+    // Up/Down: always scroll the preview list (regardless of focused field)
+    // Cap at filtered_count-1 so Down never goes past the last item
+    let filtered_count = if *show_all {
+        preview.len()
+    } else {
+        preview.iter().filter(|(a, b)| a != b).count()
+    };
+    let scroll_max = filtered_count.saturating_sub(1);
+    if key.code == KeyCode::Up && key.modifiers == KeyModifiers::NONE {
+        *preview_scroll = preview_scroll.saturating_sub(1);
+        return DialogAction::None;
+    }
+    if key.code == KeyCode::Down && key.modifiers == KeyModifiers::NONE {
+        *preview_scroll = (*preview_scroll + 1).min(scroll_max);
+        return DialogAction::None;
+    }
+
+    // Page Up/Down scrolls the preview list
+    if key.code == KeyCode::PageUp {
+        *preview_scroll = preview_scroll.saturating_sub(5);
+        return DialogAction::None;
+    }
+    if key.code == KeyCode::PageDown {
+        *preview_scroll = (*preview_scroll + 5).min(scroll_max);
+        return DialogAction::None;
+    }
+
+    // When filelist (2) is focused: Left/Right scroll horizontally, Ctrl+Left/Right jumps
+    if *focused_field == 2 {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Left => {
+                    *preview_horizontal_scroll = 0;
+                }
+                KeyCode::Right => {
+                    *preview_horizontal_scroll = 500;
+                } // clamped at render
+                _ => {}
+            }
+        } else if key.modifiers == KeyModifiers::NONE {
+            match key.code {
+                KeyCode::Left => {
+                    *preview_horizontal_scroll = preview_horizontal_scroll.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    *preview_horizontal_scroll = preview_horizontal_scroll.saturating_add(1);
+                }
+                _ => {}
+            }
+        }
+        return DialogAction::None;
+    }
+
+    // Text editing for focused textbox (0 or 1)
+    if *focused_field == 0 || *focused_field == 1 {
+        let (text, cursor, scroll) = if *focused_field == 0 {
+            (find as &mut String, find_cursor_pos, find_scroll_pos)
+        } else {
+            (
+                replace as &mut String,
+                replace_cursor_pos,
+                replace_scroll_pos,
+            )
+        };
+        let mut ti = TextInput::new(Some(text.clone()), rwf_lib::config::EditMode::Emacs);
+        ti.set_original_text(text.clone());
+        ti.set_cursor(*cursor);
+        ti.set_scroll(*scroll);
+        let action = ti.handle_input(&key);
+        let new_text = ti.text().to_string();
+        let changed = new_text != *text;
+        *text = new_text;
+        *cursor = ti.cursor();
+        *scroll = ti.scroll();
+        match action {
+            TextInputAction::Confirm => return DialogAction::Confirm,
+            TextInputAction::Cancel => return DialogAction::Cancel,
+            _ => {
+                return if changed {
+                    DialogAction::PatternChanged
+                } else {
+                    DialogAction::None
+                }
+            }
+        }
+    }
+    DialogAction::None
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_pattern_rename_dialog(

@@ -17,6 +17,52 @@ use crate::ui::{smart_truncate, SmartText, TruncateMode};
 use super::common::{DIALOG_ACCENT_GREEN, DIALOG_ACCENT_YELLOW};
 use super::DialogAction;
 
+/// Handle key input for the File Conflict dialog. Thin wrapper over
+/// `handle_file_conflict_input`, which threads its 13 mutable fields as separate
+/// `&mut` params (kept that way so `test_support::ConflictInputHarness` can
+/// override individual fields without constructing a full `FileConflictDialog`).
+pub(super) fn handle_input(
+    dialog: &mut rwf_lib::model::dialog::FileConflictDialog,
+    key: KeyEvent,
+) -> DialogAction {
+    let rwf_lib::model::dialog::FileConflictDialog {
+        conflicts,
+        current_index,
+        focused_button,
+        rename_text,
+        rename_cursor,
+        rename_scroll,
+        edit_mode,
+        vi_mode,
+        error_message,
+        decisions,
+        vi_pending_find_backward,
+        vi_pending_operator,
+        vi_pending_ctrl_x,
+        history,
+        history_index,
+        ..
+    } = dialog;
+    handle_file_conflict_input(
+        conflicts,
+        current_index,
+        focused_button,
+        rename_text,
+        rename_cursor,
+        rename_scroll,
+        edit_mode,
+        vi_mode,
+        error_message,
+        decisions,
+        vi_pending_find_backward,
+        vi_pending_operator,
+        vi_pending_ctrl_x,
+        history,
+        history_index,
+        key,
+    )
+}
+
 /// Render File Conflict dialog (compact layout with vertical buttons)
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_file_conflict_dialog(
