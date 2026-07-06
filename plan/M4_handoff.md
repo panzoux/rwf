@@ -63,7 +63,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 - [x] ContextMenu(S2 batch3, commit `f4a3c89`) / [x] TabSelector(S2 batch3, commit `f4a3c89`, struct名は `TabSelectorContent`) / [x] RegisteredFolderSelector(S2 batch3, commit `f4a3c89`, struct名は `RegisteredFolderSelectorContent`)
 中程度:
 - [x] Input(S3 batch3, commit `cfde26a`) / [x] Help(S3 batch3, commit `cfde26a`) / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [x] FileMask(S3 batch1, commit `a6fadeb`) / [x] WildcardMark(S3 batch1, commit `a6fadeb`) / [x] SimpleRename(S3 batch1, commit `a6fadeb`)
-- [x] JumpToPath(S3 batch4, commit `ac3d97f`) / [x] JumpToFile(S3 batch4, commit `ac3d97f`) / [x] FileInfo(S3 batch2, commit `b444357`) / [ ] CustomFunctionSelector / [ ] CustomFunctionMenu
+- [x] JumpToPath(S3 batch4, commit `ac3d97f`) / [x] JumpToFile(S3 batch4, commit `ac3d97f`) / [x] FileInfo(S3 batch2, commit `b444357`) / [x] CustomFunctionSelector(S3 batch5, commit `f443639`, struct名は `CustomFunctionSelectorContent`) / [x] CustomFunctionMenu(S3 batch5, commit `f443639`)
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [ ] JobManager / [ ] PatternRename / [ ] ComparisonView / [ ] SplitJoinDialog
 - [ ] Compression / [ ] FileConflict
@@ -89,7 +89,16 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   「見本コミット <hash> の形式に従い、バリアント X を struct 化する。手順: (1) model/dialog/x.rs に struct 定義 + DialogUiState 埋め込み + new()、(2) enum バリアントを tuple 形式に変更、(3) 生成箇所(<Grep 結果を貼る>)を new() 呼びに置換、(4) rwf-bin の match 腕のパターンを合わせる。1 バリアント完結してから次へ。旧フィールドアクセスの残存を grep で確認。**非デフォルト値(Some(..)/true/数値)を絶対に落とさない**。cargo 実行禁止。完了したら変更ファイル一覧を報告」
 - 各バリアント = 1 コミット(sonnet が diff 監査後にコミット)。
 - 各セッション末: 検証一式(clippy + rwf テスト。rwf-lib フルは S3 末のみで可)。
-- **S3 実施状況(2026-07-07)**: 7/11 完了。
+- **S3 完了(2026-07-07)**: 中程度11件すべて struct 化。
+  batch4 `ac3d97f`(JumpToPath/JumpToFile — haiku。rwf-bin/ui/dialog/mod.rs で
+  `crate::model::dialog::JumpTo*Dialog` という誤ったクレートパス(rwf-bin 自身の
+  crate root を指してしまうバグ)を6箇所使っていたのを監査で発見・修正)、
+  batch5 `f443639`(CustomFunctionSelector/CustomFunctionMenu — confirm.rs/app.rs の
+  実ロジック(マクロ展開・メニュースタック処理)があるため sonnet 直接実施。
+  `CustomFunctionSelectorContent` は既存の同名ヘルパー struct との衝突を避けるため命名変更)。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑。
+  次セッションは S4(複雑6バリアント、sonnet 単独)から開始。
+- **S3 実施状況(2026-07-07, 旧)**: 7/11 完了時点の記録(参考として残す)。
   batch1 `a6fadeb`(FileMask/WildcardMark/SimpleRename — DialogUiState 導入、sonnet 直接実施)、
   batch2 `b444357`(FileInfo — `#[cfg(unix)]` フィールドがあるため sonnet 直接実施)、
   batch3 `cfde26a`(Input/Help — haiku 下書き)。
