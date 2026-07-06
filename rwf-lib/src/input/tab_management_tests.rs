@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{action_to_transitions, Action, KeyBindings};
-    use crate::model::DialogContent;
+    use crate::model::{DialogContent, TabSelectorContent};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use crate::AppState;
@@ -124,9 +124,9 @@ mod tests {
 
         if let Transition::ShowDialog { dialog } = &transitions[0] {
             assert_eq!(dialog.title, "Select Tab");
-            assert!(matches!(dialog.content, DialogContent::TabSelector { .. }));
+            assert!(matches!(dialog.content, DialogContent::TabSelector(_)));
 
-            if let DialogContent::TabSelector { tabs, .. } = &dialog.content {
+            if let DialogContent::TabSelector(TabSelectorContent { tabs, .. }) = &dialog.content {
                 // Should have at least one tab (the initial tab)
                 assert!(!tabs.is_empty());
             }
@@ -146,7 +146,7 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::TabSelector);
 
         if let Transition::ShowDialog { dialog } = &transitions[0] {
-            if let DialogContent::TabSelector { tabs, .. } = &dialog.content {
+            if let DialogContent::TabSelector(TabSelectorContent { tabs, .. }) = &dialog.content {
                 // Should have 3 tabs now
                 assert_eq!(tabs.len(), 3);
 
@@ -349,10 +349,10 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::TabSelector);
 
         if let Transition::ShowDialog { dialog } = &transitions[0] {
-            if let DialogContent::TabSelector {
+            if let DialogContent::TabSelector(TabSelectorContent {
                 tabs,
                 selected_index,
-            } = &dialog.content
+            }) = &dialog.content
             {
                 // Should have 3 tabs
                 assert_eq!(tabs.len(), 3);
@@ -468,7 +468,7 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::TabSelector);
 
         if let Transition::ShowDialog { dialog } = &transitions[0] {
-            if let DialogContent::TabSelector { tabs, .. } = &dialog.content {
+            if let DialogContent::TabSelector(TabSelectorContent { tabs, .. }) = &dialog.content {
                 // Should have 1 tab
                 assert_eq!(tabs.len(), 1);
             }

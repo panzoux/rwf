@@ -62,11 +62,13 @@ mod tests {
         // Verify dialog content
         if let Some(dialog) = state.dialogs.current() {
             match &dialog.content {
-                crate::model::DialogContent::RegisteredFolderSelector {
-                    folders,
-                    filter,
-                    selected_index,
-                } => {
+                crate::model::DialogContent::RegisteredFolderSelector(
+                    crate::model::RegisteredFolderSelectorContent {
+                        folders,
+                        filter,
+                        selected_index,
+                    },
+                ) => {
                     assert_eq!(folders.len(), 2);
                     assert_eq!(filter, "");
                     assert_eq!(*selected_index, 0);

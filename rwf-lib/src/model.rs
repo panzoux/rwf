@@ -36,13 +36,13 @@ mod cache_properties;
 
 pub use cache::{CacheStats, CachedDirectory, DirectoryCache};
 pub use dialog::{
-    CloseTabWithActiveJobDialog, ConfirmationDialog, ContextMenuAction, ContextMenuOption,
-    CustomFunction, CustomFunctionSelector, DeleteConfirmDialog, Dialog, DialogContent,
-    DialogStack, DriveInfo, DriveSelectionDialog, DriveType, ErrorDialog, ErrorType,
+    CloseTabWithActiveJobDialog, ConfirmationDialog, ContextMenuAction, ContextMenuDialog,
+    ContextMenuOption, CustomFunction, CustomFunctionSelector, DeleteConfirmDialog, Dialog,
+    DialogContent, DialogStack, DriveInfo, DriveSelectionDialog, DriveType, ErrorDialog, ErrorType,
     ExtractionConfirmDialog, HistoryDialogContent, JobInfo, JobKind, JobManagerDialog, JobState,
     OsConfig, PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder,
-    RegisteredFolderManager, RegisteredFolderSelector, SortDialog, SplitJoinMode, TabSelector,
-    VersionDialog,
+    RegisteredFolderManager, RegisteredFolderSelector, RegisteredFolderSelectorContent, SortDialog,
+    SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

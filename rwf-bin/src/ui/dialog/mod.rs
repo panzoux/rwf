@@ -66,8 +66,9 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::model::dialog::{
-    CloseTabWithActiveJobDialog, DeleteConfirmDialog, Dialog, DialogContent, DriveSelectionDialog,
-    ErrorDialog, HistoryDialogContent, SortDialog,
+    CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
+    DriveSelectionDialog, ErrorDialog, HistoryDialogContent, RegisteredFolderSelectorContent,
+    SortDialog,
 };
 use tracing::debug;
 
@@ -192,7 +193,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // list + hint(1) + search(1)
             (drives.len() as u16 + 2).max(6)
         }
-        DialogContent::RegisteredFolderSelector { folders, .. } => {
+        DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+            folders,
+            ..
+        }) => {
             // list + hint(1) + search(1)
             (folders.len() as u16 + 2).max(6)
         }
@@ -204,7 +208,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // items + hint(1)
             (items.len() as u16 + 1).max(4)
         }
-        DialogContent::ContextMenu { options, .. } => {
+        DialogContent::ContextMenu(ContextMenuDialog { options, .. }) => {
             // options list + hint(1)
             (options.len() as u16 + 1).max(4)
         }
@@ -258,7 +262,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::DriveSelection(_)
         | DialogContent::PatternRename { .. }
         | DialogContent::Help { .. }
-        | DialogContent::RegisteredFolderSelector { .. }
+        | DialogContent::RegisteredFolderSelector(_)
         | DialogContent::CustomFunctionSelector { .. }
         | DialogContent::JumpToPath { .. }
         | DialogContent::JumpToFile { .. }
@@ -272,7 +276,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Exact size, same as ContextMenu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::ContextMenu { .. } => {
+        DialogContent::ContextMenu(_) => {
             // Exact size for context menu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
@@ -308,7 +312,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let w80 = (screen_width * 80) / 100;
             64u16.max(w80).min(screen_width.saturating_sub(2)).max(40)
         }
-        DialogContent::DriveSelection(_) | DialogContent::RegisteredFolderSelector { .. } => {
+        DialogContent::DriveSelection(_) | DialogContent::RegisteredFolderSelector(_) => {
             60u16.min(screen_width.saturating_sub(2)).max(40)
         }
         DialogContent::CustomFunctionSelector { .. } => ((screen_width * 70) / 100)
@@ -325,7 +329,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 .unwrap_or(10);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
         }
-        DialogContent::ContextMenu { options, .. } => {
+        DialogContent::ContextMenu(ContextMenuDialog { options, .. }) => {
             let max_label = options.iter().map(|o| o.label.len()).max().unwrap_or(10);
             ((max_label as u16 + 6).max(24)).min(screen_width.saturating_sub(2))
         }
@@ -512,11 +516,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }) => {
             render_drive_selection_dialog(frame, content_area, drives, *selected_index, filter);
         }
-        DialogContent::RegisteredFolderSelector {
+        DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,
             selected_index,
             filter,
-        } => {
+        }) => {
             render_registered_folder_selector(
                 frame,
                 content_area,
@@ -544,10 +548,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         } => {
             render_custom_function_menu(frame, content_area, items, *selected_index);
         }
-        DialogContent::ContextMenu {
+        DialogContent::ContextMenu(ContextMenuDialog {
             options,
             selected_index,
-        } => {
+        }) => {
             render_context_menu_dialog(frame, content_area, options, *selected_index);
         }
         DialogContent::JumpToPath {
@@ -1683,10 +1687,10 @@ pub fn handle_dialog_input(
     }
 
     // ContextMenu — arrow navigation (skip separators)
-    if let DialogContent::ContextMenu {
+    if let DialogContent::ContextMenu(ContextMenuDialog {
         options,
         selected_index,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         use rwf_lib::model::dialog::ContextMenuAction;
@@ -1819,11 +1823,11 @@ pub fn handle_dialog_input(
     }
 
     // RegisteredFolderSelector — incremental search + arrow navigation
-    if let DialogContent::RegisteredFolderSelector {
+    if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
         folders,
         selected_index,
         filter,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         let filtered_count = if filter.is_empty() {

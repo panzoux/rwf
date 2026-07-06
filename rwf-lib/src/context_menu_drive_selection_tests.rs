@@ -3,7 +3,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{ContextMenuAction, Dialog, DialogContent, DriveSelectionDialog, Location};
+    use crate::model::{
+        ContextMenuAction, ContextMenuDialog, Dialog, DialogContent, DriveSelectionDialog, Location,
+    };
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use std::path::PathBuf;
@@ -25,10 +27,10 @@ mod tests {
         if let Some(dialog) = state.dialogs.current() {
             assert_eq!(dialog.title, "Context Menu");
 
-            if let DialogContent::ContextMenu {
+            if let DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
-            } = &dialog.content
+            }) = &dialog.content
             {
                 assert_eq!(selected_index, &0);
                 assert!(!options.is_empty());
@@ -59,7 +61,7 @@ mod tests {
 
         // Get the dialog
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::ContextMenu { options, .. } = &dialog.content {
+            if let DialogContent::ContextMenu(ContextMenuDialog { options, .. }) = &dialog.content {
                 // Verify all required options are present
                 let has_copy = options
                     .iter()
@@ -248,10 +250,10 @@ mod tests {
 
         // Get the dialog
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::ContextMenu {
+            if let DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
-            } = &dialog.content
+            }) = &dialog.content
             {
                 let initial_index = selected_index;
                 assert_eq!(initial_index, &0);
@@ -314,7 +316,7 @@ mod tests {
 
         // All operations should be available for a file
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::ContextMenu { options, .. } = &dialog.content {
+            if let DialogContent::ContextMenu(ContextMenuDialog { options, .. }) = &dialog.content {
                 assert!(options.len() >= 5, "Should have at least 5 options");
             }
         }

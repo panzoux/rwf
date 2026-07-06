@@ -9,24 +9,30 @@ use std::collections::HashMap;
 
 mod close_tab_with_active_job;
 mod confirmation;
+mod context_menu;
 mod delete_confirm;
 mod drive_selection;
 mod error;
 mod extraction_confirm;
 mod history_dialog;
 mod progress;
+mod registered_folder_selector;
 mod sort;
+mod tab_selector;
 mod version;
 
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use confirmation::ConfirmationDialog;
+pub use context_menu::ContextMenuDialog;
 pub use delete_confirm::DeleteConfirmDialog;
 pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
 pub use extraction_confirm::ExtractionConfirmDialog;
 pub use history_dialog::HistoryDialogContent;
 pub use progress::ProgressDialog;
+pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use sort::SortDialog;
+pub use tab_selector::TabSelectorContent;
 pub use version::VersionDialog;
 
 /// Which mode tab is active in the help viewer
@@ -207,15 +213,8 @@ pub enum DialogContent {
         items: Vec<MenuItem>,
         selected_index: usize,
     },
-    RegisteredFolderSelector {
-        folders: Vec<RegisteredFolder>,
-        filter: String,
-        selected_index: usize,
-    },
-    TabSelector {
-        tabs: Vec<String>,
-        selected_index: usize,
-    },
+    RegisteredFolderSelector(RegisteredFolderSelectorContent),
+    TabSelector(TabSelectorContent),
     PatternRename {
         find: String,
         find_cursor_pos: usize,
@@ -246,10 +245,7 @@ pub enum DialogContent {
         mode: SplitJoinMode,
         chunk_size_mb: u64,
     },
-    ContextMenu {
-        options: Vec<ContextMenuOption>,
-        selected_index: usize,
-    },
+    ContextMenu(ContextMenuDialog),
     DriveSelection(DriveSelectionDialog),
     FileInfo {
         file_name: String,
@@ -785,11 +781,9 @@ impl Dialog {
     pub fn registered_folder_selector(folders: Vec<RegisteredFolder>) -> Self {
         Self {
             title: "Registered Folders".to_string(),
-            content: DialogContent::RegisteredFolderSelector {
+            content: DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent::new(
                 folders,
-                filter: String::new(),
-                selected_index: 0,
-            },
+            )),
         }
     }
 
@@ -797,10 +791,7 @@ impl Dialog {
     pub fn tab_selector(tabs: Vec<String>) -> Self {
         Self {
             title: "Select Tab".to_string(),
-            content: DialogContent::TabSelector {
-                tabs,
-                selected_index: 0,
-            },
+            content: DialogContent::TabSelector(TabSelectorContent::new(tabs)),
         }
     }
 
@@ -838,10 +829,7 @@ impl Dialog {
         };
         Self {
             title: "Context Menu".to_string(),
-            content: DialogContent::ContextMenu {
-                options,
-                selected_index: 0,
-            },
+            content: DialogContent::ContextMenu(ContextMenuDialog::new(options)),
         }
     }
 
@@ -1322,10 +1310,10 @@ impl DialogContent {
             self,
             DialogContent::Input { .. }
                 | DialogContent::CustomFunctionSelector { .. }
-                | DialogContent::RegisteredFolderSelector { .. }
-                | DialogContent::TabSelector { .. }
+                | DialogContent::RegisteredFolderSelector(_)
+                | DialogContent::TabSelector(_)
                 | DialogContent::PatternRename { .. }
-                | DialogContent::ContextMenu { .. }
+                | DialogContent::ContextMenu(_)
                 | DialogContent::DriveSelection(_)
         )
     }
@@ -1335,10 +1323,10 @@ impl DialogContent {
         matches!(
             self,
             DialogContent::CustomFunctionSelector { .. }
-                | DialogContent::RegisteredFolderSelector { .. }
-                | DialogContent::TabSelector { .. }
+                | DialogContent::RegisteredFolderSelector(_)
+                | DialogContent::TabSelector(_)
                 | DialogContent::JobManager { .. }
-                | DialogContent::ContextMenu { .. }
+                | DialogContent::ContextMenu(_)
                 | DialogContent::DriveSelection(_)
         )
     }
@@ -1347,10 +1335,17 @@ impl DialogContent {
     pub fn selected_index(&self) -> Option<usize> {
         match self {
             DialogContent::JobManager { selected_index, .. }
-            | DialogContent::CustomFunctionSelector { selected_index, .. }
-            | DialogContent::RegisteredFolderSelector { selected_index, .. }
-            | DialogContent::TabSelector { selected_index, .. }
-            | DialogContent::ContextMenu { selected_index, .. } => Some(*selected_index),
+            | DialogContent::CustomFunctionSelector { selected_index, .. } => Some(*selected_index),
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+                selected_index,
+                ..
+            }) => Some(*selected_index),
+            DialogContent::TabSelector(TabSelectorContent { selected_index, .. }) => {
+                Some(*selected_index)
+            }
+            DialogContent::ContextMenu(ContextMenuDialog { selected_index, .. }) => {
+                Some(*selected_index)
+            }
             DialogContent::DriveSelection(DriveSelectionDialog { selected_index, .. }) => {
                 Some(*selected_index)
             }
@@ -1362,10 +1357,19 @@ impl DialogContent {
     pub fn set_selected_index(&mut self, new_index: usize) {
         match self {
             DialogContent::JobManager { selected_index, .. }
-            | DialogContent::CustomFunctionSelector { selected_index, .. }
-            | DialogContent::RegisteredFolderSelector { selected_index, .. }
-            | DialogContent::TabSelector { selected_index, .. }
-            | DialogContent::ContextMenu { selected_index, .. } => {
+            | DialogContent::CustomFunctionSelector { selected_index, .. } => {
+                *selected_index = new_index;
+            }
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+                selected_index,
+                ..
+            }) => {
+                *selected_index = new_index;
+            }
+            DialogContent::TabSelector(TabSelectorContent { selected_index, .. }) => {
+                *selected_index = new_index;
+            }
+            DialogContent::ContextMenu(ContextMenuDialog { selected_index, .. }) => {
                 *selected_index = new_index;
             }
             DialogContent::DriveSelection(DriveSelectionDialog { selected_index, .. }) => {
@@ -1378,8 +1382,11 @@ impl DialogContent {
     /// Get the filter string for filterable dialogs
     pub fn filter(&self) -> Option<&str> {
         match self {
-            DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. } => Some(filter),
+            DialogContent::CustomFunctionSelector { filter, .. } => Some(filter),
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+                filter,
+                ..
+            }) => Some(filter),
             DialogContent::DriveSelection(DriveSelectionDialog { filter, .. }) => Some(filter),
             _ => None,
         }
@@ -1388,8 +1395,13 @@ impl DialogContent {
     /// Update the filter string for filterable dialogs
     pub fn set_filter(&mut self, new_filter: String) {
         match self {
-            DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. } => {
+            DialogContent::CustomFunctionSelector { filter, .. } => {
+                *filter = new_filter;
+            }
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+                filter,
+                ..
+            }) => {
                 *filter = new_filter;
             }
             DialogContent::DriveSelection(DriveSelectionDialog { filter, .. }) => {
@@ -1993,11 +2005,11 @@ impl DialogContent {
     /// Get registered folder selector helper if this is a registered folder selector dialog
     pub fn as_registered_folder_selector(&self) -> Option<(&[RegisteredFolder], &str, usize)> {
         match self {
-            DialogContent::RegisteredFolderSelector {
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 filter,
                 selected_index,
-            } => Some((folders, filter, *selected_index)),
+            }) => Some((folders, filter, *selected_index)),
             _ => None,
         }
     }
@@ -2007,11 +2019,11 @@ impl DialogContent {
         &mut self,
     ) -> Option<(&mut Vec<RegisteredFolder>, &mut String, &mut usize)> {
         match self {
-            DialogContent::RegisteredFolderSelector {
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 filter,
                 selected_index,
-            } => Some((folders, filter, selected_index)),
+            }) => Some((folders, filter, selected_index)),
             _ => None,
         }
     }
@@ -2095,10 +2107,10 @@ impl DialogContent {
     /// Get tab selector helper if this is a tab selector dialog
     pub fn as_tab_selector(&self) -> Option<(&[String], usize)> {
         match self {
-            DialogContent::TabSelector {
+            DialogContent::TabSelector(TabSelectorContent {
                 tabs,
                 selected_index,
-            } => Some((tabs, *selected_index)),
+            }) => Some((tabs, *selected_index)),
             _ => None,
         }
     }
@@ -2106,10 +2118,10 @@ impl DialogContent {
     /// Get mutable tab selector data
     pub fn as_tab_selector_mut(&mut self) -> Option<(&mut Vec<String>, &mut usize)> {
         match self {
-            DialogContent::TabSelector {
+            DialogContent::TabSelector(TabSelectorContent {
                 tabs,
                 selected_index,
-            } => Some((tabs, selected_index)),
+            }) => Some((tabs, selected_index)),
             _ => None,
         }
     }
@@ -2117,10 +2129,10 @@ impl DialogContent {
     /// Get context menu data if this is a context menu dialog
     pub fn as_context_menu(&self) -> Option<(&[ContextMenuOption], usize)> {
         match self {
-            DialogContent::ContextMenu {
+            DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
-            } => Some((options, *selected_index)),
+            }) => Some((options, *selected_index)),
             _ => None,
         }
     }
@@ -2128,10 +2140,10 @@ impl DialogContent {
     /// Get mutable context menu data
     pub fn as_context_menu_mut(&mut self) -> Option<(&mut Vec<ContextMenuOption>, &mut usize)> {
         match self {
-            DialogContent::ContextMenu {
+            DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
-            } => Some((options, selected_index)),
+            }) => Some((options, selected_index)),
             _ => None,
         }
     }

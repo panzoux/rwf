@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::{DialogContent, RegisteredFolder};
+    use crate::model::dialog::{DialogContent, RegisteredFolder, RegisteredFolderSelectorContent};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
 
@@ -40,7 +40,7 @@ mod tests {
         let dialog = state.dialogs.current().expect("dialog must be open");
         assert!(matches!(
             dialog.content,
-            DialogContent::RegisteredFolderSelector { .. }
+            DialogContent::RegisteredFolderSelector(_)
         ));
     }
 
@@ -64,7 +64,11 @@ mod tests {
         open_dialog(&mut state);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::RegisteredFolderSelector { selected_index, .. } = &dialog.content {
+        if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+            selected_index,
+            ..
+        }) = &dialog.content
+        {
             assert_eq!(*selected_index, 0);
         } else {
             panic!("Expected RegisteredFolderSelector");
@@ -78,7 +82,11 @@ mod tests {
         open_dialog(&mut state);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::RegisteredFolderSelector { filter, .. } = &dialog.content {
+        if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+            filter,
+            ..
+        }) = &dialog.content
+        {
             assert_eq!(filter, "", "filter must start empty");
         } else {
             panic!("Expected RegisteredFolderSelector");
@@ -95,7 +103,11 @@ mod tests {
         open_dialog(&mut state);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::RegisteredFolderSelector { folders, .. } = &dialog.content {
+        if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
+            folders,
+            ..
+        }) = &dialog.content
+        {
             assert_eq!(folders.len(), initial_count + 3);
         } else {
             panic!("Expected RegisteredFolderSelector");

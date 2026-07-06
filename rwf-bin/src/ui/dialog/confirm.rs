@@ -4,8 +4,8 @@
 //! Split from dialog/mod.rs in M3 (move-only).
 
 use rwf_lib::model::dialog::{
-    DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
-    HistoryDialogContent, SortDialog,
+    ContextMenuDialog, DeleteConfirmDialog, DialogContent, DriveSelectionDialog,
+    ExtractionConfirmDialog, HistoryDialogContent, RegisteredFolderSelectorContent, SortDialog,
 };
 use tracing::debug;
 
@@ -18,11 +18,11 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
     // Step 1: resolve actual folder index from the filtered selection (borrow ends at block close).
     let folder_index: Option<usize> = {
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::RegisteredFolderSelector {
+            if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 selected_index,
                 filter,
-            } = &dialog.content
+            }) = &dialog.content
             {
                 let lower = filter.to_lowercase();
                 let filtered_indices: Vec<usize> = if filter.is_empty() {
@@ -56,11 +56,11 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
 
     // Step 3: mirror removal in the dialog's own snapshot.
     if let Some(dialog) = state.dialogs.current_mut() {
-        if let DialogContent::RegisteredFolderSelector {
+        if let DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,
             selected_index,
             ..
-        } = &mut dialog.content
+        }) = &mut dialog.content
         {
             if idx < folders.len() {
                 folders.remove(idx);
@@ -510,11 +510,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     targets: locations,
                 }));
             }
-            DialogContent::RegisteredFolderSelector {
+            DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 selected_index,
                 filter,
-            } => {
+            }) => {
                 let lower = filter.to_lowercase();
                 let filtered_indices: Vec<usize> = if filter.is_empty() {
                     (0..folders.len()).collect()
@@ -634,10 +634,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::ContextMenu {
+            DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
-            } => {
+            }) => {
                 use rwf_lib::model::dialog::ContextMenuAction;
                 if let Some(opt) = options.get(*selected_index) {
                     match opt.action.clone() {

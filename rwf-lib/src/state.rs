@@ -1967,10 +1967,11 @@ impl AppState {
                                 ));
                             }
                         }
-                        crate::model::DialogContent::RegisteredFolderSelector {
-                            selected_index,
-                            ..
-                        } => {
+                        crate::model::DialogContent::RegisteredFolderSelector(
+                            crate::model::RegisteredFolderSelectorContent {
+                                selected_index, ..
+                            },
+                        ) => {
                             let folder_index = *selected_index;
                             if self.active_pane().marking.count() > 0 {
                                 self.dialogs.pop();
