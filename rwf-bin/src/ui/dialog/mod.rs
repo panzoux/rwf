@@ -6,6 +6,7 @@
 //! - Centralized input handling with consistent shortcuts
 
 mod basic;
+mod close_tab_with_active_job;
 pub mod common;
 mod compression;
 mod confirm;
@@ -859,28 +860,8 @@ pub fn handle_dialog_input(
     }
 
     // CloseTabWithActiveJob dialog - Enter confirms, Escape cancels, Tab cycles
-    if let DialogContent::CloseTabWithActiveJob(CloseTabWithActiveJobDialog {
-        focused_field, ..
-    }) = &mut dialog.content
-    {
-        if key.code == crossterm::event::KeyCode::Enter {
-            return DialogAction::Confirm;
-        }
-        if key.code == crossterm::event::KeyCode::Esc {
-            return DialogAction::Cancel;
-        }
-        // Tab key cycles between OK (field 0) and Cancel (field 1) buttons
-        if key.code == crossterm::event::KeyCode::Tab {
-            // Cycle: 0→1→0 (OK→Cancel→OK)
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                // Shift+Tab: backwards
-                *focused_field = if *focused_field == 0 { 1 } else { 0 };
-            } else {
-                // Tab: forwards
-                *focused_field = if *focused_field == 0 { 1 } else { 0 };
-            }
-            return DialogAction::None;
-        }
+    if let DialogContent::CloseTabWithActiveJob(d) = &mut dialog.content {
+        return close_tab_with_active_job::handle_input(d, key);
     }
 
     // FileMask dialog — text input with Tab navigation and Enter/Esc handling
@@ -1223,242 +1204,18 @@ pub fn handle_dialog_input(
 
     // HistoryDialog — Up/Down/j/k: navigate, Tab/Left/Right/h/l: switch pane, Enter: jump, Esc: cancel
     // DriveSelection dialog — incremental search + arrow navigation
-    if let DialogContent::DriveSelection(DriveSelectionDialog {
-        drives,
-        selected_index,
-        filter,
-    }) = &mut dialog.content
-    {
-        use crossterm::event::KeyCode;
-        let filtered_count = if filter.is_empty() {
-            drives.len()
-        } else {
-            let lower = filter.to_lowercase();
-            drives
-                .iter()
-                .filter(|d| {
-                    d.display_label().to_lowercase().contains(&lower)
-                        || d.path.to_lowercase().contains(&lower)
-                })
-                .count()
-        };
-        match key.code {
-            KeyCode::Esc => return DialogAction::Cancel,
-            KeyCode::Enter => return DialogAction::Confirm,
-            KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 {
-                    *selected_index -= 1;
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index + 1 < filtered_count {
-                    *selected_index += 1;
-                }
-            }
-            KeyCode::Home => {
-                *selected_index = 0;
-            }
-            KeyCode::End => {
-                *selected_index = filtered_count.saturating_sub(1);
-            }
-            KeyCode::Backspace => {
-                if !filter.is_empty() {
-                    let mut chars = filter.chars();
-                    chars.next_back();
-                    *filter = chars.as_str().to_string();
-                    *selected_index = 0;
-                }
-            }
-            // Ctrl+K: clear search (also handle raw \x0b from Windows Console API)
-            // Do NOT reset selected_index — cursor stays on current item.
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                filter.clear();
-            }
-            KeyCode::Char('\x0b') => {
-                filter.clear();
-            }
-            // Printable chars: add to search filter (reset to top for new search)
-            KeyCode::Char(c)
-                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT)
-                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
-            {
-                filter.push(c);
-                *selected_index = 0;
-            }
-            _ => {}
-        }
-        return DialogAction::None;
+    if let DialogContent::DriveSelection(d) = &mut dialog.content {
+        return drive_selection::handle_input(d, key);
     }
 
     // JumpToPath — text input + AND-filter suggestions + arrow navigation
-    if let DialogContent::JumpToPath(JumpToPathDialog {
-        query,
-        cursor_pos,
-        suggestions,
-        selected_index,
-        candidates,
-        ..
-    }) = &mut dialog.content
-    {
-        use crossterm::event::KeyCode;
-        match key.code {
-            KeyCode::Esc => return DialogAction::Cancel,
-            KeyCode::Enter => return DialogAction::Confirm,
-            KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 {
-                    *selected_index -= 1;
-                }
-            }
-            KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
-                if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
-                    *selected_index += 1;
-                }
-            }
-            KeyCode::Home => {
-                *selected_index = 0;
-            }
-            KeyCode::End => {
-                *selected_index = suggestions.len().saturating_sub(1);
-            }
-            KeyCode::PageUp => {
-                *selected_index = selected_index.saturating_sub(10);
-            }
-            KeyCode::PageDown => {
-                if !suggestions.is_empty() {
-                    *selected_index = (*selected_index + 10).min(suggestions.len() - 1);
-                }
-            }
-            KeyCode::Backspace => {
-                if !query.is_empty() {
-                    let mut chars = query.chars();
-                    chars.next_back();
-                    *query = chars.as_str().to_string();
-                    if *cursor_pos > 0 {
-                        *cursor_pos -= 1;
-                    }
-                    *suggestions = if let Some(s) = search {
-                        s.filter_paths(candidates, query)
-                    } else {
-                        rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
-                    };
-                    *selected_index = 0;
-                }
-            }
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                query.clear();
-                *cursor_pos = 0;
-                *suggestions = candidates.clone();
-                *selected_index = 0;
-            }
-            KeyCode::Char('\x0b') => {
-                query.clear();
-                *cursor_pos = 0;
-                *suggestions = candidates.clone();
-                *selected_index = 0;
-            }
-            KeyCode::Char(c)
-                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT)
-                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
-            {
-                query.push(c);
-                *cursor_pos += 1;
-                *suggestions = if let Some(s) = search {
-                    s.filter_paths(candidates, query)
-                } else {
-                    rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
-                };
-                *selected_index = 0;
-            }
-            _ => {}
-        }
-        return DialogAction::None;
+    if let DialogContent::JumpToPath(d) = &mut dialog.content {
+        return jump_to_path::handle_input(d, key, search);
     }
 
     // JumpToFile — text input + AND-filter suggestions (files + dirs) + arrow navigation
-    if let DialogContent::JumpToFile(JumpToFileDialog {
-        query,
-        cursor_pos,
-        suggestions,
-        selected_index,
-        candidates,
-        ..
-    }) = &mut dialog.content
-    {
-        use crossterm::event::KeyCode;
-        match key.code {
-            KeyCode::Esc => return DialogAction::Cancel,
-            KeyCode::Enter => return DialogAction::Confirm,
-            KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
-                if *selected_index > 0 {
-                    *selected_index -= 1;
-                }
-            }
-            KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
-                if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
-                    *selected_index += 1;
-                }
-            }
-            KeyCode::Home => {
-                *selected_index = 0;
-            }
-            KeyCode::End => {
-                *selected_index = suggestions.len().saturating_sub(1);
-            }
-            KeyCode::PageUp => {
-                *selected_index = selected_index.saturating_sub(10);
-            }
-            KeyCode::PageDown => {
-                if !suggestions.is_empty() {
-                    *selected_index = (*selected_index + 10).min(suggestions.len() - 1);
-                }
-            }
-            KeyCode::Backspace => {
-                if !query.is_empty() {
-                    let mut chars = query.chars();
-                    chars.next_back();
-                    *query = chars.as_str().to_string();
-                    if *cursor_pos > 0 {
-                        *cursor_pos -= 1;
-                    }
-                    *suggestions = if let Some(s) = search {
-                        s.filter_paths(candidates, query)
-                    } else {
-                        rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
-                    };
-                    *selected_index = 0;
-                }
-            }
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                query.clear();
-                *cursor_pos = 0;
-                *suggestions = candidates.clone();
-                *selected_index = 0;
-            }
-            KeyCode::Char('\x0b') => {
-                query.clear();
-                *cursor_pos = 0;
-                *suggestions = candidates.clone();
-                *selected_index = 0;
-            }
-            KeyCode::Char(c)
-                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT)
-                    && !key.modifiers.contains(KeyModifiers::SUPER) =>
-            {
-                query.push(c);
-                *cursor_pos += 1;
-                *suggestions = if let Some(s) = search {
-                    s.filter_paths(candidates, query)
-                } else {
-                    rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
-                };
-                *selected_index = 0;
-            }
-            _ => {}
-        }
-        return DialogAction::None;
+    if let DialogContent::JumpToFile(d) = &mut dialog.content {
+        return jump_to_file::handle_input(d, key, search);
     }
 
     // CustomFunctionSelector — incremental search + arrow navigation

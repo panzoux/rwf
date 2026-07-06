@@ -1,6 +1,7 @@
-//! Jump to File dialog rendering.
+//! Jump to File dialog rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
@@ -8,6 +9,100 @@ use crate::ui::smart_truncate;
 
 use super::chunk_path_preview;
 use super::common::{DIALOG_DIM, DIALOG_INPUT, DIALOG_SELECTED, DIALOG_TEXT};
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::JumpToFileDialog;
+
+use super::DialogAction;
+
+/// Handle key input: text input + AND-filter suggestions (files + dirs) + arrow navigation.
+pub(super) fn handle_input(
+    dialog: &mut JumpToFileDialog,
+    key: KeyEvent,
+    search: Option<&rwf_lib::model::SearchModel>,
+) -> DialogAction {
+    let JumpToFileDialog {
+        query,
+        cursor_pos,
+        suggestions,
+        selected_index,
+        candidates,
+        ..
+    } = dialog;
+    use crossterm::event::KeyCode;
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter => return DialogAction::Confirm,
+        KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
+            if *selected_index > 0 {
+                *selected_index -= 1;
+            }
+        }
+        KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
+            if !suggestions.is_empty() && *selected_index + 1 < suggestions.len() {
+                *selected_index += 1;
+            }
+        }
+        KeyCode::Home => {
+            *selected_index = 0;
+        }
+        KeyCode::End => {
+            *selected_index = suggestions.len().saturating_sub(1);
+        }
+        KeyCode::PageUp => {
+            *selected_index = selected_index.saturating_sub(10);
+        }
+        KeyCode::PageDown => {
+            if !suggestions.is_empty() {
+                *selected_index = (*selected_index + 10).min(suggestions.len() - 1);
+            }
+        }
+        KeyCode::Backspace => {
+            if !query.is_empty() {
+                let mut chars = query.chars();
+                chars.next_back();
+                *query = chars.as_str().to_string();
+                if *cursor_pos > 0 {
+                    *cursor_pos -= 1;
+                }
+                *suggestions = if let Some(s) = search {
+                    s.filter_paths(candidates, query)
+                } else {
+                    rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
+                };
+                *selected_index = 0;
+            }
+        }
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            query.clear();
+            *cursor_pos = 0;
+            *suggestions = candidates.clone();
+            *selected_index = 0;
+        }
+        KeyCode::Char('\x0b') => {
+            query.clear();
+            *cursor_pos = 0;
+            *suggestions = candidates.clone();
+            *selected_index = 0;
+        }
+        KeyCode::Char(c)
+            if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::SUPER) =>
+        {
+            query.push(c);
+            *cursor_pos += 1;
+            *suggestions = if let Some(s) = search {
+                s.filter_paths(candidates, query)
+            } else {
+                rwf_lib::model::dialog::filter_jump_to_file_suggestions(candidates, query)
+            };
+            *selected_index = 0;
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_jump_to_file_dialog(
     frame: &mut Frame,
