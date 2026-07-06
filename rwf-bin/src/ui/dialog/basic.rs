@@ -13,7 +13,7 @@ use ratatui::{
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
 use rwf_lib::model::dialog::{
-    DeleteConfirmDialog, DialogContent, ErrorDialog,
+    CompressionDialog, DeleteConfirmDialog, DialogContent, ErrorDialog,
     ExtractionConfirmDialog as RwfExtractionConfirmDialog, InputDialog, JobManagerContent,
     SortDialog,
 };
@@ -30,7 +30,7 @@ pub(super) fn render_dialog_content(
     focused: bool,
 ) {
     match content {
-        DialogContent::Compression {
+        DialogContent::Compression(CompressionDialog {
             archive_name,
             selected_format_index,
             selected_compression_index,
@@ -42,7 +42,7 @@ pub(super) fn render_dialog_content(
             edit_mode,
             vi_mode,
             ..
-        } => {
+        }) => {
             // Create state from embedded dialog state
             let state = CompressionDialogState {
                 archive_name: archive_name.clone(),
@@ -227,7 +227,7 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             }
             DialogAction::None
         }
-        DialogContent::Compression {
+        DialogContent::Compression(CompressionDialog {
             focused_field,
             format_focus_index,
             compression_focus_index,
@@ -245,7 +245,7 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             history,
             history_index,
             ..
-        } => {
+        }) => {
             // If archive name is focused, delegate to TextInput
             if *focused_field == 2 {
                 use crate::ui::text_input::{TextInput, TextInputAction};

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 mod close_tab_with_active_job;
 mod comparison_view;
+mod compression;
 mod confirmation;
 mod context_menu;
 mod custom_function_menu;
@@ -38,6 +39,7 @@ mod wildcard_mark;
 
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use comparison_view::ComparisonViewDialog;
+pub use compression::CompressionDialog;
 pub use confirmation::ConfirmationDialog;
 pub use context_menu::ContextMenuDialog;
 pub use custom_function_menu::CustomFunctionMenuDialog;
@@ -240,31 +242,7 @@ pub enum DialogContent {
         /// "Copy" or "Move" — used in the dialog title
         operation: String,
     },
-    Compression {
-        // Data fields
-        sources: Vec<crate::model::Location>,
-        format: crate::input::ArchiveFormat,
-        archive_name: String,
-        selected_format_index: usize,
-        selected_compression_index: usize,
-        compression_level: u32,
-        // Interaction state (persists while dialog is open)
-        focused_field: usize, // 0=format, 1=compression, 2=name, 3=OK, 4=Cancel
-        format_focus_index: usize, // Which format has focus (0-7)
-        compression_focus_index: usize, // Which compression level has focus (0-5)
-        cursor_pos: usize,    // Cursor position in archive name
-        scroll_pos: usize,    // Scroll position in archive name
-        // Vi mode support
-        edit_mode: crate::config::EditMode,
-        vi_mode: Option<crate::config::ViMode>,
-        // Vi pending states (persisted between key presses)
-        vi_pending_find_backward: Option<bool>,
-        vi_pending_operator: Option<u8>, // 0=none, 1=change, 2=delete
-        vi_pending_ctrl_x: bool,
-        // Undo/Redo history
-        history: Vec<String>,
-        history_index: usize,
-    },
+    Compression(CompressionDialog),
     ExtractionConfirm(ExtractionConfirmDialog),
     DeleteConfirm(DeleteConfirmDialog),
     Version(VersionDialog),
@@ -1052,50 +1030,9 @@ impl Dialog {
         sources: Vec<crate::model::Location>,
         edit_mode: crate::config::EditMode,
     ) -> Self {
-        let default_name = if sources.len() == 1 {
-            let name = sources[0].display_path();
-            // Get just the filename from the path
-            std::path::Path::new(&name)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("archive")
-                .to_string()
-        } else {
-            "archive".to_string()
-        };
-
-        // Initialize vi_mode based on edit_mode
-        let vi_mode = if edit_mode == crate::config::EditMode::Vi {
-            Some(crate::config::ViMode::Normal)
-        } else {
-            None
-        };
-
         Self {
             title: "Compress Files".to_string(),
-            content: DialogContent::Compression {
-                sources,
-                format: crate::input::ArchiveFormat::ZIP,
-                archive_name: default_name.clone(),
-                selected_format_index: 0,
-                selected_compression_index: 3, // Default to Normal
-                compression_level: 5,          // Default to Normal
-                // Initialize interaction state
-                focused_field: 0,           // Start with format focused
-                format_focus_index: 0,      // First format has focus
-                compression_focus_index: 3, // Normal (5) has focus
-                cursor_pos: default_name.chars().count(),
-                scroll_pos: 0,
-                edit_mode,
-                vi_mode,
-                // Initialize Vi pending states
-                vi_pending_find_backward: None,
-                vi_pending_operator: None,
-                vi_pending_ctrl_x: false,
-                // Initialize history
-                history: vec![default_name],
-                history_index: 0,
-            },
+            content: DialogContent::Compression(CompressionDialog::new(sources, edit_mode)),
         }
     }
 

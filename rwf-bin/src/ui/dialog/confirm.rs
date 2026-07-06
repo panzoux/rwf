@@ -4,7 +4,7 @@
 //! Split from dialog/mod.rs in M3 (move-only).
 
 use rwf_lib::model::dialog::{
-    ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
+    CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
     DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
     FileMaskDialog, HistoryDialogContent, InputDialog, PatternRenameContent,
     RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
@@ -419,14 +419,14 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::Compression {
+            DialogContent::Compression(CompressionDialog {
                 sources,
                 archive_name,
                 format,
                 selected_format_index,
                 compression_level,
                 ..
-            } => {
+            }) => {
                 debug!(
                     "Compression dialog confirmed: {} sources, archive_name='{}'",
                     sources.len(),

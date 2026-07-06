@@ -66,7 +66,7 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::model::dialog::{
-    CloseTabWithActiveJobDialog, ContextMenuDialog, CustomFunctionMenuDialog,
+    CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog,
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
     HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
@@ -2040,12 +2040,12 @@ pub fn handle_dialog_input(
     }
 
     // Compression dialog - Vi mode support for Esc (when textbox not focused)
-    if let DialogContent::Compression {
+    if let DialogContent::Compression(CompressionDialog {
         edit_mode,
         vi_mode,
         focused_field,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         if key.code == crossterm::event::KeyCode::Esc && *focused_field != 2 {
             debug!("Esc pressed in Compression dialog (non-textbox), edit_mode={:?}, current vi_mode={:?}", edit_mode, vi_mode);
@@ -2112,7 +2112,9 @@ pub fn handle_dialog_input(
         }
 
         // Handle Compression dialog Tab navigation
-        if let DialogContent::Compression { focused_field, .. } = &mut dialog.content {
+        if let DialogContent::Compression(CompressionDialog { focused_field, .. }) =
+            &mut dialog.content
+        {
             // Cycle: 0→1→2→3→4→0 (format→compression→name→OK→Cancel→format)
             if backward {
                 *focused_field = if *focused_field == 0 {

@@ -2,7 +2,7 @@
 
 use super::{snapshot_dialog, test_state};
 use rwf_lib::config::EditMode;
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::model::dialog::{CompressionDialog, Dialog, DialogContent};
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 
@@ -27,12 +27,12 @@ fn compression_name_focused_with_text() {
         vec![Location::Local(PathBuf::from("/test/single_dir"))],
         EditMode::Emacs,
     );
-    if let DialogContent::Compression {
+    if let DialogContent::Compression(CompressionDialog {
         archive_name,
         cursor_pos,
         focused_field,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         *archive_name = "backup".to_string();
         *cursor_pos = 6;
@@ -45,7 +45,8 @@ fn compression_name_focused_with_text() {
 fn compression_ok_focused() {
     let state = test_state();
     let mut dialog = Dialog::compression(sources(), EditMode::Emacs);
-    if let DialogContent::Compression { focused_field, .. } = &mut dialog.content {
+    if let DialogContent::Compression(CompressionDialog { focused_field, .. }) = &mut dialog.content
+    {
         *focused_field = 3; // OK button
     }
     snapshot_dialog("compression_ok_focused", &dialog, &state);
