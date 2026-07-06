@@ -62,7 +62,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 - [x] ExtractionConfirm(S2 batch2, commit `e8c1bb4`) / [x] CloseTabWithActiveJob(S2 batch2, commit `e8c1bb4`) / [x] HistoryDialog(S2 batch2, commit `e8c1bb4`) / [x] DriveSelection(S2 batch2, commit `e8c1bb4`)
 - [x] ContextMenu(S2 batch3, commit `f4a3c89`) / [x] TabSelector(S2 batch3, commit `f4a3c89`, struct名は `TabSelectorContent`) / [x] RegisteredFolderSelector(S2 batch3, commit `f4a3c89`, struct名は `RegisteredFolderSelectorContent`)
 中程度:
-- [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [ ] FileMask / [ ] WildcardMark / [ ] SimpleRename
+- [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [x] FileMask(S3 batch1, commit `a6fadeb`) / [x] WildcardMark(S3 batch1, commit `a6fadeb`) / [x] SimpleRename(S3 batch1, commit `a6fadeb`)
 - [ ] JumpToPath / [ ] JumpToFile / [ ] FileInfo / [ ] CustomFunctionSelector / [ ] CustomFunctionMenu
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [ ] JobManager / [ ] PatternRename / [ ] ComparisonView / [ ] SplitJoinDialog
