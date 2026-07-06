@@ -147,8 +147,8 @@ FileConflict / Compression / JobManager / PatternRename / ComparisonView / Split
   struct(`JobManagerDialog`/`PatternRenameDialog`等)との衝突を避けるため命名変更。
   すべて sonnet 直接実施(haiku 不使用、計画どおり)。
   検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、各バッチごとに
-  対象 rwf-lib テストも緑。rwf-lib フルテストはバックグラウンド実行中 — 結果は次セッション
-  冒頭で確認すること。次セッションは S5(input ハンドラ抽出 + 仕上げ)から開始。
+  対象 rwf-lib テストも緑。rwf-lib フルテストも緑(1043 passed, 0 failed)。
+  次セッションは S5(input ハンドラ抽出 + 仕上げ)から開始。
 
 ### S5(sonnet 単独): input ハンドラ抽出 + 仕上げ
 1. `handle_dialog_input` の各 match 腕本体を各ダイアログファイルの `handle_input(&mut FooDialog, ...)` へ移動(数腕ずつコミット。mod.rs 目標 ~100 行)。
