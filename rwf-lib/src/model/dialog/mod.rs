@@ -25,6 +25,7 @@ mod input;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod pattern_rename;
 mod progress;
 mod registered_folder_selector;
 mod simple_rename;
@@ -53,6 +54,7 @@ pub use input::InputDialog;
 pub use job_manager::JobManagerContent;
 pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
+pub use pattern_rename::PatternRenameContent;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use simple_rename::SimpleRenameDialog;
@@ -210,27 +212,7 @@ pub enum DialogContent {
     CustomFunctionMenu(CustomFunctionMenuDialog),
     RegisteredFolderSelector(RegisteredFolderSelectorContent),
     TabSelector(TabSelectorContent),
-    PatternRename {
-        find: String,
-        find_cursor_pos: usize,
-        find_scroll_pos: usize,
-        replace: String,
-        replace_cursor_pos: usize,
-        replace_scroll_pos: usize,
-        use_regex: bool,
-        case_sensitive: bool,
-        preview: Vec<(String, String)>,
-        /// 0=find textbox, 1=replace textbox, 2=filelist
-        focused_field: usize,
-        preview_scroll: usize,
-        preview_horizontal_scroll: usize,
-        /// Non-None when a collision was detected at confirm time
-        error_message: Option<String>,
-        /// 0=SIDE-BY-SIDE, 1=Preview (new names), 2=Original (original names); Alt+P cycles
-        preview_mode: u8,
-        /// true=show all files, false=matching files only; Alt+A toggles
-        show_all: bool,
-    },
+    PatternRename(PatternRenameContent),
     Error(ErrorDialog),
     ComparisonView(ComparisonViewDialog),
     SplitJoinDialog(SplitJoinDialogContent),
@@ -700,23 +682,7 @@ impl Dialog {
     pub fn pattern_rename() -> Self {
         Self {
             title: "Pattern Rename".to_string(),
-            content: DialogContent::PatternRename {
-                find: String::new(),
-                find_cursor_pos: 0,
-                find_scroll_pos: 0,
-                replace: String::new(),
-                replace_cursor_pos: 0,
-                replace_scroll_pos: 0,
-                use_regex: true,
-                case_sensitive: false,
-                preview: Vec::new(),
-                focused_field: 0,
-                preview_scroll: 0,
-                preview_horizontal_scroll: 0,
-                error_message: None,
-                preview_mode: 0,
-                show_all: true,
-            },
+            content: DialogContent::PatternRename(PatternRenameContent::new()),
         }
     }
 
@@ -2110,14 +2076,14 @@ impl DialogContent {
     #[allow(clippy::type_complexity)] // tuple mirrors PatternRename's fields; a type alias would obscure the field-order mapping used at call sites
     pub fn as_pattern_rename(&self) -> Option<(&str, &str, bool, bool, &[(String, String)])> {
         match self {
-            DialogContent::PatternRename {
+            DialogContent::PatternRename(PatternRenameContent {
                 find,
                 replace,
                 use_regex,
                 case_sensitive,
                 preview,
                 ..
-            } => Some((find, replace, *use_regex, *case_sensitive, preview)),
+            }) => Some((find, replace, *use_regex, *case_sensitive, preview)),
             _ => None,
         }
     }
@@ -2134,14 +2100,14 @@ impl DialogContent {
         &mut Vec<(String, String)>,
     )> {
         match self {
-            DialogContent::PatternRename {
+            DialogContent::PatternRename(PatternRenameContent {
                 find,
                 replace,
                 use_regex,
                 case_sensitive,
                 preview,
                 ..
-            } => Some((find, replace, use_regex, case_sensitive, preview)),
+            }) => Some((find, replace, use_regex, case_sensitive, preview)),
             _ => None,
         }
     }

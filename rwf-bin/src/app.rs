@@ -968,13 +968,15 @@ impl App {
                 crate::ui::dialog::DialogAction::PatternChanged => {
                     // Stash current fields for debounced preview regeneration
                     if let Some(dialog) = self.state.dialogs.current() {
-                        if let rwf_lib::model::dialog::DialogContent::PatternRename {
-                            find,
-                            replace,
-                            use_regex,
-                            case_sensitive,
-                            ..
-                        } = &dialog.content
+                        if let rwf_lib::model::dialog::DialogContent::PatternRename(
+                            rwf_lib::model::dialog::PatternRenameContent {
+                                find,
+                                replace,
+                                use_regex,
+                                case_sensitive,
+                                ..
+                            },
+                        ) = &dialog.content
                         {
                             self.pattern_rename_pending =
                                 Some((find.clone(), replace.clone(), *use_regex, *case_sensitive));

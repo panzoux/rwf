@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::DialogContent;
+    use crate::model::dialog::{DialogContent, PatternRenameContent};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -86,7 +86,7 @@ mod tests {
         open_pattern_rename(&mut state);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename {
+        if let DialogContent::PatternRename(PatternRenameContent {
             find,
             replace,
             use_regex,
@@ -95,7 +95,7 @@ mod tests {
             focused_field,
             preview_scroll,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(find, "", "initial find must be empty");
             assert_eq!(replace, "", "initial replace must be empty");
@@ -144,12 +144,12 @@ mod tests {
         update_fields(&mut state, r"\.jpg$", ".jpeg", true, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename {
+        if let DialogContent::PatternRename(PatternRenameContent {
             find,
             replace,
             preview,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(find, r"\.jpg$");
             assert_eq!(replace, ".jpeg");
@@ -179,7 +179,8 @@ mod tests {
         update_fields(&mut state, "^(.+)$", "backup_${1}", true, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename(PatternRenameContent { preview, .. }) = &dialog.content
+        {
             assert_eq!(preview.len(), 1);
             let (original, renamed) = &preview[0];
             assert_eq!(original, "file.txt");
@@ -209,7 +210,8 @@ mod tests {
         update_fields(&mut state, ".txt", "_copy.txt", false, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename(PatternRenameContent { preview, .. }) = &dialog.content
+        {
             assert_eq!(preview.len(), 2, "only 2 marked files in preview");
             let originals: Vec<&str> = preview.iter().map(|(o, _)| o.as_str()).collect();
             assert!(originals.contains(&"doc1.txt"));
@@ -233,7 +235,8 @@ mod tests {
         update_fields(&mut state, "s/_/-/g", "", false, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename(PatternRenameContent { preview, .. }) = &dialog.content
+        {
             assert_eq!(preview.len(), 1);
             assert_eq!(preview[0].1, "hello-world.txt");
         } else {
@@ -253,7 +256,8 @@ mod tests {
         update_fields(&mut state, "tr/abc/xyz/", "", false, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename(PatternRenameContent { preview, .. }) = &dialog.content
+        {
             assert_eq!(preview.len(), 1);
             assert_eq!(preview[0].1, "xyz.txt");
         } else {
@@ -280,7 +284,8 @@ mod tests {
         update_fields(&mut state, r"\.txt$", ".bak", true, true);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::PatternRename { preview, .. } = &dialog.content {
+        if let DialogContent::PatternRename(PatternRenameContent { preview, .. }) = &dialog.content
+        {
             // Both files appear (TWF shows all)
             assert_eq!(preview.len(), 2);
             let (txt_orig, txt_new) = preview.iter().find(|(o, _)| o == "file.txt").unwrap();

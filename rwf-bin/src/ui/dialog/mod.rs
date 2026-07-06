@@ -70,7 +70,8 @@ use rwf_lib::model::dialog::{
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
     HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -230,7 +231,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 11u16
             }
         } // name+path+size+type+3×datetime + hint (+1 for link row)
-        DialogContent::PatternRename { preview, .. } => {
+        DialogContent::PatternRename(PatternRenameContent { preview, .. }) => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
         }
@@ -643,7 +644,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 link_kind.as_ref(),
             );
         }
-        DialogContent::PatternRename {
+        DialogContent::PatternRename(PatternRenameContent {
             find,
             find_cursor_pos,
             find_scroll_pos,
@@ -659,7 +660,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             error_message,
             preview_mode,
             show_all,
-        } => {
+        }) => {
             render_pattern_rename_dialog(
                 frame,
                 content_area,
@@ -1072,7 +1073,7 @@ pub fn handle_dialog_input(
     }
 
     // PatternRename dialog — Find/Replace textboxes + Alt+R/S flag toggles + preview scroll
-    if let DialogContent::PatternRename {
+    if let DialogContent::PatternRename(PatternRenameContent {
         find,
         find_cursor_pos,
         find_scroll_pos,
@@ -1088,7 +1089,7 @@ pub fn handle_dialog_input(
         error_message,
         preview_mode,
         show_all,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crate::ui::text_input::{TextInput, TextInputAction};
         use crossterm::event::KeyCode;

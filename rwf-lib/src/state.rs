@@ -2857,8 +2857,9 @@ impl AppState {
                 let initial_preview =
                     crate::pattern_rename::generate_preview(&filenames, "", "", true, false);
                 let mut dialog = crate::model::Dialog::pattern_rename();
-                if let crate::model::DialogContent::PatternRename { preview, .. } =
-                    &mut dialog.content
+                if let crate::model::DialogContent::PatternRename(
+                    crate::model::PatternRenameContent { preview, .. },
+                ) = &mut dialog.content
                 {
                     *preview = initial_preview;
                 }
@@ -2892,15 +2893,17 @@ impl AppState {
                     *case_sensitive,
                 );
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::DialogContent::PatternRename {
-                        find: f,
-                        replace: r,
-                        use_regex: ur,
-                        case_sensitive: cs,
-                        preview: pr,
-                        error_message: em,
-                        ..
-                    } = &mut dialog.content
+                    if let crate::model::DialogContent::PatternRename(
+                        crate::model::PatternRenameContent {
+                            find: f,
+                            replace: r,
+                            use_regex: ur,
+                            case_sensitive: cs,
+                            preview: pr,
+                            error_message: em,
+                            ..
+                        },
+                    ) = &mut dialog.content
                     {
                         *f = find.clone();
                         *r = replace.clone();

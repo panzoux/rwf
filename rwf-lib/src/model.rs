@@ -42,10 +42,11 @@ pub use dialog::{
     DialogContent, DialogStack, DialogUiState, DriveInfo, DriveSelectionDialog, DriveType,
     ErrorDialog, ErrorType, ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
     HistoryDialogContent, InputDialog, JobInfo, JobKind, JobManagerContent, JobManagerDialog,
-    JobState, JumpToFileDialog, JumpToPathDialog, OsConfig, PatternRenameDialog, PipeToAction,
-    ProgressDialog, RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinDialogContent,
-    SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog, WildcardMarkDialog,
+    JobState, JumpToFileDialog, JumpToPathDialog, OsConfig, PatternRenameContent,
+    PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder, RegisteredFolderManager,
+    RegisteredFolderSelector, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    SplitJoinDialogContent, SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog,
+    WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

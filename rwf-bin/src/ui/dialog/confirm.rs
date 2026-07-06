@@ -6,8 +6,8 @@
 use rwf_lib::model::dialog::{
     ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
     DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
-    FileMaskDialog, HistoryDialogContent, InputDialog, RegisteredFolderSelectorContent,
-    SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    FileMaskDialog, HistoryDialogContent, InputDialog, PatternRenameContent,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -546,13 +546,13 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::PatternRename {
+            DialogContent::PatternRename(PatternRenameContent {
                 find,
                 replace,
                 use_regex,
                 case_sensitive,
                 ..
-            } => {
+            }) => {
                 if find.is_empty() {
                     return None;
                 }

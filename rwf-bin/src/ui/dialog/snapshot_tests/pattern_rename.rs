@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::PatternRename`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::model::dialog::{Dialog, DialogContent, PatternRenameContent};
 
 #[test]
 fn pattern_rename_empty() {
@@ -14,7 +14,7 @@ fn pattern_rename_empty() {
 fn pattern_rename_with_preview() {
     let state = test_state();
     let mut dialog = Dialog::pattern_rename();
-    if let DialogContent::PatternRename {
+    if let DialogContent::PatternRename(PatternRenameContent {
         find,
         find_cursor_pos,
         replace,
@@ -22,7 +22,7 @@ fn pattern_rename_with_preview() {
         use_regex,
         preview,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         *find = "file".to_string();
         *find_cursor_pos = 4;
@@ -42,7 +42,7 @@ fn pattern_rename_with_preview() {
 fn pattern_rename_error_and_focus() {
     let state = test_state();
     let mut dialog = Dialog::pattern_rename();
-    if let DialogContent::PatternRename {
+    if let DialogContent::PatternRename(PatternRenameContent {
         find,
         find_cursor_pos,
         replace,
@@ -50,7 +50,7 @@ fn pattern_rename_error_and_focus() {
         error_message,
         preview,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         *find = "a.txt".to_string();
         *find_cursor_pos = 5;
