@@ -66,7 +66,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 - [x] JumpToPath(S3 batch4, commit `ac3d97f`) / [x] JumpToFile(S3 batch4, commit `ac3d97f`) / [x] FileInfo(S3 batch2, commit `b444357`) / [x] CustomFunctionSelector(S3 batch5, commit `f443639`, struct名は `CustomFunctionSelectorContent`) / [x] CustomFunctionMenu(S3 batch5, commit `f443639`)
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [x] JobManager(S4 batch1, commit `037623b`, struct名は `JobManagerContent`) / [x] PatternRename(S4 batch4, commit `ae870e8`, struct名は `PatternRenameContent`) / [x] ComparisonView(S4 batch3, commit `3d7a2a2`) / [x] SplitJoinDialog(S4 batch2, commit `1bf13a7`, struct名は `SplitJoinDialogContent`)
-- [x] Compression(S4 batch5, commit `ff7bb07`) / [ ] FileConflict
+- [x] Compression(S4 batch5, commit `ff7bb07`) / [x] FileConflict(S4 batch6, commit `b4167ba`)
 
 ## セッション分割
 
@@ -135,6 +135,20 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 FileConflict / Compression / JobManager / PatternRename / ComparisonView / SplitJoinDialog。
 フィールドが多く入力処理と絡むため haiku に出さない。1 バリアント 1 コミット。
 完了時点で 29/29。rwf-lib フルテスト(バックグラウンド)+ スナップショット差分ゼロ確認。
+- **S4 完了(2026-07-07)**: 複雑6バリアントすべて struct 化、29/29 完了。
+  commit: batch1 `037623b`(JobManager, struct名`JobManagerContent`)、
+  batch2 `1bf13a7`(SplitJoinDialog, struct名`SplitJoinDialogContent` — rwf-bin 未配線の機能で
+  render/input サイトなし)、batch3 `3d7a2a2`(ComparisonView — 同じく rwf-bin 未配線)、
+  batch4 `ae870e8`(PatternRename, struct名`PatternRenameContent`)、
+  batch5 `ff7bb07`(Compression — Vi mode + undo/redo history あり)、
+  batch6 `b4167ba`(FileConflict — Vi mode + undo/redo history + ConflictInputHarness 経由の
+  既存テストはハーネスが13個の`&mut`引数を直接扱うため無変更で通った)。
+  `JobManagerContent`/`SplitJoinDialogContent`/`PatternRenameContent` は既存の同名ヘルパー
+  struct(`JobManagerDialog`/`PatternRenameDialog`等)との衝突を避けるため命名変更。
+  すべて sonnet 直接実施(haiku 不使用、計画どおり)。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、各バッチごとに
+  対象 rwf-lib テストも緑。rwf-lib フルテストはバックグラウンド実行中 — 結果は次セッション
+  冒頭で確認すること。次セッションは S5(input ハンドラ抽出 + 仕上げ)から開始。
 
 ### S5(sonnet 単独): input ハンドラ抽出 + 仕上げ
 1. `handle_dialog_input` の各 match 腕本体を各ダイアログファイルの `handle_input(&mut FooDialog, ...)` へ移動(数腕ずつコミット。mod.rs 目標 ~100 行)。
