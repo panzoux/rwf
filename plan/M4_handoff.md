@@ -60,7 +60,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 単純(フィールド少・生成箇所少):
 - [x] Version(S1 テンプレート, commit `2f7e178`) / [x] Error(S2 batch1, commit `fa66b31`) / [x] Progress(S2 batch1, commit `fa66b31`) / [x] Confirmation(S2 batch1, commit `fa66b31`) / [x] DeleteConfirm(S2 batch1, commit `fa66b31`)
 - [x] ExtractionConfirm(S2 batch2, commit `e8c1bb4`) / [x] CloseTabWithActiveJob(S2 batch2, commit `e8c1bb4`) / [x] HistoryDialog(S2 batch2, commit `e8c1bb4`) / [x] DriveSelection(S2 batch2, commit `e8c1bb4`)
-- [ ] ContextMenu / [ ] TabSelector / [ ] RegisteredFolderSelector
+- [x] ContextMenu(S2 batch3, commit `f4a3c89`) / [x] TabSelector(S2 batch3, commit `f4a3c89`, struct名は `TabSelectorContent`) / [x] RegisteredFolderSelector(S2 batch3, commit `f4a3c89`, struct名は `RegisteredFolderSelectorContent`)
 中程度:
 - [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [ ] FileMask / [ ] WildcardMark / [ ] SimpleRename
 - [ ] JumpToPath / [ ] JumpToFile / [ ] FileInfo / [ ] CustomFunctionSelector / [ ] CustomFunctionMenu
@@ -89,6 +89,19 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   「見本コミット <hash> の形式に従い、バリアント X を struct 化する。手順: (1) model/dialog/x.rs に struct 定義 + DialogUiState 埋め込み + new()、(2) enum バリアントを tuple 形式に変更、(3) 生成箇所(<Grep 結果を貼る>)を new() 呼びに置換、(4) rwf-bin の match 腕のパターンを合わせる。1 バリアント完結してから次へ。旧フィールドアクセスの残存を grep で確認。**非デフォルト値(Some(..)/true/数値)を絶対に落とさない**。cargo 実行禁止。完了したら変更ファイル一覧を報告」
 - 各バリアント = 1 コミット(sonnet が diff 監査後にコミット)。
 - 各セッション末: 検証一式(clippy + rwf テスト。rwf-lib フルは S3 末のみで可)。
+- **S2 完了(2026-07-06)**: 単純12件すべて struct 化(haiku 3バッチ、直列投入・都度diff監査)。
+  commit: batch1 `fa66b31`(Confirmation/Progress/DeleteConfirm/Error)、
+  batch2 `e8c1bb4`(ExtractionConfirm/CloseTabWithActiveJob/HistoryDialog/DriveSelection)、
+  batch3 `f4a3c89`(ContextMenu/TabSelector/RegisteredFolderSelector)。
+  各バッチで haiku 側の軽微な問題(未インポート追加漏れ・未使用import)を監査で発見し sonnet が修正。
+  `DriveSelection`/`ContextMenu`/`TabSelector`/`RegisteredFolderSelector` は
+  未対応バリアント(JobManager/CustomFunctionSelector 等)と共有の or-pattern
+  ヘルパーメソッド(`selected_index()`/`filter()`等)に登場するため、対象バリアントのみを
+  個別 match アームに分離する対応が必要だった(`e8c1bb4`/`f4a3c89` 参照)。
+  `TabSelectorContent`/`RegisteredFolderSelectorContent` は既存の同名ヘルパー struct との
+  衝突を避けるため命名変更(`Dialog`ではなく`Content`サフィックス)。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑。
+  次セッションは S3(中程度11件、haiku 直列投入)から開始。
 
 ### S4(sonnet 単独): 複雑 6 バリアント
 FileConflict / Compression / JobManager / PatternRename / ComparisonView / SplitJoinDialog。
