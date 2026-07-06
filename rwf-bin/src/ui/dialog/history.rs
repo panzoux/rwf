@@ -1,10 +1,102 @@
-//! Navigation history dialog rendering.
+//! Navigation history dialog rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crate::ui::smart_truncate;
+
+use crossterm::event::KeyEvent;
+use rwf_lib::model::dialog::{Dialog, DialogContent, HistoryDialogContent};
+
+use super::DialogAction;
+
+/// Handle key input: Up/Down/j/k navigate, Tab/Left/Right/h/l switch pane,
+/// Enter jumps, Esc cancels. Takes the whole `Dialog` (not just its content)
+/// because pane switching also updates the dialog's title.
+pub(super) fn handle_input(dialog: &mut Dialog, key: KeyEvent) -> DialogAction {
+    use crossterm::event::KeyCode;
+    use rwf_lib::model::ui::ActivePane;
+
+    // ── Pane switch (Tab, Left arrow, Right arrow, h, l) ──────────────
+    let switch_to: Option<ActivePane> = match key.code {
+        KeyCode::Tab => {
+            let cur =
+                if let DialogContent::HistoryDialog(HistoryDialogContent { active_pane, .. }) =
+                    &dialog.content
+                {
+                    *active_pane
+                } else {
+                    unreachable!()
+                };
+            Some(match cur {
+                ActivePane::Left => ActivePane::Right,
+                ActivePane::Right => ActivePane::Left,
+            })
+        }
+        KeyCode::Left | KeyCode::Char('h') => Some(ActivePane::Left),
+        KeyCode::Right | KeyCode::Char('l') => Some(ActivePane::Right),
+        _ => None,
+    };
+
+    if let Some(new_pane) = switch_to {
+        // update content
+        if let DialogContent::HistoryDialog(HistoryDialogContent { active_pane, .. }) =
+            &mut dialog.content
+        {
+            *active_pane = new_pane;
+        }
+        // update title separately (no borrow conflict — different fields)
+        let pane_label = match new_pane {
+            ActivePane::Left => "Left",
+            ActivePane::Right => "Right",
+        };
+        if let Some(bar) = dialog.title.rfind('|') {
+            let prefix = dialog.title[..bar].to_string();
+            dialog.title = format!("{}| {}]", prefix, pane_label);
+        }
+        return DialogAction::None;
+    }
+
+    // ── Cursor navigation ──────────────────────────────────────────────
+    if let DialogContent::HistoryDialog(HistoryDialogContent {
+        left_entries,
+        right_entries,
+        left_selected,
+        right_selected,
+        active_pane,
+        ..
+    }) = &mut dialog.content
+    {
+        let (sel, total) = match active_pane {
+            ActivePane::Left => (left_selected, left_entries.len()),
+            ActivePane::Right => (right_selected, right_entries.len()),
+        };
+        match key.code {
+            KeyCode::Esc => return DialogAction::Cancel,
+            KeyCode::Enter => return DialogAction::Confirm,
+            KeyCode::Up | KeyCode::Char('k') => {
+                if *sel + 1 < total {
+                    *sel += 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if *sel > 0 {
+                    *sel -= 1;
+                }
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                *sel = total.saturating_sub(1);
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                *sel = 0;
+            }
+            _ => {}
+        }
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_history_dialog(
     frame: &mut Frame,
