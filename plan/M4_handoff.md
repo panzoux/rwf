@@ -66,7 +66,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 - [x] JumpToPath(S3 batch4, commit `ac3d97f`) / [x] JumpToFile(S3 batch4, commit `ac3d97f`) / [x] FileInfo(S3 batch2, commit `b444357`) / [x] CustomFunctionSelector(S3 batch5, commit `f443639`, struct名は `CustomFunctionSelectorContent`) / [x] CustomFunctionMenu(S3 batch5, commit `f443639`)
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [x] JobManager(S4 batch1, commit `037623b`, struct名は `JobManagerContent`) / [x] PatternRename(S4 batch4, commit `ae870e8`, struct名は `PatternRenameContent`) / [x] ComparisonView(S4 batch3, commit `3d7a2a2`) / [x] SplitJoinDialog(S4 batch2, commit `1bf13a7`, struct名は `SplitJoinDialogContent`)
-- [ ] Compression / [ ] FileConflict
+- [x] Compression(S4 batch5, commit `ff7bb07`) / [ ] FileConflict
 
 ## セッション分割
 
