@@ -5,7 +5,8 @@
 
 use rwf_lib::model::dialog::{
     ContextMenuDialog, DeleteConfirmDialog, DialogContent, DriveSelectionDialog,
-    ExtractionConfirmDialog, HistoryDialogContent, RegisteredFolderSelectorContent, SortDialog,
+    ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -196,7 +197,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 );
                 return None;
             }
-            DialogContent::FileMask { input, .. } => {
+            DialogContent::FileMask(FileMaskDialog { input, .. }) => {
                 let mask = if input.is_empty() {
                     None
                 } else {
@@ -210,7 +211,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 );
                 return None;
             }
-            DialogContent::WildcardMark { input, .. } => {
+            DialogContent::WildcardMark(WildcardMarkDialog { input, .. }) => {
                 if !input.is_empty() {
                     let pattern = input.clone();
                     rwf_lib::state::update_state(
@@ -220,7 +221,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::SimpleRename { input, .. } => {
+            DialogContent::SimpleRename(SimpleRenameDialog { input, .. }) => {
                 let new_name = input.clone();
                 if !new_name.is_empty() {
                     if let Some(entry) = state.active_pane().current_entry() {

@@ -46,7 +46,7 @@ mod tests {
             transitions.iter().any(|t| matches!(
                 t,
                 Transition::ShowDialog { dialog }
-                    if matches!(dialog.content, crate::model::dialog::DialogContent::WildcardMark { .. })
+                    if matches!(dialog.content, crate::model::dialog::DialogContent::WildcardMark(_))
             )),
             "WildcardMarking action must open a WildcardMark dialog"
         );
@@ -68,11 +68,12 @@ mod tests {
         let state = test_state();
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::WildcardMark {
-                input,
-                focused_field,
-                ..
-            } = &dialog.content
+            if let crate::model::dialog::DialogContent::WildcardMark(
+                crate::model::dialog::WildcardMarkDialog {
+                    input,
+                    ui: crate::model::dialog::DialogUiState { focused_field, .. },
+                },
+            ) = &dialog.content
             {
                 assert_eq!(input, "");
                 assert_eq!(*focused_field, 0, "textbox should be focused by default");

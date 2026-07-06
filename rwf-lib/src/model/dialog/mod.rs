@@ -14,12 +14,16 @@ mod delete_confirm;
 mod drive_selection;
 mod error;
 mod extraction_confirm;
+mod file_mask;
 mod history_dialog;
 mod progress;
 mod registered_folder_selector;
+mod simple_rename;
 mod sort;
 mod tab_selector;
+mod ui_state;
 mod version;
+mod wildcard_mark;
 
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use confirmation::ConfirmationDialog;
@@ -28,12 +32,16 @@ pub use delete_confirm::DeleteConfirmDialog;
 pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
 pub use extraction_confirm::ExtractionConfirmDialog;
+pub use file_mask::FileMaskDialog;
 pub use history_dialog::HistoryDialogContent;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
+pub use simple_rename::SimpleRenameDialog;
 pub use sort::SortDialog;
 pub use tab_selector::TabSelectorContent;
+pub use ui_state::DialogUiState;
 pub use version::VersionDialog;
+pub use wildcard_mark::WildcardMarkDialog;
 
 /// Which mode tab is active in the help viewer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -316,30 +324,11 @@ pub enum DialogContent {
     Version(VersionDialog),
     SortDialog(SortDialog),
     /// File mask filter dialog — single text input for a wildcard pattern
-    FileMask {
-        /// Current pattern text being edited
-        input: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-        /// 0=textbox (default), 1=OK, 2=Cancel
-        focused_field: usize,
-    },
+    FileMask(FileMaskDialog),
     /// Wildcard marking dialog — enter a pattern to mark matching entries
-    WildcardMark {
-        input: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-        /// 0=textbox (default), 1=OK, 2=Cancel
-        focused_field: usize,
-    },
+    WildcardMark(WildcardMarkDialog),
     /// Simple rename dialog — single text input prefilled with current filename
-    SimpleRename {
-        input: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-        /// 0=textbox (default), 1=OK, 2=Cancel
-        focused_field: usize,
-    },
+    SimpleRename(SimpleRenameDialog),
     /// Navigation history list — holds both panes, switches with Tab/h/l
     HistoryDialog(HistoryDialogContent),
     /// Jump to Directory dialog — AND-filtered directory suggestions
@@ -993,12 +982,7 @@ impl Dialog {
         let initial = current_mask.unwrap_or("");
         Self {
             title: "File Mask Filter".to_string(),
-            content: DialogContent::FileMask {
-                input: initial.to_string(),
-                cursor_pos: initial.chars().count(), // char count, not byte len
-                scroll_pos: 0,
-                focused_field: 0,
-            },
+            content: DialogContent::FileMask(FileMaskDialog::new(initial.to_string())),
         }
     }
 
@@ -1006,26 +990,15 @@ impl Dialog {
     pub fn wildcard_mark() -> Self {
         Self {
             title: "Wildcard Marking".to_string(),
-            content: DialogContent::WildcardMark {
-                input: String::new(),
-                cursor_pos: 0,
-                scroll_pos: 0,
-                focused_field: 0,
-            },
+            content: DialogContent::WildcardMark(WildcardMarkDialog::new()),
         }
     }
 
     /// Create a simple rename dialog prefilled with the current filename
     pub fn simple_rename(current_name: String) -> Self {
-        let cursor = current_name.chars().count();
         Self {
             title: "Rename".to_string(),
-            content: DialogContent::SimpleRename {
-                input: current_name,
-                cursor_pos: cursor,
-                scroll_pos: 0,
-                focused_field: 0,
-            },
+            content: DialogContent::SimpleRename(SimpleRenameDialog::new(current_name)),
         }
     }
 

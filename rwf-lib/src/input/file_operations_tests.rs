@@ -132,7 +132,9 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Rename");
                 match &dialog.content {
-                    crate::model::DialogContent::SimpleRename { input, .. } => {
+                    crate::model::DialogContent::SimpleRename(
+                        crate::model::SimpleRenameDialog { input, .. },
+                    ) => {
                         assert_eq!(input, "file1.txt");
                     }
                     _ => panic!("Expected SimpleRename dialog content"),

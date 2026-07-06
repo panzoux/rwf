@@ -67,8 +67,8 @@ use ratatui::{
 };
 use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
-    DriveSelectionDialog, ErrorDialog, HistoryDialogContent, RegisteredFolderSelectorContent,
-    SortDialog,
+    DialogUiState, DriveSelectionDialog, ErrorDialog, FileMaskDialog, HistoryDialogContent,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -444,12 +444,15 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *focused_section,
             );
         }
-        DialogContent::FileMask {
+        DialogContent::FileMask(FileMaskDialog {
             input,
-            cursor_pos,
-            scroll_pos,
-            focused_field,
-        } => {
+            ui:
+                DialogUiState {
+                    cursor_pos,
+                    scroll_pos,
+                    focused_field,
+                },
+        }) => {
             render_file_mask_dialog(
                 frame,
                 content_area,
@@ -459,12 +462,15 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *focused_field,
             );
         }
-        DialogContent::WildcardMark {
+        DialogContent::WildcardMark(WildcardMarkDialog {
             input,
-            cursor_pos,
-            scroll_pos,
-            focused_field,
-        } => {
+            ui:
+                DialogUiState {
+                    cursor_pos,
+                    scroll_pos,
+                    focused_field,
+                },
+        }) => {
             render_wildcard_mark_dialog(
                 frame,
                 content_area,
@@ -474,12 +480,15 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *focused_field,
             );
         }
-        DialogContent::SimpleRename {
+        DialogContent::SimpleRename(SimpleRenameDialog {
             input,
-            cursor_pos,
-            scroll_pos,
-            focused_field,
-        } => {
+            ui:
+                DialogUiState {
+                    cursor_pos,
+                    scroll_pos,
+                    focused_field,
+                },
+        }) => {
             render_simple_rename_dialog(
                 frame,
                 content_area,
@@ -869,12 +878,15 @@ pub fn handle_dialog_input(
     }
 
     // FileMask dialog — text input with Tab navigation and Enter/Esc handling
-    if let DialogContent::FileMask {
+    if let DialogContent::FileMask(FileMaskDialog {
         input,
-        cursor_pos,
-        scroll_pos,
-        focused_field,
-    } = &mut dialog.content
+        ui:
+            DialogUiState {
+                cursor_pos,
+                scroll_pos,
+                focused_field,
+            },
+    }) = &mut dialog.content
     {
         use crate::ui::text_input::{TextInput, TextInputAction};
         use crossterm::event::KeyCode;
@@ -920,12 +932,15 @@ pub fn handle_dialog_input(
     }
 
     // WildcardMark dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::WildcardMark {
+    if let DialogContent::WildcardMark(WildcardMarkDialog {
         input,
-        cursor_pos,
-        scroll_pos,
-        focused_field,
-    } = &mut dialog.content
+        ui:
+            DialogUiState {
+                cursor_pos,
+                scroll_pos,
+                focused_field,
+            },
+    }) = &mut dialog.content
     {
         use crate::ui::text_input::{TextInput, TextInputAction};
         use crossterm::event::KeyCode;
@@ -1000,12 +1015,15 @@ pub fn handle_dialog_input(
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::SimpleRename {
+    if let DialogContent::SimpleRename(SimpleRenameDialog {
         input,
-        cursor_pos,
-        scroll_pos,
-        focused_field,
-    } = &mut dialog.content
+        ui:
+            DialogUiState {
+                cursor_pos,
+                scroll_pos,
+                focused_field,
+            },
+    }) = &mut dialog.content
     {
         use crate::ui::text_input::{TextInput, TextInputAction};
         use crossterm::event::KeyCode;

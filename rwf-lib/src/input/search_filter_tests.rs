@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{action_to_transitions, Action};
-    use crate::model::{ActivePane, DialogContent, UIMode};
+    use crate::model::{ActivePane, DialogContent, FileMaskDialog, UIMode};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
 
@@ -38,7 +38,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "File Mask Filter");
                 match &dialog.content {
-                    DialogContent::FileMask { input, .. } => {
+                    DialogContent::FileMask(FileMaskDialog { input, .. }) => {
                         assert_eq!(input, "");
                     }
                     _ => panic!("Expected FileMask dialog content"),
@@ -59,7 +59,7 @@ mod tests {
 
         match &transitions[0] {
             Transition::ShowDialog { dialog } => match &dialog.content {
-                DialogContent::FileMask { input, .. } => {
+                DialogContent::FileMask(FileMaskDialog { input, .. }) => {
                     assert_eq!(input, "*.txt");
                 }
                 _ => panic!("Expected FileMask dialog content"),

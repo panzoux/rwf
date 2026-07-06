@@ -1901,7 +1901,7 @@ impl AppState {
                                 return Some(StateUpdateResult::with_job(job_spec));
                             }
                         }
-                        crate::model::DialogContent::SimpleRename { .. } => {
+                        crate::model::DialogContent::SimpleRename(_) => {
                             let new_name = self.dialogs.input_buffer.clone();
                             if !new_name.is_empty() {
                                 if let Some(entry) = self.active_pane().current_entry() {
@@ -1922,7 +1922,9 @@ impl AppState {
                                 }
                             }
                         }
-                        crate::model::DialogContent::FileMask { input, .. } => {
+                        crate::model::DialogContent::FileMask(
+                            crate::model::dialog::FileMaskDialog { input, .. },
+                        ) => {
                             let mask = if input.is_empty() {
                                 None
                             } else {

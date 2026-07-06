@@ -13,7 +13,9 @@
 mod tests {
     use crate::input::{action_to_transitions, Action};
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{CustomFunction, DeleteConfirmDialog, DialogContent, Location};
+    use crate::model::{
+        CustomFunction, DeleteConfirmDialog, DialogContent, Location, SimpleRenameDialog,
+    };
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -498,7 +500,7 @@ mod tests {
         // Verify rename dialog is shown
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::SimpleRename { input, .. } = &dialog.content {
+        if let DialogContent::SimpleRename(SimpleRenameDialog { input, .. }) = &dialog.content {
             assert_eq!(input, "oldname.txt");
         } else {
             panic!("Expected SimpleRename dialog");

@@ -21,8 +21,12 @@ fn file_mask_with_pattern() {
 fn file_mask_focused_on_ok() {
     let state = test_state();
     let mut dialog = Dialog::file_mask(Some("test*"));
-    if let rwf_lib::model::dialog::DialogContent::FileMask { focused_field, .. } =
-        &mut dialog.content
+    if let rwf_lib::model::dialog::DialogContent::FileMask(
+        rwf_lib::model::dialog::FileMaskDialog {
+            ui: rwf_lib::model::dialog::DialogUiState { focused_field, .. },
+            ..
+        },
+    ) = &mut dialog.content
     {
         *focused_field = 1; // Focus on OK button
     }
@@ -33,8 +37,12 @@ fn file_mask_focused_on_ok() {
 fn file_mask_focused_on_cancel() {
     let state = test_state();
     let mut dialog = Dialog::file_mask(Some("*.rs"));
-    if let rwf_lib::model::dialog::DialogContent::FileMask { focused_field, .. } =
-        &mut dialog.content
+    if let rwf_lib::model::dialog::DialogContent::FileMask(
+        rwf_lib::model::dialog::FileMaskDialog {
+            ui: rwf_lib::model::dialog::DialogUiState { focused_field, .. },
+            ..
+        },
+    ) = &mut dialog.content
     {
         *focused_field = 2; // Focus on Cancel button
     }
