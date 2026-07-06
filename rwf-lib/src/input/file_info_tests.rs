@@ -71,12 +71,14 @@ mod tests {
         update_state(&mut state, Transition::ShowFileInfo);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::FileInfo {
-            file_name,
-            size,
-            is_dir,
-            ..
-        } = &dialog.content
+        if let crate::model::dialog::DialogContent::FileInfo(
+            crate::model::dialog::FileInfoDialog {
+                file_name,
+                size,
+                is_dir,
+                ..
+            },
+        ) = &dialog.content
         {
             assert_eq!(file_name, "document.pdf");
             assert_eq!(*size, 99999);
@@ -96,7 +98,10 @@ mod tests {
         update_state(&mut state, Transition::ShowFileInfo);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::FileInfo { is_dir, .. } = &dialog.content {
+        if let crate::model::dialog::DialogContent::FileInfo(
+            crate::model::dialog::FileInfoDialog { is_dir, .. },
+        ) = &dialog.content
+        {
             assert!(*is_dir, "directory entry must set is_dir=true");
         }
     }

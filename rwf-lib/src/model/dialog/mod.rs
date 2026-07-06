@@ -14,6 +14,7 @@ mod delete_confirm;
 mod drive_selection;
 mod error;
 mod extraction_confirm;
+mod file_info;
 mod file_mask;
 mod history_dialog;
 mod progress;
@@ -32,6 +33,7 @@ pub use delete_confirm::DeleteConfirmDialog;
 pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
 pub use extraction_confirm::ExtractionConfirmDialog;
+pub use file_info::FileInfoDialog;
 pub use file_mask::FileMaskDialog;
 pub use history_dialog::HistoryDialogContent;
 pub use progress::ProgressDialog;
@@ -255,24 +257,7 @@ pub enum DialogContent {
     },
     ContextMenu(ContextMenuDialog),
     DriveSelection(DriveSelectionDialog),
-    FileInfo {
-        file_name: String,
-        file_path: String,
-        size: u64,
-        created: Option<std::time::SystemTime>,
-        modified: std::time::SystemTime,
-        accessed: Option<std::time::SystemTime>,
-        is_dir: bool,
-        is_readonly: bool,
-        #[cfg(unix)]
-        permissions: Option<u32>,
-        #[cfg(unix)]
-        owner: Option<String>,
-        #[cfg(unix)]
-        group: Option<String>,
-        link_target: Option<String>,
-        link_kind: Option<crate::model::LinkKind>,
-    },
+    FileInfo(FileInfoDialog),
     FileConflict {
         conflicts: Vec<ConflictPair>,
         current_index: usize,
@@ -931,14 +916,14 @@ impl Dialog {
 
         Self {
             title: "File Information".to_string(),
-            content: DialogContent::FileInfo {
-                file_name: entry.name.clone(),
-                file_path: entry.location.display_path(),
-                size: entry.calculated_size.unwrap_or(entry.size),
+            content: DialogContent::FileInfo(FileInfoDialog::new(
+                entry.name.clone(),
+                entry.location.display_path(),
+                entry.calculated_size.unwrap_or(entry.size),
                 created,
-                modified: entry.modified,
+                entry.modified,
                 accessed,
-                is_dir: entry.is_dir,
+                entry.is_dir,
                 is_readonly,
                 #[cfg(unix)]
                 permissions,
@@ -947,8 +932,8 @@ impl Dialog {
                 #[cfg(unix)]
                 group,
                 link_target,
-                link_kind: entry.link_kind.clone(),
-            },
+                entry.link_kind.clone(),
+            )),
         }
     }
 

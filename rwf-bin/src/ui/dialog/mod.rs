@@ -67,8 +67,9 @@ use ratatui::{
 };
 use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
-    DialogUiState, DriveSelectionDialog, ErrorDialog, FileMaskDialog, HistoryDialogContent,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    DialogUiState, DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog,
+    HistoryDialogContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -219,7 +220,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::JumpToFile { suggestions, .. } => {
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
-        DialogContent::FileInfo { link_target, .. } => {
+        DialogContent::FileInfo(FileInfoDialog { link_target, .. }) => {
             if link_target.is_some() {
                 12u16
             } else {
@@ -599,7 +600,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 loading_job_id.is_some(),
             );
         }
-        DialogContent::FileInfo {
+        DialogContent::FileInfo(FileInfoDialog {
             file_name,
             file_path,
             size,
@@ -617,7 +618,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             link_target,
             link_kind,
             ..
-        } => {
+        }) => {
             render_file_info_dialog(
                 frame,
                 content_area,

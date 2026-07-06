@@ -1,6 +1,6 @@
 //! Integration tests for file information and version display
 
-use crate::model::{Dialog, DialogContent};
+use crate::model::{Dialog, DialogContent, FileInfoDialog};
 use crate::state::{update_state, Transition};
 use crate::test_utils::{test_state, FileEntryBuilder};
 
@@ -28,13 +28,13 @@ fn test_show_file_info_transition() {
 
     // Verify dialog content
     match &dialog.content {
-        DialogContent::FileInfo {
+        DialogContent::FileInfo(FileInfoDialog {
             file_name,
             file_path,
             size,
             is_dir,
             ..
-        } => {
+        }) => {
             assert_eq!(file_name, "test.txt");
             assert!(file_path.contains("test.txt"));
             assert_eq!(*size, 1024);
@@ -87,12 +87,12 @@ fn test_show_file_info_directory() {
 
     // Verify dialog content
     match &dialog.content {
-        DialogContent::FileInfo {
+        DialogContent::FileInfo(FileInfoDialog {
             file_name,
             is_dir,
             size,
             ..
-        } => {
+        }) => {
             assert_eq!(file_name, "test_dir");
             assert!(*is_dir);
             // Should use calculated_size if available
@@ -144,13 +144,13 @@ fn test_file_info_dialog_creation() {
     assert_eq!(dialog.title, "File Information");
 
     match dialog.content {
-        DialogContent::FileInfo {
+        DialogContent::FileInfo(FileInfoDialog {
             file_name,
             file_path,
             size,
             is_dir,
             ..
-        } => {
+        }) => {
             assert_eq!(file_name, "example.txt");
             assert!(file_path.contains("example.txt"));
             assert_eq!(size, 2048);
@@ -239,7 +239,7 @@ fn test_file_info_with_calculated_size() {
 
     // Verify calculated size is used
     match &dialog.content {
-        DialogContent::FileInfo { size, .. } => {
+        DialogContent::FileInfo(FileInfoDialog { size, .. }) => {
             assert_eq!(*size, 1048576);
         }
         _ => panic!("Expected FileInfo dialog content"),
@@ -266,7 +266,7 @@ fn test_version_dialog_does_not_require_input() {
 
 #[cfg(test)]
 mod link_info_tests {
-    use crate::model::{Dialog, DialogContent, FileEntry, LinkKind, Location};
+    use crate::model::{Dialog, DialogContent, FileEntry, FileInfoDialog, LinkKind, Location};
     use std::path::PathBuf;
     use std::time::SystemTime;
 
@@ -289,11 +289,11 @@ mod link_info_tests {
         let dialog = Dialog::file_info(&entry);
 
         match dialog.content {
-            DialogContent::FileInfo {
+            DialogContent::FileInfo(FileInfoDialog {
                 link_target,
                 link_kind,
                 ..
-            } => {
+            }) => {
                 assert_eq!(link_target, Some("./.vimrc".to_string()));
                 assert!(matches!(link_kind, Some(LinkKind::Symlink)));
             }
@@ -320,11 +320,11 @@ mod link_info_tests {
         let dialog = Dialog::file_info(&entry);
 
         match dialog.content {
-            DialogContent::FileInfo {
+            DialogContent::FileInfo(FileInfoDialog {
                 link_target,
                 link_kind,
                 ..
-            } => {
+            }) => {
                 assert_eq!(link_target, None);
                 assert_eq!(link_kind, None);
             }
@@ -351,7 +351,7 @@ mod link_info_tests {
         let dialog = Dialog::file_info(&entry);
 
         match dialog.content {
-            DialogContent::FileInfo { link_target, .. } => {
+            DialogContent::FileInfo(FileInfoDialog { link_target, .. }) => {
                 assert_eq!(link_target, Some(r"C:\ProgramData".to_string()));
             }
             _ => panic!("Expected FileInfo dialog content"),

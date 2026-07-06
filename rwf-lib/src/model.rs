@@ -39,11 +39,11 @@ pub use dialog::{
     CloseTabWithActiveJobDialog, ConfirmationDialog, ContextMenuAction, ContextMenuDialog,
     ContextMenuOption, CustomFunction, CustomFunctionSelector, DeleteConfirmDialog, Dialog,
     DialogContent, DialogStack, DialogUiState, DriveInfo, DriveSelectionDialog, DriveType,
-    ErrorDialog, ErrorType, ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent, JobInfo,
-    JobKind, JobManagerDialog, JobState, OsConfig, PatternRenameDialog, PipeToAction,
-    ProgressDialog, RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinMode, TabSelector,
-    TabSelectorContent, VersionDialog, WildcardMarkDialog,
+    ErrorDialog, ErrorType, ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog,
+    HistoryDialogContent, JobInfo, JobKind, JobManagerDialog, JobState, OsConfig,
+    PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder, RegisteredFolderManager,
+    RegisteredFolderSelector, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog, WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};
