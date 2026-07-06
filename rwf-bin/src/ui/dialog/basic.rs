@@ -139,6 +139,39 @@ pub(super) fn render_dialog_content(
     }
 }
 
+/// Handle key input for the generic Input dialog (Create Directory, Register Folder,
+/// Custom Function Input, etc.) — Esc cancels, Enter confirms, all other keys delegate
+/// to the shared `TextInput` widget.
+pub(super) fn handle_input(dialog: &mut InputDialog, key: KeyEvent) -> DialogAction {
+    let InputDialog {
+        input,
+        cursor_pos,
+        scroll_pos,
+        ..
+    } = dialog;
+    use crate::ui::text_input::{TextInput, TextInputAction};
+    use crossterm::event::KeyCode;
+    if key.code == KeyCode::Esc {
+        return DialogAction::Cancel;
+    }
+    if key.code == KeyCode::Enter {
+        return DialogAction::Confirm;
+    }
+    let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
+    ti.set_original_text(input.clone());
+    ti.set_cursor(*cursor_pos);
+    ti.set_scroll(*scroll_pos);
+    let action = ti.handle_input(&key);
+    *input = ti.text().to_string();
+    *cursor_pos = ti.cursor();
+    *scroll_pos = ti.scroll();
+    match action {
+        TextInputAction::Confirm => DialogAction::Confirm,
+        TextInputAction::Cancel => DialogAction::Cancel,
+        _ => DialogAction::None,
+    }
+}
+
 /// Handle content-specific input
 pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -> DialogAction {
     match content {

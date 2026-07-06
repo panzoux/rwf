@@ -69,9 +69,9 @@ use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog,
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
-    HelpDialog, HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog,
-    JumpToPathDialog, PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog,
-    SortDialog, WildcardMarkDialog,
+    HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
+    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -884,192 +884,23 @@ pub fn handle_dialog_input(
     }
 
     // FileMask dialog — text input with Tab navigation and Enter/Esc handling
-    if let DialogContent::FileMask(FileMaskDialog {
-        input,
-        ui:
-            DialogUiState {
-                cursor_pos,
-                scroll_pos,
-                focused_field,
-            },
-    }) = &mut dialog.content
-    {
-        use crate::ui::text_input::{TextInput, TextInputAction};
-        use crossterm::event::KeyCode;
-        // Tab cycles: 0 (textbox) → 1 (OK) → 2 (Cancel) → 0
-        if key.code == KeyCode::Tab {
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 {
-                    2
-                } else {
-                    *focused_field - 1
-                };
-            } else {
-                *focused_field = (*focused_field + 1) % 3;
-            }
-            return DialogAction::None;
-        }
-        if key.code == KeyCode::Esc {
-            return DialogAction::Cancel;
-        }
-        if key.code == KeyCode::Enter {
-            return match *focused_field {
-                2 => DialogAction::Cancel,  // Cancel button
-                _ => DialogAction::Confirm, // textbox or OK button
-            };
-        }
-        // Delegate text editing to TextInput widget only when textbox is focused
-        if *focused_field == 0 {
-            let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
-            ti.set_original_text(input.clone()); // rule #1: for Vi U (revert) command
-            ti.set_cursor(*cursor_pos);
-            ti.set_scroll(*scroll_pos);
-            let action = ti.handle_input(&key);
-            *input = ti.text().to_string();
-            *cursor_pos = ti.cursor();
-            *scroll_pos = ti.scroll();
-            match action {
-                TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel => return DialogAction::Cancel,
-                _ => return DialogAction::None,
-            }
-        }
-        return DialogAction::None;
+    if let DialogContent::FileMask(d) = &mut dialog.content {
+        return file_mask::handle_input(d, key);
     }
 
     // WildcardMark dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::WildcardMark(WildcardMarkDialog {
-        input,
-        ui:
-            DialogUiState {
-                cursor_pos,
-                scroll_pos,
-                focused_field,
-            },
-    }) = &mut dialog.content
-    {
-        use crate::ui::text_input::{TextInput, TextInputAction};
-        use crossterm::event::KeyCode;
-        if key.code == KeyCode::Tab {
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 {
-                    2
-                } else {
-                    *focused_field - 1
-                };
-            } else {
-                *focused_field = (*focused_field + 1) % 3;
-            }
-            return DialogAction::None;
-        }
-        if key.code == KeyCode::Esc {
-            return DialogAction::Cancel;
-        }
-        if key.code == KeyCode::Enter {
-            return match *focused_field {
-                2 => DialogAction::Cancel,
-                _ => DialogAction::Confirm,
-            };
-        }
-        if *focused_field == 0 {
-            let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
-            ti.set_original_text(input.clone());
-            ti.set_cursor(*cursor_pos);
-            ti.set_scroll(*scroll_pos);
-            let action = ti.handle_input(&key);
-            *input = ti.text().to_string();
-            *cursor_pos = ti.cursor();
-            *scroll_pos = ti.scroll();
-            match action {
-                TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel => return DialogAction::Cancel,
-                _ => return DialogAction::None,
-            }
-        }
-        return DialogAction::None;
+    if let DialogContent::WildcardMark(d) = &mut dialog.content {
+        return wildcard_mark::handle_input(d, key);
     }
 
     // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
-    if let DialogContent::Input(InputDialog {
-        input,
-        cursor_pos,
-        scroll_pos,
-        ..
-    }) = &mut dialog.content
-    {
-        use crate::ui::text_input::{TextInput, TextInputAction};
-        use crossterm::event::KeyCode;
-        if key.code == KeyCode::Esc {
-            return DialogAction::Cancel;
-        }
-        if key.code == KeyCode::Enter {
-            return DialogAction::Confirm;
-        }
-        let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
-        ti.set_original_text(input.clone());
-        ti.set_cursor(*cursor_pos);
-        ti.set_scroll(*scroll_pos);
-        let action = ti.handle_input(&key);
-        *input = ti.text().to_string();
-        *cursor_pos = ti.cursor();
-        *scroll_pos = ti.scroll();
-        match action {
-            TextInputAction::Confirm => return DialogAction::Confirm,
-            TextInputAction::Cancel => return DialogAction::Cancel,
-            _ => return DialogAction::None,
-        }
+    if let DialogContent::Input(d) = &mut dialog.content {
+        return basic::handle_input(d, key);
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
-    if let DialogContent::SimpleRename(SimpleRenameDialog {
-        input,
-        ui:
-            DialogUiState {
-                cursor_pos,
-                scroll_pos,
-                focused_field,
-            },
-    }) = &mut dialog.content
-    {
-        use crate::ui::text_input::{TextInput, TextInputAction};
-        use crossterm::event::KeyCode;
-        if key.code == KeyCode::Tab {
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                *focused_field = if *focused_field == 0 {
-                    2
-                } else {
-                    *focused_field - 1
-                };
-            } else {
-                *focused_field = (*focused_field + 1) % 3;
-            }
-            return DialogAction::None;
-        }
-        if key.code == KeyCode::Esc {
-            return DialogAction::Cancel;
-        }
-        if key.code == KeyCode::Enter {
-            return match *focused_field {
-                2 => DialogAction::Cancel,
-                _ => DialogAction::Confirm,
-            };
-        }
-        if *focused_field == 0 {
-            let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
-            ti.set_original_text(input.clone());
-            ti.set_cursor(*cursor_pos);
-            ti.set_scroll(*scroll_pos);
-            let action = ti.handle_input(&key);
-            *input = ti.text().to_string();
-            *cursor_pos = ti.cursor();
-            *scroll_pos = ti.scroll();
-            match action {
-                TextInputAction::Confirm => return DialogAction::Confirm,
-                TextInputAction::Cancel => return DialogAction::Cancel,
-                _ => return DialogAction::None,
-            }
-        }
-        return DialogAction::None;
+    if let DialogContent::SimpleRename(d) = &mut dialog.content {
+        return simple_rename::handle_input(d, key);
     }
 
     // PatternRename dialog — Find/Replace textboxes + Alt+R/S flag toggles + preview scroll

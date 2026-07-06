@@ -1,6 +1,7 @@
-//! Wildcard marking dialog rendering.
+//! Wildcard marking dialog rendering and input handling.
 //!
-//! Split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
+//! Input handling moved from dialog/mod.rs in M4 S5.
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -8,6 +9,64 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
+
+use crossterm::event::{KeyEvent, KeyModifiers};
+use rwf_lib::model::dialog::{DialogUiState, WildcardMarkDialog};
+
+use super::DialogAction;
+
+/// Handle key input for the Wildcard Marking dialog — identical Tab/Enter/Esc/TextInput
+/// logic as FileMask.
+pub(super) fn handle_input(dialog: &mut WildcardMarkDialog, key: KeyEvent) -> DialogAction {
+    let WildcardMarkDialog {
+        input,
+        ui:
+            DialogUiState {
+                cursor_pos,
+                scroll_pos,
+                focused_field,
+            },
+    } = dialog;
+    use crate::ui::text_input::{TextInput, TextInputAction};
+    use crossterm::event::KeyCode;
+    if key.code == KeyCode::Tab {
+        if key.modifiers.contains(KeyModifiers::SHIFT) {
+            *focused_field = if *focused_field == 0 {
+                2
+            } else {
+                *focused_field - 1
+            };
+        } else {
+            *focused_field = (*focused_field + 1) % 3;
+        }
+        return DialogAction::None;
+    }
+    if key.code == KeyCode::Esc {
+        return DialogAction::Cancel;
+    }
+    if key.code == KeyCode::Enter {
+        return match *focused_field {
+            2 => DialogAction::Cancel,
+            _ => DialogAction::Confirm,
+        };
+    }
+    if *focused_field == 0 {
+        let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
+        ti.set_original_text(input.clone());
+        ti.set_cursor(*cursor_pos);
+        ti.set_scroll(*scroll_pos);
+        let action = ti.handle_input(&key);
+        *input = ti.text().to_string();
+        *cursor_pos = ti.cursor();
+        *scroll_pos = ti.scroll();
+        match action {
+            TextInputAction::Confirm => return DialogAction::Confirm,
+            TextInputAction::Cancel => return DialogAction::Cancel,
+            _ => return DialogAction::None,
+        }
+    }
+    DialogAction::None
+}
 
 pub(super) fn render_wildcard_mark_dialog(
     frame: &mut Frame,
