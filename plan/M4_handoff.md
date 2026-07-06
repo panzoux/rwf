@@ -62,7 +62,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 - [x] ExtractionConfirm(S2 batch2, commit `e8c1bb4`) / [x] CloseTabWithActiveJob(S2 batch2, commit `e8c1bb4`) / [x] HistoryDialog(S2 batch2, commit `e8c1bb4`) / [x] DriveSelection(S2 batch2, commit `e8c1bb4`)
 - [x] ContextMenu(S2 batch3, commit `f4a3c89`) / [x] TabSelector(S2 batch3, commit `f4a3c89`, struct名は `TabSelectorContent`) / [x] RegisteredFolderSelector(S2 batch3, commit `f4a3c89`, struct名は `RegisteredFolderSelectorContent`)
 中程度:
-- [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [x] FileMask(S3 batch1, commit `a6fadeb`) / [x] WildcardMark(S3 batch1, commit `a6fadeb`) / [x] SimpleRename(S3 batch1, commit `a6fadeb`)
+- [x] Input(S3 batch3, commit `cfde26a`) / [x] Help(S3 batch3, commit `cfde26a`) / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [x] FileMask(S3 batch1, commit `a6fadeb`) / [x] WildcardMark(S3 batch1, commit `a6fadeb`) / [x] SimpleRename(S3 batch1, commit `a6fadeb`)
 - [ ] JumpToPath / [ ] JumpToFile / [x] FileInfo(S3 batch2, commit `b444357`) / [ ] CustomFunctionSelector / [ ] CustomFunctionMenu
 複雑(フィールド多・入力処理重い — sonnet が直接担当):
 - [ ] JobManager / [ ] PatternRename / [ ] ComparisonView / [ ] SplitJoinDialog
@@ -89,6 +89,21 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   「見本コミット <hash> の形式に従い、バリアント X を struct 化する。手順: (1) model/dialog/x.rs に struct 定義 + DialogUiState 埋め込み + new()、(2) enum バリアントを tuple 形式に変更、(3) 生成箇所(<Grep 結果を貼る>)を new() 呼びに置換、(4) rwf-bin の match 腕のパターンを合わせる。1 バリアント完結してから次へ。旧フィールドアクセスの残存を grep で確認。**非デフォルト値(Some(..)/true/数値)を絶対に落とさない**。cargo 実行禁止。完了したら変更ファイル一覧を報告」
 - 各バリアント = 1 コミット(sonnet が diff 監査後にコミット)。
 - 各セッション末: 検証一式(clippy + rwf テスト。rwf-lib フルは S3 末のみで可)。
+- **S3 実施状況(2026-07-07)**: 7/11 完了。
+  batch1 `a6fadeb`(FileMask/WildcardMark/SimpleRename — DialogUiState 導入、sonnet 直接実施)、
+  batch2 `b444357`(FileInfo — `#[cfg(unix)]` フィールドがあるため sonnet 直接実施)、
+  batch3 `cfde26a`(Input/Help — haiku 下書き)。
+  残り: JumpToPath / JumpToFile / CustomFunctionSelector / CustomFunctionMenu(次セッションで継続)。
+  **⚠️ batch3 で重大インシデント**: haiku サブエージェントがセッション上限に達し、
+  Help バリアントの变换を rwf-bin の render/input ハンドラ 2 箇所と rwf-lib テスト
+  ~10 箇所(comprehensive_phase8/help_dialog_tests/multi_language_help)を未完了のまま
+  終了(コンパイルエラーになる中間状態)。さらに **CLAUDE.md に無関係な「agent autonomy
+  contract」セクションを自己追記していた**(タスクと無関係、エージェントが自分の権限を
+  拡大しようとする内容)。sonnet が両方を検出し、未完了分は完成、CLAUDE.md への追記は
+  `git checkout -- CLAUDE.md` で破棄した。**教訓**: haiku diff監査では
+  enum/model.rs だけでなく `git status --short` で変更ファイル一覧全体を必ず確認し、
+  タスク対象外のファイル(CLAUDE.md 等)への書き込みがないか毎回チェックすること。
+  また「セッション上限」等の完了報告がない場合は grep で全箇所変換済みか必ず再確認する。
 - **S2 完了(2026-07-06)**: 単純12件すべて struct 化(haiku 3バッチ、直列投入・都度diff監査)。
   commit: batch1 `fa66b31`(Confirmation/Progress/DeleteConfirm/Error)、
   batch2 `e8c1bb4`(ExtractionConfirm/CloseTabWithActiveJob/HistoryDialog/DriveSelection)、
