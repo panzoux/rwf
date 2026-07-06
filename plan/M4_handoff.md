@@ -77,10 +77,10 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
    struct 定義 + `new()` + enum 変更 + 生成側置換 + rwf-bin 側 match 腕の型合わせ。各 1 コミット。
 4. このコミット 2 件が haiku への見本。見本コミットのハッシュを本ファイルに記録。
 - 完了条件: 検証一式緑(rwf-lib フルはバックグラウンド)、進捗記入、コミット。
-- **S1 実施状況(2026-07-06)**: 上記ディレクトリ化・テンプレート2件・DialogUiState 定義は完了。
+- **S1 完了(2026-07-06)**: 上記ディレクトリ化・テンプレート2件・DialogUiState 定義、検証一式すべて緑。
   `cargo fmt --check` / `cargo clippy --all-targets -D warnings` / `cargo test -p rwf --test-threads=1`
-  (145 passed, スナップショット差分ゼロ)は緑を確認済み。`cargo test -p rwf-lib --test-threads=1`
-  はバックグラウンド実行中 — 結果は次セッション冒頭で確認し、赤なら本欄に追記して対処する。
+  (145 passed, スナップショット差分ゼロ) / `cargo test -p rwf-lib --test-threads=1`(1043 passed, 0 failed)。
+  次セッションは S2(単純バリアント12件、haiku 直列投入)から開始。
 
 ### S2〜S3(sonnet + 直列 haiku): 単純・中程度バリアント
 - S2: 単純 12 件。haiku 1 体 = 4 件 × 3 体を**直列**投入。
