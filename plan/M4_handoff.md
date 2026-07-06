@@ -96,7 +96,8 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
   batch5 `f443639`(CustomFunctionSelector/CustomFunctionMenu — confirm.rs/app.rs の
   実ロジック(マクロ展開・メニュースタック処理)があるため sonnet 直接実施。
   `CustomFunctionSelectorContent` は既存の同名ヘルパー struct との衝突を避けるため命名変更)。
-  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib 対象テスト緑、
+  rwf-lib フルテストも緑(1043 passed, 0 failed)。
   次セッションは S4(複雑6バリアント、sonnet 単独)から開始。
 - **S3 実施状況(2026-07-07, 旧)**: 7/11 完了時点の記録(参考として残す)。
   batch1 `a6fadeb`(FileMask/WildcardMark/SimpleRename — DialogUiState 導入、sonnet 直接実施)、
