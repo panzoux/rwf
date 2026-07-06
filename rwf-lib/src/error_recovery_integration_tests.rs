@@ -10,7 +10,7 @@
 #[cfg(test)]
 mod tests {
     use crate::job::{JobKind, JobSpec, OpResult};
-    use crate::model::{DialogContent, ErrorType, Location};
+    use crate::model::{DialogContent, ErrorDialog, ErrorType, Location};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -112,7 +112,7 @@ mod tests {
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Permission Denied");
 
-        if let DialogContent::Error { error_type, .. } = &dialog.content {
+        if let DialogContent::Error(ErrorDialog { error_type, .. }) = &dialog.content {
             assert_eq!(*error_type, ErrorType::Permission);
         } else {
             panic!("Expected Error dialog content");

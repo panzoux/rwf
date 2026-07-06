@@ -13,7 +13,7 @@
 mod tests {
     use crate::input::{action_to_transitions, Action};
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{CustomFunction, DialogContent, Location};
+    use crate::model::{CustomFunction, DeleteConfirmDialog, DialogContent, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -228,7 +228,7 @@ mod tests {
         // Verify delete confirmation dialog
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::DeleteConfirm { targets, .. } = &dialog.content {
+        if let DialogContent::DeleteConfirm(DeleteConfirmDialog { targets, .. }) = &dialog.content {
             assert_eq!(targets.len(), 2); // 2 marked files
         } else {
             panic!("Expected DeleteConfirm dialog");

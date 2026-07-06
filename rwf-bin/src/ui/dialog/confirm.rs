@@ -3,7 +3,7 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only).
 
-use rwf_lib::model::dialog::{DialogContent, SortDialog};
+use rwf_lib::model::dialog::{DeleteConfirmDialog, DialogContent, SortDialog};
 use tracing::debug;
 
 use super::archive_ext_for_format;
@@ -500,7 +500,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
                 return Some(job_spec);
             }
-            DialogContent::DeleteConfirm { targets, .. } => {
+            DialogContent::DeleteConfirm(DeleteConfirmDialog { targets, .. }) => {
                 let locations: Vec<rwf_lib::Location> =
                     targets.iter().map(|(loc, _)| loc.clone()).collect();
                 return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Delete {

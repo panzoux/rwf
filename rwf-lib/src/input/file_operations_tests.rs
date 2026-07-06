@@ -115,7 +115,7 @@ mod tests {
                 assert!(dialog.title.contains("Delete"));
                 assert!(matches!(
                     dialog.content,
-                    crate::model::DialogContent::DeleteConfirm { .. }
+                    crate::model::DialogContent::DeleteConfirm(_)
                 ));
             }
             _ => panic!("Expected ShowDialog transition"),

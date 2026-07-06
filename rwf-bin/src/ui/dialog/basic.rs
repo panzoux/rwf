@@ -12,7 +12,7 @@ use ratatui::{
 
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
-use rwf_lib::model::dialog::{DialogContent, SortDialog};
+use rwf_lib::model::dialog::{DeleteConfirmDialog, DialogContent, ErrorDialog, SortDialog};
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
 use super::extract_confirm::ExtractionConfirmDialog;
@@ -67,12 +67,12 @@ pub(super) fn render_dialog_content(
             };
             dialog.render(frame, area, focused);
         }
-        DialogContent::DeleteConfirm { .. } => {
+        DialogContent::DeleteConfirm(_) => {
             // Rendered by the dedicated arm in render_dialog — not reached via render_dialog_content.
         }
-        DialogContent::Error {
+        DialogContent::Error(ErrorDialog {
             message, details, ..
-        } => {
+        }) => {
             use ratatui::text::{Line, Span};
             use ratatui::widgets::{Paragraph, Wrap};
             let mut lines: Vec<Line> = message
@@ -376,10 +376,10 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             // Simple confirmation - only global shortcuts apply
             DialogAction::None
         }
-        DialogContent::DeleteConfirm {
+        DialogContent::DeleteConfirm(DeleteConfirmDialog {
             targets,
             scroll_offset,
-        } => {
+        }) => {
             let total = targets.len();
             // Mirror the render-side height formula exactly (now using centered_rect_abs, no rounding loss)
             // min_content = total.min(12) + 7; min_dialog = min_content + 2 = total.min(12) + 9

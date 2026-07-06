@@ -1736,7 +1736,7 @@ impl AppState {
             Transition::ConfirmDialog => {
                 if let Some(dialog) = self.dialogs.current() {
                     match &dialog.content {
-                        crate::model::DialogContent::Confirmation { .. } => {
+                        crate::model::DialogContent::Confirmation(_) => {
                             let title = dialog.title.as_str();
                             if title == "Copy" {
                                 let sources: Vec<_> = {
@@ -1887,7 +1887,9 @@ impl AppState {
                                 ));
                             }
                         }
-                        crate::model::DialogContent::DeleteConfirm { targets, .. } => {
+                        crate::model::DialogContent::DeleteConfirm(
+                            crate::model::dialog::DeleteConfirmDialog { targets, .. },
+                        ) => {
                             let jobs_targets: Vec<_> =
                                 targets.iter().map(|(loc, _)| loc.clone()).collect();
                             if !jobs_targets.is_empty() {

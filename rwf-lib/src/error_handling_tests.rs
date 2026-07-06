@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests {
     use crate::job::{JobKind, JobSpec, OpResult};
-    use crate::model::{Dialog, DialogContent, ErrorType, Location};
+    use crate::model::{Dialog, DialogContent, ErrorDialog, ErrorType, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use std::path::PathBuf;
@@ -35,11 +35,11 @@ mod tests {
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Permission Denied");
 
-        if let DialogContent::Error {
+        if let DialogContent::Error(ErrorDialog {
             error_type,
             details,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(*error_type, ErrorType::Permission);
             assert!(details.as_ref().unwrap().contains("elevated privileges"));
@@ -74,11 +74,11 @@ mod tests {
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "File Not Found");
 
-        if let DialogContent::Error {
+        if let DialogContent::Error(ErrorDialog {
             error_type,
             message,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(*error_type, ErrorType::FileNotFound);
             assert!(message.contains("Copy failed"));
@@ -112,7 +112,7 @@ mod tests {
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Invalid Path");
 
-        if let DialogContent::Error { error_type, .. } = &dialog.content {
+        if let DialogContent::Error(ErrorDialog { error_type, .. }) = &dialog.content {
             assert_eq!(*error_type, ErrorType::InvalidPath);
         } else {
             panic!("Expected Error dialog content");
@@ -144,11 +144,11 @@ mod tests {
         let dialog = state.dialogs.current().unwrap();
         assert_eq!(dialog.title, "Operation Failed");
 
-        if let DialogContent::Error {
+        if let DialogContent::Error(ErrorDialog {
             error_type,
             message,
             ..
-        } = &dialog.content
+        }) = &dialog.content
         {
             assert_eq!(*error_type, ErrorType::OperationFailed);
             assert!(message.contains("Delete failed"));
@@ -200,7 +200,7 @@ mod tests {
 
         // Test error with details
         let error_with_details = Dialog::error_with_details("Error message", "Additional details");
-        if let DialogContent::Error { details, .. } = &error_with_details.content {
+        if let DialogContent::Error(ErrorDialog { details, .. }) = &error_with_details.content {
             assert_eq!(details.as_ref().unwrap(), "Additional details");
         } else {
             panic!("Expected Error dialog content");
@@ -209,7 +209,7 @@ mod tests {
         // Test permission error
         let perm_error = Dialog::permission_error("Cannot access file");
         assert_eq!(perm_error.title, "Permission Denied");
-        if let DialogContent::Error { error_type, .. } = &perm_error.content {
+        if let DialogContent::Error(ErrorDialog { error_type, .. }) = &perm_error.content {
             assert_eq!(*error_type, ErrorType::Permission);
         } else {
             panic!("Expected Error dialog content");

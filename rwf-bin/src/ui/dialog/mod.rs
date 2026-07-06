@@ -65,7 +65,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::{Dialog, DialogContent, SortDialog};
+use rwf_lib::model::dialog::{DeleteConfirmDialog, Dialog, DialogContent, ErrorDialog, SortDialog};
 use tracing::debug;
 
 use super::smart_truncate;
@@ -147,7 +147,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Extraction dialog: ~6 lines content
             6u16
         }
-        DialogContent::DeleteConfirm { targets, .. } => {
+        DialogContent::DeleteConfirm(DeleteConfirmDialog { targets, .. }) => {
             // layout: header(1)+blank(1)+list(N≤12) | spacer(1) | hint(1) | buttons(3)
             // min_content = (N+2) + 1 + 1 + 3 = N + 7
             (targets.len().min(12) as u16 + 7).max(10)
@@ -227,7 +227,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // tab bar(1) + search(1) + entries + hint(1), min 8
             20u16
         }
-        DialogContent::Error { message, .. } => {
+        DialogContent::Error(ErrorDialog { message, .. }) => {
             // message lines + blank(1) + buttons(3), min 5
             (message.lines().count() as u16 + 4).max(5)
         }
@@ -259,7 +259,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::CustomFunctionSelector { .. }
         | DialogContent::JumpToPath { .. }
         | DialogContent::JumpToFile { .. }
-        | DialogContent::DeleteConfirm { .. } => {
+        | DialogContent::DeleteConfirm(_) => {
             let percent_height = (screen_height * 80) / 100;
             percent_height
                 .max(min_dialog_height)
@@ -280,7 +280,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::SimpleRename { .. }
         | DialogContent::FileInfo { .. }
         | DialogContent::ExtractionConfirm { .. }
-        | DialogContent::Error { .. }
+        | DialogContent::Error(_)
         | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
@@ -683,10 +683,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 language,
             );
         }
-        DialogContent::DeleteConfirm {
+        DialogContent::DeleteConfirm(DeleteConfirmDialog {
             targets,
             scroll_offset,
-        } => {
+        }) => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -2022,7 +2022,7 @@ pub fn handle_dialog_input(
     }
 
     // Error dialog — any key dismisses (only OK button, Cancel removed)
-    if matches!(&dialog.content, DialogContent::Error { .. }) {
+    if matches!(&dialog.content, DialogContent::Error(_)) {
         return DialogAction::Confirm;
     }
 

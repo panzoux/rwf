@@ -7,9 +7,17 @@ pub use crate::job::PipeToAction;
 use crate::model::Location;
 use std::collections::HashMap;
 
+mod confirmation;
+mod delete_confirm;
+mod error;
+mod progress;
 mod sort;
 mod version;
 
+pub use confirmation::ConfirmationDialog;
+pub use delete_confirm::DeleteConfirmDialog;
+pub use error::ErrorDialog;
+pub use progress::ProgressDialog;
 pub use sort::SortDialog;
 pub use version::VersionDialog;
 
@@ -149,9 +157,7 @@ pub struct Dialog {
 /// Dialog content types
 #[derive(Debug, Clone)]
 pub enum DialogContent {
-    Confirmation {
-        message: String,
-    },
+    Confirmation(ConfirmationDialog),
     Input {
         prompt: String,
         default_value: String,
@@ -159,11 +165,7 @@ pub enum DialogContent {
         cursor_pos: usize,
         scroll_pos: usize,
     },
-    Progress {
-        operation: String,
-        progress: f64,
-        details: String,
-    },
+    Progress(ProgressDialog),
     Help {
         /// All built-in + custom function help entries (built at dialog-open time)
         entries: Vec<HelpEntry>,
@@ -232,13 +234,7 @@ pub enum DialogContent {
         /// true=show all files, false=matching files only; Alt+A toggles
         show_all: bool,
     },
-    Error {
-        message: String,
-        details: Option<String>,
-        error_type: ErrorType,
-        /// 0=OK (default), 1=Cancel — both buttons just dismiss the dialog
-        focused_button: usize,
-    },
+    Error(ErrorDialog),
     ComparisonView {
         diff: crate::job::FileDiff,
         scroll_offset: usize,
@@ -325,11 +321,7 @@ pub enum DialogContent {
         dest: crate::model::Location,
         file_count: usize,
     },
-    DeleteConfirm {
-        /// (location, is_dir) pairs to be deleted
-        targets: Vec<(crate::model::Location, bool)>,
-        scroll_offset: usize,
-    },
+    DeleteConfirm(DeleteConfirmDialog),
     Version(VersionDialog),
     SortDialog(SortDialog),
     /// File mask filter dialog — single text input for a wildcard pattern
@@ -630,9 +622,7 @@ impl Dialog {
     pub fn confirmation(title: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             title: title.into(),
-            content: DialogContent::Confirmation {
-                message: message.into(),
-            },
+            content: DialogContent::Confirmation(ConfirmationDialog::new(message.into())),
         }
     }
 
@@ -665,11 +655,11 @@ impl Dialog {
     ) -> Self {
         Self {
             title: title.into(),
-            content: DialogContent::Progress {
-                operation: operation.into(),
+            content: DialogContent::Progress(ProgressDialog::new(
+                operation.into(),
                 progress,
-                details: details.into(),
-            },
+                details.into(),
+            )),
         }
     }
 
@@ -1147,12 +1137,11 @@ impl Dialog {
     pub fn error(message: impl Into<String>) -> Self {
         Self {
             title: "Error".to_string(),
-            content: DialogContent::Error {
-                message: message.into(),
-                details: None,
-                error_type: ErrorType::General,
-                focused_button: 0,
-            },
+            content: DialogContent::Error(ErrorDialog::new(
+                message.into(),
+                None,
+                ErrorType::General,
+            )),
         }
     }
 
@@ -1160,12 +1149,11 @@ impl Dialog {
     pub fn error_with_details(message: impl Into<String>, details: impl Into<String>) -> Self {
         Self {
             title: "Error".to_string(),
-            content: DialogContent::Error {
-                message: message.into(),
-                details: Some(details.into()),
-                error_type: ErrorType::General,
-                focused_button: 0,
-            },
+            content: DialogContent::Error(ErrorDialog::new(
+                message.into(),
+                Some(details.into()),
+                ErrorType::General,
+            )),
         }
     }
 
@@ -1173,12 +1161,11 @@ impl Dialog {
     pub fn permission_error(message: impl Into<String>) -> Self {
         Self {
             title: "Permission Denied".to_string(),
-            content: DialogContent::Error {
-                message: message.into(),
-                details: Some("This operation requires elevated privileges.".to_string()),
-                error_type: ErrorType::Permission,
-                focused_button: 0,
-            },
+            content: DialogContent::Error(ErrorDialog::new(
+                message.into(),
+                Some("This operation requires elevated privileges.".to_string()),
+                ErrorType::Permission,
+            )),
         }
     }
 
@@ -1186,12 +1173,11 @@ impl Dialog {
     pub fn file_not_found_error(path: impl Into<String>) -> Self {
         Self {
             title: "File Not Found".to_string(),
-            content: DialogContent::Error {
-                message: format!("The file or directory could not be found: {}", path.into()),
-                details: None,
-                error_type: ErrorType::FileNotFound,
-                focused_button: 0,
-            },
+            content: DialogContent::Error(ErrorDialog::new(
+                format!("The file or directory could not be found: {}", path.into()),
+                None,
+                ErrorType::FileNotFound,
+            )),
         }
     }
 
@@ -1199,12 +1185,11 @@ impl Dialog {
     pub fn invalid_path_error(path: impl Into<String>) -> Self {
         Self {
             title: "Invalid Path".to_string(),
-            content: DialogContent::Error {
-                message: format!("The path is invalid: {}", path.into()),
-                details: None,
-                error_type: ErrorType::InvalidPath,
-                focused_button: 0,
-            },
+            content: DialogContent::Error(ErrorDialog::new(
+                format!("The path is invalid: {}", path.into()),
+                None,
+                ErrorType::InvalidPath,
+            )),
         }
     }
 
@@ -1238,12 +1223,11 @@ impl Dialog {
 
         Self {
             title: title.to_string(),
-            content: DialogContent::Error {
-                message: format!("{} failed: {}", operation, error_message),
+            content: DialogContent::Error(ErrorDialog::new(
+                format!("{} failed: {}", operation, error_message),
                 details,
                 error_type,
-                focused_button: 0,
-            },
+            )),
         }
     }
 
@@ -1347,10 +1331,7 @@ impl Dialog {
         };
         Self {
             title,
-            content: DialogContent::DeleteConfirm {
-                targets,
-                scroll_offset: 0,
-            },
+            content: DialogContent::DeleteConfirm(DeleteConfirmDialog::new(targets)),
         }
     }
 }
