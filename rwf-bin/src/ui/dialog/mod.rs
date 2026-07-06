@@ -65,7 +65,10 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::{DeleteConfirmDialog, Dialog, DialogContent, ErrorDialog, SortDialog};
+use rwf_lib::model::dialog::{
+    CloseTabWithActiveJobDialog, DeleteConfirmDialog, Dialog, DialogContent, DriveSelectionDialog,
+    ErrorDialog, HistoryDialogContent, SortDialog,
+};
 use tracing::debug;
 
 use super::smart_truncate;
@@ -143,7 +146,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Calculate from actual layout constraints
             crate::ui::dialog::compression::calculate_compression_dialog_min_height()
         }
-        DialogContent::ExtractionConfirm { .. } => {
+        DialogContent::ExtractionConfirm(_) => {
             // Extraction dialog: ~6 lines content
             6u16
         }
@@ -172,12 +175,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // prompt(1) + textbox(1) + hint(1) + spacer(1) + buttons(1) = 5
             5u16
         }
-        DialogContent::HistoryDialog {
+        DialogContent::HistoryDialog(HistoryDialogContent {
             left_entries,
             right_entries,
             active_pane,
             ..
-        } => {
+        }) => {
             use rwf_lib::model::ui::ActivePane;
             let len = match active_pane {
                 ActivePane::Left => left_entries.len(),
@@ -185,7 +188,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             (len as u16 + 2).max(5)
         }
-        DialogContent::DriveSelection { drives, .. } => {
+        DialogContent::DriveSelection(DriveSelectionDialog { drives, .. }) => {
             // list + hint(1) + search(1)
             (drives.len() as u16 + 2).max(6)
         }
@@ -251,8 +254,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Use exact minimum height, but ensure it fits on screen
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
-        DialogContent::HistoryDialog { .. }
-        | DialogContent::DriveSelection { .. }
+        DialogContent::HistoryDialog(_)
+        | DialogContent::DriveSelection(_)
         | DialogContent::PatternRename { .. }
         | DialogContent::Help { .. }
         | DialogContent::RegisteredFolderSelector { .. }
@@ -279,7 +282,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::WildcardMark { .. }
         | DialogContent::SimpleRename { .. }
         | DialogContent::FileInfo { .. }
-        | DialogContent::ExtractionConfirm { .. }
+        | DialogContent::ExtractionConfirm(_)
         | DialogContent::Error(_)
         | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
@@ -305,7 +308,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let w80 = (screen_width * 80) / 100;
             64u16.max(w80).min(screen_width.saturating_sub(2)).max(40)
         }
-        DialogContent::DriveSelection { .. } | DialogContent::RegisteredFolderSelector { .. } => {
+        DialogContent::DriveSelection(_) | DialogContent::RegisteredFolderSelector { .. } => {
             60u16.min(screen_width.saturating_sub(2)).max(40)
         }
         DialogContent::CustomFunctionSelector { .. } => ((screen_width * 70) / 100)
@@ -362,12 +365,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             render_job_manager_dialog(frame, content_area, state, &dialog_state);
         }
-        DialogContent::CloseTabWithActiveJob {
+        DialogContent::CloseTabWithActiveJob(CloseTabWithActiveJobDialog {
             tab_name,
             job_ids,
             focused_field,
             ..
-        } => {
+        }) => {
             // Render Close Tab confirmation dialog with buttons (compact layout)
             let job_list = if job_ids.len() == 1 {
                 format!("Job #{} is still running.", job_ids[0])
@@ -482,7 +485,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *focused_field,
             );
         }
-        DialogContent::HistoryDialog {
+        DialogContent::HistoryDialog(HistoryDialogContent {
             left_entries,
             right_entries,
             left_selected,
@@ -490,7 +493,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             left_current_pos,
             right_current_pos,
             active_pane,
-        } => {
+        }) => {
             use rwf_lib::model::ui::ActivePane;
             let (entries, selected, current_pos) = match active_pane {
                 ActivePane::Left => (left_entries.as_slice(), *left_selected, *left_current_pos),
@@ -502,11 +505,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             render_history_dialog(frame, content_area, entries, selected, current_pos);
         }
-        DialogContent::DriveSelection {
+        DialogContent::DriveSelection(DriveSelectionDialog {
             drives,
             selected_index,
             filter,
-        } => {
+        }) => {
             render_drive_selection_dialog(frame, content_area, drives, *selected_index, filter);
         }
         DialogContent::RegisteredFolderSelector {
@@ -837,7 +840,10 @@ pub fn handle_dialog_input(
     }
 
     // CloseTabWithActiveJob dialog - Enter confirms, Escape cancels, Tab cycles
-    if let DialogContent::CloseTabWithActiveJob { focused_field, .. } = &mut dialog.content {
+    if let DialogContent::CloseTabWithActiveJob(CloseTabWithActiveJobDialog {
+        focused_field, ..
+    }) = &mut dialog.content
+    {
         if key.code == crossterm::event::KeyCode::Enter {
             return DialogAction::Confirm;
         }
@@ -1358,11 +1364,11 @@ pub fn handle_dialog_input(
 
     // HistoryDialog — Up/Down/j/k: navigate, Tab/Left/Right/h/l: switch pane, Enter: jump, Esc: cancel
     // DriveSelection dialog — incremental search + arrow navigation
-    if let DialogContent::DriveSelection {
+    if let DialogContent::DriveSelection(DriveSelectionDialog {
         drives,
         selected_index,
         filter,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         let filtered_count = if filter.is_empty() {
@@ -1881,14 +1887,17 @@ pub fn handle_dialog_input(
         return DialogAction::None;
     }
 
-    if matches!(&dialog.content, DialogContent::HistoryDialog { .. }) {
+    if matches!(&dialog.content, DialogContent::HistoryDialog(_)) {
         use crossterm::event::KeyCode;
         use rwf_lib::model::ui::ActivePane;
 
         // ── Pane switch (Tab, Left arrow, Right arrow, h, l) ──────────────
         let switch_to: Option<ActivePane> = match key.code {
             KeyCode::Tab => {
-                let cur = if let DialogContent::HistoryDialog { active_pane, .. } = &dialog.content
+                let cur = if let DialogContent::HistoryDialog(HistoryDialogContent {
+                    active_pane,
+                    ..
+                }) = &dialog.content
                 {
                     *active_pane
                 } else {
@@ -1906,7 +1915,9 @@ pub fn handle_dialog_input(
 
         if let Some(new_pane) = switch_to {
             // update content
-            if let DialogContent::HistoryDialog { active_pane, .. } = &mut dialog.content {
+            if let DialogContent::HistoryDialog(HistoryDialogContent { active_pane, .. }) =
+                &mut dialog.content
+            {
                 *active_pane = new_pane;
             }
             // update title separately (no borrow conflict — different fields)
@@ -1922,14 +1933,14 @@ pub fn handle_dialog_input(
         }
 
         // ── Cursor navigation ──────────────────────────────────────────────
-        if let DialogContent::HistoryDialog {
+        if let DialogContent::HistoryDialog(HistoryDialogContent {
             left_entries,
             right_entries,
             left_selected,
             right_selected,
             active_pane,
             ..
-        } = &mut dialog.content
+        }) = &mut dialog.content
         {
             let (sel, total) = match active_pane {
                 ActivePane::Left => (left_selected, left_entries.len()),

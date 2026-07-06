@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{ContextMenuAction, Dialog, DialogContent, Location};
+    use crate::model::{ContextMenuAction, Dialog, DialogContent, DriveSelectionDialog, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use std::path::PathBuf;
@@ -106,11 +106,11 @@ mod tests {
                 "title must start with 'Select Drive'"
             );
 
-            if let DialogContent::DriveSelection {
+            if let DialogContent::DriveSelection(DriveSelectionDialog {
                 drives: _,
                 selected_index,
                 ..
-            } = &dialog.content
+            }) = &dialog.content
             {
                 assert_eq!(selected_index, &0);
                 // Note: drives may be empty in test environment, but the dialog should still be shown
@@ -134,7 +134,9 @@ mod tests {
 
         // Get the dialog
         if let Some(dialog) = state.dialogs.current() {
-            if let DialogContent::DriveSelection { drives, .. } = &dialog.content {
+            if let DialogContent::DriveSelection(DriveSelectionDialog { drives, .. }) =
+                &dialog.content
+            {
                 // In a real environment, this would list actual drives
                 // In test environment, it may be empty or have mock drives
                 // The important thing is that the structure is correct

@@ -3,7 +3,10 @@
 //!
 //! Split from dialog/mod.rs in M3 (move-only).
 
-use rwf_lib::model::dialog::{DeleteConfirmDialog, DialogContent, SortDialog};
+use rwf_lib::model::dialog::{
+    DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
+    HistoryDialogContent, SortDialog,
+};
 use tracing::debug;
 
 use super::archive_ext_for_format;
@@ -233,11 +236,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::DriveSelection {
+            DialogContent::DriveSelection(DriveSelectionDialog {
                 drives,
                 selected_index,
                 filter,
-            } => {
+            }) => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::DriveInfo> = if filter.is_empty() {
                     drives.iter().collect()
@@ -262,14 +265,14 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::HistoryDialog {
+            DialogContent::HistoryDialog(HistoryDialogContent {
                 left_entries,
                 right_entries,
                 left_selected,
                 right_selected,
                 active_pane,
                 ..
-            } => {
+            }) => {
                 use rwf_lib::model::ui::ActivePane;
                 let (entries, selected_index, pane) = match active_pane {
                     ActivePane::Left => (left_entries.as_slice(), *left_selected, ActivePane::Left),
@@ -491,7 +494,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
                 return Some(job_spec);
             }
-            DialogContent::ExtractionConfirm { archive, dest, .. } => {
+            DialogContent::ExtractionConfirm(ExtractionConfirmDialog { archive, dest, .. }) => {
                 // Create extraction job - dest is already a Location
                 let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExtractArchive {
                     archive: archive.clone(),

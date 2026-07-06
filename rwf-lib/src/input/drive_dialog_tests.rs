@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::{DriveInfo, DriveType};
+    use crate::model::dialog::{DriveInfo, DriveSelectionDialog, DriveType};
     use crate::model::Location;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
@@ -80,7 +80,7 @@ mod tests {
         assert!(
             matches!(
                 dialog.content,
-                crate::model::dialog::DialogContent::DriveSelection { .. }
+                crate::model::dialog::DialogContent::DriveSelection(_)
             ),
             "must be DriveSelection dialog"
         );
@@ -103,7 +103,10 @@ mod tests {
         let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content
+        if let crate::model::dialog::DialogContent::DriveSelection(DriveSelectionDialog {
+            drives,
+            ..
+        }) = &dialog.content
         {
             assert!(!drives.is_empty(), "drive list must not be empty");
             assert_eq!(
@@ -139,7 +142,10 @@ mod tests {
 
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { drives, .. } = &dialog.content
+        if let crate::model::dialog::DialogContent::DriveSelection(DriveSelectionDialog {
+            drives,
+            ..
+        }) = &dialog.content
         {
             let paths: Vec<&str> = drives.iter().map(|d| d.path.as_str()).collect();
             assert!(
@@ -161,7 +167,10 @@ mod tests {
         let mut state = test_state();
         open_drive_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::DriveSelection { filter, .. } = &dialog.content
+        if let crate::model::dialog::DialogContent::DriveSelection(DriveSelectionDialog {
+            filter,
+            ..
+        }) = &dialog.content
         {
             assert_eq!(filter, "", "initial filter must be empty");
         } else {

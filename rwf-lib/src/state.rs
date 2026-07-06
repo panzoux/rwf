@@ -1935,11 +1935,13 @@ impl AppState {
                                 Transition::SetFileMask { pane, mask },
                             ));
                         }
-                        crate::model::DialogContent::DriveSelection {
-                            drives,
-                            selected_index,
-                            filter,
-                        } => {
+                        crate::model::DialogContent::DriveSelection(
+                            crate::model::dialog::DriveSelectionDialog {
+                                drives,
+                                selected_index,
+                                filter,
+                            },
+                        ) => {
                             let lower = filter.to_lowercase();
                             let filtered: Vec<&crate::model::dialog::DriveInfo> =
                                 if filter.is_empty() {

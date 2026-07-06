@@ -54,10 +54,12 @@ fn drive_selection_mixed_types_middle_selected() {
         },
     ];
     let mut dialog = Dialog::drive_selection(drives, ActivePane::Right);
-    if let rwf_lib::model::dialog::DialogContent::DriveSelection {
-        ref mut selected_index,
-        ..
-    } = dialog.content
+    if let rwf_lib::model::dialog::DialogContent::DriveSelection(
+        rwf_lib::model::dialog::DriveSelectionDialog {
+            ref mut selected_index,
+            ..
+        },
+    ) = dialog.content
     {
         *selected_index = 1;
     }
@@ -91,8 +93,9 @@ fn drive_selection_with_filter() {
         },
     ];
     let mut dialog = Dialog::drive_selection(drives, ActivePane::Left);
-    if let rwf_lib::model::dialog::DialogContent::DriveSelection { ref mut filter, .. } =
-        dialog.content
+    if let rwf_lib::model::dialog::DialogContent::DriveSelection(
+        rwf_lib::model::dialog::DriveSelectionDialog { ref mut filter, .. },
+    ) = dialog.content
     {
         *filter = "d".to_string();
     }

@@ -7,16 +7,24 @@ pub use crate::job::PipeToAction;
 use crate::model::Location;
 use std::collections::HashMap;
 
+mod close_tab_with_active_job;
 mod confirmation;
 mod delete_confirm;
+mod drive_selection;
 mod error;
+mod extraction_confirm;
+mod history_dialog;
 mod progress;
 mod sort;
 mod version;
 
+pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use confirmation::ConfirmationDialog;
 pub use delete_confirm::DeleteConfirmDialog;
+pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
+pub use extraction_confirm::ExtractionConfirmDialog;
+pub use history_dialog::HistoryDialogContent;
 pub use progress::ProgressDialog;
 pub use sort::SortDialog;
 pub use version::VersionDialog;
@@ -188,12 +196,7 @@ pub enum DialogContent {
         selected_index: usize,
         focused_field: usize, // 0=Job List, 1=Close, 2=Cancel
     },
-    CloseTabWithActiveJob {
-        tab_index: usize,
-        tab_name: String,
-        job_ids: Vec<u32>,    // Short IDs of active jobs in this tab
-        focused_field: usize, // 0=OK, 1=Cancel
-    },
+    CloseTabWithActiveJob(CloseTabWithActiveJobDialog),
     CustomFunctionSelector {
         functions: Vec<CustomFunction>,
         filter: String,
@@ -247,11 +250,7 @@ pub enum DialogContent {
         options: Vec<ContextMenuOption>,
         selected_index: usize,
     },
-    DriveSelection {
-        drives: Vec<DriveInfo>,
-        selected_index: usize,
-        filter: String,
-    },
+    DriveSelection(DriveSelectionDialog),
     FileInfo {
         file_name: String,
         file_path: String,
@@ -316,11 +315,7 @@ pub enum DialogContent {
         history: Vec<String>,
         history_index: usize,
     },
-    ExtractionConfirm {
-        archive: crate::model::Location,
-        dest: crate::model::Location,
-        file_count: usize,
-    },
+    ExtractionConfirm(ExtractionConfirmDialog),
     DeleteConfirm(DeleteConfirmDialog),
     Version(VersionDialog),
     SortDialog(SortDialog),
@@ -350,15 +345,7 @@ pub enum DialogContent {
         focused_field: usize,
     },
     /// Navigation history list — holds both panes, switches with Tab/h/l
-    HistoryDialog {
-        left_entries: Vec<Location>,
-        right_entries: Vec<Location>,
-        left_selected: usize,
-        right_selected: usize,
-        left_current_pos: usize,
-        right_current_pos: usize,
-        active_pane: crate::model::ui::ActivePane,
-    },
+    HistoryDialog(HistoryDialogContent),
     /// Jump to Directory dialog — AND-filtered directory suggestions
     JumpToPath {
         query: String,
@@ -904,11 +891,7 @@ impl Dialog {
         };
         Self {
             title: format!("Select Drive [{}]", pane_label),
-            content: DialogContent::DriveSelection {
-                drives,
-                selected_index: 0,
-                filter: String::new(),
-            },
+            content: DialogContent::DriveSelection(DriveSelectionDialog::new(drives)),
         }
     }
 
@@ -1109,15 +1092,13 @@ impl Dialog {
         };
         Self {
             title: format!("History [Tab {} | {}]", tab_index + 1, pane_label),
-            content: DialogContent::HistoryDialog {
-                left_selected: left_current_pos,
-                right_selected: right_current_pos,
-                left_current_pos,
-                right_current_pos,
+            content: DialogContent::HistoryDialog(HistoryDialogContent::new(
                 left_entries,
                 right_entries,
+                left_current_pos,
+                right_current_pos,
                 active_pane,
-            },
+            )),
         }
     }
 
@@ -1313,11 +1294,9 @@ impl Dialog {
     ) -> Self {
         Self {
             title: "Extract Archive".to_string(),
-            content: DialogContent::ExtractionConfirm {
-                archive,
-                dest,
-                file_count,
-            },
+            content: DialogContent::ExtractionConfirm(ExtractionConfirmDialog::new(
+                archive, dest, file_count,
+            )),
         }
     }
 
@@ -1347,7 +1326,7 @@ impl DialogContent {
                 | DialogContent::TabSelector { .. }
                 | DialogContent::PatternRename { .. }
                 | DialogContent::ContextMenu { .. }
-                | DialogContent::DriveSelection { .. }
+                | DialogContent::DriveSelection(_)
         )
     }
 
@@ -1360,7 +1339,7 @@ impl DialogContent {
                 | DialogContent::TabSelector { .. }
                 | DialogContent::JobManager { .. }
                 | DialogContent::ContextMenu { .. }
-                | DialogContent::DriveSelection { .. }
+                | DialogContent::DriveSelection(_)
         )
     }
 
@@ -1371,8 +1350,10 @@ impl DialogContent {
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
             | DialogContent::TabSelector { selected_index, .. }
-            | DialogContent::ContextMenu { selected_index, .. }
-            | DialogContent::DriveSelection { selected_index, .. } => Some(*selected_index),
+            | DialogContent::ContextMenu { selected_index, .. } => Some(*selected_index),
+            DialogContent::DriveSelection(DriveSelectionDialog { selected_index, .. }) => {
+                Some(*selected_index)
+            }
             _ => None,
         }
     }
@@ -1384,8 +1365,10 @@ impl DialogContent {
             | DialogContent::CustomFunctionSelector { selected_index, .. }
             | DialogContent::RegisteredFolderSelector { selected_index, .. }
             | DialogContent::TabSelector { selected_index, .. }
-            | DialogContent::ContextMenu { selected_index, .. }
-            | DialogContent::DriveSelection { selected_index, .. } => {
+            | DialogContent::ContextMenu { selected_index, .. } => {
+                *selected_index = new_index;
+            }
+            DialogContent::DriveSelection(DriveSelectionDialog { selected_index, .. }) => {
                 *selected_index = new_index;
             }
             _ => {}
@@ -1396,8 +1379,8 @@ impl DialogContent {
     pub fn filter(&self) -> Option<&str> {
         match self {
             DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. }
-            | DialogContent::DriveSelection { filter, .. } => Some(filter),
+            | DialogContent::RegisteredFolderSelector { filter, .. } => Some(filter),
+            DialogContent::DriveSelection(DriveSelectionDialog { filter, .. }) => Some(filter),
             _ => None,
         }
     }
@@ -1406,8 +1389,10 @@ impl DialogContent {
     pub fn set_filter(&mut self, new_filter: String) {
         match self {
             DialogContent::CustomFunctionSelector { filter, .. }
-            | DialogContent::RegisteredFolderSelector { filter, .. }
-            | DialogContent::DriveSelection { filter, .. } => {
+            | DialogContent::RegisteredFolderSelector { filter, .. } => {
+                *filter = new_filter;
+            }
+            DialogContent::DriveSelection(DriveSelectionDialog { filter, .. }) => {
                 *filter = new_filter;
             }
             _ => {}
@@ -2154,11 +2139,11 @@ impl DialogContent {
     /// Get drive selection data if this is a drive selection dialog
     pub fn as_drive_selection(&self) -> Option<(&[DriveInfo], usize, &str)> {
         match self {
-            DialogContent::DriveSelection {
+            DialogContent::DriveSelection(DriveSelectionDialog {
                 drives,
                 selected_index,
                 filter,
-            } => Some((drives, *selected_index, filter.as_str())),
+            }) => Some((drives, *selected_index, filter.as_str())),
             _ => None,
         }
     }
@@ -2168,11 +2153,11 @@ impl DialogContent {
         &mut self,
     ) -> Option<(&mut Vec<DriveInfo>, &mut usize, &mut String)> {
         match self {
-            DialogContent::DriveSelection {
+            DialogContent::DriveSelection(DriveSelectionDialog {
                 drives,
                 selected_index,
                 filter,
-            } => Some((drives, selected_index, filter)),
+            }) => Some((drives, selected_index, filter)),
             _ => None,
         }
     }

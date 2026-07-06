@@ -12,7 +12,10 @@ use ratatui::{
 
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
-use rwf_lib::model::dialog::{DeleteConfirmDialog, DialogContent, ErrorDialog, SortDialog};
+use rwf_lib::model::dialog::{
+    DeleteConfirmDialog, DialogContent, ErrorDialog,
+    ExtractionConfirmDialog as RwfExtractionConfirmDialog, SortDialog,
+};
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
 use super::extract_confirm::ExtractionConfirmDialog;
@@ -55,11 +58,11 @@ pub(super) fn render_dialog_content(
             render_compression_dialog(frame, area, &state, focused);
         }
 
-        DialogContent::ExtractionConfirm {
+        DialogContent::ExtractionConfirm(RwfExtractionConfirmDialog {
             archive,
             dest,
             file_count,
-        } => {
+        }) => {
             let dialog = ExtractionConfirmDialog {
                 archive_name: archive.display_path(),
                 dest_path: dest.display_path(),
@@ -372,7 +375,7 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             DialogAction::None
         }
 
-        DialogContent::ExtractionConfirm { .. } => {
+        DialogContent::ExtractionConfirm(_) => {
             // Simple confirmation - only global shortcuts apply
             DialogAction::None
         }
