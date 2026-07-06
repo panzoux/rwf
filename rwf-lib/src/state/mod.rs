@@ -5,6 +5,8 @@
 
 #![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
 
+mod handlers;
+
 use crate::job::{BackgroundJobManager, JobId, JobManager, JobSpec};
 use crate::log_manager::LogManager;
 use crate::model::{
@@ -804,50 +806,6 @@ impl AppState {
                 } else {
                     Some(StateUpdateResult::none())
                 }
-            }
-            _ => None,
-        }
-    }
-
-    fn handle_marking_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
-        match transition {
-            Transition::ToggleMark { location } => {
-                self.active_pane_mut().marking.toggle(location.clone());
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::MarkAll => {
-                let entries = self.active_pane().entries.clone();
-                self.active_pane_mut().marking.mark_all(&entries);
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::UnmarkAll => {
-                self.active_pane_mut().marking.unmark_all();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::MarkPattern { pattern } => {
-                let entries = self.active_pane().entries.clone();
-                self.active_pane_mut()
-                    .marking
-                    .mark_pattern(&entries, pattern);
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::MarkRange { start, end } => {
-                let entries = self.active_pane().entries.clone();
-                self.active_pane_mut()
-                    .marking
-                    .mark_range(&entries, *start, *end);
-                self.ui.range_marking_start = None;
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::InvertMarks => {
-                let entries = self.active_pane().entries.clone();
-                self.active_pane_mut().marking.invert_marks(&entries);
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::EnterRangeMarkingMode => {
-                let cursor = self.active_pane().cursor;
-                self.ui.range_marking_start = Some(cursor);
-                Some(StateUpdateResult::with_ui_change())
             }
             _ => None,
         }
@@ -2290,115 +2248,6 @@ impl AppState {
             Transition::OpenWithEditor { path } => {
                 let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone(), false));
                 Some(StateUpdateResult::with_job(job_spec))
-            }
-            _ => None,
-        }
-    }
-
-    fn handle_view_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
-        match transition {
-            Transition::ChangeSortMode { pane, mode } => {
-                let tab = self.current_tab_mut();
-                let pane_model = match pane {
-                    crate::model::ActivePane::Left => &mut tab.left_pane,
-                    crate::model::ActivePane::Right => &mut tab.right_pane,
-                };
-                pane_model.sort_mode = *mode;
-                pane_model.apply_sort();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::ChangeSortOrder { pane, order } => {
-                let tab = self.current_tab_mut();
-                let pane_model = match pane {
-                    crate::model::ActivePane::Left => &mut tab.left_pane,
-                    crate::model::ActivePane::Right => &mut tab.right_pane,
-                };
-                pane_model.sort_order = *order;
-                pane_model.apply_sort();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::ChangeDisplayMode { pane, mode } => {
-                let tab = self.current_tab_mut();
-                let pane_model = match pane {
-                    crate::model::ActivePane::Left => &mut tab.left_pane,
-                    crate::model::ActivePane::Right => &mut tab.right_pane,
-                };
-                pane_model.display_mode = *mode;
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::SetFileMask { pane, mask } => {
-                let pane_height = self.ui.layout.pane_height;
-                let scroll_offset = self.config.ui.scroll_offset;
-                let tab = self.current_tab_mut();
-                let pane_model = match pane {
-                    crate::model::ActivePane::Left => &mut tab.left_pane,
-                    crate::model::ActivePane::Right => &mut tab.right_pane,
-                };
-                pane_model.file_mask = mask.clone();
-                pane_model.apply_current_filter();
-                pane_model.update_scroll(pane_height, scroll_offset);
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::ToggleHidden => {
-                self.ui.show_hidden = !self.ui.show_hidden;
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::Refresh { pane }
-            | Transition::RefreshAndClearMarks { pane }
-            | Transition::RefreshNoClearMarks { pane } => {
-                if let Transition::RefreshAndClearMarks { .. } = transition {
-                    let cleared_pane = *pane;
-                    let tab = self.current_tab_mut();
-                    match cleared_pane {
-                        crate::model::ActivePane::Left => tab.left_pane.marking.unmark_all(),
-                        crate::model::ActivePane::Right => tab.right_pane.marking.unmark_all(),
-                    }
-                }
-                let tab = self.current_tab_mut();
-                let tab_id = tab.id;
-                let (location, pane_model) = match pane {
-                    crate::model::ActivePane::Left => {
-                        (tab.left_pane.current_location.clone(), &mut tab.left_pane)
-                    }
-                    crate::model::ActivePane::Right => {
-                        (tab.right_pane.current_location.clone(), &mut tab.right_pane)
-                    }
-                };
-                let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory { location })
-                    .with_requesting_pane(tab_id, *pane);
-                pane_model.is_loading = true;
-                pane_model.active_job_id = Some(job_spec.id);
-                Some(StateUpdateResult::with_job(job_spec))
-            }
-            _ => None,
-        }
-    }
-
-    fn handle_search_transition(&mut self, transition: &Transition) -> Option<StateUpdateResult> {
-        match transition {
-            Transition::StartSearch { query } => {
-                self.search.start_search(query.clone());
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::UpdateSearchQuery { query } => {
-                self.search.query = query.clone();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::UpdateSearchResults { results } => {
-                self.search.results = results.clone();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::NextSearchResult => {
-                self.search.next_result();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::PrevSearchResult => {
-                self.search.prev_result();
-                Some(StateUpdateResult::with_ui_change())
-            }
-            Transition::ClearSearch => {
-                self.search.clear();
-                Some(StateUpdateResult::with_ui_change())
             }
             _ => None,
         }
