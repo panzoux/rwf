@@ -37,14 +37,15 @@ mod cache_properties;
 pub use cache::{CacheStats, CachedDirectory, DirectoryCache};
 pub use dialog::{
     CloseTabWithActiveJobDialog, ConfirmationDialog, ContextMenuAction, ContextMenuDialog,
-    ContextMenuOption, CustomFunction, CustomFunctionSelector, DeleteConfirmDialog, Dialog,
-    DialogContent, DialogStack, DialogUiState, DriveInfo, DriveSelectionDialog, DriveType,
-    ErrorDialog, ErrorType, ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
-    HistoryDialogContent, InputDialog, JobInfo, JobKind, JobManagerDialog, JobState,
-    JumpToFileDialog, JumpToPathDialog, OsConfig, PatternRenameDialog, PipeToAction,
-    ProgressDialog, RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinMode, TabSelector,
-    TabSelectorContent, VersionDialog, WildcardMarkDialog,
+    ContextMenuOption, CustomFunction, CustomFunctionMenuDialog, CustomFunctionSelector,
+    CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogStack,
+    DialogUiState, DriveInfo, DriveSelectionDialog, DriveType, ErrorDialog, ErrorType,
+    ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog, HelpDialog, HistoryDialogContent,
+    InputDialog, JobInfo, JobKind, JobManagerDialog, JobState, JumpToFileDialog, JumpToPathDialog,
+    OsConfig, PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder,
+    RegisteredFolderManager, RegisteredFolderSelector, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog,
+    WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

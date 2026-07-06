@@ -66,8 +66,9 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::model::dialog::{
-    CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
-    DialogUiState, DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
+    CloseTabWithActiveJobDialog, ContextMenuDialog, CustomFunctionMenuDialog,
+    CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
+    DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
     HistoryDialogContent, InputDialog, JumpToFileDialog, JumpToPathDialog,
     RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
@@ -201,11 +202,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // list + hint(1) + search(1)
             (folders.len() as u16 + 2).max(6)
         }
-        DialogContent::CustomFunctionSelector { functions, .. } => {
+        DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+            functions, ..
+        }) => {
             // list + hint(1) + filter(1)
             (functions.len() as u16 + 2).max(6)
         }
-        DialogContent::CustomFunctionMenu { items, .. } => {
+        DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog { items, .. }) => {
             // items + hint(1)
             (items.len() as u16 + 1).max(4)
         }
@@ -319,7 +322,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::CustomFunctionSelector { .. } => ((screen_width * 70) / 100)
             .max(50)
             .min(screen_width.saturating_sub(2)),
-        DialogContent::CustomFunctionMenu { items, .. } => {
+        DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog { items, .. }) => {
             // label fits with outer_width = max_label + 8 (2 border + 4 indent + 2 margin)
             // hint "[Enter] Execute  [Esc] Close" (29 chars) fits at offset+1 with width-2 when outer>=34
             let max_label = items
@@ -539,11 +542,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 filter,
             );
         }
-        DialogContent::CustomFunctionSelector {
+        DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
             functions,
             selected_index,
             filter,
-        } => {
+        }) => {
             render_custom_function_selector(
                 frame,
                 content_area,
@@ -552,10 +555,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 filter,
             );
         }
-        DialogContent::CustomFunctionMenu {
+        DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
             items,
             selected_index,
-        } => {
+        }) => {
             render_custom_function_menu(frame, content_area, items, *selected_index);
         }
         DialogContent::ContextMenu(ContextMenuDialog {
@@ -1626,11 +1629,11 @@ pub fn handle_dialog_input(
     }
 
     // CustomFunctionSelector — incremental search + arrow navigation
-    if let DialogContent::CustomFunctionSelector {
+    if let DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
         functions,
         selected_index,
         filter,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         let lower = filter.to_lowercase();
@@ -1772,10 +1775,10 @@ pub fn handle_dialog_input(
     }
 
     // CustomFunctionMenu — second-level menu with separator skipping and char-jump
-    if let DialogContent::CustomFunctionMenu {
+    if let DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
         items,
         selected_index,
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         match key.code {

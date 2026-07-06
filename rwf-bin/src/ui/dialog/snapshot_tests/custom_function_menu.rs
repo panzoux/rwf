@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::CustomFunctionMenu`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, MenuItem};
+use rwf_lib::model::dialog::{CustomFunctionMenuDialog, Dialog, MenuItem};
 
 #[test]
 fn custom_function_menu_two_items_first_selected() {
@@ -71,10 +71,10 @@ fn custom_function_menu_four_items_middle_selected() {
         },
     ];
     let mut dialog = Dialog::custom_function_menu("Main".to_string(), items);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu {
+    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
         ref mut selected_index,
         ..
-    } = dialog.content
+    }) = dialog.content
     {
         *selected_index = 2;
     }
@@ -99,10 +99,10 @@ fn custom_function_menu_three_items_last_selected() {
         },
     ];
     let mut dialog = Dialog::custom_function_menu("Tools".to_string(), items);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu {
+    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
         ref mut selected_index,
         ..
-    } = dialog.content
+    }) = dialog.content
     {
         *selected_index = 2;
     }

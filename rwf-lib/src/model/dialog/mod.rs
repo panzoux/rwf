@@ -10,6 +10,8 @@ use std::collections::HashMap;
 mod close_tab_with_active_job;
 mod confirmation;
 mod context_menu;
+mod custom_function_menu;
+mod custom_function_selector;
 mod delete_confirm;
 mod drive_selection;
 mod error;
@@ -33,6 +35,8 @@ mod wildcard_mark;
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use confirmation::ConfirmationDialog;
 pub use context_menu::ContextMenuDialog;
+pub use custom_function_menu::CustomFunctionMenuDialog;
+pub use custom_function_selector::CustomFunctionSelectorContent;
 pub use delete_confirm::DeleteConfirmDialog;
 pub use drive_selection::DriveSelectionDialog;
 pub use error::ErrorDialog;
@@ -198,16 +202,9 @@ pub enum DialogContent {
         focused_field: usize, // 0=Job List, 1=Close, 2=Cancel
     },
     CloseTabWithActiveJob(CloseTabWithActiveJobDialog),
-    CustomFunctionSelector {
-        functions: Vec<CustomFunction>,
-        filter: String,
-        selected_index: usize,
-    },
+    CustomFunctionSelector(CustomFunctionSelectorContent),
     /// Second-level menu opened when a menu-type custom function is selected
-    CustomFunctionMenu {
-        items: Vec<MenuItem>,
-        selected_index: usize,
-    },
+    CustomFunctionMenu(CustomFunctionMenuDialog),
     RegisteredFolderSelector(RegisteredFolderSelectorContent),
     TabSelector(TabSelectorContent),
     PatternRename {
@@ -673,24 +670,17 @@ impl Dialog {
     pub fn custom_function_selector(functions: Vec<CustomFunction>) -> Self {
         Self {
             title: "Custom Functions".to_string(),
-            content: DialogContent::CustomFunctionSelector {
+            content: DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent::new(
                 functions,
-                filter: String::new(),
-                selected_index: 0,
-            },
+            )),
         }
     }
 
     /// Create a custom function menu dialog (second-level menu from a menu-type entry)
     pub fn custom_function_menu(title: String, items: Vec<MenuItem>) -> Self {
-        // Initialize selected_index on first selectable item
-        let first_sel = items.iter().position(|i| i.is_selectable()).unwrap_or(0);
         Self {
             title,
-            content: DialogContent::CustomFunctionMenu {
-                items,
-                selected_index: first_sel,
-            },
+            content: DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog::new(items)),
         }
     }
 
@@ -1190,7 +1180,7 @@ impl DialogContent {
         matches!(
             self,
             DialogContent::Input { .. }
-                | DialogContent::CustomFunctionSelector { .. }
+                | DialogContent::CustomFunctionSelector(_)
                 | DialogContent::RegisteredFolderSelector(_)
                 | DialogContent::TabSelector(_)
                 | DialogContent::PatternRename { .. }
@@ -1203,7 +1193,7 @@ impl DialogContent {
     pub fn is_selector(&self) -> bool {
         matches!(
             self,
-            DialogContent::CustomFunctionSelector { .. }
+            DialogContent::CustomFunctionSelector(_)
                 | DialogContent::RegisteredFolderSelector(_)
                 | DialogContent::TabSelector(_)
                 | DialogContent::JobManager { .. }
@@ -1215,8 +1205,11 @@ impl DialogContent {
     /// Get the current selected index for selector dialogs
     pub fn selected_index(&self) -> Option<usize> {
         match self {
-            DialogContent::JobManager { selected_index, .. }
-            | DialogContent::CustomFunctionSelector { selected_index, .. } => Some(*selected_index),
+            DialogContent::JobManager { selected_index, .. } => Some(*selected_index),
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+                selected_index,
+                ..
+            }) => Some(*selected_index),
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 selected_index,
                 ..
@@ -1237,8 +1230,13 @@ impl DialogContent {
     /// Update the selected index for selector dialogs
     pub fn set_selected_index(&mut self, new_index: usize) {
         match self {
-            DialogContent::JobManager { selected_index, .. }
-            | DialogContent::CustomFunctionSelector { selected_index, .. } => {
+            DialogContent::JobManager { selected_index, .. } => {
+                *selected_index = new_index;
+            }
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+                selected_index,
+                ..
+            }) => {
                 *selected_index = new_index;
             }
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
@@ -1263,7 +1261,9 @@ impl DialogContent {
     /// Get the filter string for filterable dialogs
     pub fn filter(&self) -> Option<&str> {
         match self {
-            DialogContent::CustomFunctionSelector { filter, .. } => Some(filter),
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+                filter, ..
+            }) => Some(filter),
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 filter,
                 ..
@@ -1276,7 +1276,9 @@ impl DialogContent {
     /// Update the filter string for filterable dialogs
     pub fn set_filter(&mut self, new_filter: String) {
         match self {
-            DialogContent::CustomFunctionSelector { filter, .. } => {
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+                filter, ..
+            }) => {
                 *filter = new_filter;
             }
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
@@ -1735,11 +1737,11 @@ impl DialogContent {
     /// Get custom function selector helper if this is a custom function selector dialog
     pub fn as_custom_function_selector(&self) -> Option<(&[CustomFunction], &str, usize)> {
         match self {
-            DialogContent::CustomFunctionSelector {
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
                 functions,
                 filter,
                 selected_index,
-            } => Some((functions, filter, *selected_index)),
+            }) => Some((functions, filter, *selected_index)),
             _ => None,
         }
     }
@@ -1749,11 +1751,11 @@ impl DialogContent {
         &mut self,
     ) -> Option<(&mut Vec<CustomFunction>, &mut String, &mut usize)> {
         match self {
-            DialogContent::CustomFunctionSelector {
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
                 functions,
                 filter,
                 selected_index,
-            } => Some((functions, filter, selected_index)),
+            }) => Some((functions, filter, selected_index)),
             _ => None,
         }
     }

@@ -4,9 +4,10 @@
 //! Split from dialog/mod.rs in M3 (move-only).
 
 use rwf_lib::model::dialog::{
-    ContextMenuDialog, DeleteConfirmDialog, DialogContent, DriveSelectionDialog,
-    ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent, InputDialog,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
+    DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
+    FileMaskDialog, HistoryDialogContent, InputDialog, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -579,11 +580,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 });
                 return Some(job_spec);
             }
-            DialogContent::CustomFunctionSelector {
+            DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
                 functions,
                 selected_index,
                 filter,
-            } => {
+            }) => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
                     functions.iter().collect()
@@ -727,10 +728,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
-            DialogContent::CustomFunctionMenu {
+            DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
                 items,
                 selected_index,
-            } => {
+            }) => {
                 let items = items.clone();
                 let idx = *selected_index;
                 if let Some(item) = items.get(idx) {
