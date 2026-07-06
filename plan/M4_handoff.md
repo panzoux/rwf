@@ -59,7 +59,7 @@ haiku subagent を 1 体ずつ順番に投入(1 体 = 3〜5 バリアント、�
 
 単純(フィールド少・生成箇所少):
 - [x] Version(S1 テンプレート, commit `2f7e178`) / [x] Error(S2 batch1, commit `fa66b31`) / [x] Progress(S2 batch1, commit `fa66b31`) / [x] Confirmation(S2 batch1, commit `fa66b31`) / [x] DeleteConfirm(S2 batch1, commit `fa66b31`)
-- [ ] ExtractionConfirm / [ ] CloseTabWithActiveJob / [ ] HistoryDialog / [ ] DriveSelection
+- [x] ExtractionConfirm(S2 batch2, commit `e8c1bb4`) / [x] CloseTabWithActiveJob(S2 batch2, commit `e8c1bb4`) / [x] HistoryDialog(S2 batch2, commit `e8c1bb4`) / [x] DriveSelection(S2 batch2, commit `e8c1bb4`)
 - [ ] ContextMenu / [ ] TabSelector / [ ] RegisteredFolderSelector
 中程度:
 - [ ] Input / [ ] Help / [x] SortDialog(S1 テンプレート, commit `2f7e178`) / [ ] FileMask / [ ] WildcardMark / [ ] SimpleRename
