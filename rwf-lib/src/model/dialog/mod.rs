@@ -8,6 +8,7 @@ use crate::model::Location;
 use std::collections::HashMap;
 
 mod close_tab_with_active_job;
+mod comparison_view;
 mod confirmation;
 mod context_menu;
 mod custom_function_menu;
@@ -35,6 +36,7 @@ mod version;
 mod wildcard_mark;
 
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
+pub use comparison_view::ComparisonViewDialog;
 pub use confirmation::ConfirmationDialog;
 pub use context_menu::ContextMenuDialog;
 pub use custom_function_menu::CustomFunctionMenuDialog;
@@ -230,10 +232,7 @@ pub enum DialogContent {
         show_all: bool,
     },
     Error(ErrorDialog),
-    ComparisonView {
-        diff: crate::job::FileDiff,
-        scroll_offset: usize,
-    },
+    ComparisonView(ComparisonViewDialog),
     SplitJoinDialog(SplitJoinDialogContent),
     ContextMenu(ContextMenuDialog),
     DriveSelection(DriveSelectionDialog),
@@ -1070,10 +1069,7 @@ impl Dialog {
     pub fn comparison_view(diff: crate::job::FileDiff) -> Self {
         Self {
             title: "File Comparison".to_string(),
-            content: DialogContent::ComparisonView {
-                diff,
-                scroll_offset: 0,
-            },
+            content: DialogContent::ComparisonView(ComparisonViewDialog::new(diff)),
         }
     }
 

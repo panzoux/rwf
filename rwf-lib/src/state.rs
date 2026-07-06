@@ -2800,10 +2800,9 @@ impl AppState {
             Transition::ShowComparisonView { diff } => {
                 let dialog = crate::model::Dialog {
                     title: "File Comparison".to_string(),
-                    content: crate::model::DialogContent::ComparisonView {
-                        diff: diff.clone(),
-                        scroll_offset: 0,
-                    },
+                    content: crate::model::DialogContent::ComparisonView(
+                        crate::model::ComparisonViewDialog::new(diff.clone()),
+                    ),
                 };
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())

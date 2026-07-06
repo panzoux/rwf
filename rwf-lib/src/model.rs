@@ -36,14 +36,14 @@ mod cache_properties;
 
 pub use cache::{CacheStats, CachedDirectory, DirectoryCache};
 pub use dialog::{
-    CloseTabWithActiveJobDialog, ConfirmationDialog, ContextMenuAction, ContextMenuDialog,
-    ContextMenuOption, CustomFunction, CustomFunctionMenuDialog, CustomFunctionSelector,
-    CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogStack,
-    DialogUiState, DriveInfo, DriveSelectionDialog, DriveType, ErrorDialog, ErrorType,
-    ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog, HelpDialog, HistoryDialogContent,
-    InputDialog, JobInfo, JobKind, JobManagerContent, JobManagerDialog, JobState, JumpToFileDialog,
-    JumpToPathDialog, OsConfig, PatternRenameDialog, PipeToAction, ProgressDialog,
-    RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
+    CloseTabWithActiveJobDialog, ComparisonViewDialog, ConfirmationDialog, ContextMenuAction,
+    ContextMenuDialog, ContextMenuOption, CustomFunction, CustomFunctionMenuDialog,
+    CustomFunctionSelector, CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog,
+    DialogContent, DialogStack, DialogUiState, DriveInfo, DriveSelectionDialog, DriveType,
+    ErrorDialog, ErrorType, ExtractionConfirmDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
+    HistoryDialogContent, InputDialog, JobInfo, JobKind, JobManagerContent, JobManagerDialog,
+    JobState, JumpToFileDialog, JumpToPathDialog, OsConfig, PatternRenameDialog, PipeToAction,
+    ProgressDialog, RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
     RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinDialogContent,
     SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog, WildcardMarkDialog,
 };
