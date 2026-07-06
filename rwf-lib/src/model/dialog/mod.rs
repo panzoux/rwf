@@ -16,7 +16,9 @@ mod error;
 mod extraction_confirm;
 mod file_info;
 mod file_mask;
+mod help;
 mod history_dialog;
+mod input;
 mod progress;
 mod registered_folder_selector;
 mod simple_rename;
@@ -35,7 +37,9 @@ pub use error::ErrorDialog;
 pub use extraction_confirm::ExtractionConfirmDialog;
 pub use file_info::FileInfoDialog;
 pub use file_mask::FileMaskDialog;
+pub use help::HelpDialog;
 pub use history_dialog::HistoryDialogContent;
+pub use input::InputDialog;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use simple_rename::SimpleRenameDialog;
@@ -182,32 +186,9 @@ pub struct Dialog {
 #[derive(Debug, Clone)]
 pub enum DialogContent {
     Confirmation(ConfirmationDialog),
-    Input {
-        prompt: String,
-        default_value: String,
-        input: String,
-        cursor_pos: usize,
-        scroll_pos: usize,
-    },
+    Input(InputDialog),
     Progress(ProgressDialog),
-    Help {
-        /// All built-in + custom function help entries (built at dialog-open time)
-        entries: Vec<HelpEntry>,
-        /// Current search query
-        query: String,
-        /// True when Ctrl+R regex mode is active
-        regex_mode: bool,
-        /// Whether to show actions with no bound keys
-        show_unbound: bool,
-        /// Which tab is currently active
-        active_tab: HelpTab,
-        /// Scroll offset within the filtered list
-        scroll_pos: usize,
-        /// Active display language
-        language: String,
-        /// Timestamp of last query change (for debounce)
-        last_query_change: Option<std::time::Instant>,
-    },
+    Help(HelpDialog),
     JobManager {
         selected_index: usize,
         focused_field: usize, // 0=Job List, 1=Close, 2=Cancel
@@ -590,16 +571,9 @@ impl Dialog {
         default_value: impl Into<String>,
     ) -> Self {
         let dv: String = default_value.into();
-        let initial_cursor = dv.chars().count();
         Self {
             title: title.into(),
-            content: DialogContent::Input {
-                prompt: prompt.into(),
-                default_value: dv.clone(),
-                input: dv,
-                cursor_pos: initial_cursor,
-                scroll_pos: 0,
-            },
+            content: DialogContent::Input(InputDialog::new(prompt.into(), dv)),
         }
     }
 
@@ -713,16 +687,7 @@ impl Dialog {
     pub fn help_with_language(lang: &str) -> Self {
         Self {
             title: "Help".to_string(),
-            content: DialogContent::Help {
-                entries: Vec::new(),
-                query: String::new(),
-                regex_mode: false,
-                show_unbound: true,
-                active_tab: HelpTab::NormalMode,
-                scroll_pos: 0,
-                language: lang.to_string(),
-                last_query_change: None,
-            },
+            content: DialogContent::Help(HelpDialog::new(lang.to_string())),
         }
     }
 

@@ -4,7 +4,7 @@
 
 use crate::config::AppConfig;
 use crate::help_content::HelpContent;
-use crate::model::{Dialog, DialogContent};
+use crate::model::{Dialog, DialogContent, HelpDialog};
 use crate::state::{update_state, AppState, Transition};
 
 #[test]
@@ -67,7 +67,7 @@ fn test_help_dialog_uses_configured_language() {
     let current_dialog = state.dialogs.current().unwrap();
 
     match &current_dialog.content {
-        DialogContent::Help { language, .. } => {
+        DialogContent::Help(HelpDialog { language, .. }) => {
             assert_eq!(language, "en");
         }
         _ => panic!("Expected Help dialog"),
@@ -90,7 +90,7 @@ fn test_language_rotation() {
 
     // Get initial language
     let initial_lang = if let Some(dialog) = state.dialogs.current() {
-        if let DialogContent::Help { language, .. } = &dialog.content {
+        if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
             language.clone()
         } else {
             panic!("Expected Help dialog");
@@ -105,7 +105,7 @@ fn test_language_rotation() {
 
     // Verify language changed
     let new_lang = if let Some(dialog) = state.dialogs.current() {
-        if let DialogContent::Help { language, .. } = &dialog.content {
+        if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
             language.clone()
         } else {
             panic!("Expected Help dialog");

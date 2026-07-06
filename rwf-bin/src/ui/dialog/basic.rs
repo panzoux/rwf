@@ -14,7 +14,7 @@ use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
 use rwf_lib::model::dialog::{
     DeleteConfirmDialog, DialogContent, ErrorDialog,
-    ExtractionConfirmDialog as RwfExtractionConfirmDialog, SortDialog,
+    ExtractionConfirmDialog as RwfExtractionConfirmDialog, InputDialog, SortDialog,
 };
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
@@ -91,13 +91,13 @@ pub(super) fn render_dialog_content(
             }
             frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         }
-        DialogContent::Input {
+        DialogContent::Input(InputDialog {
             prompt,
             input,
             cursor_pos,
             scroll_pos,
             ..
-        } => {
+        }) => {
             use ratatui::layout::Alignment;
             let chunks = Layout::default()
                 .direction(Direction::Vertical)

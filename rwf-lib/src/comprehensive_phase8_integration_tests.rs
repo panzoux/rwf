@@ -15,7 +15,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{ActivePane, DialogContent, Location};
+    use crate::model::{ActivePane, DialogContent, HelpDialog, Location};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{state_with_temp_dirs, temp_dir, test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -189,7 +189,7 @@ mod tests {
             // the legacy static HelpContent struct, not Dialog::title.
             assert_eq!(dialog.title, "Help");
 
-            if let DialogContent::Help { language, .. } = &dialog.content {
+            if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
                 let initial_language = language.clone();
 
                 // Rotate language
@@ -198,7 +198,7 @@ mod tests {
 
                 // Verify language changed
                 if let Some(dialog) = state.dialogs.current() {
-                    if let DialogContent::Help { language, .. } = &dialog.content {
+                    if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
                         // Language should have changed (or wrapped around if only one language).
                         // This is a smoke test: the real assertion is that RotateHelpLanguage
                         // executed without panicking and the dialog still holds a well-formed

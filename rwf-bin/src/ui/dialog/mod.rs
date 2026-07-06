@@ -67,9 +67,9 @@ use ratatui::{
 };
 use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, ContextMenuDialog, DeleteConfirmDialog, Dialog, DialogContent,
-    DialogUiState, DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog,
-    HistoryDialogContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    WildcardMarkDialog,
+    DialogUiState, DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
+    HistoryDialogContent, InputDialog, RegisteredFolderSelectorContent, SimpleRenameDialog,
+    SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -677,7 +677,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *show_all,
             );
         }
-        DialogContent::Help {
+        DialogContent::Help(HelpDialog {
             entries,
             query,
             regex_mode,
@@ -686,7 +686,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             scroll_pos,
             language,
             ..
-        } => {
+        }) => {
             render_help_dialog(
                 frame,
                 content_area,
@@ -985,12 +985,12 @@ pub fn handle_dialog_input(
     }
 
     // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
-    if let DialogContent::Input {
+    if let DialogContent::Input(InputDialog {
         input,
         cursor_pos,
         scroll_pos,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crate::ui::text_input::{TextInput, TextInputAction};
         use crossterm::event::KeyCode;
@@ -1244,7 +1244,7 @@ pub fn handle_dialog_input(
     }
 
     // Help dialog — full input handler
-    if let DialogContent::Help {
+    if let DialogContent::Help(HelpDialog {
         entries,
         query,
         regex_mode,
@@ -1252,7 +1252,7 @@ pub fn handle_dialog_input(
         active_tab,
         scroll_pos,
         ..
-    } = &mut dialog.content
+    }) = &mut dialog.content
     {
         use crossterm::event::KeyCode;
         use rwf_lib::model::dialog::HelpTab;

@@ -1296,11 +1296,11 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 &state.config,
             );
             let mut dialog = crate::model::Dialog::help_with_language(lang);
-            if let crate::model::DialogContent::Help {
+            if let crate::model::DialogContent::Help(crate::model::HelpDialog {
                 entries: ref mut e,
                 show_unbound: ref mut u,
                 ..
-            } = dialog.content
+            }) = dialog.content
             {
                 *e = entries;
                 *u = state.config.help_show_unbound;

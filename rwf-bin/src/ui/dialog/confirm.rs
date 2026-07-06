@@ -5,8 +5,8 @@
 
 use rwf_lib::model::dialog::{
     ContextMenuDialog, DeleteConfirmDialog, DialogContent, DriveSelectionDialog,
-    ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent, RegisteredFolderSelectorContent,
-    SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent, InputDialog,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -113,7 +113,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
         .current()
         .filter(|d| matches!(d.content, DialogContent::Input { .. }))
         .map(|d| {
-            let embedded = if let DialogContent::Input { input, .. } = &d.content {
+            let embedded = if let DialogContent::Input(InputDialog { input, .. }) = &d.content {
                 input.clone()
             } else {
                 String::new()

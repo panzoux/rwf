@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::DialogContent;
+    use crate::model::dialog::{DialogContent, HelpDialog};
     use crate::model::Dialog;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
@@ -64,7 +64,7 @@ mod tests {
         let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::Help { scroll_pos, .. } = &dialog.content {
+        if let DialogContent::Help(HelpDialog { scroll_pos, .. }) = &dialog.content {
             assert_eq!(*scroll_pos, 0, "scroll_pos must start at 0");
         } else {
             panic!("Expected Help dialog content");
@@ -88,7 +88,7 @@ mod tests {
         let mut state = test_state();
         open_help(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::Help { language, .. } = &dialog.content {
+        if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
             assert_eq!(language, "en");
         } else {
             panic!("Expected Help dialog content");
@@ -104,7 +104,7 @@ mod tests {
 
         let lang_before = {
             let dialog = state.dialogs.current().expect("dialog must be open");
-            if let DialogContent::Help { language, .. } = &dialog.content {
+            if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
                 language.clone()
             } else {
                 panic!("Expected Help")
@@ -117,7 +117,7 @@ mod tests {
             .dialogs
             .current()
             .expect("dialog must still be open after rotate");
-        if let DialogContent::Help { language, .. } = &dialog.content {
+        if let DialogContent::Help(HelpDialog { language, .. }) = &dialog.content {
             // After rotate, language may be same (only 1 lang available) or different —
             // the important invariant is the dialog stays open
             let _ = language; // at least one language always present

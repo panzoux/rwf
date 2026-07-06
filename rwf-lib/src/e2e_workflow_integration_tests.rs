@@ -14,7 +14,8 @@ mod tests {
     use crate::input::{action_to_transitions, Action};
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
     use crate::model::{
-        CustomFunction, DeleteConfirmDialog, DialogContent, Location, SimpleRenameDialog,
+        CustomFunction, DeleteConfirmDialog, DialogContent, InputDialog, Location,
+        SimpleRenameDialog,
     };
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -561,7 +562,7 @@ mod tests {
         // Verify mkdir dialog is shown
         assert!(!state.dialogs.is_empty());
         let dialog = state.dialogs.current().unwrap();
-        if let DialogContent::Input { prompt, .. } = &dialog.content {
+        if let DialogContent::Input(InputDialog { prompt, .. }) = &dialog.content {
             assert_eq!(prompt, "Directory name:");
         } else {
             panic!("Expected input dialog");

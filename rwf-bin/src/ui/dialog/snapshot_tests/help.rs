@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::Help`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent, HelpEntry, HelpTab};
+use rwf_lib::model::dialog::{Dialog, DialogContent, HelpDialog, HelpEntry, HelpTab};
 
 #[test]
 fn help_empty() {
@@ -38,7 +38,7 @@ fn help_populated() {
     ];
     let dialog = Dialog {
         title: "Help".to_string(),
-        content: DialogContent::Help {
+        content: DialogContent::Help(HelpDialog {
             entries,
             query: String::new(),
             regex_mode: false,
@@ -47,7 +47,7 @@ fn help_populated() {
             scroll_pos: 0,
             language: "en".to_string(),
             last_query_change: None,
-        },
+        }),
     };
     snapshot_dialog("help_populated", &dialog, &state);
 }
@@ -73,7 +73,7 @@ fn help_with_search() {
     ];
     let dialog = Dialog {
         title: "Help".to_string(),
-        content: DialogContent::Help {
+        content: DialogContent::Help(HelpDialog {
             entries,
             query: "move".to_string(),
             regex_mode: false,
@@ -82,7 +82,7 @@ fn help_with_search() {
             scroll_pos: 0,
             language: "en".to_string(),
             last_query_change: None,
-        },
+        }),
     };
     snapshot_dialog("help_with_search", &dialog, &state);
 }

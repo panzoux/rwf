@@ -2150,11 +2150,11 @@ impl AppState {
                 self.config.help_language = next_lang.clone();
 
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::DialogContent::Help {
+                    if let crate::model::DialogContent::Help(crate::model::HelpDialog {
                         ref mut language,
                         ref mut entries,
                         ..
-                    } = dialog.content
+                    }) = dialog.content
                     {
                         *language = next_lang.clone();
                         let descriptions =
