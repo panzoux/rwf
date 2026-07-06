@@ -1,7 +1,7 @@
 //! Tests for miscellaneous key handlers (quit, help, job manager)
 
 use super::*;
-use crate::model::{Dialog, DialogContent};
+use crate::model::{Dialog, DialogContent, JobManagerContent};
 use crate::state::Transition;
 use crate::test_utils::test_state;
 
@@ -48,7 +48,7 @@ fn test_job_manager_action() {
         Transition::ShowDialog { dialog } => {
             assert_eq!(dialog.title, "Job Manager");
             match &dialog.content {
-                DialogContent::JobManager { selected_index, .. } => {
+                DialogContent::JobManager(JobManagerContent { selected_index, .. }) => {
                     assert_eq!(*selected_index, 0);
                 }
                 _ => panic!("Expected JobManager dialog content"),
@@ -134,7 +134,7 @@ fn test_job_manager_dialog_creation() {
 
     assert_eq!(dialog.title, "Job Manager");
     match dialog.content {
-        DialogContent::JobManager { selected_index, .. } => {
+        DialogContent::JobManager(JobManagerContent { selected_index, .. }) => {
             assert_eq!(selected_index, 0);
         }
         _ => panic!("Expected JobManager dialog content"),

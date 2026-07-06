@@ -21,6 +21,7 @@ mod file_mask;
 mod help;
 mod history_dialog;
 mod input;
+mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
 mod progress;
@@ -46,6 +47,7 @@ pub use file_mask::FileMaskDialog;
 pub use help::HelpDialog;
 pub use history_dialog::HistoryDialogContent;
 pub use input::InputDialog;
+pub use job_manager::JobManagerContent;
 pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
 pub use progress::ProgressDialog;
@@ -197,10 +199,7 @@ pub enum DialogContent {
     Input(InputDialog),
     Progress(ProgressDialog),
     Help(HelpDialog),
-    JobManager {
-        selected_index: usize,
-        focused_field: usize, // 0=Job List, 1=Close, 2=Cancel
-    },
+    JobManager(JobManagerContent),
     CloseTabWithActiveJob(CloseTabWithActiveJobDialog),
     CustomFunctionSelector(CustomFunctionSelectorContent),
     /// Second-level menu opened when a menu-type custom function is selected
@@ -573,10 +572,7 @@ impl Dialog {
     pub fn job_manager() -> Self {
         Self {
             title: "Job Manager".to_string(),
-            content: DialogContent::JobManager {
-                selected_index: 0,
-                focused_field: 0, // Start with Job List focused (Part 6.7)
-            },
+            content: DialogContent::JobManager(JobManagerContent::new()),
         }
     }
 
@@ -1196,7 +1192,7 @@ impl DialogContent {
             DialogContent::CustomFunctionSelector(_)
                 | DialogContent::RegisteredFolderSelector(_)
                 | DialogContent::TabSelector(_)
-                | DialogContent::JobManager { .. }
+                | DialogContent::JobManager(_)
                 | DialogContent::ContextMenu(_)
                 | DialogContent::DriveSelection(_)
         )
@@ -1205,7 +1201,9 @@ impl DialogContent {
     /// Get the current selected index for selector dialogs
     pub fn selected_index(&self) -> Option<usize> {
         match self {
-            DialogContent::JobManager { selected_index, .. } => Some(*selected_index),
+            DialogContent::JobManager(JobManagerContent { selected_index, .. }) => {
+                Some(*selected_index)
+            }
             DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
                 selected_index,
                 ..
@@ -1230,7 +1228,7 @@ impl DialogContent {
     /// Update the selected index for selector dialogs
     pub fn set_selected_index(&mut self, new_index: usize) {
         match self {
-            DialogContent::JobManager { selected_index, .. } => {
+            DialogContent::JobManager(JobManagerContent { selected_index, .. }) => {
                 *selected_index = new_index;
             }
             DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
@@ -1596,16 +1594,15 @@ impl JobManagerDialog {
 impl DialogContent {
     /// Create a job manager dialog content with jobs
     pub fn job_manager_with_jobs(_jobs: Vec<JobInfo>) -> Self {
-        DialogContent::JobManager {
-            selected_index: 0,
-            focused_field: 0,
-        }
+        DialogContent::JobManager(JobManagerContent::new())
     }
 
     /// Get job manager helper if this is a job manager dialog
     pub fn as_job_manager(&self) -> Option<usize> {
         match self {
-            DialogContent::JobManager { selected_index, .. } => Some(*selected_index),
+            DialogContent::JobManager(JobManagerContent { selected_index, .. }) => {
+                Some(*selected_index)
+            }
             _ => None,
         }
     }

@@ -69,7 +69,7 @@ use rwf_lib::model::dialog::{
     CloseTabWithActiveJobDialog, ContextMenuDialog, CustomFunctionMenuDialog,
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
-    HistoryDialogContent, InputDialog, JumpToFileDialog, JumpToPathDialog,
+    HistoryDialogContent, InputDialog, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
     RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
 };
 use tracing::debug;
@@ -361,10 +361,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Render compression dialog using exact content area (buttons rendered within)
             render_dialog_content(frame, &dialog.content, content_area, true);
         }
-        DialogContent::JobManager {
+        DialogContent::JobManager(JobManagerContent {
             selected_index,
             focused_field,
-        } => {
+        }) => {
             // Render Job Manager dialog with its own layout (Part 6.2)
             let dialog_state = JobManagerDialogState {
                 selected_index: *selected_index,
@@ -842,7 +842,8 @@ pub fn handle_dialog_input(
             }
         }
         // For JobManager dialog, check which field has focus
-        if let DialogContent::JobManager { focused_field, .. } = &dialog.content {
+        if let DialogContent::JobManager(JobManagerContent { focused_field, .. }) = &dialog.content
+        {
             match *focused_field {
                 1 => return DialogAction::Confirm, // Close button focused
                 2 => return DialogAction::Confirm, // Cancel Job button focused
@@ -2087,7 +2088,9 @@ pub fn handle_dialog_input(
         }
 
         // Handle JobManager dialog Tab navigation (Part 6.6, 6.7)
-        if let DialogContent::JobManager { focused_field, .. } = &mut dialog.content {
+        if let DialogContent::JobManager(JobManagerContent { focused_field, .. }) =
+            &mut dialog.content
+        {
             // Cycle: 0→1→2→0 (Job List→Close→Cancel→Job List)
             if backward {
                 *focused_field = match *focused_field {

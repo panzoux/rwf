@@ -45,8 +45,9 @@ fn job_manager_one_pending_job() {
 fn job_manager_close_button_focused() {
     let state = state_with_one_job();
     let mut dialog = Dialog::job_manager();
-    if let rwf_lib::model::dialog::DialogContent::JobManager { focused_field, .. } =
-        &mut dialog.content
+    if let rwf_lib::model::dialog::DialogContent::JobManager(
+        rwf_lib::model::dialog::JobManagerContent { focused_field, .. },
+    ) = &mut dialog.content
     {
         *focused_field = 1; // Close button
     }

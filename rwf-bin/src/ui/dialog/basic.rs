@@ -14,7 +14,8 @@ use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
 use rwf_lib::model::dialog::{
     DeleteConfirmDialog, DialogContent, ErrorDialog,
-    ExtractionConfirmDialog as RwfExtractionConfirmDialog, InputDialog, SortDialog,
+    ExtractionConfirmDialog as RwfExtractionConfirmDialog, InputDialog, JobManagerContent,
+    SortDialog,
 };
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
@@ -195,10 +196,10 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
                 _ => DialogAction::None,
             }
         }
-        DialogContent::JobManager {
+        DialogContent::JobManager(JobManagerContent {
             selected_index,
             focused_field,
-        } => {
+        }) => {
             // Job Manager dialog input handling (Part 6.6, 6.7)
 
             // Up/Down navigation in Job List (only when Job List is focused)
