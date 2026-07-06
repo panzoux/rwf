@@ -274,7 +274,7 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 
 | モジュール | unwrap 数 | 状態 |
 |---|---|---|
-| `rwf-lib/src/model/dialog.rs` | 11 | `[ ]`（M4 で分割後に ratchet） |
+| `rwf-lib/src/model/dialog/mod.rs`(M4 で `dialog.rs` をディレクトリ化) | 11 | `[ ]`(全11箇所は `RegisteredFolderManager::expand_env_vars` にあり、struct化した29バリアントのファイルには unwrap なし。M6 で ratchet) |
 | `rwf-lib/src/macro_expander.rs` | 7 | `[ ]` |
 | `rwf-lib/src/job/job_executor.rs` | 5 | `[ ]` |
 | `rwf-lib/src/state.rs` | 4 | `[ ]`（M5 で分割後に ratchet） |
