@@ -44,8 +44,8 @@ pub use dialog::{
     InputDialog, JobInfo, JobKind, JobManagerContent, JobManagerDialog, JobState, JumpToFileDialog,
     JumpToPathDialog, OsConfig, PatternRenameDialog, PipeToAction, ProgressDialog,
     RegisteredFolder, RegisteredFolderManager, RegisteredFolderSelector,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinMode, TabSelector,
-    TabSelectorContent, VersionDialog, WildcardMarkDialog,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, SplitJoinDialogContent,
+    SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog, WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

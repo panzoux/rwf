@@ -28,6 +28,7 @@ mod progress;
 mod registered_folder_selector;
 mod simple_rename;
 mod sort;
+mod split_join;
 mod tab_selector;
 mod ui_state;
 mod version;
@@ -54,6 +55,7 @@ pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use simple_rename::SimpleRenameDialog;
 pub use sort::SortDialog;
+pub use split_join::SplitJoinDialogContent;
 pub use tab_selector::TabSelectorContent;
 pub use ui_state::DialogUiState;
 pub use version::VersionDialog;
@@ -232,10 +234,7 @@ pub enum DialogContent {
         diff: crate::job::FileDiff,
         scroll_offset: usize,
     },
-    SplitJoinDialog {
-        mode: SplitJoinMode,
-        chunk_size_mb: u64,
-    },
+    SplitJoinDialog(SplitJoinDialogContent),
     ContextMenu(ContextMenuDialog),
     DriveSelection(DriveSelectionDialog),
     FileInfo(FileInfoDialog),
@@ -1082,10 +1081,7 @@ impl Dialog {
     pub fn split_join_dialog() -> Self {
         Self {
             title: "Split/Join Files".to_string(),
-            content: DialogContent::SplitJoinDialog {
-                mode: SplitJoinMode::Split,
-                chunk_size_mb: 100, // Default 100MB chunks
-            },
+            content: DialogContent::SplitJoinDialog(SplitJoinDialogContent::new()),
         }
     }
 
@@ -2157,10 +2153,10 @@ impl DialogContent {
     /// Get split/join dialog data
     pub fn as_split_join(&self) -> Option<(SplitJoinMode, u64)> {
         match self {
-            DialogContent::SplitJoinDialog {
+            DialogContent::SplitJoinDialog(SplitJoinDialogContent {
                 mode,
                 chunk_size_mb,
-            } => Some((*mode, *chunk_size_mb)),
+            }) => Some((*mode, *chunk_size_mb)),
             _ => None,
         }
     }
@@ -2168,10 +2164,10 @@ impl DialogContent {
     /// Get mutable split/join dialog data
     pub fn as_split_join_mut(&mut self) -> Option<(&mut SplitJoinMode, &mut u64)> {
         match self {
-            DialogContent::SplitJoinDialog {
+            DialogContent::SplitJoinDialog(SplitJoinDialogContent {
                 mode,
                 chunk_size_mb,
-            } => Some((mode, chunk_size_mb)),
+            }) => Some((mode, chunk_size_mb)),
             _ => None,
         }
     }
