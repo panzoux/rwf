@@ -155,6 +155,30 @@ FileConflict / Compression / JobManager / PatternRename / ComparisonView / Split
 2. `docs/DIALOG_DESIGN_SPEC.md` を新構造へ更新。`docs/recipes/add-a-dialog.md` ドラフトも現構造に追従させる(確定は M7)。
 3. `model/dialog.rs` の `#![allow(clippy::unwrap_used)]` が分割後どのファイルに残るべきか確認(unwrap 11 箇所の所在ファイルにのみ引き継ぎ、他は allow を付けない)。ratchet リスト(quality_overhaul.md)を更新。
 4. 検証一式全緑 → ROADMAP の M4 を `[x]`、本ファイルの進捗欄を完了に。
+- **S5 完了・M4 完了(2026-07-07)**:
+  batch1 `2521b84`(FileMask/WildcardMark/SimpleRename/Input — Input は専用ファイルが無いため
+  basic.rs に同居)、batch2 `e059c86`(CloseTabWithActiveJob/DriveSelection/JumpToPath/
+  JumpToFile — CloseTabWithActiveJob は新規ファイル作成。既存の恒等 if/else(Tab は
+  Shift の有無に関係なく同じトグル)をclippyのif_same_then_elseが単独ファイルで検出したため
+  単純化、挙動不変)、batch3 `01a93ea`(CustomFunctionSelector/ContextMenu/
+  CustomFunctionMenu/RegisteredFolderSelector — custom_function.rs に2関数同居。ContextMenu の
+  計算後即捨てる死んだ変数を削除)、batch4 `05d7d4b`(PatternRename/Help を抽出、FileConflict は
+  M3 で既に抽出済みの `handle_file_conflict_input`(13個の`&mut`引数、
+  `test_support::ConflictInputHarness` 互換のため維持)に薄い `handle_input()` ラッパーを追加)、
+  batch5 `375b146`(HistoryDialog — pane 切替時に `dialog.title` も更新するため、他と異なり
+  `&mut Dialog` 全体を受け取る)。
+  結果: rwf-bin/ui/dialog/mod.rs 2,145→1,045 行、`handle_dialog_input` 自体 1,322→222 行。
+  残存部分(Enter 特殊処理・Compression の Esc/Vi-mode ガード・Tab循環)は複数ダイアログを
+  横断するルーティングロジックで、意図的に mod.rs に残した(1ダイアログの handle_input には
+  切り出せない)。
+  ドキュメント更新: `e87ab9b`(DIALOG_DESIGN_SPEC.md Appendix D/8.10・add-a-dialog.md 確定・
+  quality_overhaul.md の unwrap ratchet エントリのパス修正)。
+  unwrap allow スコープ確認: `model/dialog/mod.rs` の 11 箇所すべて
+  `RegisteredFolderManager::expand_env_vars` にあり、struct化した29バリアントのファイルには
+  unwrap が0件 → 追加の allow 付与は不要と確認。
+  検証: fmt/clippy 緑、rwf テスト145件緑(スナップショット差分ゼロ)、rwf-lib フルテストも緑
+  (1043 passed, 0 failed)。
+  **M4 全体完了。ROADMAP.md の M4 を `[x]` に更新済み。次は M5(state.rs 分割)。**
 
 ## セッション開始プロンプト(コピペ用)
 
