@@ -65,7 +65,12 @@
 - [x] S3-3 サブ struct 化 → **見送り**。理由: 有力候補は `ui`/`tabs`/`config` のみだが、いずれも
       cross-cutting(ほぼ全ハンドラから読み書きされる)で単純な部分集合に切り出せない。他フィールドは
       既に単一所有。churn 回避のため見送り(調査結果(b)参照)。
-- [ ] S3-4 全検証緑 + ROADMAP 更新(rwf-lib フルテスト実行中 — 完了後に確定)
+- [x] S3-4 全検証緑 + ROADMAP 更新。`cargo fmt --all -- --check` 緑 / `cargo clippy --all-targets -- -D warnings`
+      緑 / `cargo test -p rwf --no-run` 緑 / `cargo test -p rwf -- --test-threads=1` 145 passed /
+      `cargo test -p rwf-lib -- --list` 1043 件(分割前と一致) /
+      `cargo test -p rwf-lib -- --test-threads=1` **1043 passed, 0 failed**(finished in 2226.57s、
+      ログ: S2 直後の実行でも 1043 passed 確認済み、S3 変更後の最終実行でも再確認)。
+      ROADMAP.md の M5 行を `[x]` に更新。M5 完了。
 
 ## 設計上の注記(S1 で判明・再設計ではなく実態記録)
 
