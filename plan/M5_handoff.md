@@ -48,8 +48,14 @@
 - [x] S1-1 調査マップ 2 種(結果は下の欄)
 - [x] S1-2 state/ 骨格化コミット(458b066)
 - [x] S1-3 ハンドラ move: 3 / 10(実測は 11 ではなく 10 — 下記「設計上の注記」参照)(32055d3)
-- [ ] S2 ハンドラ move: 3 / 10(残り navigation, tab, job, ui, viewer, advanced, job_management の 7)
-- [ ] S3-1 helpers.rs 集約
+- [x] S2 ハンドラ move: 10 / 10(job_management/tab: c04ef90, navigation/advanced: df616a2,
+      viewer: 24e24ae, job: 102e1da, ui: e3b9fab)。
+      dialog.rs への分離は**見送り**(ui.rs 1 本のまま)。理由: `handle_ui_transition` 内の
+      ダイアログ関連 match アームはダイアログ以外の UI 系アーム(ChangeUIMode/UpdatePaneHeight/
+      ToggleTaskPanel 等)と `self.dialogs` 操作が密に絡み合っており、機械的な行範囲抽出以上の
+      判断(どのヘルパーをどちらに渡すか)が必要になる。move-only 原則(判断を増やさない)を優先し
+      見送り。実測 10 ハンドラ全て state/handlers/ 配下に move 完了、mod.rs に `fn handle_*` は 0 件。
+- [ ] S3-1 helpers.rs 集約(editor_job が唯一の候補 — 調査結果(a)参照)
 - [ ] S3-2 ARCHITECTURE.md 所有権マップ
 - [ ] S3-3 サブ struct 化(実施 or 見送り理由: ___)
 - [ ] S3-4 全検証緑 + ROADMAP 更新
