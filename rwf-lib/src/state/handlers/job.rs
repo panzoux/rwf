@@ -1,0 +1,819 @@
+use crate::job::JobSpec;
+use crate::state::{update_state, AppState, PaneRefresh, StateUpdateResult, Transition};
+
+impl AppState {
+    pub(crate) fn handle_job_transition(
+        &mut self,
+        transition: &Transition,
+    ) -> Option<StateUpdateResult> {
+        use std::time::SystemTime;
+
+        match transition {
+            Transition::EnqueueJob { spec } => {
+                self.jobs.enqueue(spec.clone());
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::StartNextJob => {
+                if self.jobs.can_start_job() {
+                    if let Some(spec) = self.jobs.pop_next_job() {
+                        self.jobs.start_job(spec.clone());
+                        Some(StateUpdateResult::with_job(spec))
+                    } else {
+                        Some(StateUpdateResult::none())
+                    }
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::JobStarted { job_id } => {
+                if let Some(job) = self.jobs.active.get_mut(job_id) {
+                    job.state = crate::job::ExecutionState::Running;
+                    job.started_at = Some(SystemTime::now());
+                }
+
+                let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
+                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                    format!(
+                        "{} [Job {}] [Tab {}] {}: Started",
+                        timestamp,
+                        bg_job.id.short_id,
+                        bg_job.tab_id + 1,
+                        bg_job.name
+                    )
+                });
+
+                if let Some(log) = log_entry {
+                    self.background_jobs.mark_job_running(*job_id);
+                    Some(StateUpdateResult {
+                        jobs_to_start: Vec::new(),
+                        jobs_to_cancel: Vec::new(),
+                        completed_jobs: Vec::new(),
+                        failed_jobs: Vec::new(),
+                        cancelled_jobs: Vec::new(),
+                        started_jobs: vec![*job_id],
+                        task_panel_logs: vec![log],
+                        panes_to_refresh: Vec::new(),
+                        ui_changed: true,
+                        reload_keybindings: false,
+                    })
+                } else {
+                    Some(StateUpdateResult::with_ui_change())
+                }
+            }
+            Transition::UpdateJobProgress { job_id, progress } => {
+                self.jobs.update_progress(*job_id, *progress);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::UpdateJobProgressWithDetail {
+                job_id,
+                progress,
+                progress_message,
+                operation_detail,
+            } => {
+                self.jobs.update_progress(*job_id, *progress);
+                let needs_running = self
+                    .background_jobs
+                    .get_job(*job_id)
+                    .map(|j| j.status == crate::job::JobStatus::Pending)
+                    .unwrap_or(false);
+
+                let job_progress = crate::job::JobProgress {
+                    percent: *progress,
+                    message: progress_message.clone(),
+                    current_operation_detail: operation_detail.clone(),
+                };
+                self.background_jobs.update_progress(*job_id, job_progress);
+
+                if needs_running {
+                    self.background_jobs.mark_job_running(*job_id);
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::CompleteJob { job_id, result } => {
+                tracing::info!(
+                    "[CompleteJob] Received completion event for job={:?}",
+                    job_id
+                );
+                let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                tracing::debug!(
+                    "[CompleteJob] Processing job_id={:?}, has_spec={}, result_type={}",
+                    job_id,
+                    job_spec.is_some(),
+                    match result {
+                        crate::job::OpResult::Success(_) => "Success",
+                        crate::job::OpResult::Failed(_) => "Failed",
+                        crate::job::OpResult::Cancelled => "Cancelled",
+                    }
+                );
+
+                let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
+                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                    match result {
+                        crate::job::OpResult::Success(_) => format!(
+                            "{} [Job {}] [Tab {}] {}: [OK]",
+                            timestamp,
+                            bg_job.id.short_id,
+                            bg_job.tab_id + 1,
+                            bg_job.name
+                        ),
+                        crate::job::OpResult::Failed(e) => {
+                            let detail = e.trim();
+                            if detail.is_empty() {
+                                format!(
+                                    "{} [Job {}] [Tab {}] {}: [FAIL]",
+                                    timestamp,
+                                    bg_job.id.short_id,
+                                    bg_job.tab_id + 1,
+                                    bg_job.name
+                                )
+                            } else {
+                                format!(
+                                    "{} [Job {}] [Tab {}] {}: [FAIL] — {}",
+                                    timestamp,
+                                    bg_job.id.short_id,
+                                    bg_job.tab_id + 1,
+                                    bg_job.name,
+                                    detail
+                                )
+                            }
+                        }
+                        crate::job::OpResult::Cancelled => format!(
+                            "{} [Job {}] [Tab {}] {}: [WARN] Cancelled",
+                            timestamp,
+                            bg_job.id.short_id,
+                            bg_job.tab_id + 1,
+                            bg_job.name
+                        ),
+                    }
+                });
+
+                if let crate::job::OpResult::Failed(ref error_message) = result {
+                    if let Some(ref spec) = job_spec {
+                        // ExecuteCustomFunction failures go to the task panel log only (no modal)
+                        let skip_dialog = matches!(
+                            &spec.kind,
+                            crate::job::JobKind::ExecuteCustomFunction { .. }
+                        );
+                        let op_name = match &spec.kind {
+                            crate::job::JobKind::ReadDirectory { .. } => "Read directory",
+                            crate::job::JobKind::Copy { .. } => "Copy",
+                            crate::job::JobKind::Move { .. } => "Move",
+                            crate::job::JobKind::Delete { .. } => "Delete",
+                            crate::job::JobKind::Mkdir { .. } => "Create directory",
+                            crate::job::JobKind::Rename { .. } => "Rename",
+                            crate::job::JobKind::CalculateSize { .. } => "Calculate size",
+                            crate::job::JobKind::ExtractArchive { .. } => "Extract archive",
+                            crate::job::JobKind::CreateArchive { .. } => "Create archive",
+                            crate::job::JobKind::ExecuteCustomFunction { .. } => {
+                                "Execute custom function"
+                            }
+                            crate::job::JobKind::Search { .. } => "Search",
+                            crate::job::JobKind::LoadFileForViewer { .. } => "Load file for viewer",
+                            crate::job::JobKind::ViewerSearch { .. } => "Viewer search",
+                            crate::job::JobKind::PatternRename { .. } => "Pattern rename",
+                            crate::job::JobKind::CompareFiles { .. } => "File comparison",
+                            crate::job::JobKind::SplitFile { .. } => "File split",
+                            crate::job::JobKind::JoinFiles { .. } => "File join",
+                            crate::job::JobKind::CountDown { .. } => "Countdown",
+                            crate::job::JobKind::CollectJumpCandidates { .. } => {
+                                "Collect jump candidates"
+                            }
+                            crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
+                            crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
+                        };
+                        if !skip_dialog {
+                            let error_dialog =
+                                crate::model::Dialog::from_job_failure(op_name, error_message);
+                            self.dialogs.push(error_dialog);
+                        }
+                    }
+                }
+
+                self.jobs.complete_job(*job_id, result.clone());
+
+                if let Some(ref spec) = job_spec {
+                    match &spec.kind {
+                        crate::job::JobKind::ReadDirectory { location } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::DirectoryRead(entries),
+                            ) = result
+                            {
+                                self.cache.insert(location.clone(), entries.clone());
+                            }
+                        }
+                        crate::job::JobKind::Copy { dest, .. }
+                        | crate::job::JobKind::Move { dest, .. }
+                        | crate::job::JobKind::ExtractArchive { dest, .. } => {
+                            self.cache.invalidate(dest);
+                        }
+                        crate::job::JobKind::Delete { targets } => {
+                            for target in targets {
+                                if let Some(parent) = target.parent() {
+                                    self.cache.invalidate(&parent);
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Rename { from, .. } => {
+                            if let Some(parent) = from.parent() {
+                                self.cache.invalidate(&parent);
+                            }
+                        }
+                        crate::job::JobKind::PatternRename { targets, .. } => {
+                            for target in targets {
+                                if let Some(parent) = target.parent() {
+                                    self.cache.invalidate(&parent);
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Mkdir { location } => {
+                            if let Some(parent) = location.parent() {
+                                self.cache.invalidate(&parent);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                let mut result_obj = StateUpdateResult::with_ui_change();
+                match result {
+                    crate::job::OpResult::Success(_) => result_obj.completed_jobs.push(*job_id),
+                    crate::job::OpResult::Failed(_) => result_obj.failed_jobs.push(*job_id),
+                    crate::job::OpResult::Cancelled => result_obj.cancelled_jobs.push(*job_id),
+                }
+
+                if let Some(spec) = job_spec {
+                    tracing::info!(
+                        "[CompleteJob] Job spec kind={:?}, requesting_pane={:?}",
+                        spec.kind,
+                        spec.requesting_pane
+                    );
+                    match &spec.kind {
+                        crate::job::JobKind::ReadDirectory { location } => {
+                            tracing::info!("[CompleteJob::ReadDirectory] location={}, requesting_pane={:?}, success={}", location.display_path(), spec.requesting_pane, matches!(result, crate::job::OpResult::Success(_)));
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::DirectoryRead(entries),
+                            ) = result
+                            {
+                                if let Some((requesting_tab_id, pane_side)) = spec.requesting_pane {
+                                    tracing::info!("[CompleteJob::ReadDirectory] Looking up tab_id={}, current_tabs.len()={}", requesting_tab_id, self.tabs.tabs.len());
+                                    for (idx, t) in self.tabs.tabs.iter().enumerate() {
+                                        tracing::debug!(
+                                            "[CompleteJob::ReadDirectory] Tab[{}].id={}",
+                                            idx,
+                                            t.id
+                                        );
+                                    }
+
+                                    if let Some(tab) = self
+                                        .tabs
+                                        .tabs
+                                        .iter_mut()
+                                        .find(|t| t.id == requesting_tab_id)
+                                    {
+                                        let pane = match pane_side {
+                                            crate::model::ActivePane::Left => &mut tab.left_pane,
+                                            crate::model::ActivePane::Right => &mut tab.right_pane,
+                                        };
+
+                                        // Verify job ownership
+                                        if pane.active_job_id == Some(*job_id) {
+                                            let pane_name = match pane_side {
+                                                crate::model::ActivePane::Left => "Left",
+                                                crate::model::ActivePane::Right => "Right",
+                                            };
+                                            tracing::info!("[CompleteJob::ReadDirectory] Found tab! Updating {} pane with {} entries", pane_name, entries.len());
+                                            if pane.raw_entries != *entries {
+                                                pane.raw_entries = entries.clone();
+                                                pane.entries = entries.clone();
+                                                pane.is_loading = false;
+                                                pane.apply_sort();
+                                                pane.apply_current_filter();
+                                                pane.update_scroll(
+                                                    self.ui.layout.pane_height,
+                                                    self.config.ui.scroll_offset,
+                                                );
+                                                if let Some(name) = pane.pending_cursor_name.take()
+                                                {
+                                                    if let Some(pos) = pane
+                                                        .entries
+                                                        .iter()
+                                                        .position(|e| e.name == name)
+                                                    {
+                                                        pane.cursor = pos;
+                                                        pane.update_scroll(
+                                                            self.ui.layout.pane_height,
+                                                            self.config.ui.scroll_offset,
+                                                        );
+                                                    }
+                                                }
+                                                result_obj.ui_changed = true;
+                                            } else {
+                                                pane.is_loading = false;
+                                                pane.pending_cursor_name = None;
+                                            }
+                                            pane.active_job_id = None; // Job complete
+                                        } else {
+                                            tracing::warn!("[CompleteJob::ReadDirectory] Stale job result (id={:?}, expected={:?}). Discarding.", job_id, pane.active_job_id);
+                                        }
+                                    } else {
+                                        tracing::warn!("[CompleteJob::ReadDirectory] Tab not found (likely closed)! tab_id={}, job_id={:?}. Cancelling job.", requesting_tab_id, job_id);
+                                        self.background_jobs.cancel_job(*job_id);
+                                    }
+                                } else {
+                                    // Fallback to old behavior
+                                    tracing::warn!("[CompleteJob::ReadDirectory] Using fallback path - requesting_pane is None! location={}", location.display_path());
+                                    result_obj.ui_changed = false;
+                                    for tab in self.tabs.tabs.iter_mut() {
+                                        if tab.left_pane.current_location == *location {
+                                            tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating left pane via fallback");
+                                            tab.left_pane.raw_entries = entries.clone();
+                                            tab.left_pane.entries = entries.clone();
+                                            tab.left_pane.is_loading = false;
+                                            tab.left_pane.apply_sort();
+                                            tab.left_pane.apply_current_filter();
+                                            tab.left_pane.update_scroll(
+                                                self.ui.layout.pane_height,
+                                                self.config.ui.scroll_offset,
+                                            );
+                                            result_obj.ui_changed = true;
+                                        }
+                                        if tab.right_pane.current_location == *location {
+                                            tracing::debug!("[CompleteJob::ReadDirectory::Fallback] Updating right pane via fallback");
+                                            tab.right_pane.raw_entries = entries.clone();
+                                            tab.right_pane.entries = entries.clone();
+                                            tab.right_pane.is_loading = false;
+                                            tab.right_pane.apply_sort();
+                                            tab.right_pane.apply_current_filter();
+                                            tab.right_pane.update_scroll(
+                                                self.ui.layout.pane_height,
+                                                self.config.ui.scroll_offset,
+                                            );
+                                            result_obj.ui_changed = true;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Reset loading state on failure/cancellation
+                                if let Some((requesting_tab_id, pane_side)) = spec.requesting_pane {
+                                    if let Some(tab) = self
+                                        .tabs
+                                        .tabs
+                                        .iter_mut()
+                                        .find(|t| t.id == requesting_tab_id)
+                                    {
+                                        let pane = match pane_side {
+                                            crate::model::ActivePane::Left => &mut tab.left_pane,
+                                            crate::model::ActivePane::Right => &mut tab.right_pane,
+                                        };
+                                        pane.is_loading = false;
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::LoadFileForViewer { .. } => {
+                            // Buffer was already delivered via ViewerReady event.
+                            // On final Completed just mark loading as done.
+                            if let crate::job::OpResult::Success(_) = result {
+                                if let Some(ref mut viewer) = self.viewer {
+                                    viewer.is_loading = false;
+                                }
+                                result_obj.ui_changed = true;
+                            }
+                        }
+                        crate::job::JobKind::ViewerSearch { .. } => {
+                            // Results delivered via ViewerSearchComplete event; nothing to do.
+                        }
+                        crate::job::JobKind::CompareFiles { .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::ComparisonResult(diff),
+                            ) = result
+                            {
+                                let comp_res = update_state(
+                                    self,
+                                    Transition::ShowComparisonView { diff: diff.clone() },
+                                );
+                                result_obj.ui_changed = comp_res.ui_changed;
+                            }
+                        }
+                        crate::job::JobKind::Copy { dest, .. }
+                        | crate::job::JobKind::ExtractArchive { dest, .. }
+                        | crate::job::JobKind::CreateArchive { dest, .. }
+                        | crate::job::JobKind::SplitFile { dest_dir: dest, .. } => {
+                            for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                if tab.left_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh {
+                                        tab_id: tab_idx,
+                                        pane: crate::model::ActivePane::Left,
+                                    });
+                                }
+                                if tab.right_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh {
+                                        tab_id: tab_idx,
+                                        pane: crate::model::ActivePane::Right,
+                                    });
+                                }
+                            }
+                        }
+                        crate::job::JobKind::JoinFiles { dest, .. } => {
+                            if let Some(parent) = dest.parent() {
+                                for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                    if tab.left_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Left,
+                                        });
+                                    }
+                                    if tab.right_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Right,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Move { sources, dest } => {
+                            for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                if tab.left_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh {
+                                        tab_id: tab_idx,
+                                        pane: crate::model::ActivePane::Left,
+                                    });
+                                }
+                                if tab.right_pane.current_location == *dest {
+                                    result_obj.panes_to_refresh.push(PaneRefresh {
+                                        tab_id: tab_idx,
+                                        pane: crate::model::ActivePane::Right,
+                                    });
+                                }
+                            }
+                            for source in sources {
+                                if let Some(parent) = source.parent() {
+                                    for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                        if tab.left_pane.current_location == parent {
+                                            result_obj.panes_to_refresh.push(PaneRefresh {
+                                                tab_id: tab_idx,
+                                                pane: crate::model::ActivePane::Left,
+                                            });
+                                        }
+                                        if tab.right_pane.current_location == parent {
+                                            result_obj.panes_to_refresh.push(PaneRefresh {
+                                                tab_id: tab_idx,
+                                                pane: crate::model::ActivePane::Right,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            self.unmark_all_panes();
+                        }
+                        crate::job::JobKind::Rename { from, to } => {
+                            // In-memory update: no ReadDirectory needed for a single rename
+                            if let crate::job::OpResult::Success(_) = result {
+                                let new_name = to
+                                    .path()
+                                    .and_then(|p| p.file_name())
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default();
+                                if !new_name.is_empty() {
+                                    let pane_height = self.ui.layout.pane_height;
+                                    let scroll_offset = self.config.ui.scroll_offset;
+                                    for tab in self.tabs.tabs.iter_mut() {
+                                        for pane in [&mut tab.left_pane, &mut tab.right_pane] {
+                                            if let Some(e) = pane
+                                                .raw_entries
+                                                .iter_mut()
+                                                .find(|e| &e.location == from)
+                                            {
+                                                e.name = new_name.clone();
+                                                e.location = to.clone();
+                                            }
+                                            pane.apply_sort();
+                                            pane.apply_current_filter();
+                                            pane.update_scroll(pane_height, scroll_offset);
+                                        }
+                                    }
+                                    result_obj.ui_changed = true;
+                                }
+                            }
+                        }
+                        crate::job::JobKind::Delete { targets } => {
+                            if let crate::job::OpResult::Success(_) = result {
+                                // In-memory removal: remove deleted entries from all panes without
+                                // triggering a full ReadDirectory (same approach as Rename).
+                                let pane_height = self.ui.layout.pane_height;
+                                let scroll_offset = self.config.ui.scroll_offset;
+                                let mut any_changed = false;
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    for pane in [&mut tab.left_pane, &mut tab.right_pane] {
+                                        let before = pane.raw_entries.len();
+                                        pane.raw_entries.retain(|e| !targets.contains(&e.location));
+                                        if pane.raw_entries.len() != before {
+                                            pane.apply_current_filter();
+                                            pane.apply_sort();
+                                            if pane.entries.is_empty() {
+                                                pane.cursor = 0;
+                                            } else {
+                                                pane.cursor =
+                                                    pane.cursor.min(pane.entries.len() - 1);
+                                            }
+                                            pane.update_scroll(pane_height, scroll_offset);
+                                            any_changed = true;
+                                        }
+                                    }
+                                }
+                                if any_changed {
+                                    result_obj.ui_changed = true;
+                                }
+                            } else {
+                                result_obj.panes_to_refresh.push(PaneRefresh {
+                                    tab_id: self.tabs.active_index,
+                                    pane: self.ui.active_pane,
+                                });
+                            }
+                            self.unmark_all_panes();
+                        }
+                        crate::job::JobKind::PatternRename { .. }
+                        | crate::job::JobKind::Mkdir { .. } => {
+                            result_obj.panes_to_refresh.push(PaneRefresh {
+                                tab_id: self.tabs.active_index,
+                                pane: self.ui.active_pane,
+                            });
+                        }
+                        crate::job::JobKind::CalculateSize { location } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::SizeCalculated(size),
+                            ) = result
+                            {
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    if let Some(entry) = tab
+                                        .left_pane
+                                        .entries
+                                        .iter_mut()
+                                        .find(|e| e.location == *location)
+                                    {
+                                        entry.calculated_size = Some(*size);
+                                    }
+                                    if let Some(entry) = tab
+                                        .right_pane
+                                        .entries
+                                        .iter_mut()
+                                        .find(|e| e.location == *location)
+                                    {
+                                        entry.calculated_size = Some(*size);
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::ExecuteCustomFunction {
+                            command,
+                            pipe_to_action,
+                            ..
+                        } => {
+                            match result {
+                                crate::job::OpResult::Failed(ref e) => {
+                                    tracing::info!("[CompleteJob] ExecuteCustomFunction FAILED: cmd={:?} stderr={:?}", command, e.trim());
+                                }
+                                crate::job::OpResult::Success(
+                                    crate::job::SuccessData::CustomFunctionOutput(ref out),
+                                ) => {
+                                    tracing::info!("[CompleteJob] ExecuteCustomFunction OK: pipe_to_action={:?} stdout={:?}", pipe_to_action, out.trim());
+                                }
+                                _ => {}
+                            }
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::CustomFunctionOutput(ref stdout),
+                            ) = result
+                            {
+                                // Handle PipeToAction first — the output drives navigation/execution
+                                if let Some(ref action) = pipe_to_action {
+                                    // Strip whitespace then surrounding quotes that cmd.exe echo may leave
+                                    let output = stdout.trim().trim_matches('"');
+                                    tracing::info!(
+                                        "[CompleteJob] PipeToAction={:?} output={:?}",
+                                        action,
+                                        output
+                                    );
+                                    match crate::pipe_to_action::process_pipe_to_action(action, output) {
+                                        Ok(crate::pipe_to_action::PipeToActionResult::JumpToPath(location)) => {
+                                            // Navigate the active pane to the target location
+                                            let pane = self.ui.active_pane;
+                                            let tab = self.current_tab_mut();
+                                            let tab_id = tab.id;
+                                            let pane_model = match pane {
+                                                crate::model::ActivePane::Left  => &mut tab.left_pane,
+                                                crate::model::ActivePane::Right => &mut tab.right_pane,
+                                            };
+                                            pane_model.current_location = location.clone();
+                                            pane_model.entries.clear();
+                                            pane_model.is_loading = true;
+                                            pane_model.cursor = 0;
+                                            pane_model.scroll_offset = 0;
+                                            let job_spec = crate::job::JobSpec::new(
+                                                crate::job::JobKind::ReadDirectory { location }
+                                            ).with_requesting_pane(tab_id, pane);
+                                            result_obj.jobs_to_start.push(job_spec);
+                                            result_obj.ui_changed = true;
+                                        }
+                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFile(path)) => {
+                                            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                                                command: path.to_string_lossy().to_string(),
+                                                working_dir: self.active_pane().current_location.clone(),
+                                                pipe_to_action: None,
+                                                shell: None,
+                                            });
+                                            result_obj.jobs_to_start.push(job_spec);
+                                        }
+                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFileWithEditor(path)) => {
+                                            let kind = Self::editor_job(&self.config, path.to_string_lossy().to_string(), false);
+                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(kind));
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("[CompleteJob] PipeToAction failed: {}", e);
+                                            result_obj.task_panel_logs.push(format!("  PipeToAction error: {}", e));
+                                            result_obj.ui_changed = true;
+                                        }
+                                    }
+                                } else {
+                                    // No pipe_to_action: check for editor-closed reload prompt,
+                                    // otherwise refresh the active pane.
+                                    let config_manager = crate::config::ConfigManager::new();
+                                    let config_path =
+                                        config_manager.config_path().to_string_lossy().to_string();
+                                    if command.contains(&config_path) {
+                                        let dialog = crate::model::Dialog::confirmation(
+                                            "Configuration Editor Closed",
+                                            "Reload configuration?",
+                                        );
+                                        self.dialogs.push(dialog);
+                                    } else {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: self.tabs.active_index,
+                                            pane: self.ui.active_pane,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::SpawnProcess {
+                            args, wait: true, ..
+                        } => {
+                            // GUI editor launched with wait_for_exit=true (config editor): the job
+                            // only completes once the editor process exits, so a Success here means
+                            // "editor closed" — show the reload prompt if it was the config file.
+                            if let crate::job::OpResult::Success(_) = result {
+                                let config_manager = crate::config::ConfigManager::new();
+                                let config_path =
+                                    config_manager.config_path().to_string_lossy().to_string();
+                                if args.iter().any(|a| a == &config_path) {
+                                    let dialog = crate::model::Dialog::confirmation(
+                                        "Configuration Editor Closed",
+                                        "Reload configuration?",
+                                    );
+                                    self.dialogs.push(dialog);
+                                }
+                            }
+                        }
+                        crate::job::JobKind::CollectJumpCandidates { include_files, .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::JumpCandidates(new_candidates),
+                            ) = result
+                            {
+                                let include_files = *include_files;
+                                let job_id_val = *job_id;
+                                for dialog in self.dialogs.stack.iter_mut().rev() {
+                                    let matched = match &dialog.content {
+                                        crate::model::dialog::DialogContent::JumpToFile(
+                                            crate::model::dialog::JumpToFileDialog {
+                                                loading_job_id,
+                                                ..
+                                            },
+                                        ) => *loading_job_id == Some(job_id_val),
+                                        crate::model::dialog::DialogContent::JumpToPath(
+                                            crate::model::dialog::JumpToPathDialog {
+                                                loading_job_id,
+                                                ..
+                                            },
+                                        ) => !include_files && *loading_job_id == Some(job_id_val),
+                                        _ => false,
+                                    };
+                                    if matched {
+                                        match &mut dialog.content {
+                                            crate::model::dialog::DialogContent::JumpToFile(
+                                                crate::model::dialog::JumpToFileDialog {
+                                                    candidates,
+                                                    suggestions,
+                                                    loading_job_id,
+                                                    query,
+                                                    ..
+                                                },
+                                            ) => {
+                                                let mut seen: std::collections::HashSet<String> =
+                                                    candidates.iter().cloned().collect();
+                                                for c in new_candidates {
+                                                    if seen.insert(c.clone()) {
+                                                        candidates.push(c.clone());
+                                                    }
+                                                }
+                                                *loading_job_id = None;
+                                                *suggestions = crate::model::dialog::filter_jump_to_file_suggestions(candidates, query);
+                                                result_obj.ui_changed = true;
+                                            }
+                                            crate::model::dialog::DialogContent::JumpToPath(
+                                                crate::model::dialog::JumpToPathDialog {
+                                                    candidates,
+                                                    suggestions,
+                                                    loading_job_id,
+                                                    query,
+                                                    ..
+                                                },
+                                            ) => {
+                                                let mut seen: std::collections::HashSet<String> =
+                                                    candidates.iter().cloned().collect();
+                                                for c in new_candidates {
+                                                    if seen.insert(c.clone()) {
+                                                        candidates.push(c.clone());
+                                                    }
+                                                }
+                                                *loading_job_id = None;
+                                                *suggestions = crate::model::dialog::filter_jump_to_path_suggestions(candidates, query);
+                                                result_obj.ui_changed = true;
+                                            }
+                                            _ => {}
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(log) = log_entry {
+                    result_obj.task_panel_logs.push(log);
+                }
+
+                match result {
+                    crate::job::OpResult::Success(_) => {
+                        self.background_jobs.mark_job_completed(*job_id)
+                    }
+                    crate::job::OpResult::Failed(e) => {
+                        self.background_jobs.mark_job_failed(*job_id, e.clone())
+                    }
+                    crate::job::OpResult::Cancelled => {
+                        self.background_jobs.mark_job_cancelled(*job_id)
+                    }
+                }
+
+                Some(result_obj)
+            }
+            Transition::CancelJob { job_id } => {
+                if self.jobs.request_cancel(*job_id) {
+                    Some(StateUpdateResult::with_cancel(*job_id))
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            Transition::AcknowledgeCancel { job_id } => {
+                self.jobs.acknowledge_cancel(*job_id);
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::NavigateToHistoryIndex { pane, index } => {
+                let location = {
+                    let tab = self.current_tab_mut();
+                    tab.history.jump_to_index(*pane, *index)
+                };
+                if let Some(location) = location {
+                    let cached_entries = self.cache.get(&location);
+                    let tab_id = self.current_tab().id;
+                    let tab = self.current_tab_mut();
+                    let pane_model = match pane {
+                        crate::model::ActivePane::Left => &mut tab.left_pane,
+                        crate::model::ActivePane::Right => &mut tab.right_pane,
+                    };
+                    pane_model.current_location = location.clone();
+                    pane_model.cursor = 0;
+                    pane_model.scroll_offset = 0;
+                    if let Some(entries) = cached_entries {
+                        pane_model.entries = entries;
+                        pane_model.is_loading = false;
+                        pane_model.apply_sort();
+                        Some(StateUpdateResult::with_ui_change())
+                    } else {
+                        pane_model.entries.clear();
+                        pane_model.is_loading = true;
+                        let job_spec =
+                            JobSpec::new(crate::job::JobKind::ReadDirectory { location })
+                                .with_requesting_pane(tab_id, *pane);
+                        pane_model.active_job_id = Some(job_spec.id);
+                        Some(StateUpdateResult::with_job(job_spec))
+                    }
+                } else {
+                    Some(StateUpdateResult::none())
+                }
+            }
+            _ => None,
+        }
+    }
+}
