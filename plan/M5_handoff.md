@@ -55,10 +55,17 @@
       ToggleTaskPanel 等)と `self.dialogs` 操作が密に絡み合っており、機械的な行範囲抽出以上の
       判断(どのヘルパーをどちらに渡すか)が必要になる。move-only 原則(判断を増やさない)を優先し
       見送り。実測 10 ハンドラ全て state/handlers/ 配下に move 完了、mod.rs に `fn handle_*` は 0 件。
-- [ ] S3-1 helpers.rs 集約(editor_job が唯一の候補 — 調査結果(a)参照)
-- [ ] S3-2 ARCHITECTURE.md 所有権マップ
-- [ ] S3-3 サブ struct 化(実施 or 見送り理由: ___)
-- [ ] S3-4 全検証緑 + ROADMAP 更新
+- [x] S3-1 helpers.rs 集約(e41722d)。editor_job/resolve_editor のみ移動(job.rs と ui.rs の
+      両方から呼ばれる真の共有ヘルパー)。save_viewer_to_current_tab/restore_viewer_from_tab/
+      start_viewer_search_background は実測の結果それぞれ単一呼び出し元(tab.rs, tab.rs, viewer.rs)
+      だったため移動せず(S1 調査結果(a)の「SHARED」記載は誤りで、実際は単一所有だった)。
+- [x] S3-2 ARCHITECTURE.md 所有権マップ(ab10b71)。quality_overhaul.md の ratchet リストも
+      `state.rs` → `state/mod.rs` に更新(4 unwrap は new()/start_viewer_search_background に残留、
+      handlers/*.rs と helpers.rs には unwrap 皆無)。
+- [x] S3-3 サブ struct 化 → **見送り**。理由: 有力候補は `ui`/`tabs`/`config` のみだが、いずれも
+      cross-cutting(ほぼ全ハンドラから読み書きされる)で単純な部分集合に切り出せない。他フィールドは
+      既に単一所有。churn 回避のため見送り(調査結果(b)参照)。
+- [ ] S3-4 全検証緑 + ROADMAP 更新(rwf-lib フルテスト実行中 — 完了後に確定)
 
 ## 設計上の注記(S1 で判明・再設計ではなく実態記録)
 
