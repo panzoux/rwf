@@ -5,3 +5,4 @@ pub(crate) mod navigation;
 pub(crate) mod search;
 pub(crate) mod tab;
 pub(crate) mod view;
+pub(crate) mod viewer;
