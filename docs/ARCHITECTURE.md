@@ -21,7 +21,7 @@ thread touches the filesystem.
 
 ## Transition state machine (rwf-lib)
 
-- `Transition` (`rwf-lib/src/state.rs`) is the *only* way state changes.
+- `Transition` (`rwf-lib/src/state/mod.rs`) is the *only* way state changes.
   Input mapping (`rwf-lib/src/input/`) converts key events to `Action`s, then
   `action_to_transitions(&state, &action)` decides which transitions apply —
   it may consult state (e.g. marked files) but never mutates it.
@@ -71,20 +71,58 @@ decides *how it looks*, it belongs in rwf-bin. Dialog *data* lives in
 `rwf-bin/src/ui/dialog/` (shared chrome: `common.rs` styles + `frame.rs`
 frame/buttons).
 
-## AppState responsibility boundaries (M5 groundwork)
+## AppState responsibility boundaries (M5)
 
-`AppState` (`rwf-lib/src/state.rs`, ~3,900 lines) is deliberately a single
+`AppState` itself (`rwf-lib/src/state/mod.rs`) is deliberately a single
 struct — the Transition dispatch already provides the behavioral boundary, and
 1000+ tests reference `state.field` directly, so splitting the struct buys
-little safety for a lot of churn. What M5 *will* do is split `update_state`'s
-handler functions into per-domain modules and document a field-ownership map
-(which handler reads/writes which field). Until then, the informal grouping is:
+little safety for a lot of churn. What M5 did instead is move the ten
+`handle_*_transition` methods out of `state.rs` into one file per domain
+under `rwf-lib/src/state/handlers/`, with shared helpers in
+`rwf-lib/src/state/helpers.rs`:
 
-- `tabs` (per-tab `left_pane`/`right_pane` `PaneModel`: entries, cursor,
-  location, per-pane `marking`) — navigation/marking handlers
-- `dialogs` (stack) + `ui` (active pane, modes, viewer layout) — dialog/UI handlers
-- `jobs` (`JobManager`) + `cache` (directory cache) — job handlers
-- `config`, `registered_folders`, session/logging fields — config handlers
+- `handlers/navigation.rs`, `tab.rs`, `marking.rs`, `job.rs`,
+  `job_management.rs`, `ui.rs`, `view.rs`, `search.rs`, `viewer.rs`,
+  `advanced.rs` — one file per `handle_*_transition` function, moved verbatim
+  (no logic changes). Dialog transitions (`ShowDialog`/`ConfirmDialog`/
+  `ShowJumpToPathDialog`/etc.) live inside `ui.rs` rather than a separate
+  `dialog.rs`: they're interleaved with non-dialog UI arms and share
+  `self.dialogs` state closely enough that splitting them out would require
+  new judgment calls, not just moving lines.
+- `helpers.rs` holds only genuinely cross-handler logic: `editor_job`/
+  `resolve_editor` (used by both `job.rs` and `ui.rs` to build the "open in
+  editor" job spec). Other private helpers (`save_viewer_to_current_tab`,
+  `restore_viewer_from_tab`, `start_viewer_search_background`) turned out to
+  each have a single caller (`tab.rs`, `tab.rs`, `viewer.rs` respectively) once
+  measured, so they stayed put rather than being moved speculatively.
+- `AppState`'s own methods (`new`, `current_tab(_mut)`, `active_pane(_mut)`,
+  `opposite_pane`, `unmark_all_panes`, session save/restore) stay in `mod.rs`:
+  they're `pub`/`pub(crate)` already, so any handler file can call
+  `self.current_tab_mut()` etc. without further visibility changes.
 
-New fields must state their owning handler in the field comment (enforced by
-review, ratified in M5).
+### Field ownership map
+
+| Field | Owning handler(s) | Notes |
+|---|---|---|
+| `tabs` | `tab` (create/close/switch) | read/written by nearly every handler for pane access; cross-cutting, not exclusive |
+| `jobs` (`JobManager`) | `job` | `tab`/`viewer` only call `request_cancel` for cleanup |
+| `background_jobs` | `job` | `tab` cancels on `CloseTab`; `job_management` starts background jobs |
+| `search` (`SearchModel`) | `search` | `ui` (`ConfirmDialog` on the Search input dialog) and dispatch-level `UpdateDialogInput` also touch it |
+| `ui` (`UIState`: active pane, modes, layout) | cross-cutting — read/written by nearly every handler | no single owner; treat as shared top-level state, not handler-private |
+| `dialogs` (stack + input buffer) | `ui` | `job` pushes error dialogs on `CompleteJob` failure |
+| `registered_folders` | `ui` | single-owner (all dialog-driven) |
+| `cache` (directory cache) | `job` (writes on `CompleteJob`/invalidate) | `navigation`/`advanced` read cached entries |
+| `navigation_cache` (cursor/scroll memory) | `navigation` | single-owner |
+| `viewer`, `viewer_job_id`, `viewer_search_job_id`, `viewer_search_input`, `viewer_command_input` | `viewer` | `tab`'s save/restore-to-tab helpers move these fields across tab switches |
+| `log_manager` | `ui` (`SaveLog`) | otherwise read-only after construction |
+| `config` | dispatch-level `ReloadConfig`/`UpdateConfig` (in `update_state`, not a `handle_*` method) | `navigation`/`job`/`viewer`/`ui` read thresholds/offsets from it |
+| `last_tab_created` | `tab` | single-owner (`CreateTab` debounce) |
+| `extension_associations`, `custom_functions`, `config_load_results` | dispatch-level `ReloadConfig` | `ui` reads `custom_functions` for menus/invocation |
+| `pending_confirmation_logs`, `confirmation_needs_keybinding_reload`, `pending_custom_function_input`, `suppress_next_dialog_pop` | none (unused inside `state/`) | read/written by `rwf-bin`'s `app.rs` integration layer, not by any transition handler |
+| `leap` (`LeapState`) | dispatch-level `Leap*` transitions (in `update_state`, not a `handle_*` method) | single-owner |
+
+`ui`, `tabs`, and `config` are genuinely cross-cutting (read or written by most
+handlers) and were considered for sub-struct extraction during M5; none of
+them decomposed cleanly enough to be worth the churn, so no sub-struct split
+was made. New fields should still note their owning handler (or "cross-cutting")
+in the field's doc comment.

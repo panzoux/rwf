@@ -277,7 +277,7 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 | `rwf-lib/src/model/dialog/mod.rs`(M4 で `dialog.rs` をディレクトリ化) | 11 | `[ ]`(全11箇所は `RegisteredFolderManager::expand_env_vars` にあり、struct化した29バリアントのファイルには unwrap なし。M6 で ratchet) |
 | `rwf-lib/src/macro_expander.rs` | 7 | `[ ]` |
 | `rwf-lib/src/job/job_executor.rs` | 5 | `[ ]` |
-| `rwf-lib/src/state.rs` | 4 | `[ ]`（M5 で分割後に ratchet） |
+| `rwf-lib/src/state/mod.rs`(M5 で `state.rs` をディレクトリ化) | 4 | `[ ]`(4箇所全て `new()`(1箇所)と `start_viewer_search_background()`(3箇所)にあり、両方とも mod.rs に残留。`state/handlers/*.rs` と `state/helpers.rs` へ move した10ハンドラ+editor_job には unwrap 皆無なので allow 不要。M6 で mod.rs のみ ratchet) |
 | `rwf-lib/src/logging.rs` | 3 | `[ ]` |
 | `rwf-bin/src/ui/viewer.rs` | 2 | `[ ]` |
 | `rwf-lib/src/job.rs` | 1 | `[ ]` |
