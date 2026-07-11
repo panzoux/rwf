@@ -3,8 +3,6 @@
 //! This module implements the JobExecutor that dispatches jobs to the
 //! appropriate backend methods and sends JobEvent updates.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use crate::backend::{ArchiveHandler, FilesystemBackend};
 use crate::job::{JobId, JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
 use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, TextEncoding, ViewerBuffer};
@@ -623,7 +621,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 &spec.cancel_token,
                 Box::new(move |items_processed, _current_size| {
                     // Send progress updates every 100ms to avoid flooding
-                    let mut last = last_update.lock().unwrap();
+                    let mut last = last_update
+                        .lock()
+                        .expect("last_update mutex should not be poisoned");
                     if last.elapsed() > std::time::Duration::from_millis(100) {
                         // We don't know the total, so we can't calculate a percentage
                         // Send a progress value that indicates activity (oscillating between 0.3 and 0.7)
@@ -963,7 +963,11 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
         let total = buffer.total_bytes();
         if total == 0 {
-            buffer.line_index.lock().unwrap().is_complete = true;
+            buffer
+                .line_index
+                .lock()
+                .expect("line_index mutex should not be poisoned")
+                .is_complete = true;
             return OpResult::Success(SuccessData::None);
         }
 
@@ -980,7 +984,11 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             let mut index_file = match std::fs::File::open(&path_for_index) {
                 Ok(f) => f,
                 Err(_) => {
-                    buffer_for_scan.line_index.lock().unwrap().is_complete = true;
+                    buffer_for_scan
+                        .line_index
+                        .lock()
+                        .expect("line_index mutex should not be poisoned")
+                        .is_complete = true;
                     return;
                 }
             };
@@ -1010,7 +1018,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     buffer_for_scan
                         .line_index
                         .lock()
-                        .unwrap()
+                        .expect("line_index mutex should not be poisoned")
                         .offsets
                         .extend_from_slice(&local);
                 }
@@ -1018,7 +1026,11 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 let _ = event_tx.send(JobEvent::Progress(job_id, abs_offset as f64 / total as f64));
             }
 
-            buffer_for_scan.line_index.lock().unwrap().is_complete = true;
+            buffer_for_scan
+                .line_index
+                .lock()
+                .expect("line_index mutex should not be poisoned")
+                .is_complete = true;
         })
         .await
         .ok();
