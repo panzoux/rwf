@@ -3,8 +3,6 @@
 //! This module defines the central AppState structure and the Transition enum
 //! for explicit state changes following the AppState pattern.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 mod handlers;
 mod helpers;
 
@@ -97,7 +95,7 @@ impl AppState {
                     .collect();
                 crate::logging::default_log_dir()
                     .parent()
-                    .unwrap()
+                    .expect("default_log_dir() always ends with a joined \"logs\" component")
                     .join(rel)
             };
 
@@ -291,11 +289,16 @@ impl AppState {
 
         if is_hex {
             // Apply address jump immediately (no I/O).
-            if let Some(ref buf) = self.viewer.as_ref().unwrap().buffer {
+            if let Some(ref buf) = self
+                .viewer
+                .as_ref()
+                .expect("self.viewer is Some — checked by the early return above")
+                .buffer
+            {
                 let file_size = buf.bytes.len();
                 self.viewer
                     .as_mut()
-                    .unwrap()
+                    .expect("self.viewer is Some — checked by the early return above")
                     .hex_apply_address_jump(query, file_size);
             }
             // If there's no byte pattern to scan, we're done.
@@ -310,7 +313,10 @@ impl AppState {
             None
         };
 
-        self.viewer.as_mut().unwrap().is_searching = true;
+        self.viewer
+            .as_mut()
+            .expect("self.viewer is Some — checked by the early return above")
+            .is_searching = true;
         let job = JobSpec::new(JobKind::ViewerSearch {
             location,
             migemo_pattern: migemo_pat,
