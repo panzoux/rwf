@@ -5,8 +5,6 @@
 //! stores it behind an Arc<Mutex<LineIndex>> shared with the UI thread.
 //! The renderer only decodes the visible viewport window on each frame.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use crate::model::Location;
 use regex::Regex;
 use std::sync::{Arc, Mutex};
@@ -36,7 +34,10 @@ impl SeekableFile {
         if to_read == 0 {
             return Ok(vec![]);
         }
-        let mut f = self.file.lock().unwrap();
+        let mut f = self
+            .file
+            .lock()
+            .expect("SeekableFile mutex should not be poisoned");
         f.seek(SeekFrom::Start(offset))?;
         let mut buf = vec![0u8; to_read];
         let mut total = 0;
