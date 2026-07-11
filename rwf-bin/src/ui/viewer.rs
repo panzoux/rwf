@@ -4,8 +4,6 @@
 //! The line-offset index grows asynchronously; the status bar shows how many
 //! lines have been indexed so far with a '+' suffix while still loading.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -83,7 +81,10 @@ pub fn render_viewer(
         ViewerMode::Text => {
             if let Some(ref buffer) = viewer.buffer {
                 let (indexed, complete) = {
-                    let idx = buffer.line_index.lock().unwrap();
+                    let idx = buffer
+                        .line_index
+                        .lock()
+                        .expect("line_index mutex should not be poisoned");
                     (idx.offsets.len(), idx.is_complete)
                 };
                 let pos = if indexed == 0 {
@@ -306,7 +307,10 @@ fn render_text_content(frame: &mut Frame, area: Rect, viewer: &ViewerState, fg: 
 
     // Snapshot the index once per frame so we hold the lock minimally.
     let (indexed_count, _complete) = {
-        let idx = buffer.line_index.lock().unwrap();
+        let idx = buffer
+            .line_index
+            .lock()
+            .expect("line_index mutex should not be poisoned");
         (idx.offsets.len(), idx.is_complete)
     };
 
