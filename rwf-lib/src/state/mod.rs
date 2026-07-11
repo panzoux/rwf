@@ -966,8 +966,12 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                 state.search.query = input;
 
                 // Filter entries in real-time
-                let entries = state.active_pane().entries.clone();
-                state.search.filter_entries(&entries);
+                let tab = &state.tabs.tabs[state.tabs.active_index];
+                let entries = match state.ui.active_pane {
+                    crate::model::ActivePane::Left => &tab.left_pane.entries,
+                    crate::model::ActivePane::Right => &tab.right_pane.entries,
+                };
+                state.search.filter_entries(entries);
             }
 
             StateUpdateResult::with_ui_change()
