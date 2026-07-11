@@ -274,15 +274,15 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 
 | モジュール | unwrap 数 | 状態 |
 |---|---|---|
-| `rwf-lib/src/model/dialog/mod.rs`(M4 で `dialog.rs` をディレクトリ化) | 11 | `[ ]`(全11箇所は `RegisteredFolderManager::expand_env_vars` にあり、struct化した29バリアントのファイルには unwrap なし。M6 で ratchet) |
-| `rwf-lib/src/macro_expander.rs` | 7 | `[ ]` |
-| `rwf-lib/src/job/job_executor.rs` | 5 | `[ ]` |
-| `rwf-lib/src/state/mod.rs`(M5 で `state.rs` をディレクトリ化) | 4 | `[ ]`(4箇所全て `new()`(1箇所)と `start_viewer_search_background()`(3箇所)にあり、両方とも mod.rs に残留。`state/handlers/*.rs` と `state/helpers.rs` へ move した10ハンドラ+editor_job には unwrap 皆無なので allow 不要。M6 で mod.rs のみ ratchet) |
-| `rwf-lib/src/logging.rs` | 3 | `[ ]` |
-| `rwf-bin/src/ui/viewer.rs` | 2 | `[ ]` |
-| `rwf-lib/src/job.rs` | 1 | `[ ]` |
-| `rwf-lib/src/model/viewer.rs` | 1 | `[ ]` |
-| `rwf-lib/src/pattern_rename.rs` | 1 | `[ ]` |
+| `rwf-lib/src/model/dialog/mod.rs`(M4 で `dialog.rs` をディレクトリ化) | 11 | `[x]`(infallible → `expect`, all 11: `RegisteredFolderManager::expand_env_vars` の Regex::new + cap.get(0)) |
+| `rwf-lib/src/macro_expander.rs` | 7 | `[x]`(infallible → `expect`, all 7) |
+| `rwf-lib/src/job/job_executor.rs` | 5 | `[x]`(lock poisoning → `expect`, all 5) |
+| `rwf-lib/src/state/mod.rs`(M5 で `state.rs` をディレクトリ化) | 4 | `[x]`(infallible → `expect`, all 4: `new()` の `default_log_dir().parent()` + `start_viewer_search_background()` の3箇所) |
+| `rwf-lib/src/logging.rs` | 3 | `[x]`(lock poisoning → `expect`, all 3) |
+| `rwf-bin/src/ui/viewer.rs` | 2 | `[x]`(lock poisoning → `expect`, both) |
+| `rwf-lib/src/job.rs` | 1 | `[x]`(infallible → `expect`) |
+| `rwf-lib/src/model/viewer.rs` | 1 | `[x]`(lock poisoning → `expect`) |
+| `rwf-lib/src/pattern_rename.rs` | 1 | `[x]`(infallible → `expect`) |
 
 unsafe_code は `rwf-lib/src/volume_info.rs` のみ `#![allow(unsafe_code)]`（Win32 API、
 全 4 ブロックに SAFETY コメント付与済み）。これは恒久的な scoped allow であり ratchet 対象外。

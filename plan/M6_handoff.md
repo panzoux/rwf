@@ -46,7 +46,10 @@
 
 ## 進捗チェックボックス(ratchet 本体は quality_overhaul.md の表で消し込み)
 
-- [ ] S1 unwrap 全 35 箇所処置・allow 全撤去
+- [x] S1 unwrap 全 35 箇所処置・allow 全撤去(2026-07-11 完了。9 モジュール全て `[x]` — quality_overhaul.md 参照。
+      内訳: (a) infallible → `expect` = 24 箇所 / (c) lock poisoning → `expect` = 11 箇所 / (b) エラー伝播への変更 = 0 箇所。
+      `cargo fmt --check` / `cargo clippy --all-targets -D warnings`(workspace 全体)/ `cargo test -p rwf`(145 件)/
+      `cargo test -p rwf --no-run` / `cargo test -p rwf-lib`(1043 件、2187.76s)全緑。9 コミット、1 モジュール = 1 コミット)
 - [ ] S2-1 clone 候補表(下の欄に貼る)
 - [ ] S2-2 clone 修正(修正 __ 件 / 見送り __ 件)
 - [ ] 全検証緑 + ROADMAP 更新
@@ -59,7 +62,9 @@
 
 ## 挙動変更ログ(panic → エラー表示にした箇所。M7 のフェーズサマリに転記する)
 
-- (S1 で記入)
+- (S1)該当なし。35 箇所全てが (a) infallible または (c) lock poisoning に分類され、
+  panic 経路自体は保存(unwrap → expect + 理由メッセージへの置換のみ)。既存のエラー Transition /
+  Result 伝播へ切り替えた (b) 分類の箇所はゼロだった。
 
 ## セッション開始プロンプト(コピペ用)
 
