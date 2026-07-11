@@ -5,8 +5,6 @@
 //! - File logging with rotation at 10MB
 //! - Structured logging via tracing
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -91,7 +89,10 @@ impl RotatingFileWriter {
 
 impl Write for RotatingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("RotatingFileWriter mutex should not be poisoned");
 
         // Check if rotation is needed
         let needs_rotation = {
@@ -114,7 +115,10 @@ impl Write for RotatingFileWriter {
             fs::rename(&path, &old_path)?;
 
             // Reacquire lock and create new file
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("RotatingFileWriter mutex should not be poisoned");
             inner.file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -127,7 +131,11 @@ impl Write for RotatingFileWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.inner.lock().unwrap().file.flush()
+        self.inner
+            .lock()
+            .expect("RotatingFileWriter mutex should not be poisoned")
+            .file
+            .flush()
     }
 }
 
