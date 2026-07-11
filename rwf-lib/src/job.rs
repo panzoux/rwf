@@ -3,8 +3,6 @@
 //! This module implements the JobManager and related types for managing
 //! asynchronous file operations via the rwf Worker Pool.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use crate::model::Location;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -499,7 +497,10 @@ impl JobManager {
 
         // Remove from queue
         if let Some(pos) = self.queue.iter().position(|spec| spec.id == job_id) {
-            let spec = self.queue.remove(pos).unwrap();
+            let spec = self
+                .queue
+                .remove(pos)
+                .expect("pos was just found via position() on the same queue");
             spec.cancel_token.cancel();
 
             self.total_cancelled += 1;
