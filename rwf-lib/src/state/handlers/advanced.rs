@@ -140,20 +140,18 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowPatternRenameDialog => {
-                let filenames: Vec<String> = {
-                    let pane = self.active_pane();
-                    if pane.entries.is_empty() {
-                        return Some(StateUpdateResult::none());
-                    }
-                    if pane.marking.count() > 0 {
-                        pane.entries
-                            .iter()
-                            .filter(|e| pane.marking.is_marked(&e.location))
-                            .map(|e| e.name.clone())
-                            .collect()
-                    } else {
-                        pane.entries.iter().map(|e| e.name.clone()).collect()
-                    }
+                let pane = self.active_pane();
+                if pane.entries.is_empty() {
+                    return Some(StateUpdateResult::none());
+                }
+                let filenames: Vec<&str> = if pane.marking.count() > 0 {
+                    pane.entries
+                        .iter()
+                        .filter(|e| pane.marking.is_marked(&e.location))
+                        .map(|e| e.name.as_str())
+                        .collect()
+                } else {
+                    pane.entries.iter().map(|e| e.name.as_str()).collect()
                 };
                 // Pre-populate preview so the dialog opens at full size with all files visible
                 let initial_preview =
@@ -174,17 +172,15 @@ impl AppState {
                 use_regex,
                 case_sensitive,
             } => {
-                let filenames: Vec<_> = {
-                    let pane = self.active_pane();
-                    if pane.marking.count() > 0 {
-                        pane.entries
-                            .iter()
-                            .filter(|e| pane.marking.is_marked(&e.location))
-                            .map(|e| e.name.clone())
-                            .collect()
-                    } else {
-                        pane.entries.iter().map(|e| e.name.clone()).collect()
-                    }
+                let pane = self.active_pane();
+                let filenames: Vec<&str> = if pane.marking.count() > 0 {
+                    pane.entries
+                        .iter()
+                        .filter(|e| pane.marking.is_marked(&e.location))
+                        .map(|e| e.name.as_str())
+                        .collect()
+                } else {
+                    pane.entries.iter().map(|e| e.name.as_str()).collect()
                 };
 
                 let preview = crate::pattern_rename::generate_preview(

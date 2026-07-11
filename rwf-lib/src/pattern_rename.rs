@@ -55,7 +55,7 @@ pub fn apply_rename_pattern(
 ///
 /// Returns `Vec<(original, new_name)>`. Pairs where both are equal are unchanged.
 pub fn generate_preview(
-    filenames: &[String],
+    filenames: &[&str],
     find: &str,
     replace: &str,
     use_regex: bool,
@@ -65,7 +65,7 @@ pub fn generate_preview(
         .iter()
         .map(|name| {
             let new_name = apply_rename_pattern(name, find, replace, use_regex, case_sensitive);
-            (name.clone(), new_name)
+            (name.to_string(), new_name)
         })
         .collect()
 }
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_generate_preview_all_files() {
-        let files = vec!["file1.txt".to_string(), "image.jpg".to_string()];
+        let files = vec!["file1.txt", "image.jpg"];
         let preview = generate_preview(&files, r"\.txt$", ".bak", true, true);
         assert_eq!(preview.len(), 2);
         assert_eq!(
