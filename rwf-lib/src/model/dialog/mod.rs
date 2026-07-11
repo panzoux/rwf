@@ -1,7 +1,5 @@
 //! Dialog system
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use crate::job::JobId;
 pub use crate::job::PipeToAction;
 use crate::model::Location;
@@ -2357,53 +2355,56 @@ impl RegisteredFolderManager {
         // Windows style: %VAR%
         #[cfg(target_os = "windows")]
         {
-            let pattern = regex::Regex::new(r"%([^%]+)%").unwrap();
+            let pattern =
+                regex::Regex::new(r"%([^%]+)%").expect("regex is a compile-time constant");
             for cap in pattern.captures_iter(path) {
                 if let Some(var_name) = cap.get(1) {
                     if let Ok(value) = std::env::var(var_name.as_str()) {
-                        all_replacements.push((
-                            cap.get(0).unwrap().start(),
-                            cap.get(0).unwrap().end(),
-                            value,
-                        ));
+                        let full_match = cap
+                            .get(0)
+                            .expect("capture group 0 is always present on a successful match");
+                        all_replacements.push((full_match.start(), full_match.end(), value));
                     }
                 }
             }
         }
 
         // PowerShell style: $env:VAR
-        let ps_pattern = regex::Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+        let ps_pattern = regex::Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)")
+            .expect("regex is a compile-time constant");
         for cap in ps_pattern.captures_iter(path) {
             if let Some(var_name) = cap.get(1) {
                 if let Ok(value) = std::env::var(var_name.as_str()) {
-                    all_replacements.push((
-                        cap.get(0).unwrap().start(),
-                        cap.get(0).unwrap().end(),
-                        value,
-                    ));
+                    let full_match = cap
+                        .get(0)
+                        .expect("capture group 0 is always present on a successful match");
+                    all_replacements.push((full_match.start(), full_match.end(), value));
                 }
             }
         }
 
         // Unix style with braces: ${VAR}
-        let braces_pattern = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap();
+        let braces_pattern = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+            .expect("regex is a compile-time constant");
         for cap in braces_pattern.captures_iter(path) {
             if let Some(var_name) = cap.get(1) {
                 if let Ok(value) = std::env::var(var_name.as_str()) {
-                    all_replacements.push((
-                        cap.get(0).unwrap().start(),
-                        cap.get(0).unwrap().end(),
-                        value,
-                    ));
+                    let full_match = cap
+                        .get(0)
+                        .expect("capture group 0 is always present on a successful match");
+                    all_replacements.push((full_match.start(), full_match.end(), value));
                 }
             }
         }
 
         // Unix style without braces: $VAR (but not $env: which was already handled)
         // We need to exclude matches that are part of $env: or ${
-        let simple_pattern = regex::Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+        let simple_pattern = regex::Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+            .expect("regex is a compile-time constant");
         for cap in simple_pattern.captures_iter(path) {
-            let full_match = cap.get(0).unwrap();
+            let full_match = cap
+                .get(0)
+                .expect("capture group 0 is always present on a successful match");
             let start = full_match.start();
             let end = full_match.end();
 
