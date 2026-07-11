@@ -3,8 +3,6 @@
 //! This module implements macro expansion for custom function commands,
 //! supporting various macros like $P (active pane path), $F (cursor file), etc.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use crate::model::CustomFunction;
 use crate::state::AppState;
 use regex::Regex;
@@ -113,7 +111,7 @@ impl MacroExpander {
     /// `$V"APPDATA"` → value of the APPDATA env var; empty string if not set.
     fn expand_v_macro(command: &str) -> String {
         // Pattern: $V"<var_name>" where var_name has no embedded quotes
-        let re = Regex::new(r#"\$V"([^"]+)""#).unwrap();
+        let re = Regex::new(r#"\$V"([^"]+)""#).expect("regex is a compile-time constant");
         re.replace_all(command, |caps: &regex::Captures| {
             std::env::var(&caps[1]).unwrap_or_default()
         })
@@ -144,15 +142,22 @@ impl MacroExpander {
         let mut result = command.to_string();
         result = Self::replace_env_pattern(
             &result,
-            Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)").unwrap(),
+            Regex::new(r"\$env:([A-Za-z_][A-Za-z0-9_]*)")
+                .expect("regex is a compile-time constant"),
         );
         result = Self::replace_env_pattern(
             &result,
-            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap(),
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+                .expect("regex is a compile-time constant"),
         );
-        result = Self::replace_env_pattern(&result, Regex::new(r"%([^%]+)%").unwrap());
-        result =
-            Self::replace_env_pattern(&result, Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+        result = Self::replace_env_pattern(
+            &result,
+            Regex::new(r"%([^%]+)%").expect("regex is a compile-time constant"),
+        );
+        result = Self::replace_env_pattern(
+            &result,
+            Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").expect("regex is a compile-time constant"),
+        );
         result
     }
 
@@ -182,7 +187,7 @@ impl MacroExpander {
     /// Extract the prompt text from a `$I"prompt"` or `$I5"prompt"` pattern.
     /// Returns None if the command has bare `$I` with no quoted prompt.
     pub fn extract_i_prompt(command: &str) -> Option<String> {
-        let re = Regex::new(r#"\$I\d?"([^"]*)""#).unwrap();
+        let re = Regex::new(r#"\$I\d?"([^"]*)""#).expect("regex is a compile-time constant");
         re.captures(command).map(|cap| cap[1].to_string())
     }
 
@@ -200,7 +205,7 @@ impl MacroExpander {
             .to_string();
 
         // Replace $I"prompt", $I5"prompt", or bare $I — the whole token — with user_input.
-        let re = Regex::new(r#"\$I(?:\d?"[^"]*")?"#).unwrap();
+        let re = Regex::new(r#"\$I(?:\d?"[^"]*")?"#).expect("regex is a compile-time constant");
         command = re.replace_all(&command, user_input).into_owned();
 
         // Now expand all other macros
