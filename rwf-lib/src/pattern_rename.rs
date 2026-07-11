@@ -9,8 +9,6 @@
 //!
 //! Always returns a `String`; equals the original filename when no match/change.
 
-#![allow(clippy::unwrap_used)] // TODO(M6): ratchet — see plan/quality_overhaul.md
-
 use regex::Regex;
 
 /// Apply a rename pattern to a filename using TWF-compatible logic.
@@ -154,7 +152,7 @@ fn apply_tr_command(filename: &str, command: &str) -> String {
 /// `$1_` means group 1 followed by literal `_`.  Converting to `${N}` is unambiguous in
 /// both engines.  Already-braced `${N}` sequences are left unchanged.
 fn normalize_replacement(replace: &str) -> String {
-    let re = Regex::new(r"\$(\d+)").unwrap();
+    let re = Regex::new(r"\$(\d+)").expect("regex is a compile-time constant");
     re.replace_all(replace, |caps: &regex::Captures| {
         format!("${{{}}}", &caps[1])
     })
