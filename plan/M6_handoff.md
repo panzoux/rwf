@@ -50,15 +50,42 @@
       内訳: (a) infallible → `expect` = 24 箇所 / (c) lock poisoning → `expect` = 11 箇所 / (b) エラー伝播への変更 = 0 箇所。
       `cargo fmt --check` / `cargo clippy --all-targets -D warnings`(workspace 全体)/ `cargo test -p rwf`(145 件)/
       `cargo test -p rwf --no-run` / `cargo test -p rwf-lib`(1043 件、2187.76s)全緑。9 コミット、1 モジュール = 1 コミット)
-- [ ] S2-1 clone 候補表(下の欄に貼る)
-- [ ] S2-2 clone 修正(修正 __ 件 / 見送り __ 件)
-- [ ] 全検証緑 + ROADMAP 更新
+- [x] S2-1 clone 候補表(下の欄に貼る。Explore×haiku 2 体並列、計約80候補を収集 → 下表に絞り込み)
+- [x] S2-2 clone 修正(修正 7 件 / 見送り 6 系統)
+- [x] 全検証緑 + ROADMAP 更新(2026-07-12。`cargo fmt --check` / `cargo clippy --all-targets -D warnings`
+      (workspace 全体)/ `cargo test -p rwf`(145)/ `cargo test -p rwf --no-run` / `cargo test -p rwf-lib`
+      (1043、2121.92s)全緑)
 
 ## clone 候補表(S2 で記入)
 
-```
-(S2 で記入)
-```
+条件 (i) `Vec<FileEntry>` 等 O(entries) clone、(ii) キー入力ホットパスの clone に絞った上位候補。
+Location/PathBuf/String 単体クローンなど「小さい struct」は方針により対象外(CLAUDE.md 明記)。
+
+### 修正した 7 箇所
+
+| file:line | type | hot/cold | 対処 |
+|---|---|---|---|
+| `state/handlers/marking.rs:14`(MarkAll) | `Vec<FileEntry>` | keypress, O(entries) | 借用化(`active_pane_mut()` の disjoint field 借用) |
+| `state/handlers/marking.rs:23`(MarkPattern) | `Vec<FileEntry>` | keypress, O(entries) | 同上 |
+| `state/handlers/marking.rs:30`(MarkRange) | `Vec<FileEntry>` | keypress, O(entries) | 同上 |
+| `state/handlers/marking.rs:38`(InvertMarks) | `Vec<FileEntry>` | keypress, O(entries) | 同上 |
+| `state/mod.rs:969`(UpdateDialogInput/Search) | `Vec<FileEntry>` | **per-keystroke**, O(entries) | 借用化(`state.tabs`/`state.search` の disjoint field 借用) |
+| `state/handlers/advanced.rs:143-158`(ShowPatternRenameDialog) | `Vec<String>`(name clone) | dialog open, O(entries) | `generate_preview` を `&[&str]` 化し `Vec<&str>` 収集に変更(pattern_rename.rs も変更) |
+| `state/handlers/advanced.rs:175-186`(UpdatePatternRenameFields) | `Vec<String>`(name clone) | **per-keystroke**(debounced), O(entries) | 同上 |
+
+### 見送り(6 系統。理由: アーキテクチャ変更が必要 = churn 回避方針により対象外)
+
+| file:line | type | 見送り理由 |
+|---|---|---|
+| `model/cache.rs:60`(`DirectoryCache::get`) | `Vec<FileEntry>` | キャッシュヒット毎に clone。`Arc<Vec<FileEntry>>` 化が必要だが `PaneModel.entries` 含め全消費側の型変更が波及 — 30分超の広範囲変更 |
+| `model/cache.rs:77`(`get_with_checksum`) | `Vec<FileEntry>` | 同上 |
+| `model/pane.rs:123`(`apply_current_filter`) | `Vec<FileEntry>`(raw_entries clone) | `entries`/`raw_entries` の二重保持が設計上前提。`get_filtered_entries()` は既に `Vec<&FileEntry>` 返却だが `self.entries` を所有型でなく参照ベースに変えるには描画層含め広範囲の変更が必要 |
+| `state/handlers/search.rs:18`(`UpdateSearchResults`) | `Vec<FileEntry>` | `handle_*_transition` 系が全て `&Transition` を受ける設計(dispatch chain 全体で共有)。この1箇所のためにディスパッチ全体の所有権設計を変えるのは影響範囲過大 |
+| `ui/dialog/jump_to_path.rs:79,85` | `Vec<String>`(candidates→suggestions) | クリア操作で `suggestions` が候補全体の所有コピーを持つ設計。単発キー操作(Ctrl+K相当)であり、借用化には `suggestions` の型自体を参照ベースに変える必要があり影響大 |
+| `ui/dialog/jump_to_file.rs:79,85` | `Vec<String>`(candidates→suggestions) | 同上 |
+
+`Location`/`PathBuf`/`String` 単体の clone(navigation.rs, viewer.rs 等、両 Explore agent 合計 60件超)は
+「小さい struct の clone は許容」方針により候補から除外(調査はしたが表に含めず)。
 
 ## 挙動変更ログ(panic → エラー表示にした箇所。M7 のフェーズサマリに転記する)
 
