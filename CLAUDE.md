@@ -8,7 +8,7 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 - Roadmap / phase status: `plan/ROADMAP.md` (Japanese) is the source of truth.
 - Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 - Testing guide: [docs/TESTING.md](docs/TESTING.md)
-- Recipes (drafts until M7): [docs/recipes/](docs/recipes/)
+- Recipes: [docs/recipes/](docs/recipes/) — [add-a-dialog.md](docs/recipes/add-a-dialog.md), [add-a-transition.md](docs/recipes/add-a-transition.md)
 
 ## Build / Test / Verify
 
