@@ -42,10 +42,13 @@
 
 ## 進捗チェックボックス
 
-- [ ] S1-1 add-a-dialog.md 確定(手順検証済み)
-- [ ] S1-2 add-a-transition.md 確定
-- [ ] S1-3 rustdoc: backend / job / model
-- [ ] S1-4 ルート md 整理(git mv)
+- [x] S1-1 add-a-dialog.md 確定(手順検証済み。SortDialog の実装箇所と照合して
+      state.rs→state/mod.rs + state/handlers/ui.rs の記述を修正)
+- [x] S1-2 add-a-transition.md 確定(state.rs→state/mod.rs + state/handlers/*.rs
+      の記述を修正、event_receiver.rs/job_executor.rs の記述は現状と一致を確認)
+- [x] S1-3 rustdoc: backend / job / model(haiku×3並列。既存 docs でほぼ網羅済みと判明、
+      未網羅の約50箇所を追加。find_match_ranges の誤解を招くdocを1件修正)
+- [x] S1-4 ルート md 整理(git mv。BUGFIX_*/*_SUMMARY.md 11 ファイルを docs/history/ へ)
 - [ ] S2-1 archive.rs TODO 修正 + テスト
 - [ ] S2-2 UI スモークテスト(panes / task_panel / viewer / tab_bar)
 - [ ] S2-3 missing_docs 判定(導入 or 見送り: ___)
