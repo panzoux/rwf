@@ -51,6 +51,17 @@ pub trait ArchiveHandler: Send + Sync {
     fn is_archive(&self, filename: &str) -> bool;
 }
 
+/// Convert a ZIP entry's MS-DOS timestamp to a `SystemTime`, treating it as UTC
+/// (the ZIP format stores no timezone). Returns `None` if the stored date/time
+/// components are out of range (some writers emit invalid values).
+fn zip_datetime_to_system_time(dt: zip::DateTime) -> Option<std::time::SystemTime> {
+    use chrono::TimeZone;
+    let naive =
+        chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)?
+            .and_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)?;
+    Some(chrono::Utc.from_utc_datetime(&naive).into())
+}
+
 /// ZIP archive handler implementation
 pub struct ZipArchiveHandler;
 
@@ -225,6 +236,17 @@ impl ZipArchiveHandler {
                     inner_path.join(first_component)
                 };
 
+                // Only the zip entry we're iterating (`file`) has a timestamp of its
+                // own; synthesized intermediate directories (nested files whose parent
+                // dir has no separate zip record) have no meaningful timestamp to read.
+                let modified = if relative.contains('/') {
+                    SystemTime::now()
+                } else {
+                    file.last_modified()
+                        .and_then(zip_datetime_to_system_time)
+                        .unwrap_or_else(SystemTime::now)
+                };
+
                 let entry = FileEntry {
                     name: first_component.to_string(),
                     location: Location::Archive {
@@ -234,7 +256,7 @@ impl ZipArchiveHandler {
                     size: if is_dir { 0 } else { file.size() },
                     is_dir,
                     is_hidden: first_component.starts_with('.'),
-                    modified: SystemTime::now(), // TODO: Extract proper timestamp from zip
+                    modified,
                     marked: false,
                     calculated_size: None,
                     is_symlink: false,

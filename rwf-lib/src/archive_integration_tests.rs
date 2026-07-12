@@ -9,6 +9,7 @@ mod tests {
     use crate::job::JobKind;
     use crate::model::Location;
     use crate::test_utils::test_state;
+    use chrono::TimeZone;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -80,6 +81,48 @@ mod tests {
         assert!(docs.is_some());
         let docs = docs.unwrap();
         assert!(docs.is_dir);
+    }
+
+    /// Test that a ZIP entry's stored MS-DOS timestamp is extracted (not replaced
+    /// with the current time). M7: fixes the archive.rs timestamp TODO.
+    #[tokio::test]
+    async fn test_archive_browsing_extracts_stored_timestamp() {
+        let temp_dir = TempDir::new().unwrap();
+        let archive_path = temp_dir.path().join("timestamped.zip");
+
+        let file = File::create(&archive_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        // MS-DOS timestamps have 2-second granularity and no timezone.
+        let stored_time = zip::DateTime::from_date_and_time(2020, 6, 15, 10, 30, 0).unwrap();
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .last_modified_time(stored_time);
+        zip.start_file("dated.txt", options).unwrap();
+        zip.write_all(b"content").unwrap();
+        zip.finish().unwrap();
+
+        let handler = ZipArchiveHandler::new();
+        let archive_location = Location::Archive {
+            archive_path: Box::new(Location::Local(archive_path.clone())),
+            inner_path: PathBuf::new(),
+        };
+        let cancel_token = CancellationToken::new();
+        let entries = handler
+            .list_entries(&archive_location, &cancel_token)
+            .await
+            .unwrap();
+
+        let entry = entries.iter().find(|e| e.name == "dated.txt").unwrap();
+
+        let expected: chrono::DateTime<chrono::Utc> = chrono::Utc
+            .with_ymd_and_hms(2020, 6, 15, 10, 30, 0)
+            .unwrap();
+        let actual: chrono::DateTime<chrono::Utc> = entry.modified.into();
+        assert_eq!(actual, expected);
+
+        // Sanity: the extracted timestamp must not be "now" (the pre-fix behavior).
+        let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
+        assert!((now - actual).num_days() > 1000);
     }
 
     /// Test archive browsing - navigating into subdirectory
