@@ -130,3 +130,60 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
 
     frame.render_widget(paragraph, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rwf_lib::model::Location;
+    use rwf_lib::{AppConfig, AppState};
+
+    /// A 3-tab state with fixed, deterministic pane locations (not the real
+    /// CWD `TabState::new` defaults to, which vary by machine/CI).
+    fn smoke_state() -> AppState {
+        let mut state = AppState::new(AppConfig::default());
+        state.tabs.create_tab();
+        state.tabs.create_tab();
+        for (idx, tab) in state.tabs.tabs.iter_mut().enumerate() {
+            tab.left_pane.current_location =
+                Location::Local(std::path::PathBuf::from(format!("/test/tab{idx}/left")));
+            tab.right_pane.current_location =
+                Location::Local(std::path::PathBuf::from(format!("/test/tab{idx}/right")));
+        }
+        state
+    }
+
+    /// M7 S2-2: render_tab_bar must not panic with multiple tabs, including
+    /// the active/inactive style split.
+    #[test]
+    fn test_render_tab_bar_does_not_panic() {
+        let state = smoke_state();
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_tab_bar(frame, area, &state);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: representative snapshot of a 3-tab bar.
+    #[test]
+    fn test_render_tab_bar_snapshot() {
+        let state = smoke_state();
+
+        let backend = TestBackend::new(80, 1);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_tab_bar(frame, area, &state);
+            })
+            .expect("draw");
+        let output = format!("{:?}", terminal.backend().buffer());
+        insta::assert_snapshot!("render_tab_bar_smoke", output);
+    }
+}

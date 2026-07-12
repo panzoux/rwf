@@ -1,0 +1,26 @@
+---
+source: rwf-bin/src/ui/task_panel.rs
+assertion_line: 402
+expression: output
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 60, height: 6 },
+    content: [
+        "Starting copy                                               ",
+        "Copied file.txt                                             ",
+        "Permission denied: locked.txt                               ",
+        "Skipping hidden file                                        ",
+        "                                                            ",
+        "                                                            ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 13, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 1, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 15, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

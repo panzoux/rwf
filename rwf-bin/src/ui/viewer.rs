@@ -856,3 +856,99 @@ pub fn render_dir_preview(
         inner,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rwf_lib::model::{FileBytes, LineIndex, Location, ViewerBuffer};
+
+    /// A loaded text-mode viewer over a small fixed in-memory buffer.
+    fn smoke_viewer() -> ViewerState {
+        let text = b"line one\nline two\nline three\n".to_vec();
+        let line_index = LineIndex {
+            offsets: vec![0, 9, 18],
+            is_complete: true,
+        };
+        let buffer = ViewerBuffer::new(FileBytes::InMemory(text), line_index);
+        let mut viewer = ViewerState::new(Location::Local(std::path::PathBuf::from(
+            "/test/viewer_smoke.txt",
+        )));
+        viewer.buffer = Some(buffer);
+        viewer.is_loading = false;
+        viewer
+    }
+
+    /// M7 S2-2: render_viewer must not panic in text mode (loaded, no search active).
+    #[test]
+    fn test_render_viewer_text_mode_does_not_panic() {
+        let viewer = smoke_viewer();
+        let colors = ColorScheme::default();
+        let backend = TestBackend::new(60, 10);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_viewer(frame, area, &viewer, &colors, UIMode::Viewer, "", "", false);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: render_viewer must not panic in hex mode.
+    #[test]
+    fn test_render_viewer_hex_mode_does_not_panic() {
+        let mut viewer = smoke_viewer();
+        viewer.mode = ViewerMode::Hex;
+        let colors = ColorScheme::default();
+        let backend = TestBackend::new(60, 10);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_viewer(frame, area, &viewer, &colors, UIMode::Viewer, "", "", false);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: render_viewer must not panic with the search input bar active.
+    #[test]
+    fn test_render_viewer_search_mode_does_not_panic() {
+        let viewer = smoke_viewer();
+        let colors = ColorScheme::default();
+        let backend = TestBackend::new(60, 10);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_viewer(
+                    frame,
+                    area,
+                    &viewer,
+                    &colors,
+                    UIMode::ViewerSearch,
+                    "two",
+                    "",
+                    false,
+                );
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: representative snapshot of a loaded text-mode viewer.
+    #[test]
+    fn test_render_viewer_snapshot() {
+        let viewer = smoke_viewer();
+        let colors = ColorScheme::default();
+        let backend = TestBackend::new(60, 10);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_viewer(frame, area, &viewer, &colors, UIMode::Viewer, "", "", false);
+            })
+            .expect("draw");
+        let output = format!("{:?}", terminal.backend().buffer());
+        insta::assert_snapshot!("render_viewer_smoke", output);
+    }
+}

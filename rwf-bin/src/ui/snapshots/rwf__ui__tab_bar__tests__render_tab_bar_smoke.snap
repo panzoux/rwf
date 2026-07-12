@@ -1,0 +1,15 @@
+---
+source: rwf-bin/src/ui/tab_bar.rs
+assertion_line: 187
+expression: output
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 1 },
+    content: [
+        " [1:/test/tab0/left*|/test/ta…/right]  2:/test/tab1/left|/test/ta…/right  3:/tes",
+    ],
+    styles: [
+        x: 0, y: 0, fg: White, bg: Blue, underline: Reset, modifier: BOLD,
+        x: 38, y: 0, fg: Gray, bg: Black, underline: Reset, modifier: NONE,
+    ]
+}

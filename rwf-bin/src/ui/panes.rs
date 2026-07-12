@@ -455,3 +455,94 @@ fn format_date(time: &std::time::SystemTime) -> String {
     let datetime: DateTime<Local> = (*time).into();
     datetime.format("%Y-%m-%d %H:%M").to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rwf_lib::model::{ActivePane, FileEntry, Location};
+    use rwf_lib::{AppConfig, AppState};
+    use std::path::PathBuf;
+
+    fn test_entry(name: &str, is_dir: bool, size: u64, marked: bool) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            location: Location::Local(PathBuf::from(format!("/test/{name}"))),
+            size,
+            is_dir,
+            is_hidden: false,
+            modified: std::time::SystemTime::UNIX_EPOCH,
+            marked,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    fn smoke_state() -> AppState {
+        let mut state = AppState::new(AppConfig::default());
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.current_location = Location::Local(PathBuf::from("/test/left"));
+            tab.right_pane.current_location = Location::Local(PathBuf::from("/test/right"));
+            tab.left_pane.entries = vec![
+                test_entry("docs", true, 0, false),
+                test_entry("readme.txt", false, 1234, false),
+            ];
+            tab.right_pane.entries = vec![test_entry("marked.rs", false, 100, true)];
+            tab.left_pane.cursor = 1;
+        }
+        state.ui.active_pane = ActivePane::Left;
+        state
+    }
+
+    /// M7 S2-2: render_panes must not panic on a representative two-pane state.
+    #[test]
+    fn test_render_panes_does_not_panic() {
+        let state = smoke_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_panes(frame, area, &state);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: render_active_pane_only must not panic (used by SideBySide viewer mode).
+    #[test]
+    fn test_render_active_pane_only_does_not_panic() {
+        let state = smoke_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_active_pane_only(frame, area, &state, ActivePane::Left);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: representative snapshot of the two-pane layout.
+    #[test]
+    fn test_render_panes_snapshot() {
+        let state = smoke_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_panes(frame, area, &state);
+            })
+            .expect("draw");
+        let output = format!("{:?}", terminal.backend().buffer());
+        insta::with_settings!({filters => vec![
+            (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "[DATE]"),
+        ]}, {
+            insta::assert_snapshot!("render_panes_smoke", output);
+        });
+    }
+}

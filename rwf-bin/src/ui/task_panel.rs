@@ -355,4 +355,50 @@ mod tests {
             Some("Log 14")
         );
     }
+
+    /// M7 S2-2: render_task_panel must not panic with a mix of log levels
+    /// and enough entries to require scrolling.
+    #[test]
+    fn test_render_task_panel_does_not_panic() {
+        let mut panel = TaskPanel::new();
+        panel.add_log("Starting copy".to_string(), LogLevel::Info);
+        panel.add_log("Copied file.txt".to_string(), LogLevel::Ok);
+        panel.add_log("Permission denied: locked.txt".to_string(), LogLevel::Fail);
+        panel.add_log("Skipping hidden file".to_string(), LogLevel::Warn);
+        for i in 0..20 {
+            panel.add_log(format!("Log {}", i), LogLevel::Info);
+        }
+
+        let colors = ColorScheme::default();
+        let backend = ratatui::backend::TestBackend::new(60, 10);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_task_panel(frame, area, &panel, &colors);
+            })
+            .expect("draw");
+    }
+
+    /// M7 S2-2: representative snapshot with one entry of each log level.
+    #[test]
+    fn test_render_task_panel_snapshot() {
+        let mut panel = TaskPanel::new();
+        panel.add_log("Starting copy".to_string(), LogLevel::Info);
+        panel.add_log("Copied file.txt".to_string(), LogLevel::Ok);
+        panel.add_log("Permission denied: locked.txt".to_string(), LogLevel::Fail);
+        panel.add_log("Skipping hidden file".to_string(), LogLevel::Warn);
+
+        let colors = ColorScheme::default();
+        let backend = ratatui::backend::TestBackend::new(60, 6);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_task_panel(frame, area, &panel, &colors);
+            })
+            .expect("draw");
+        let output = format!("{:?}", terminal.backend().buffer());
+        insta::assert_snapshot!("render_task_panel_smoke", output);
+    }
 }
