@@ -57,7 +57,11 @@
       262件の `model/dialog/` と 65件の `rwf-bin/src/ui/`、加えて `state/`/`input/`/`config.rs` 等
       未着手の公開項目が広範に残存。全公開項目カバーという前提条件に遠く未達のため導入見送り。
       Phase 8+ で rustdoc 網羅を継続タスクとして扱う)
-- [ ] S2-4 全検証緑 + Phase M 完了宣言 + 凍結解除
+- [x] S2-4 全検証緑 + Phase M 完了宣言 + 凍結解除(2026-07-13。`cargo fmt --check` / `cargo clippy
+      --all-targets -D warnings`(workspace 全体)/ `cargo test -p rwf`(156)/ `cargo test -p rwf --no-run` /
+      `cargo test -p rwf-lib`(1044、3042.45s、insta 差分なし)全緑。ROADMAP.md の Phase M セクション・
+      M7 行・現在フェーズを更新して凍結解除宣言、quality_overhaul.md に完了サマリ追記、CLAUDE.md の
+      凍結記述を更新)
 
 ## セッション開始プロンプト(コピペ用)
 

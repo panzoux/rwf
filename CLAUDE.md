@@ -66,6 +66,6 @@ cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during deve
 
 - Line endings are **LF** with `autocrlf=false`. On Windows, edit files with tools that
   preserve LF (PowerShell `Set-Content`/`Out-File` rewrite whole files as CRLF).
-- Feature development is frozen during Phase M (quality overhaul); all changes must be
-  behavior-preserving. See `plan/quality_overhaul.md`.
+- Phase M (quality overhaul) is complete as of 2026-07-13 — feature development is unfrozen.
+  See `plan/quality_overhaul.md` for the completion summary and `plan/ROADMAP.md` for current phase status.
 - Machine-specific notes (real config paths, local pitfalls) live in `.claude/CLAUDE.local.md`.

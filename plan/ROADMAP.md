@@ -178,12 +178,17 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 
 ---
 
-## Phase M — 品質整備フェーズ（機能開発凍結。詳細: [quality_overhaul.md](quality_overhaul.md)）
+## Phase M — 品質整備フェーズ（**完了・凍結解除済み**。詳細: [quality_overhaul.md](quality_overhaul.md)）
+
+> **🔓 機能開発凍結解除宣言（2026-07-13）**: M1〜M7 全タスク完了。検証一式（fmt / clippy --all-targets
+> -D warnings / `cargo test -p rwf` 156 / `cargo test -p rwf --no-run` / `cargo test -p rwf-lib` 1044、
+> 3042.45s）全緑。本計画全体を通じた挙動変更は M7 archive.rs の 1 件のみ（詳細は quality_overhaul.md の
+> 「Phase M 完了サマリ」参照）。Phase 7 残タスクおよび Phase 8+ の機能開発に着手可能。
 
 > **背景**: 複数 AI（kilo→antigravity→qwen→gemini→claude）を渡り歩いた開発による ad-hoc コード蓄積への対処。
 > 本来の目的は一回きりの掃除ではなく「AI 主導開発でも品質が劣化しない仕組み」の構築。
-> **Phase 7 の残タスクに着手する前に本フェーズを完了させ、後続開発の負荷を下げた状態で Phase 7 以降を実施する。**
-> M 完了まで新機能（Phase 7 残・Phase 8+）の実装は行わない。全タスクは挙動保存（M7 の archive.rs TODO 修正のみ例外）。
+> Phase 7 の残タスクに着手する前に本フェーズを完了させ、後続開発の負荷を下げた状態で Phase 7 以降を実施する
+> という方針のもと、M 完了までは新機能実装を凍結していた（全タスクは挙動保存、M7 の archive.rs TODO 修正のみ例外）。
 > 各タスク完了条件: fmt / clippy -D warnings / 全テスト緑 + コミット。
 
 | # | タスク | 状態 | 概要 |
@@ -194,14 +199,14 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | M4 | model/dialog.rs 分割 | `[x]` | **完了（2026-07-07）** 全29バリアントを struct 化（enum は維持。`DialogContent::Foo(FooDialog)`）/ `DialogUiState`（cursor_pos/scroll_pos/focused_field）を FileMask・WildcardMark・SimpleRename に導入 / `handle_dialog_input` の腕本体を各ダイアログファイルの `handle_input()` へ移動（rwf-bin/ui/dialog/mod.rs: 2,145→1,045 行、`handle_dialog_input` 自体は 1,322→222 行。残る腕はクロスカッティングな dispatch ロジックのみ）/ DIALOG_DESIGN_SPEC.md・add-a-dialog.md 更新 / unwrap allow スコープ確認（11箇所すべて `expand_env_vars` にあり、struct化ファイルには0件）。詳細は `plan/M4_handoff.md` 参照 |
 | M5 | state.rs 分割 | `[x]` | **完了（2026-07-07）** state.rs(4,741行)を `state/` ディレクトリへ move-only 分割:実測 10 個の `handle_*_transition` を `state/handlers/{navigation,tab,marking,job,job_management,ui,view,search,viewer,advanced}.rs` へ(dialog 系は ui.rs 内に同居のまま、分離は判断コスト増のため見送り)/ 共有ヘルパは `state/helpers.rs`(editor_job のみ該当、他は実測で単一所有と判明)/ AppState 本体・unwrap 4箇所は不分割(mod.rs 残留)/ `docs/ARCHITECTURE.md` にフィールド所有権マップ追記 / `cargo test -p rwf-lib -- --list` 件数 1043 不変・フルテスト 1043 passed 確認。詳細は `plan/M5_handoff.md` 参照 |
 | M6 | unwrap/clone 監査 | `[x]` | **完了（2026-07-12）** 非テスト unwrap 35 箇所・9 モジュール全て分類・処置(infallible→expect 24 箇所 / lock poisoning→expect 11 箇所 / エラー伝播への変更 0 箇所)、`#![allow(clippy::unwrap_used)]` 全撤去。clone 799 のうち FileEntry 系・ホットパス上位候補を Explore×haiku 2 体並列で調査 → 7 箇所を借用化で修正(marking ハンドラ 4 / search フィルタ 1 / pattern_rename 2)、6 系統はアーキテクチャ変更が必要なため churn 回避方針により見送り(理由は M6_handoff.md 参照)。検証一式(fmt/clippy/rwf 145/rwf-lib 1043)全緑。詳細は `plan/M6_handoff.md` 参照 |
-| M7 | 仕上げ | `[ ]` | レシピ（add-a-dialog / add-a-transition）確定 / backend・job・model rustdoc / archive.rs TODO 修正（唯一の挙動変更）/ rwf-bin UI スモークテスト / ルート散乱 md 整理 / **凍結解除宣言** |
+| M7 | 仕上げ | `[x]` | **完了（2026-07-13）** add-a-dialog.md / add-a-transition.md を最終構造で確定（SortDialog で手順検証済み）/ backend・job・model に rustdoc 約50箇所追加（haiku×3並列 → sonnet レビューで1件の誤解を招く記述を修正）/ archive.rs の ZIP タイムスタンプ TODO 修正（**本計画唯一の挙動変更**、テスト追加）/ rwf-bin UI 未テスト4ファイル（panes/task_panel/viewer/tab_bar）へ TestBackend スモーク+スナップショット 11 件追加 / ルート `*_SUMMARY.md`/`BUGFIX_*.md` 11 件を `docs/history/` へ整理 / `#![warn(missing_docs)]` 導入は見送り（`model/dialog/` 約262項目・`rwf-bin/src/ui/` 約65項目が未着手のため、Phase 8+ 送り）/ **凍結解除宣言**。詳細は `plan/M7_handoff.md` 参照 |
 
 ---
 
 ## Phase 7 — twf超え（rwf独自の強化）
 
 > CJK表示はすでに rwf の強み。さらに差別化できる機能。
-> **着手条件: Phase M 完了。**
+> **着手条件: Phase M 完了 —満たされた（2026-07-13）。着手可能。**
 
 ### 推奨実装優先度（2026-07-05 番号再割当・状態更新）
 
@@ -270,8 +275,8 @@ Phase 3 (〜3週間)  → ジョブ管理UI洗練
 Phase 4 (〜3週間)  → ビューア完成（テキスト+Hex）
 Phase 5 (〜2週間)  → アーカイブ拡張
 Phase 6 (〜4週間)  → twf完全パリティ
-Phase M (先行実施) → 品質整備（機能凍結。Phase 7 残タスクの前提）
-Phase 7 (随時)     → 差別化機能
+Phase M (完了)     → 品質整備（機能凍結・解除済み。Phase 7 残タスクの前提）
+Phase 7 (再開)     → 差別化機能
 ```
 
 **Phase 1〜3完了**: 日常ユースケースでtwfと同等  
@@ -286,15 +291,15 @@ Phase 7 (随時)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-07-05（Phase M 追加・Phase 7 再採番: Leap→7.1、コマンドパレット 8.7→7.2 昇格）  
-現在のフェーズ: **Phase M**（品質整備・機能凍結。7.1 Leap Navigation は完了済み）
+最終更新: 2026-07-13（Phase M 完了・機能開発凍結解除）
+現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
+Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md) の「Phase M 完了サマリ」）
 次の作業候補（優先順）:
-1. **Phase M1〜M7** — 品質整備（詳細: [quality_overhaul.md](quality_overhaul.md)）。完了まで機能開発凍結
-2. **7.2 コマンドパレット** — M 完了後の最初の機能。ヘルプビューアに Enter ディスパッチを足すだけの小規模・高価値タスク
-3. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
+1. **7.2 コマンドパレット** — Phase M 完了後の最初の機能。ヘルプビューアに Enter ディスパッチを足すだけの小規模・高価値タスク
+2. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
 
-## Phase 7 実装順序（2026-07-05 更新。着手は Phase M 完了後）
+## Phase 7 実装順序（2026-07-13 更新。Phase M 完了・着手可能）
 
 1. ~~**7.1 Leap Navigation**~~ — **完了**（705a392〜c8ff3e4、旧 7.8）
 2. **7.2 コマンドパレット** — 旧 8.7 から昇格。小規模・高価値

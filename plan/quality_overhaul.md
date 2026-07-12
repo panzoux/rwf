@@ -243,6 +243,37 @@ haiku 並列不向き）。事前に Explore × haiku で「関数→ハンド�
 
 **規模**: 中（2 セッション） / **実行**: rustdoc・スモークテスト = haiku 並列、TODO 修正・レシピ = sonnet
 
+## Phase M 完了サマリ（2026-07-13）
+
+M1〜M7 全完了。**機能開発凍結解除**（詳細は ROADMAP.md の宣言を参照）。
+
+- **M1**: rustfmt/clippy ガードレール導入、unwrap_used ratchet 基盤（9 モジュール allow）。
+- **M2**: test_utils 共有化（40 ファイル移行）、dialog 描画共通化、ドキュメント基盤。
+- **M3**: dialog.rs を insta スナップショット安全網の上で 17 ファイルへ move-only 分割。
+- **M4**: 全 29 dialog バリアントを struct 化、input ハンドラを個別ファイルへ抽出。
+- **M5**: state.rs（4,741 行）を `state/` ディレクトリへ move-only 分割（10 ハンドラモジュール）。
+- **M6**: unwrap 35 箇所・9 モジュール全て解消（allow 全撤去）、clone 7 箇所を借用化で修正。
+- **M7**: レシピ確定、rustdoc（backend/job/model 約50箇所追加）、UI スモークテスト 11 件追加、
+  archive.rs TODO 修正、root md 整理。
+
+**挙動変更（本計画全体で唯一の 1 件）**:
+- `rwf-lib/src/backend/archive.rs`（M7 S2-1）: ZIP アーカイブのディレクトリ一覧で、各エントリの
+  `modified` フィールドが常に `SystemTime::now()` だったのを、ZIP エントリに実際に格納された
+  MS-DOS タイムスタンプ（UTC 扱い）を抽出するよう修正。範囲外の値や、実体を持たない合成ディレクトリ
+  エントリの場合のみ `SystemTime::now()` にフォールバック。テスト
+  `test_archive_browsing_extracts_stored_timestamp` で検証済み。
+
+  M6 の unwrap 分類 (b)（エラー伝播）は該当箇所ゼロだったため、挙動変更は上記 1 件のみ
+  （当初想定の「M6 + M7 で計 2 件」から M6 分がゼロ件に確定）。
+
+**Phase 8+ への申し送り事項**:
+- CI 実行時間: rwf-lib フルテストが `--test-threads=1` で約 37 分（fs 競合による制約が本質）。未解決。
+- `#![warn(missing_docs)]`: M7 で導入見送り。`model/dialog/`（約262項目）、`rwf-bin/src/ui/`
+  （約65項目）、`state/`/`input/`/`config.rs` 等の rustdoc が未着手。
+- clone 監査で見送った 6 系統（`DirectoryCache` の Arc 化、`PaneModel::apply_current_filter` の
+  参照化、`UpdateSearchResults` の Transition 所有権設計、jump-to-path/file の候補リスト共有化）は
+  M6_handoff.md に理由付きで記録済み。着手する場合はアーキテクチャ変更として個別に計画すること。
+
 ---
 
 ## フェーズ横断の実行規約（Claude Code 運用）
