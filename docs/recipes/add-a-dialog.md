@@ -1,7 +1,8 @@
-# Recipe: Add a Dialog (DRAFT)
+# Recipe: Add a Dialog
 
-> **DRAFT — do not treat as authoritative.** Reflects the structure as of M4
-> (per-variant structs + per-dialog render/input files). Finalized in M7.
+Finalized in M7 against the post-M4/M5/M6 structure (per-variant structs,
+per-dialog render/input files, `state/` split into handler modules). Verified
+step-by-step against an existing dialog (`SortDialog`) before finalizing.
 
 Checklist for a new dialog `Foo`:
 
@@ -19,7 +20,10 @@ Checklist for a new dialog `Foo`:
      struct already in `model/dialog/mod.rs` (several dialogs have long-dead
      ones from before this refactor), suffix with `Content` instead of
      `Dialog` (e.g. `TabSelectorContent`, `JobManagerContent`).
-2. **Transitions** — `rwf-lib/src/state.rs`
+2. **Transitions** — `rwf-lib/src/state/mod.rs` (add the `Transition::ShowFooDialog`
+   variant) + `rwf-lib/src/state/handlers/ui.rs` (dialog show/confirm handling
+   lives here; dialog-related transitions were kept together in `ui.rs` during
+   the M5 split rather than split further)
    - `Transition::ShowFooDialog` pushes the dialog (`state.dialogs.push`),
      returns `with_ui_change()`.
    - Handle `ConfirmDialog` / dialog-specific updates for the new variant.

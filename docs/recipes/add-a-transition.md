@@ -1,16 +1,21 @@
-# Recipe: Add a Transition (DRAFT)
+# Recipe: Add a Transition
 
-> **DRAFT — do not treat as authoritative.** `state.rs` is split into handler
-> modules in M5; the dispatch location will move. This recipe is finalized in
-> M7. Until then it records the *current* touch points.
+Finalized in M7 against the post-M5 structure (`state.rs` split into
+`state/mod.rs` + `state/handlers/*.rs`).
 
 Checklist for a new `Transition::Foo`:
 
-1. **Define** — add the variant to `Transition` in `rwf-lib/src/state.rs`.
-   Carry data by value (the enum is `Clone`); prefer IDs/`Location`s over
-   references.
-2. **Handle** — add a match arm in `update_state` (or the relevant
-   `handle_*_transition` helper).
+1. **Define** — add the variant to the `Transition` enum in
+   `rwf-lib/src/state/mod.rs`. Carry data by value (the enum is `Clone`);
+   prefer IDs/`Location`s over references.
+2. **Handle** — add a match arm in the relevant
+   `rwf-lib/src/state/handlers/{navigation,tab,marking,job,job_management,ui,
+   view,search,viewer,advanced}.rs` file (dialog-related transitions go in
+   `ui.rs`; `update_state` in `state/mod.rs` just dispatches to these in
+   sequence — see the `handle_*_transition` calls near its top). If the new
+   transition doesn't fit an existing handler's theme, add the match arm
+   directly in `update_state`'s own `match transition { ... }` block instead
+   of creating a new handler file for one variant.
    - Mutate `AppState` only; **no I/O**.
    - Return `StateUpdateResult`: call `with_ui_change()` whenever anything
      visible changed; put any I/O into `jobs_to_start` as `JobSpec`s.
