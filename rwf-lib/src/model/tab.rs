@@ -33,6 +33,7 @@ pub struct TabState {
 }
 
 impl TabState {
+    /// Create a new tab with the given ID, initializing panes to the current working directory
     pub fn new(id: usize) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
         tracing::debug!(
@@ -65,6 +66,7 @@ impl Default for TabManager {
 }
 
 impl TabManager {
+    /// Create a new tab manager with one initial tab
     pub fn new() -> Self {
         let initial_tab = TabState::new(0);
         Self {

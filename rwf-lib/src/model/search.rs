@@ -34,6 +34,7 @@ impl Default for SearchModel {
 }
 
 impl SearchModel {
+    /// Create a new empty search model
     pub fn new() -> Self {
         Self {
             query: String::new(),
@@ -424,6 +425,7 @@ impl SearchModel {
         }
     }
 
+    /// Filter entries against the current query and update results
     pub fn filter_entries(&mut self, entries: &[FileEntry]) {
         self.results = entries
             .iter()
@@ -490,10 +492,13 @@ impl SearchModel {
         }
     }
 
+    /// Get the currently selected search result, if any
     pub fn current_result(&self) -> Option<&FileEntry> {
         self.current_index.and_then(|idx| self.results.get(idx))
     }
 
+    /// Find byte ranges of query matches in a filename, for highlighting.
+    /// Currently unimplemented (always returns empty) — no callers rely on it yet.
     pub fn find_match_ranges(&self, _filename: &str) -> Vec<(usize, usize)> {
         vec![]
     }

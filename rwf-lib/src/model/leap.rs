@@ -32,6 +32,7 @@ pub struct LeapState {
 }
 
 impl LeapState {
+    /// Create a new leap navigation state at the given directory with cursor position
     pub fn new(root_dir: PathBuf, root_cursor: usize) -> Self {
         Self {
             buffer: String::new(),

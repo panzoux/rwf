@@ -26,6 +26,7 @@ pub struct PaneModel {
 }
 
 impl PaneModel {
+    /// Create a new pane viewing the specified location
     pub fn new(location: Location) -> Self {
         Self {
             current_location: location,
@@ -44,6 +45,7 @@ impl PaneModel {
         }
     }
 
+    /// Set the loading state (emits debug trace when state changes)
     pub fn set_loading(&mut self, loading: bool) {
         if self.is_loading != loading {
             tracing::info!(
@@ -253,6 +255,7 @@ pub enum SortOrder {
 }
 
 impl SortOrder {
+    /// Reverse the sort order (Ascending ↔ Descending)
     pub fn toggle(self) -> Self {
         match self {
             SortOrder::Ascending => SortOrder::Descending,

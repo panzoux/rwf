@@ -56,6 +56,7 @@ pub enum ConflictAction {
 }
 
 impl JobSpec {
+    /// Create a new job specification with the given kind
     pub fn new(kind: JobKind) -> Self {
         Self {
             id: JobId::new(), // Generate unique UUID immediately
@@ -67,6 +68,7 @@ impl JobSpec {
         }
     }
 
+    /// Set the tab and pane that requested this job (for targeting results)
     pub fn with_requesting_pane(mut self, tab_idx: usize, pane: crate::model::ActivePane) -> Self {
         self.requesting_pane = Some((tab_idx, pane));
         self
@@ -311,6 +313,7 @@ pub struct BackgroundJob {
 }
 
 impl BackgroundJob {
+    /// Check if this job is currently active (pending or running)
     pub fn is_active(&self) -> bool {
         matches!(self.status, JobStatus::Pending | JobStatus::Running)
     }
@@ -354,6 +357,7 @@ pub struct JobManager {
 }
 
 impl JobManager {
+    /// Create a new job manager with the specified maximum parallel jobs
     pub fn new(max_parallel: usize) -> Self {
         Self {
             queue: VecDeque::with_capacity(32), // Pre-allocate for common case

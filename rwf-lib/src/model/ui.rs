@@ -19,6 +19,7 @@ impl Default for UIState {
 }
 
 impl UIState {
+    /// Create a new default UI state
     pub fn new() -> Self {
         Self {
             active_pane: ActivePane::Left,
@@ -90,6 +91,7 @@ pub enum ActivePane {
 }
 
 impl ActivePane {
+    /// Get the opposite pane (Left ↔ Right)
     pub fn opposite(&self) -> Self {
         match self {
             ActivePane::Left => ActivePane::Right,

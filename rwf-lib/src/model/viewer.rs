@@ -13,12 +13,14 @@ use std::sync::{Arc, Mutex};
 // SeekableFile: File + Seek + Read (no mmap). Used for files above threshold.
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Large file handle using seek+read on demand (thread-safe)
 pub struct SeekableFile {
     file: Arc<Mutex<std::fs::File>>,
     pub size: u64,
 }
 
 impl SeekableFile {
+    /// Create a new seekable file handle wrapping the given file object
     pub fn new(file: std::fs::File, size: u64) -> Self {
         Self {
             file: Arc::new(Mutex::new(file)),
@@ -63,6 +65,7 @@ impl std::fmt::Debug for SeekableFile {
 // FileBytes: in-memory bytes or seekable file handle
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// File contents: either in-memory bytes or a seekable file handle
 pub enum FileBytes {
     /// Small files (≤ threshold): entire contents held in RAM. Snapshot is stable.
     InMemory(Vec<u8>),
@@ -71,6 +74,7 @@ pub enum FileBytes {
 }
 
 impl FileBytes {
+    /// Get the raw bytes (only valid for InMemory; panics on Seekable)
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             FileBytes::InMemory(v) => v,
@@ -79,12 +83,14 @@ impl FileBytes {
             }
         }
     }
+    /// Get the total size in bytes
     pub fn len(&self) -> usize {
         match self {
             FileBytes::InMemory(v) => v.len(),
             FileBytes::Seekable(s) => s.size as usize,
         }
     }
+    /// Check if the file is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -100,6 +106,7 @@ impl std::fmt::Debug for FileBytes {
 // LineIndex: byte offset of the start of each line
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Index of line boundaries in a file (built progressively by the indexer)
 #[derive(Debug)]
 pub struct LineIndex {
     /// offsets[N] = byte offset of the first byte of line N.
@@ -115,12 +122,14 @@ impl Default for LineIndex {
 }
 
 impl LineIndex {
+    /// Create a new empty line index for building
     pub fn new() -> Self {
         Self {
             offsets: vec![0],
             is_complete: false,
         }
     }
+    /// Create a complete line index for an empty file
     pub fn new_complete_empty() -> Self {
         Self {
             offsets: vec![0],
@@ -133,12 +142,14 @@ impl LineIndex {
 // ViewerBuffer: shared between the background indexer and the UI thread
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Shared file content and line index (thread-safe, shared with background job)
 pub struct ViewerBuffer {
     pub bytes: Arc<FileBytes>,
     pub line_index: Arc<Mutex<LineIndex>>,
 }
 
 impl ViewerBuffer {
+    /// Create a new shared viewer buffer
     pub fn new(bytes: FileBytes, line_index: LineIndex) -> Self {
         Self {
             bytes: Arc::new(bytes),
@@ -146,6 +157,7 @@ impl ViewerBuffer {
         }
     }
 
+    /// Get the total file size in bytes
     pub fn total_bytes(&self) -> usize {
         self.bytes.len()
     }
@@ -171,6 +183,7 @@ impl std::fmt::Debug for ViewerBuffer {
 // ViewerState
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Complete state for the file viewer (text/hex mode with search and navigation)
 #[derive(Debug, Clone)]
 pub struct ViewerState {
     pub location: Location,
@@ -196,6 +209,7 @@ pub struct ViewerState {
 }
 
 impl ViewerState {
+    /// Create a new viewer state for the specified location (starts in loading state)
     pub fn new(location: Location) -> Self {
         Self {
             location,
@@ -331,6 +345,7 @@ impl ViewerState {
         Some((offset, bytes))
     }
 
+    /// Get hex display for one line: (byte_offset, hex_string, ascii_string)
     pub fn get_hex_line(&self, line_idx: usize) -> Option<(usize, String, String)> {
         let buffer = self.buffer.as_ref()?;
         let total = buffer.bytes.len();
@@ -371,6 +386,7 @@ impl ViewerState {
 
     // ── Encoding ──────────────────────────────────────────────────────────────
 
+    /// Switch to the next text encoding in the cycle
     pub fn cycle_encoding(&mut self) {
         self.encoding = self.encoding.next();
         // Windowed renderer picks up the new encoding on the next frame.
@@ -378,10 +394,12 @@ impl ViewerState {
 
     // ── Navigation ────────────────────────────────────────────────────────────
 
+    /// Move to the start of the current line
     pub fn move_to_line_start(&mut self) {
         self.column_offset = 0;
     }
 
+    /// Move to the end of the current line (respecting viewport width)
     pub fn move_to_line_end(&mut self, viewport_width: usize) {
         if let Some(line) = self.get_line_str(self.line_offset) {
             if line.len() > viewport_width {
@@ -392,11 +410,13 @@ impl ViewerState {
         }
     }
 
+    /// Jump to the first line
     pub fn jump_to_top(&mut self) {
         self.line_offset = 0;
         self.column_offset = 0;
     }
 
+    /// Jump to the last line (respecting viewport height)
     pub fn jump_to_bottom(&mut self, viewport_height: usize) {
         let line_count = if self.mode == ViewerMode::Hex {
             self.hex_line_count()
@@ -873,6 +893,7 @@ fn find_byte_pattern_ci(haystack: &[u8], lower_needle: &[u8]) -> Vec<(usize, usi
 // ViewerMode
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Viewer display mode: text or binary hexadecimal
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ViewerMode {
     Text,
@@ -916,6 +937,7 @@ fn trim_to_utf8_boundary(bytes: &[u8]) -> usize {
     len
 }
 
+/// Text encoding for file viewing and decoding
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TextEncoding {
     Utf8,
@@ -928,6 +950,7 @@ pub enum TextEncoding {
 }
 
 impl TextEncoding {
+    /// Decode bytes using this encoding
     pub fn decode(&self, bytes: &[u8]) -> String {
         match self {
             TextEncoding::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
@@ -1026,6 +1049,7 @@ impl TextEncoding {
         }
     }
 
+    /// Cycle to the next encoding in the rotation
     pub fn next(&self) -> Self {
         match self {
             TextEncoding::Utf8 => TextEncoding::Utf16Le,
@@ -1038,6 +1062,7 @@ impl TextEncoding {
         }
     }
 
+    /// Get the human-readable name of this encoding
     pub fn name(&self) -> &'static str {
         match self {
             TextEncoding::Utf8 => "UTF-8",

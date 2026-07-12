@@ -18,6 +18,7 @@ impl Default for NavigationHistory {
 }
 
 impl NavigationHistory {
+    /// Create a new empty navigation history
     pub fn new() -> Self {
         Self {
             left_stack: Vec::new(),

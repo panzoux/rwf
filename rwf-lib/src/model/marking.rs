@@ -16,6 +16,7 @@ impl Default for MarkingModel {
 }
 
 impl MarkingModel {
+    /// Create a new empty marking model
     pub fn new() -> Self {
         Self {
             marked_locations: HashSet::new(),

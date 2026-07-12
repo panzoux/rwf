@@ -55,6 +55,7 @@ pub trait ArchiveHandler: Send + Sync {
 pub struct ZipArchiveHandler;
 
 impl ZipArchiveHandler {
+    /// Create a new ZIP archive handler
     pub fn new() -> Self {
         Self
     }
@@ -524,6 +525,7 @@ impl Default for ZipArchiveHandler {
 pub struct SevenZArchiveHandler;
 
 impl SevenZArchiveHandler {
+    /// Create a new 7z archive handler
     pub fn new() -> Self {
         Self
     }
@@ -905,6 +907,7 @@ enum TarCompression {
 pub struct TarArchiveHandler;
 
 impl TarArchiveHandler {
+    /// Create a new TAR/TGZ archive handler
     pub fn new() -> Self {
         Self
     }
@@ -1396,6 +1399,7 @@ unsupported_handler!(
 pub struct IsoArchiveHandler;
 
 impl IsoArchiveHandler {
+    /// Create a new ISO archive handler
     pub fn new() -> Self {
         Self
     }
@@ -1679,6 +1683,7 @@ pub struct MultiFormatArchiveHandler {
 }
 
 impl MultiFormatArchiveHandler {
+    /// Create a new multi-format archive handler that routes to appropriate format-specific handlers
     pub fn new() -> Self {
         Self {
             zip: ZipArchiveHandler::new(),
