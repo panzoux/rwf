@@ -49,9 +49,14 @@
 - [x] S1-3 rustdoc: backend / job / model(haiku×3並列。既存 docs でほぼ網羅済みと判明、
       未網羅の約50箇所を追加。find_match_ranges の誤解を招くdocを1件修正)
 - [x] S1-4 ルート md 整理(git mv。BUGFIX_*/*_SUMMARY.md 11 ファイルを docs/history/ へ)
-- [ ] S2-1 archive.rs TODO 修正 + テスト
-- [ ] S2-2 UI スモークテスト(panes / task_panel / viewer / tab_bar)
-- [ ] S2-3 missing_docs 判定(導入 or 見送り: ___)
+- [x] S2-1 archive.rs TODO 修正 + テスト(ZIP エントリの MS-DOS タイムスタンプを実抽出。
+      `test_archive_browsing_extracts_stored_timestamp` 追加、39 archive テスト全緑)
+- [x] S2-2 UI スモークテスト(panes / task_panel / viewer / tab_bar。TestBackend + 固定データで
+      panic なし確認 + insta スナップショット1枚ずつ、計11テスト追加。`cargo test -p rwf` 156(旧145)全緑)
+- [x] S2-3 missing_docs 判定(**見送り**。理由: S1 では backend/job/model(非dialog)のみ対象で
+      262件の `model/dialog/` と 65件の `rwf-bin/src/ui/`、加えて `state/`/`input/`/`config.rs` 等
+      未着手の公開項目が広範に残存。全公開項目カバーという前提条件に遠く未達のため導入見送り。
+      Phase 8+ で rustdoc 網羅を継続タスクとして扱う)
 - [ ] S2-4 全検証緑 + Phase M 完了宣言 + 凍結解除
 
 ## セッション開始プロンプト(コピペ用)
