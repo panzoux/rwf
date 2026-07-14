@@ -162,6 +162,7 @@ fn export_default_configs(dir: &std::path::Path) -> Result<()> {
         rwf_lib::DEFAULT_CUSTOM_FUNCTIONS,
     )?;
     write_if_absent(dir, "menu_config.json", rwf_lib::DEFAULT_MENU_CONFIG)?;
+    write_if_absent(dir, "file_type_map.json", rwf_lib::DEFAULT_FILE_TYPE_MAP)?;
     write_if_absent(
         dir,
         "action_descriptions.en.json",
