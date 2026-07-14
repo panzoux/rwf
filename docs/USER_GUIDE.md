@@ -345,6 +345,40 @@ Custom functions allow you to define shell commands with macro expansion:
 - **ExecuteFile**: Execute the file path returned by the command
 - **ExecuteFileWithEditor**: Open the file path in configured editor
 
+### Opening Files (`Enter`, `Ctrl+Enter`)
+
+Pressing **Enter** on a file checks, in order:
+
+1. **`extension_associations.json`** — an arbitrary external command for this extension, if you've configured one.
+2. **`file_type_map.json`** — RWF's built-in map of common extensions (images, video, audio, documents) to "open via OS default application." Ships with sensible cross-platform defaults; nothing to configure for common file types.
+3. Otherwise, RWF's own internal text/hex viewer (the original, always-available fallback).
+
+**Ctrl+Enter** always opens the cursor file via the OS's default association, regardless of the above — a direct escape hatch for anything the map doesn't cover (or files you specifically want to hand off to the OS rather than preview). It never runs on directories/archives (behaves like Enter there instead). By default, no extension in `file_type_map.json` maps to an executable, so plain Enter won't auto-run one out of the box — but if you manually add an extension like `exe` with `"OsDefault"`, plain Enter will launch it exactly like Ctrl+Enter would. There is currently no extension-vs-content safety check (a magic-byte mismatch warning is tracked as a future improvement in ROADMAP Phase 8.7); avoid mapping executable extensions to `OsDefault` unless you intend Enter to run them.
+
+#### `extension_associations.json`
+
+For per-extension custom commands — for example, opening `.log` files in a specific pager instead of RWF's viewer:
+
+```json
+[
+  { "Extension": "log", "Command": "less $F", "Shell": "bash" }
+]
+```
+
+Fields: `Extension` (no leading dot, case-insensitive), `Command` (supports the same macros as custom functions — `$P`/`$F`/`$W`/`$E`/etc., see the Macro Reference above), optional `Description`, optional `Shell`. Location: `%APPDATA%\rwf\extension_associations.json`. Ships empty — there's no universally-correct default command to pre-fill, so this file exists purely for your own overrides.
+
+#### `file_type_map.json`
+
+RWF's built-in extension classification for Enter's auto-routing. Location: `%APPDATA%\rwf\file_type_map.json` — if absent or invalid, RWF falls back to its embedded defaults (covering common image/video/audio/document extensions) rather than an empty list, so this feature works out of the box with zero configuration.
+
+```json
+[
+  { "Extension": "mp4", "FileType": "video/mp4", "Actions": ["OsDefault"] }
+]
+```
+
+Fields: `Extension`, optional `FileType` (a MIME-ish string, currently informational only), and `Actions` — an ordered list; today only `"OsDefault"` (open via OS association) does anything, but the list format is forward-compatible with future action kinds. To add your own extension to the OS-default list, or remove one from the built-in set, edit your copy of this file (a full replacement of the file's contents — not merged with the built-in defaults).
+
 ### Registered Folders (`registered_directory.json`)
 
 ```json
@@ -588,6 +622,8 @@ Press `L` in the help dialog to cycle through available languages. The applicati
 Press `Shift+Z` to reload configuration without restarting. This reloads:
 - Main configuration (`config.json`)
 - Key bindings (`keybindings.json`)
+- File-type extension associations (`extension_associations.json`)
+- Built-in file-type map (`file_type_map.json`)
 - Custom functions (`custom_functions.json`)
 - Registered folders (`registered_directory.json`)
 - Color schemes
