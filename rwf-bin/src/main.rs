@@ -165,6 +165,11 @@ fn export_default_configs(dir: &std::path::Path) -> Result<()> {
     write_if_absent(dir, "file_type_map.json", rwf_lib::DEFAULT_FILE_TYPE_MAP)?;
     write_if_absent(
         dir,
+        "extension_associations.json",
+        rwf_lib::DEFAULT_EXTENSION_ASSOCIATIONS,
+    )?;
+    write_if_absent(
+        dir,
         "action_descriptions.en.json",
         include_str!("../../rwf-lib/resources/action_descriptions.en.json"),
     )?;

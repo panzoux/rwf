@@ -52,6 +52,10 @@ pub const DEFAULT_MENU_CONFIG: &str = include_str!("../resources/default_menu_co
 /// Embedded default file_type_map.json — exported by `--export-config-files`
 pub const DEFAULT_FILE_TYPE_MAP: &str = include_str!("../resources/default_file_type_map.json");
 
+/// Embedded default extension_associations.json — exported by `--export-config-files`
+pub const DEFAULT_EXTENSION_ASSOCIATIONS: &str =
+    include_str!("../resources/default_extension_associations.json");
+
 impl ActionDescriptions {
     /// Load action descriptions for the given language.
     /// Checks %APPDATA%\rwf\ first, then falls back to embedded.
