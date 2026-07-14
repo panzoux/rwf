@@ -141,6 +141,9 @@ mod archive_format_recognition_tests;
 #[cfg(test)]
 mod help_viewer_tests;
 
+#[cfg(test)]
+mod file_open_integration_tests;
+
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
 pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
 pub use help_content::{
