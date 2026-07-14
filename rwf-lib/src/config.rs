@@ -874,12 +874,42 @@ pub struct ExtensionAssociation {
     pub shell: Option<String>,
 }
 
+/// Built-in extension → open-action classification (Enter's auto-routing fallback,
+/// checked after `extension_associations.json` and before the internal viewer).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct FileTypeMapping {
+    /// File extension without leading dot, case-insensitive match.
+    pub extension: String,
+    /// MIME-ish type string, e.g. "image/jpeg" — unused by any current logic, reserved
+    /// for a future magic-byte-detection feature to cross-reference detected content
+    /// type against declared type (see plan/ROADMAP.md Phase 8.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_type: Option<String>,
+    /// Ordered actions — the first one this build recognizes is executed; unrecognized
+    /// kinds (see `FileOpenAction::Unknown`) are skipped for forward compatibility.
+    pub actions: Vec<FileOpenAction>,
+}
+
+/// A single action a `FileTypeMapping` can resolve to.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FileOpenAction {
+    /// Open via the OS's default file association (same mechanism as `Ctrl+Enter`).
+    OsDefault,
+    /// Catch-all for any action kind this build doesn't implement yet — lets a newer
+    /// config file's `Actions` list degrade gracefully on an older RWF binary instead
+    /// of failing to parse.
+    #[serde(other)]
+    Unknown,
+}
+
 /// Configuration manager for loading and saving configuration files
 /// **Validates: Requirements 17.1, 17.2, 17.3, 17.9, 38.1, 38.9, 38.10**
 pub struct ConfigManager {
     config_path: std::path::PathBuf,
     keybindings_path: std::path::PathBuf,
     extension_associations_path: std::path::PathBuf,
+    file_type_map_path: std::path::PathBuf,
     custom_functions_path: std::path::PathBuf,
     context_menu_path: std::path::PathBuf,
 }
@@ -895,6 +925,7 @@ impl ConfigManager {
             config_path: config_dir.join("config.json"),
             keybindings_path: config_dir.join("keybindings.json"),
             extension_associations_path: config_dir.join("extension_associations.json"),
+            file_type_map_path: config_dir.join("file_type_map.json"),
             custom_functions_path: config_dir.join("custom_functions.json"),
             context_menu_path: config_dir.join("context_menu.json"),
         }
@@ -911,6 +942,7 @@ impl ConfigManager {
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         Self {
             extension_associations_path: config_dir.join("extension_associations.json"),
+            file_type_map_path: config_dir.join("file_type_map.json"),
             custom_functions_path: config_dir.join("custom_functions.json"),
             context_menu_path: config_dir.join("context_menu.json"),
             config_path,
@@ -1002,6 +1034,11 @@ impl ConfigManager {
         &self.extension_associations_path
     }
 
+    /// Get the file_type_map.json path
+    pub fn file_type_map_path(&self) -> &std::path::Path {
+        &self.file_type_map_path
+    }
+
     /// Get the custom_functions.json path
     pub fn custom_functions_path(&self) -> &std::path::Path {
         &self.custom_functions_path
@@ -1040,6 +1077,43 @@ impl ConfigManager {
             Err(e) => {
                 tracing::warn!("Failed to read extension_associations.json: {}", e);
                 (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
+            }
+        }
+    }
+
+    /// Load the built-in file-type map. Unlike `load_extension_associations_with_result`,
+    /// this never returns an empty list: if `%APPDATA%\rwf\file_type_map.json` is absent
+    /// or fails to parse, it falls back to the embedded default set (same "user override,
+    /// else embedded default" pattern as `ActionDescriptions::load()` in help_content.rs).
+    pub fn load_file_type_map_with_result(&self) -> (Vec<FileTypeMapping>, ConfigLoadResult) {
+        let path = self.file_type_map_path.clone();
+        let embedded_defaults = || {
+            serde_json::from_str::<Vec<FileTypeMapping>>(crate::help_content::DEFAULT_FILE_TYPE_MAP)
+                .expect("embedded default_file_type_map.json is always valid JSON")
+        };
+        if !path.exists() {
+            return (
+                embedded_defaults(),
+                ConfigLoadResult::default_fallback(path, "file not found"),
+            );
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<Vec<FileTypeMapping>>(&content) {
+                Ok(mappings) => (mappings, ConfigLoadResult::ok(path)),
+                Err(e) => {
+                    tracing::warn!("Failed to parse file_type_map.json: {}", e);
+                    (
+                        embedded_defaults(),
+                        ConfigLoadResult::error(path, e.to_string()),
+                    )
+                }
+            },
+            Err(e) => {
+                tracing::warn!("Failed to read file_type_map.json: {}", e);
+                (
+                    embedded_defaults(),
+                    ConfigLoadResult::error(path, e.to_string()),
+                )
             }
         }
     }
@@ -1364,5 +1438,80 @@ mod tests {
             keybindings.normal_mode.get("Tab"),
             Some(&Action::SwitchPane)
         );
+    }
+
+    #[test]
+    fn file_type_mapping_deserializes_with_and_without_file_type() {
+        let json = r#"[
+            { "Extension": "mp4", "FileType": "video/mp4", "Actions": ["OsDefault"] },
+            { "Extension": "custom", "Actions": ["OsDefault"] }
+        ]"#;
+        let mappings: Vec<FileTypeMapping> = serde_json::from_str(json).unwrap();
+        assert_eq!(mappings.len(), 2);
+        assert_eq!(mappings[0].extension, "mp4");
+        assert_eq!(mappings[0].file_type.as_deref(), Some("video/mp4"));
+        assert_eq!(mappings[0].actions, vec![FileOpenAction::OsDefault]);
+        assert_eq!(mappings[1].extension, "custom");
+        assert_eq!(mappings[1].file_type, None);
+    }
+
+    #[test]
+    fn file_open_action_unknown_variant_deserializes_via_serde_other() {
+        let json = r#"[
+            { "Extension": "foo", "Actions": ["SomeFutureAction", "OsDefault"] }
+        ]"#;
+        let mappings: Vec<FileTypeMapping> = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            mappings[0].actions,
+            vec![FileOpenAction::Unknown, FileOpenAction::OsDefault]
+        );
+    }
+
+    #[test]
+    fn load_file_type_map_falls_back_to_embedded_defaults_when_file_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+
+        let (mappings, result) = manager.load_file_type_map_with_result();
+
+        assert!(!mappings.is_empty());
+        assert!(mappings.iter().any(|m| m.extension == "mp4"));
+        assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
+    }
+
+    #[test]
+    fn load_file_type_map_falls_back_to_embedded_defaults_on_malformed_user_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+        std::fs::write(manager.file_type_map_path(), "not valid json").unwrap();
+
+        let (mappings, result) = manager.load_file_type_map_with_result();
+
+        assert!(!mappings.is_empty());
+        assert!(mappings.iter().any(|m| m.extension == "mp4"));
+        assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
+    }
+
+    #[test]
+    fn load_file_type_map_uses_user_file_when_present_and_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+        std::fs::write(
+            manager.file_type_map_path(),
+            r#"[{ "Extension": "csv", "Actions": ["OsDefault"] }]"#,
+        )
+        .unwrap();
+
+        let (mappings, result) = manager.load_file_type_map_with_result();
+
+        assert_eq!(mappings.len(), 1);
+        assert_eq!(mappings[0].extension, "csv");
+        assert!(matches!(result.status, ConfigLoadStatus::Ok));
     }
 }
