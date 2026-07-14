@@ -243,8 +243,9 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | **Escape キャンセル** | バックグラウンドジョブ実行中に Escape で即座にキャンセル | Phase 8.4 |
 | **Git ステータス表示** | ペイン内で Git ファイル状態（modified/staged等）を色分け表示 | Phase 8.5 |
 | **Registered Folder へのコピー/移動** | **CopyToRegisteredFolder** / **MoveToRegisteredFolder**。大量の登録フォルダから高速に絞り込み・選択して整理する機能 | Phase 8.6 |
+| **マジックバイト/コンテンツ判定** | `file_type_map.json`（拡張子ベース、2026-07-14「Open With OS Default」機能）を補完。(1) 拡張子と実バイト内容が不一致の場合（例: 拡張子は文書だが実体は実行ファイル）に警告ダイアログを出し、続行するか確認してから開く。(2) 将来のインライン画像/メディアプレビュー機能の判定基盤としても利用。参考実装: `console-column-file-manager`（`FileTypeDetector` / `CheckExtensionMismatch`） | Phase 8.7 |
 
-> 旧 8.7 コマンドパレットは 2026-07-05 に Phase 7.2 へ昇格。
+> 旧 8.7 コマンドパレットは 2026-07-05 に Phase 7.2 へ昇格（8.7 は上記マジックバイト判定に再割当）。
 
 ---
 
