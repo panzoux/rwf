@@ -90,6 +90,46 @@ impl Location {
         }
     }
 
+    /// Returns true if `self` is `other`, or nested inside it (same location kind, path is
+    /// `other`'s path or a descendant of it). Used to invalidate a directory's cache entry
+    /// together with any of its former children's entries in one sweep (e.g. on delete).
+    pub fn is_within(&self, other: &Location) -> bool {
+        match (self, other) {
+            (Location::Local(p), Location::Local(o)) => p.starts_with(o),
+            (
+                Location::Ssh { host, port, path },
+                Location::Ssh {
+                    host: oh,
+                    port: op,
+                    path: opath,
+                },
+            ) => host == oh && port == op && path.starts_with(opath),
+            (
+                Location::Cloud {
+                    provider,
+                    bucket,
+                    path,
+                },
+                Location::Cloud {
+                    provider: op,
+                    bucket: ob,
+                    path: opath,
+                },
+            ) => provider == op && bucket == ob && path.starts_with(opath),
+            (
+                Location::Archive {
+                    archive_path,
+                    inner_path,
+                },
+                Location::Archive {
+                    archive_path: oap,
+                    inner_path: oip,
+                },
+            ) => archive_path == oap && inner_path.starts_with(oip),
+            _ => self == other,
+        }
+    }
+
     /// Join with a path component
     pub fn join(&self, component: &str) -> Location {
         match self {

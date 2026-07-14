@@ -133,6 +133,22 @@ impl DirectoryCache {
         }
     }
 
+    /// Invalidate the cache entry for `prefix` itself and for any cached location nested
+    /// inside it (see [`Location::is_within`]). Needed on delete/rename so a directory's own
+    /// stale listing (and its former children's) can't be served back after the path is
+    /// recreated with fresh contents.
+    pub fn invalidate_prefix(&mut self, prefix: &Location) {
+        let to_remove: Vec<Location> = self
+            .entries
+            .keys()
+            .filter(|loc| loc.is_within(prefix))
+            .cloned()
+            .collect();
+        for location in to_remove {
+            self.invalidate(&location);
+        }
+    }
+
     /// Invalidate all cache entries
     pub fn invalidate_all(&mut self) {
         self.entries.clear();

@@ -99,9 +99,11 @@ impl AppState {
                 }
 
                 if let Some(entries) = cached_entries {
+                    pane_model.raw_entries = entries.clone();
                     pane_model.entries = entries;
                     pane_model.is_loading = false;
                     pane_model.apply_sort();
+                    pane_model.apply_current_filter();
                     if !pane_model.entries.is_empty() {
                         pane_model.cursor = pane_model.cursor.min(pane_model.entries.len() - 1);
                     } else {
@@ -162,9 +164,11 @@ impl AppState {
                     pane_model.scroll_offset = 0;
 
                     if let Some(entries) = cached_entries {
+                        pane_model.raw_entries = entries.clone();
                         pane_model.entries = entries;
                         pane_model.is_loading = false;
                         pane_model.apply_sort();
+                        pane_model.apply_current_filter();
                         Some(StateUpdateResult::with_ui_change())
                     } else {
                         pane_model.entries.clear();

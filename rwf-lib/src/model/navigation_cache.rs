@@ -63,6 +63,26 @@ impl NavigationStateCache {
         }
     }
 
+    /// Invalidate the cached cursor/scroll for `prefix` itself and for any cached location
+    /// nested inside it (see [`Location::is_within`]). Unlike [`crate::model::DirectoryCache`],
+    /// this cache has no TTL, so without this a directory's remembered cursor position
+    /// survives its deletion indefinitely and can be restored — against unrelated new
+    /// contents — if a directory of the same name is later recreated.
+    pub fn invalidate_prefix(&mut self, prefix: &Location) {
+        let to_remove: Vec<Location> = self
+            .cache
+            .keys()
+            .filter(|loc| loc.is_within(prefix))
+            .cloned()
+            .collect();
+        for location in to_remove {
+            self.cache.remove(&location);
+            if let Some(pos) = self.access_order.iter().position(|l| l == &location) {
+                self.access_order.remove(pos);
+            }
+        }
+    }
+
     /// Get the number of entries in the cache
     #[cfg(test)]
     pub fn len(&self) -> usize {

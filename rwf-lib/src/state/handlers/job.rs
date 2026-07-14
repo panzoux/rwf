@@ -211,12 +211,18 @@ impl AppState {
                                 if let Some(parent) = target.parent() {
                                     self.cache.invalidate(&parent);
                                 }
+                                self.cache.invalidate_prefix(target);
+                                self.navigation_cache.invalidate_prefix(target);
                             }
                         }
-                        crate::job::JobKind::Rename { from, .. } => {
+                        crate::job::JobKind::Rename { from, to } => {
                             if let Some(parent) = from.parent() {
                                 self.cache.invalidate(&parent);
                             }
+                            self.cache.invalidate_prefix(from);
+                            self.cache.invalidate_prefix(to);
+                            self.navigation_cache.invalidate_prefix(from);
+                            self.navigation_cache.invalidate_prefix(to);
                         }
                         crate::job::JobKind::PatternRename { targets, .. } => {
                             for target in targets {
@@ -796,9 +802,11 @@ impl AppState {
                     pane_model.cursor = 0;
                     pane_model.scroll_offset = 0;
                     if let Some(entries) = cached_entries {
+                        pane_model.raw_entries = entries.clone();
                         pane_model.entries = entries;
                         pane_model.is_loading = false;
                         pane_model.apply_sort();
+                        pane_model.apply_current_filter();
                         Some(StateUpdateResult::with_ui_change())
                     } else {
                         pane_model.entries.clear();

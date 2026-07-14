@@ -27,8 +27,10 @@ impl AppState {
                 opposite_pane_model.scroll_offset = 0;
 
                 if let Some(entries) = cached_entries {
+                    opposite_pane_model.raw_entries = entries.clone();
                     opposite_pane_model.entries = entries;
                     opposite_pane_model.apply_sort();
+                    opposite_pane_model.apply_current_filter();
                     Some(StateUpdateResult::with_ui_change())
                 } else {
                     let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory {
@@ -57,16 +59,20 @@ impl AppState {
                 let tab = self.current_tab_mut();
 
                 let left_needs_job = if let Some(entries) = left_cached {
+                    tab.left_pane.raw_entries = entries.clone();
                     tab.left_pane.entries = entries;
                     tab.left_pane.apply_sort();
+                    tab.left_pane.apply_current_filter();
                     false
                 } else {
                     true
                 };
 
                 let right_needs_job = if let Some(entries) = right_cached {
+                    tab.right_pane.raw_entries = entries.clone();
                     tab.right_pane.entries = entries;
                     tab.right_pane.apply_sort();
+                    tab.right_pane.apply_current_filter();
                     false
                 } else {
                     true
