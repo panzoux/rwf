@@ -806,6 +806,15 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     }
 
     /// Spawn a program directly without a shell, avoiding cmd.exe quote-mangling on Windows.
+    ///
+    /// Stdio is never inherited from RWF's own console: callers of this job (`editor_job`,
+    /// `system_open_job`) launch via `cmd /c <program> ...` on Windows, and cmd.exe honors
+    /// the user's `HKCU\Software\Microsoft\Command Processor\AutoRun` hook (e.g. Clink) for
+    /// *every* new cmd.exe instance, including this transient one. If that hook fails or
+    /// prints anything, it writes straight to whatever console it inherited — which, without
+    /// this redirection, is RWF's own alternate-screen TUI, corrupting the display. Piping
+    /// all three streams to null makes the child fully detached from our console regardless
+    /// of what it (or a shell hook wrapping it) tries to print.
     async fn execute_spawn_process(
         &self,
         program: &str,
@@ -816,21 +825,22 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return crate::job::OpResult::Cancelled;
         }
+        let mut cmd = tokio::process::Command::new(program);
+        cmd.args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
         if wait {
             // Block this job (not the UI thread) until the child exits, so callers
             // can react to "editor closed" via the normal job-completion event.
-            match tokio::process::Command::new(program)
-                .args(args)
-                .status()
-                .await
-            {
+            match cmd.status().await {
                 Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
                 Err(e) => {
                     crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e))
                 }
             }
         } else {
-            match tokio::process::Command::new(program).args(args).spawn() {
+            match cmd.spawn() {
                 Ok(_) => crate::job::OpResult::Success(crate::job::SuccessData::None),
                 Err(e) => {
                     crate::job::OpResult::Failed(format!("cannot start '{}': {}", program, e))
@@ -2068,6 +2078,50 @@ mod tests {
 
         // Directory should exist
         assert!(new_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_spawn_process_succeeds_with_suppressed_stdio() {
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        // Mirrors what `system_open_job`/`editor_job` actually spawn on Windows: a
+        // transient `cmd.exe` that may print startup noise (e.g. a user's Clink AutoRun
+        // hook failing to inject) if its stdio is inherited from us — `echo` stands in
+        // for that noise here. The job must still complete successfully with stdio
+        // redirected away from our own console.
+        #[cfg(target_os = "windows")]
+        let (program, args) = (
+            "cmd".to_string(),
+            vec![
+                "/c".to_string(),
+                "echo".to_string(),
+                "should not reach our screen".to_string(),
+            ],
+        );
+        #[cfg(not(target_os = "windows"))]
+        let (program, args) = (
+            "echo".to_string(),
+            vec!["should not reach our screen".to_string()],
+        );
+
+        let spec = JobSpec::new(JobKind::SpawnProcess {
+            program,
+            args,
+            wait: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::None))
+        ));
     }
 
     #[tokio::test]
