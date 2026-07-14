@@ -839,6 +839,34 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                                     }]
                                 }
                             }
+                        } else if let Some(action) = entry.extension().and_then(|ext| {
+                            let ext_lower = ext.to_lowercase();
+                            state
+                                .file_type_map
+                                .iter()
+                                .find(|m| {
+                                    m.extension.trim_start_matches('.').to_lowercase() == ext_lower
+                                })
+                                .and_then(|m| {
+                                    m.actions
+                                        .iter()
+                                        .find(|a| **a != crate::config::FileOpenAction::Unknown)
+                                })
+                        }) {
+                            match action {
+                                crate::config::FileOpenAction::OsDefault => {
+                                    debug!(
+                                        "EnterDirectory: opening {} via OS default association",
+                                        entry.name
+                                    );
+                                    vec![Transition::OpenWithSystem {
+                                        path: entry.location.display_path(),
+                                    }]
+                                }
+                                crate::config::FileOpenAction::Unknown => {
+                                    unreachable!("filtered out by the .find() above")
+                                }
+                            }
                         } else {
                             debug!("EnterDirectory: opening text viewer for {}", entry.name);
                             vec![Transition::OpenTextViewer {
@@ -1826,6 +1854,125 @@ mod tests {
             bindings.normal_mode.get("Ctrl+Enter"),
             Some(&Action::OpenWithSystem)
         );
+    }
+
+    #[test]
+    fn enter_directory_routes_mapped_extension_to_open_with_system() {
+        let mut state = test_state();
+        state.file_type_map = vec![crate::config::FileTypeMapping {
+            extension: "mp4".to_string(),
+            file_type: Some("video/mp4".to_string()),
+            actions: vec![crate::config::FileOpenAction::OsDefault],
+        }];
+        let entry = FileEntryBuilder::new("clip.mp4").dir(false).build();
+        let expected_path = entry.location.display_path();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::OpenWithSystem { path } => assert_eq!(path, &expected_path),
+            other => panic!("expected OpenWithSystem, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn enter_directory_unmapped_extension_still_opens_internal_viewer() {
+        let mut state = test_state();
+        state.file_type_map = vec![crate::config::FileTypeMapping {
+            extension: "mp4".to_string(),
+            file_type: None,
+            actions: vec![crate::config::FileOpenAction::OsDefault],
+        }];
+        let entry = FileEntryBuilder::new("main.rs").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::OpenTextViewer { .. } => {}
+            other => panic!("expected OpenTextViewer, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn enter_directory_never_auto_runs_executables() {
+        let mut state = test_state();
+        // file_type_map deliberately has no "exe" entry (executables are excluded from
+        // the default set by design) — this confirms the omission actually protects.
+        state.file_type_map = Vec::new();
+        let entry = FileEntryBuilder::new("setup.exe").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::OpenTextViewer { .. } => {}
+            other => panic!("expected OpenTextViewer (never auto-run), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn enter_directory_extension_association_wins_over_file_type_map() {
+        let mut state = test_state();
+        state.file_type_map = vec![crate::config::FileTypeMapping {
+            extension: "mp4".to_string(),
+            file_type: None,
+            actions: vec![crate::config::FileOpenAction::OsDefault],
+        }];
+        state.extension_associations = vec![crate::config::ExtensionAssociation {
+            extension: "mp4".to_string(),
+            command: "myplayer $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        let entry = FileEntryBuilder::new("clip.mp4").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ExecuteAssociation { command, .. } => {
+                assert!(command.contains("myplayer"))
+            }
+            other => panic!("expected ExecuteAssociation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn enter_directory_skips_unrecognized_action_and_falls_to_next() {
+        let mut state = test_state();
+        state.file_type_map = vec![crate::config::FileTypeMapping {
+            extension: "mp4".to_string(),
+            file_type: None,
+            actions: vec![
+                crate::config::FileOpenAction::Unknown,
+                crate::config::FileOpenAction::OsDefault,
+            ],
+        }];
+        let entry = FileEntryBuilder::new("clip.mp4").dir(false).build();
+        let expected_path = entry.location.display_path();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::OpenWithSystem { path } => assert_eq!(path, &expected_path),
+            other => panic!(
+                "expected OpenWithSystem (skipping Unknown), got {:?}",
+                other
+            ),
+        }
     }
 }
 
