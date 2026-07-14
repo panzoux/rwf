@@ -35,7 +35,8 @@
           "Compress":               { "description": "Compress / create archive" },
           "Extract":                { "description": "Extract archive" },
           "ShowFileInfoForCursor":  { "description": "Show file info" },
-          "OpenWithEditor":         { "description": "Open with editor: $ActiveEditor" }
+          "OpenWithEditor":         { "description": "Open with editor: $ActiveEditor" },
+          "OpenWithSystem":         { "description": "Open with OS default application" }
         }
       },
       {

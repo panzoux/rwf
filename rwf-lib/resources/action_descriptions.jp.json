@@ -35,7 +35,8 @@
           "Compress":               { "description": "圧縮 / アーカイブ作成" },
           "Extract":                { "description": "アーカイブを展開" },
           "ShowFileInfoForCursor":  { "description": "ファイル情報を表示" },
-          "OpenWithEditor":         { "description": "エディタで開く: $ActiveEditor" }
+          "OpenWithEditor":         { "description": "エディタで開く: $ActiveEditor" },
+          "OpenWithSystem":         { "description": "OSの既定のアプリで開く" }
         }
       },
       {

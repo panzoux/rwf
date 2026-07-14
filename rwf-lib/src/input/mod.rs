@@ -1818,6 +1818,15 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::OpenWithSystem);
         assert!(transitions.is_empty());
     }
+
+    #[test]
+    fn ctrl_enter_is_bound_to_open_with_system() {
+        let bindings = KeyBindings::embedded_defaults();
+        assert_eq!(
+            bindings.normal_mode.get("Ctrl+Enter"),
+            Some(&Action::OpenWithSystem)
+        );
+    }
 }
 
 #[cfg(test)]

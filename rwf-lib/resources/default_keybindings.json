@@ -31,6 +31,7 @@
     "PageUp":          "PageUp",
     "PageDown":        "PageDown",
     "Enter":           "EnterDirectory",
+    "Ctrl+Enter":      "OpenWithSystem",
     "Backspace":       "NavigateToParent",
     "Left":            "SwitchToLeftPane",
     "Right":           "SwitchToRightPane",
