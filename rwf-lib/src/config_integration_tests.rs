@@ -476,4 +476,11 @@ mod tests {
         assert_eq!(cfg.leap_debounce_ms, 150);
         assert_eq!(cfg.no_match_feedback, NoMatchFeedback::TaskPanel);
     }
+
+    #[test]
+    fn app_state_loads_file_type_map_at_startup() {
+        let state = AppState::new(AppConfig::default());
+        assert!(!state.file_type_map.is_empty());
+        assert!(state.file_type_map.iter().any(|m| m.extension == "mp4"));
+    }
 }

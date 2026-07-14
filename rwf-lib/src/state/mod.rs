@@ -53,6 +53,10 @@ pub struct AppState {
     pub last_tab_created: Option<std::time::Instant>,
     /// File-type extension associations loaded from extension_associations.json
     pub extension_associations: Vec<crate::config::ExtensionAssociation>,
+    /// Built-in extension → open-action map, loaded from file_type_map.json (or its
+    /// embedded default if that file is absent/invalid). Checked by EnterDirectory
+    /// after extension_associations and before the internal viewer.
+    pub file_type_map: Vec<crate::config::FileTypeMapping>,
     /// Custom functions loaded from custom_functions.json
     pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
     /// Load results for all config files, used by the verbose version info display
@@ -120,6 +124,7 @@ impl AppState {
         let config_manager = crate::config::ConfigManager::new();
         let (extension_associations, ext_result) =
             config_manager.load_extension_associations_with_result();
+        let (file_type_map, file_type_map_result) = config_manager.load_file_type_map_with_result();
 
         let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
         let custom_fn_dir = custom_fn_path
@@ -170,7 +175,12 @@ impl AppState {
             }
         }
 
-        let mut config_load_results = vec![ext_result, custom_fn_result, context_menu_result];
+        let mut config_load_results = vec![
+            ext_result,
+            file_type_map_result,
+            custom_fn_result,
+            context_menu_result,
+        ];
         config_load_results.extend(menu_file_results);
 
         Self {
@@ -195,6 +205,7 @@ impl AppState {
             config,
             last_tab_created: None,
             extension_associations,
+            file_type_map,
             custom_functions,
             config_load_results,
             pending_confirmation_logs: Vec::new(),
@@ -1008,6 +1019,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             let (ext_assocs, ext_result) = config_manager.load_extension_associations_with_result();
             state.extension_associations = ext_assocs;
 
+            let (file_type_map, file_type_map_result) =
+                config_manager.load_file_type_map_with_result();
+            state.file_type_map = file_type_map;
+
             let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
             let (custom_fns, custom_fn_result) =
                 match crate::model::dialog::load_custom_functions(&custom_fn_path) {
@@ -1065,9 +1080,12 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             let prev_results: Vec<_> = state.config_load_results.drain(..2).collect();
             state.config_load_results = prev_results;
             state.config_load_results[0] = config_result;
-            state
-                .config_load_results
-                .extend([ext_result, custom_fn_result, context_menu_result]);
+            state.config_load_results.extend([
+                ext_result,
+                file_type_map_result,
+                custom_fn_result,
+                context_menu_result,
+            ]);
             state.config_load_results.extend(menu_file_results);
 
             // Build feedback messages
