@@ -1514,4 +1514,51 @@ mod tests {
         assert_eq!(mappings[0].extension, "csv");
         assert!(matches!(result.status, ConfigLoadStatus::Ok));
     }
+
+    #[test]
+    fn load_extension_associations_skipped_when_file_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+
+        let (assocs, result) = manager.load_extension_associations_with_result();
+
+        assert!(assocs.is_empty());
+        assert!(matches!(result.status, ConfigLoadStatus::Skipped(_)));
+    }
+
+    #[test]
+    fn load_extension_associations_errors_on_malformed_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+        std::fs::write(manager.extension_associations_path(), "not valid json").unwrap();
+
+        let (assocs, result) = manager.load_extension_associations_with_result();
+
+        assert!(assocs.is_empty());
+        assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
+    }
+
+    #[test]
+    fn load_extension_associations_parses_valid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let keybindings_path = temp_dir.path().join("keybindings.json");
+        let manager = ConfigManager::with_paths(config_path, keybindings_path);
+        std::fs::write(
+            manager.extension_associations_path(),
+            r#"[{ "Extension": "log", "Command": "less $F" }]"#,
+        )
+        .unwrap();
+
+        let (assocs, result) = manager.load_extension_associations_with_result();
+
+        assert_eq!(assocs.len(), 1);
+        assert_eq!(assocs[0].extension, "log");
+        assert_eq!(assocs[0].command, "less $F");
+        assert!(matches!(result.status, ConfigLoadStatus::Ok));
+    }
 }
