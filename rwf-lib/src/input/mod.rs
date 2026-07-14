@@ -1692,7 +1692,11 @@ mod tests {
             Some(&Action::LeapGoDeeperOrOpen)
         );
         assert_eq!(bindings.leap_mode.get("Left"), Some(&Action::LeapGoParent));
-        assert_eq!(bindings.leap_mode.get("/"), Some(&Action::LeapGoParent));
+        // "/" commits the current candidate and descends, same as Right — not "go parent".
+        assert_eq!(
+            bindings.leap_mode.get("/"),
+            Some(&Action::LeapGoDeeperOrOpen)
+        );
         assert_eq!(
             bindings.leap_mode.get("Ctrl+u"),
             Some(&Action::LeapClearLocal)

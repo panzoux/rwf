@@ -164,6 +164,6 @@
     "Ctrl+k":          "LeapClearAll",
     "Enter":           "LeapOpenFile",
     "Ctrl+Enter":      "LeapConfirm",
-    "/":               "LeapGoParent"
+    "/":               "LeapGoDeeperOrOpen"
   }
 }

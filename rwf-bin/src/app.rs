@@ -25,6 +25,10 @@ pub struct App {
     should_exit_and_cd: bool,
     worker_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
+    /// Keys with a Press seen but no matching Release yet (i.e. currently physically held).
+    /// Used to tell a genuine OS auto-repeat burst (no Release in between) apart from two
+    /// distinct human keypresses of the same key that merely land close together in time.
+    keys_currently_held: std::collections::HashSet<String>,
     task_panel: TaskPanel,
     last_cleanup_check: Option<Instant>,
     pending_conflict_job: Option<(JobSpec, Vec<ConflictPair>, String, String)>,
@@ -98,6 +102,7 @@ impl App {
             should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
             last_key_press: None,
+            keys_currently_held: std::collections::HashSet::new(),
             task_panel,
             last_cleanup_check: None,
             pending_conflict_job: None,
@@ -612,8 +617,13 @@ impl App {
                 let ev = event::read()?;
                 match ev {
                     Event::Key(key) => {
-                        if key.kind == crossterm::event::KeyEventKind::Press
-                            && self.handle_key_event(key)
+                        // Release is observed too (not just Press) so the repeat-debounce below
+                        // can tell a genuine held key apart from two distinct fast keypresses.
+                        if matches!(
+                            key.kind,
+                            crossterm::event::KeyEventKind::Press
+                                | crossterm::event::KeyEventKind::Release
+                        ) && self.handle_key_event(key)
                         {
                             any_event = true;
                         }
@@ -635,7 +645,66 @@ impl App {
         Ok(any_event)
     }
 
+    /// Decides whether a keypress should be processed or dropped as a repeat/debounce.
+    ///
+    /// A `Release` always clears the held-key marker and is never itself processed. For a
+    /// `Press`, if no `Release` for this key was seen since its last `Press` (i.e. the OS is
+    /// still delivering the same physical key-down as a repeat burst), the configured
+    /// delay/rate throttle applies. If a `Release` *was* seen — meaning this is a distinct
+    /// keypress rather than a continued hold — it is always accepted immediately, regardless
+    /// of how soon it follows the previous press of the same key.
+    fn should_process_key_repeat(
+        &mut self,
+        key_string: &str,
+        kind: crossterm::event::KeyEventKind,
+        now: Instant,
+    ) -> bool {
+        if kind == crossterm::event::KeyEventKind::Release {
+            self.keys_currently_held.remove(key_string);
+            return false;
+        }
+
+        let is_new_press = self.keys_currently_held.insert(key_string.to_string());
+        if is_new_press {
+            self.last_key_press = Some((key_string.to_string(), now, false));
+            return true;
+        }
+
+        if let Some((last_key, last_time, is_repeating)) = &self.last_key_press {
+            if last_key == key_string {
+                let elapsed = now.duration_since(*last_time);
+                if *is_repeating {
+                    if elapsed < Duration::from_millis(self.state.config.key_repeat_rate_ms as u64)
+                    {
+                        return false;
+                    }
+                    self.last_key_press = Some((key_string.to_string(), now, true));
+                } else {
+                    if elapsed < Duration::from_millis(self.state.config.key_repeat_delay_ms as u64)
+                    {
+                        return false;
+                    }
+                    self.last_key_press = Some((key_string.to_string(), now, true));
+                }
+            } else {
+                self.last_key_press = Some((key_string.to_string(), now, false));
+            }
+        } else {
+            self.last_key_press = Some((key_string.to_string(), now, false));
+        }
+        true
+    }
+
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // A Release only updates the held-key bookkeeping (see should_process_key_repeat) so
+        // the next Press of the same key can be told apart from an OS auto-repeat burst. It
+        // must never itself trigger an action (redraw, dialog input, dispatch, etc).
+        if key.kind == crossterm::event::KeyEventKind::Release {
+            let key_string = rwf_lib::input::format_key_event(&key);
+            self.should_process_key_repeat(&key_string, key.kind, Instant::now());
+            return false;
+        }
+
         // Ctrl+L: force full redraw (works in any mode)
         if key.code == crossterm::event::KeyCode::Char('l')
             && key
@@ -668,28 +737,8 @@ impl App {
         );
         let now = Instant::now();
 
-        // Key repeat logic
-        if let Some((last_key, last_time, is_repeating)) = &self.last_key_press {
-            if last_key == &key_string {
-                let elapsed = now.duration_since(*last_time);
-                if *is_repeating {
-                    if elapsed < Duration::from_millis(self.state.config.key_repeat_rate_ms as u64)
-                    {
-                        return false;
-                    }
-                    self.last_key_press = Some((key_string.clone(), now, true));
-                } else {
-                    if elapsed < Duration::from_millis(self.state.config.key_repeat_delay_ms as u64)
-                    {
-                        return false;
-                    }
-                    self.last_key_press = Some((key_string.clone(), now, true));
-                }
-            } else {
-                self.last_key_press = Some((key_string.clone(), now, false));
-            }
-        } else {
-            self.last_key_press = Some((key_string.clone(), now, false));
+        if !self.should_process_key_repeat(&key_string, key.kind, now) {
+            return false;
         }
 
         // 1. Dialog handling
@@ -1452,13 +1501,15 @@ impl App {
                                 &mut self.state,
                                 rwf_lib::state::Transition::LeapGoParent,
                             );
-                            let parent = self
-                                .state
-                                .active_pane()
-                                .current_location
-                                .path()
-                                .and_then(|p| p.parent())
-                                .map(|p| p.to_path_buf());
+                            // Use dir_stack (what we actually navigated through) rather than
+                            // recomputing from the live filesystem path, so buffer/dir_stack
+                            // depth can never drift out of sync with the real navigated depth.
+                            let parent = self.state.leap.as_ref().map(|l| {
+                                l.dir_stack
+                                    .last()
+                                    .map(|(dir, _)| dir.clone())
+                                    .unwrap_or_else(|| l.root_dir.clone())
+                            });
                             if let Some(parent) = parent {
                                 let loc = rwf_lib::model::Location::Local(parent);
                                 let pane = self.state.ui.active_pane;
@@ -1473,6 +1524,11 @@ impl App {
                                     self.pending_job_submission.push(job_spec);
                                 }
                             }
+                            // Re-arm the debounce so the remaining local filter (if any) is
+                            // re-applied to the parent's listing, matching the Backspace path —
+                            // otherwise a cache-hit ChangeLocation above leaves it unfiltered.
+                            self.leap_dirty = true;
+                            self.last_leap_input_time = Some(Instant::now());
                         }
                         return true;
                     }
@@ -1541,13 +1597,14 @@ impl App {
                         .unwrap_or(rwf_lib::model::BackspaceResult::Empty);
                     match result {
                         rwf_lib::model::BackspaceResult::GoToParent => {
-                            let parent = self
-                                .state
-                                .active_pane()
-                                .current_location
-                                .path()
-                                .and_then(|p| p.parent())
-                                .map(|p| p.to_path_buf());
+                            // Use dir_stack (what we actually navigated through) rather than
+                            // recomputing from the live filesystem path — see LeapGoParent.
+                            let parent = self.state.leap.as_ref().map(|l| {
+                                l.dir_stack
+                                    .last()
+                                    .map(|(dir, _)| dir.clone())
+                                    .unwrap_or_else(|| l.root_dir.clone())
+                            });
                             if let Some(parent) = parent {
                                 let loc = rwf_lib::model::Location::Local(parent);
                                 let pane = self.state.ui.active_pane;
@@ -1976,6 +2033,8 @@ impl App {
             &raw_entries,
             &local_filter,
             &self.state.search,
+            self.state.config.jump_nav.leap_migemo_enabled,
+            self.state.config.jump_nav.leap_migemo_min_chars,
         );
 
         let filtered_entries: Vec<rwf_lib::model::FileEntry> =
@@ -2082,5 +2141,357 @@ impl App {
             let h = self.state.ui.layout.pane_height;
             self.state.active_pane_mut().update_scroll(h, 3);
         }
+    }
+}
+
+#[cfg(test)]
+mod key_repeat_debounce_tests {
+    use super::*;
+    use crossterm::event::KeyEventKind;
+
+    fn test_app() -> App {
+        let state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    // Regression test for: a dialog list (e.g. Select Drive) silently dropping every other
+    // Down/Up press when a user taps at ordinary human speed. Root cause was that a swallowed
+    // repeat never updated `last_key_press`, so two genuinely distinct keypresses of the same
+    // key landing within `key_repeat_delay_ms` of each other were indistinguishable from a
+    // held-key OS auto-repeat burst. Windows reliably reports a Release between distinct
+    // presses (confirmed in crossterm's WindowsEventSource), so a Release seen in between is
+    // used to tell the two cases apart.
+    #[tokio::test]
+    async fn distinct_press_after_release_is_never_throttled() {
+        let mut app = test_app();
+        let t0 = Instant::now();
+
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
+
+        // Genuine key-up observed before the next press.
+        assert!(!app.should_process_key_repeat("Down", KeyEventKind::Release, t0));
+
+        // Second press arrives well within key_repeat_delay_ms (default 300ms), but since a
+        // Release was seen in between, it must be accepted immediately, not throttled.
+        let t1 = t0 + Duration::from_millis(100);
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t1));
+    }
+
+    #[tokio::test]
+    async fn held_key_without_release_is_throttled_then_repeats() {
+        let mut app = test_app();
+        let t0 = Instant::now();
+
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
+
+        // No Release observed: a genuine OS auto-repeat burst from a held key.
+        let t1 = t0 + Duration::from_millis(100); // < key_repeat_delay_ms (300)
+        assert!(!app.should_process_key_repeat("Down", KeyEventKind::Press, t1));
+
+        let t2 = t0 + Duration::from_millis(350); // >= key_repeat_delay_ms
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t2));
+
+        let t3 = t2 + Duration::from_millis(20); // >= key_repeat_rate_ms (15)
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t3));
+    }
+
+    #[tokio::test]
+    async fn different_key_is_never_throttled() {
+        let mut app = test_app();
+        let t0 = Instant::now();
+
+        assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
+        let t1 = t0 + Duration::from_millis(10);
+        assert!(app.should_process_key_repeat("Up", KeyEventKind::Press, t1));
+    }
+}
+
+/// Diagnostic reproduction for the reported "leap arrow-nav lands on unexpected entries" bug.
+/// Not (yet) a pass/fail regression test — it prints observed state after each step so the
+/// hypothesis (navigation_cache being polluted by leap's temporarily-filtered entries list)
+/// can be confirmed or refuted against a real filesystem + real worker pool before deciding
+/// on a fix. Run with `cargo test -p rwf leap_investigation -- --nocapture --test-threads=1`.
+#[cfg(test)]
+mod leap_investigation {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::job::JobSpec;
+    use rwf_lib::model::{FileEntry, Location};
+    use std::time::SystemTime;
+    use tempfile::TempDir;
+
+    fn dir_entry(name: &str, path: &std::path::Path) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            location: Location::Local(path.to_path_buf()),
+            size: 0,
+            is_dir: true,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.handle_key_event(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    /// Submits whatever ReadDirectory jobs the last key produced and waits for them to
+    /// complete against the real (tempdir-backed) worker pool, mirroring what `App::run`'s
+    /// main loop does each tick.
+    async fn flush_jobs(app: &mut App) {
+        let jobs: Vec<JobSpec> = app.pending_job_submission.drain(..).collect();
+        for job_spec in jobs {
+            app.state.jobs.start_job(job_spec.clone());
+            if let Some(pool) = app.worker_pool.as_ref() {
+                pool.submit_job(job_spec);
+            }
+        }
+        for _ in 0..200 {
+            let got_event = if let Some(pool) = app.worker_pool.as_mut() {
+                !rwf_lib::process_pending_events(pool, &mut app.state).is_empty()
+            } else {
+                false
+            };
+            if got_event {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    fn dump(app: &App, label: &str) {
+        let pane = app.state.active_pane();
+        let names: Vec<&str> = pane.entries.iter().map(|e| e.name.as_str()).collect();
+        eprintln!(
+            "[{label}] location={} cursor={} entries={:?} leap_buffer={:?}",
+            pane.current_location.display_path(),
+            pane.cursor,
+            names,
+            app.state.leap.as_ref().map(|l| l.buffer.clone())
+        );
+    }
+
+    /// This began as a diagnostic repro for a reported bug ("leap right/left arrow navigation
+    /// lands on unexpected entries") using the exact D:\ftest1\test2\test3\test4 tree and
+    /// keystroke sequence from the report. Against a clean session (no pre-existing stale
+    /// navigation_cache/DirectoryCache entries) it did NOT reproduce the anomaly — Right/Left
+    /// correctly track one real directory level at a time via dir_stack. It's kept as a
+    /// regression test locking in that correct behavior; the most likely real contributor to
+    /// the reported bug (navigation_cache never being invalidated on delete/rename, so a
+    /// stale cursor from an earlier session could resurface after recreating a same-named
+    /// directory) is covered separately in cache_integration_tests.rs.
+    #[tokio::test]
+    async fn repro_d_ftest1_test2_test3_test4() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir(root.join("AAA_first")).unwrap();
+        std::fs::create_dir(root.join("backup")).unwrap();
+        std::fs::create_dir_all(
+            root.join("ftest1")
+                .join("test2")
+                .join("test3")
+                .join("test4"),
+        )
+        .unwrap();
+
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let root_entries = vec![
+            dir_entry("AAA_first", &root.join("AAA_first")),
+            dir_entry("backup", &root.join("backup")),
+            dir_entry("ftest1", &root.join("ftest1")),
+        ];
+        state.current_tab_mut().left_pane.current_location = Location::Local(root.clone());
+        state.current_tab_mut().left_pane.raw_entries = root_entries.clone();
+        state.current_tab_mut().left_pane.entries = root_entries.clone();
+        state.current_tab_mut().left_pane.cursor = 1; // "backup" — matches the reported starting cursor
+        state
+            .cache
+            .insert(Location::Local(root.clone()), root_entries);
+
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        press(&mut app, KeyCode::F(3));
+        dump(&app, "after F3 (enter leap)");
+        eprintln!(
+            "  root_cursor captured = {}",
+            app.state.leap.as_ref().unwrap().root_cursor
+        );
+
+        press(&mut app, KeyCode::Char('f'));
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'f'");
+
+        press(&mut app, KeyCode::Char('t'));
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 't'");
+
+        // "ft" is a unique prefix match for ftest1 at the root, so typing it alone
+        // auto-enters ftest1 — Right/Left haven't been pressed yet at this point.
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.join("ftest1"))
+        );
+
+        press(&mut app, KeyCode::Right);
+        flush_jobs(&mut app).await;
+        dump(&app, "after Right #1");
+
+        // Right must descend into ftest1's actual only child, test2 — not skip ahead.
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.join("ftest1").join("test2"))
+        );
+        assert_eq!(app.state.active_pane().entries[0].name, "test3");
+
+        press(&mut app, KeyCode::Left);
+        flush_jobs(&mut app).await;
+        dump(&app, "after Left #1");
+
+        // Left must go back exactly one level (to ftest1), not further.
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.join("ftest1"))
+        );
+        assert_eq!(app.state.active_pane().entries[0].name, "test2");
+
+        // Inspect what navigation_cache thinks D:\'s cursor is at this point, independent
+        // of whatever ChangeLocation currently has in pane.entries.
+        let root_loc = Location::Local(root.clone());
+        eprintln!(
+            "  navigation_cache.restore(root) = {:?}",
+            app.state.navigation_cache.restore(&root_loc)
+        );
+    }
+
+    /// Regression test for "Esc should return to where leap mode started, but stays at the
+    /// leap-navigated directory instead". Descends two levels via leap, then presses Escape,
+    /// and checks the pane actually lands back on the original (pre-leap) directory.
+    #[tokio::test]
+    async fn escape_restores_original_pre_leap_directory() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir_all(root.join("lc").join("op")).unwrap();
+
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let root_entries = vec![dir_entry("lc", &root.join("lc"))];
+        state.current_tab_mut().left_pane.current_location = Location::Local(root.clone());
+        state.current_tab_mut().left_pane.raw_entries = root_entries.clone();
+        state.current_tab_mut().left_pane.entries = root_entries.clone();
+        state.current_tab_mut().left_pane.cursor = 0;
+        state
+            .cache
+            .insert(Location::Local(root.clone()), root_entries);
+
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        press(&mut app, KeyCode::F(3));
+        dump(&app, "after F3 (enter leap)");
+
+        press(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('c'));
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'lc' (auto-enter lc)");
+
+        press(&mut app, KeyCode::Char('o'));
+        press(&mut app, KeyCode::Char('p'));
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'op' (auto-enter op)");
+
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.join("lc").join("op")),
+            "sanity check: leap should have navigated two levels deep before Escape"
+        );
+
+        press(&mut app, KeyCode::Esc);
+        flush_jobs(&mut app).await;
+        dump(&app, "after Escape");
+
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.clone()),
+            "Escape must restore the directory leap mode was entered from"
+        );
+    }
+
+    /// Investigates a reported behavior: typing "ft 1" in leap mode (space as an AND-segment
+    /// separator, per leap_filter::parse_segments) is expected to narrow ["ftest1", "ftest2"]
+    /// down to just "ftest1" (only it contains "1"), but a screenshot showed both still
+    /// listed after typing the space and the digit.
+    #[tokio::test]
+    async fn space_separated_segments_and_filter_narrows_to_match() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir(root.join("ftest1")).unwrap();
+        std::fs::create_dir(root.join("ftest2")).unwrap();
+
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let root_entries = vec![
+            dir_entry("ftest1", &root.join("ftest1")),
+            dir_entry("ftest2", &root.join("ftest2")),
+        ];
+        state.current_tab_mut().left_pane.current_location = Location::Local(root.clone());
+        state.current_tab_mut().left_pane.raw_entries = root_entries.clone();
+        state.current_tab_mut().left_pane.entries = root_entries.clone();
+        state.current_tab_mut().left_pane.cursor = 0;
+        state
+            .cache
+            .insert(Location::Local(root.clone()), root_entries);
+
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        press(&mut app, KeyCode::F(3));
+        dump(&app, "after F3 (enter leap)");
+
+        for c in ['f', 't'] {
+            press(&mut app, KeyCode::Char(c));
+        }
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'ft'");
+
+        press(&mut app, KeyCode::Char(' '));
+        eprintln!(
+            "  leap.buffer immediately after space keypress = {:?}",
+            app.state.leap.as_ref().map(|l| l.buffer.clone())
+        );
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'ft '");
+
+        press(&mut app, KeyCode::Char('1'));
+        eprintln!(
+            "  leap.buffer immediately after '1' keypress = {:?}",
+            app.state.leap.as_ref().map(|l| l.buffer.clone())
+        );
+        eprintln!(
+            "  use_migemo={} dict_loaded={} regex_for_'1'={:?}",
+            app.state.search.use_migemo,
+            app.state.search.is_migemo_dict_loaded(),
+            app.state.search.get_migemo_regex("1", false)
+        );
+        app.perform_leap_filter();
+        flush_jobs(&mut app).await;
+        dump(&app, "after 'ft 1'");
+
+        // "ft 1" now uniquely matches only ftest1 (ftest2 correctly excluded), so the
+        // existing single-match auto-enter behavior navigates straight into it.
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(root.join("ftest1")),
+            "\"ft 1\" (AND of segments \"ft\" and \"1\") should match only ftest1 and auto-enter it"
+        );
     }
 }
