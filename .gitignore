@@ -6,3 +6,4 @@ sample/
 .superpowers/
 docs/superpowers/
 *.bak
+.worktrees/
