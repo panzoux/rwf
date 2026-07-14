@@ -634,6 +634,10 @@ impl AppState {
                 let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone(), false));
                 Some(StateUpdateResult::with_job(job_spec))
             }
+            Transition::OpenWithSystem { path } => {
+                let job_spec = JobSpec::new(Self::system_open_job(path.clone()));
+                Some(StateUpdateResult::with_job(job_spec))
+            }
             _ => None,
         }
     }

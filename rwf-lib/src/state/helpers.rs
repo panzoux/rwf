@@ -81,7 +81,6 @@ impl AppState {
     /// unlike `editor_job`, there is no "wait for exit" mode, since the whole point
     /// is handing off to whatever app the OS considers the default, without RWF
     /// blocking on it.
-    #[allow(dead_code)]
     pub(crate) fn system_open_job(file_path: String) -> crate::job::JobKind {
         #[cfg(target_os = "windows")]
         {

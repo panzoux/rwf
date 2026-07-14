@@ -498,6 +498,7 @@ pub enum Action {
     // Information dialogs
     ShowFileInfoForCursor,
     OpenWithEditor, // open cursor file with Editor from config
+    OpenWithSystem, // open cursor entry with OS default association (Ctrl+Enter)
     ShowVersion,
     ReloadConfig,
     ShowVersionInfo,        // compact version/system info (backtick key)
@@ -844,6 +845,35 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                                 location: entry.location.clone(),
                             }]
                         }
+                    }
+                }
+            } else {
+                vec![]
+            }
+        }
+        Action::OpenWithSystem => {
+            if let Some(entry) = state.active_pane().current_entry() {
+                if entry.is_dir {
+                    vec![Transition::ChangeLocation {
+                        pane: state.ui.active_pane,
+                        location: entry.location.clone(),
+                    }]
+                } else {
+                    use crate::backend::MultiFormatArchiveHandler;
+                    let handler = MultiFormatArchiveHandler::new();
+                    if handler.is_archive(&entry.name) {
+                        let archive_location = Location::Archive {
+                            archive_path: Box::new(entry.location.clone()),
+                            inner_path: std::path::PathBuf::new(),
+                        };
+                        vec![Transition::ChangeLocation {
+                            pane: state.ui.active_pane,
+                            location: archive_location,
+                        }]
+                    } else {
+                        vec![Transition::OpenWithSystem {
+                            path: entry.location.display_path(),
+                        }]
                     }
                 }
             } else {
@@ -1559,6 +1589,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{test_state, FileEntryBuilder};
 
     #[test]
     fn test_default_key_bindings() {
@@ -1716,6 +1747,76 @@ mod tests {
         assert_eq!(bindings.normal_mode.len(), 1);
         assert_eq!(bindings.normal_mode.get("x"), Some(&Action::Quit));
         assert!(bindings.viewer_mode.is_empty());
+    }
+
+    #[test]
+    fn open_with_system_on_directory_navigates_like_enter_directory() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("subdir").dir(true).build();
+        let expected_location = entry.location.clone();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::OpenWithSystem);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ChangeLocation { location, .. } => {
+                assert_eq!(location, &expected_location)
+            }
+            other => panic!("expected ChangeLocation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn open_with_system_on_archive_navigates_into_it() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("bundle.zip").dir(false).build();
+        let archive_path = entry.location.clone();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::OpenWithSystem);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ChangeLocation {
+                location:
+                    Location::Archive {
+                        archive_path: ap,
+                        inner_path,
+                    },
+                ..
+            } => {
+                assert_eq!(**ap, archive_path);
+                assert_eq!(inner_path, &std::path::PathBuf::new());
+            }
+            other => panic!("expected archive ChangeLocation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn open_with_system_on_plain_file_produces_open_with_system_transition() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("clip.mp4").dir(false).build();
+        let expected_path = entry.location.display_path();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::OpenWithSystem);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::OpenWithSystem { path } => assert_eq!(path, &expected_path),
+            other => panic!("expected OpenWithSystem, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn open_with_system_on_empty_pane_produces_no_transitions() {
+        let state = test_state();
+        let transitions = action_to_transitions(&state, &Action::OpenWithSystem);
+        assert!(transitions.is_empty());
     }
 }
 

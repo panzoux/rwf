@@ -625,6 +625,9 @@ pub enum Transition {
     OpenWithEditor {
         path: String,
     },
+    OpenWithSystem {
+        path: String,
+    },
     ShowRegisteredFolderDialog,
     RegisterCurrentFolder {
         name: String,
