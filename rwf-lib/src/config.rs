@@ -143,7 +143,12 @@ pub struct JumpNavConfig {
     /// Enable Migemo (romaji→kana) matching in Leap mode.
     #[serde(rename = "MigemoEnabled", default = "default_leap_migemo_enabled")]
     pub leap_migemo_enabled: bool,
-    /// Minimum chars before Migemo kicks in (default: 1).
+    /// Minimum chars before Migemo kicks in (default: 2).
+    ///
+    /// Migemo expands short/numeric segments into unit-prefix readings (kilo/mega/giga/...)
+    /// whose single-letter abbreviations (K, M, G, T, P, E, Z, Y, ...) match almost any ASCII
+    /// filename — e.g. filtering on a single digit like "1" would otherwise match unrelated
+    /// entries via those letters, silently defeating AND filtering with other segments.
     #[serde(rename = "MigemoMinChars", default = "default_leap_migemo_min_chars")]
     pub leap_migemo_min_chars: usize,
     /// Debounce interval for Leap filter in ms (default: 150).
@@ -173,7 +178,7 @@ fn default_leap_migemo_enabled() -> bool {
     true
 }
 fn default_leap_migemo_min_chars() -> usize {
-    1
+    2
 }
 fn default_leap_debounce_ms() -> u64 {
     150

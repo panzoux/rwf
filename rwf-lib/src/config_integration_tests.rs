@@ -472,7 +472,7 @@ mod tests {
         let cfg = JumpNavConfig::default();
         assert!(cfg.leap_enabled);
         assert!(cfg.leap_migemo_enabled);
-        assert_eq!(cfg.leap_migemo_min_chars, 1);
+        assert_eq!(cfg.leap_migemo_min_chars, 2);
         assert_eq!(cfg.leap_debounce_ms, 150);
         assert_eq!(cfg.no_match_feedback, NoMatchFeedback::TaskPanel);
     }

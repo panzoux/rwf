@@ -68,6 +68,8 @@ pub fn apply_leap_filter<'a>(
     raw_entries: &'a [FileEntry],
     local_filter: &str,
     search: &SearchModel,
+    migemo_enabled: bool,
+    migemo_min_chars: usize,
 ) -> (Vec<&'a FileEntry>, usize) {
     if local_filter.is_empty() {
         return (raw_entries.iter().collect(), 0);
@@ -78,10 +80,17 @@ pub fn apply_leap_filter<'a>(
         return (raw_entries.iter().collect(), 0);
     }
 
-    // Build Migemo regexes for each segment (once per filter call).
+    // Build Migemo regexes for each segment (once per filter call). Segments shorter than
+    // `migemo_min_chars` skip Migemo entirely — e.g. a single digit like "1" gets expanded by
+    // Migemo into a unit-prefix reading (kilo/mega/giga/...) whose single-letter abbreviations
+    // (K, M, G, T, P, E, Z, Y, ...) match almost any ASCII filename, silently defeating AND
+    // filtering with other segments.
     let migemo_regexes: Vec<Option<regex::Regex>> = segments
         .iter()
         .map(|seg| {
+            if !migemo_enabled || seg.chars().count() < migemo_min_chars {
+                return None;
+            }
             search
                 .get_migemo_regex(seg, false)
                 .and_then(|pattern| regex::Regex::new(&pattern).ok())
@@ -155,6 +164,16 @@ mod tests {
         SearchModel::new()
     }
 
+    /// Matches the pre-config-wiring default behavior (Migemo always attempted) for tests
+    /// that don't care about the gating parameters.
+    fn filter<'a>(
+        raw_entries: &'a [FileEntry],
+        local_filter: &str,
+        search: &SearchModel,
+    ) -> (Vec<&'a FileEntry>, usize) {
+        apply_leap_filter(raw_entries, local_filter, search, true, 1)
+    }
+
     // ---- parse_segments ----
 
     #[test]
@@ -182,7 +201,7 @@ mod tests {
     #[test]
     fn filter_empty_shows_all() {
         let e = entries(&[("maps", true), ("main.rs", false), ("utils.rs", false)]);
-        let (vis, cur) = apply_leap_filter(&e, "", &no_migemo());
+        let (vis, cur) = filter(&e, "", &no_migemo());
         assert_eq!(vis.len(), 3);
         assert_eq!(cur, 0);
     }
@@ -190,7 +209,7 @@ mod tests {
     #[test]
     fn filter_prefix_match() {
         let e = entries(&[("maps", true), ("main.rs", false), ("utils.rs", false)]);
-        let (vis, cur) = apply_leap_filter(&e, "ma", &no_migemo());
+        let (vis, cur) = filter(&e, "ma", &no_migemo());
         let names: Vec<_> = vis.iter().map(|x| x.name.as_str()).collect();
         assert_eq!(names, vec!["maps", "main.rs"]);
         assert_eq!(cur, 0); // first prefix match
@@ -199,7 +218,7 @@ mod tests {
     #[test]
     fn filter_and_segments_order_independent() {
         let e = entries(&[("tex2map", false), ("map2tex", false), ("readme", false)]);
-        let (vis, _) = apply_leap_filter(&e, "map tex", &no_migemo());
+        let (vis, _) = filter(&e, "map tex", &no_migemo());
         assert_eq!(vis.len(), 2);
         assert!(vis.iter().any(|x| x.name == "tex2map"));
         assert!(vis.iter().any(|x| x.name == "map2tex"));
@@ -208,14 +227,14 @@ mod tests {
     #[test]
     fn filter_no_match_returns_empty() {
         let e = entries(&[("maps", true), ("main.rs", false)]);
-        let (vis, _) = apply_leap_filter(&e, "xyz", &no_migemo());
+        let (vis, _) = filter(&e, "xyz", &no_migemo());
         assert!(vis.is_empty());
     }
 
     #[test]
     fn filter_case_insensitive() {
         let e = entries(&[("MapModels", true), ("utils.rs", false)]);
-        let (vis, _) = apply_leap_filter(&e, "mapm", &no_migemo());
+        let (vis, _) = filter(&e, "mapm", &no_migemo());
         assert_eq!(vis.len(), 1);
         assert_eq!(vis[0].name, "MapModels");
     }
@@ -224,7 +243,7 @@ mod tests {
     fn filter_cursor_on_prefix_match() {
         let e = entries(&[("tex2map", false), ("main.rs", false), ("maps", true)]);
         // "tex2map" contains "ma" as substring; "main.rs" and "maps" start with "ma"
-        let (vis, cur) = apply_leap_filter(&e, "ma", &no_migemo());
+        let (vis, cur) = filter(&e, "ma", &no_migemo());
         // cursor should land on first prefix match: "main.rs" at index 1 in original,
         // but "tex2map" is first in vis (substring)? No — let's check the order.
         // "tex2map": substring match → included
@@ -239,7 +258,7 @@ mod tests {
     #[test]
     fn filter_single_space_trailing_no_error() {
         let e = entries(&[("maps", true)]);
-        let (vis, _) = apply_leap_filter(&e, "ma ", &no_migemo());
+        let (vis, _) = filter(&e, "ma ", &no_migemo());
         // trailing space produces segment ["ma"], which matches
         assert_eq!(vis.len(), 1);
     }
