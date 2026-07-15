@@ -44,6 +44,12 @@ pub struct App {
     // Leap Navigation debounce
     leap_dirty: bool,
     last_leap_input_time: Option<Instant>,
+    /// Set by Ctrl+L; consumed by the next `render()` call to force `terminal.clear()`
+    /// before drawing. `terminal.draw()` alone is a diff against ratatui's own internal
+    /// buffer — it can't detect (and so won't repaint) screen corruption written by an
+    /// external process (e.g. a stray console message), since nothing in RWF's own state
+    /// changed. `clear()` resets that internal buffer so the next draw repaints every cell.
+    force_full_redraw: bool,
 }
 
 impl App {
@@ -114,6 +120,7 @@ impl App {
             pattern_rename_pending: None,
             leap_dirty: false,
             last_leap_input_time: None,
+            force_full_redraw: false,
         };
         app.state.config.key_bindings = app.key_bindings.clone();
         app
@@ -705,12 +712,16 @@ impl App {
             return false;
         }
 
-        // Ctrl+L: force full redraw (works in any mode)
+        // Ctrl+L: force full redraw (works in any mode). Setting force_full_redraw makes
+        // the next render() call terminal.clear() before drawing — a plain re-render
+        // alone is a diff against ratatui's own buffer and can't repaint corruption an
+        // external process wrote to the screen, since nothing in RWF's own state changed.
         if key.code == crossterm::event::KeyCode::Char('l')
             && key
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::CONTROL)
         {
+            self.force_full_redraw = true;
             return true;
         }
 
@@ -1876,6 +1887,10 @@ impl App {
     }
 
     fn render(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+        if self.force_full_redraw {
+            terminal.clear()?;
+            self.force_full_redraw = false;
+        }
         let size = terminal.size()?;
         let tab_h = if self.state.ui.layout.show_tab_bar {
             1
@@ -2203,6 +2218,32 @@ mod key_repeat_debounce_tests {
         assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
         let t1 = t0 + Duration::from_millis(10);
         assert!(app.should_process_key_repeat("Up", KeyEventKind::Press, t1));
+    }
+}
+
+#[cfg(test)]
+mod force_full_redraw_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn test_app() -> App {
+        let state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    // Regression test for: Ctrl+L ("force full redraw") not actually fixing screen
+    // corruption left by an external process (e.g. a stray console message from a shell
+    // AutoRun hook). A plain re-render is a diff against ratatui's own buffer and can't
+    // repaint cells RWF's own state didn't change — render() must terminal.clear() first,
+    // which this flag signals it to do on the very next call.
+    #[tokio::test]
+    async fn ctrl_l_sets_force_full_redraw_flag() {
+        let mut app = test_app();
+        assert!(!app.force_full_redraw);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
+
+        assert!(app.force_full_redraw);
     }
 }
 
