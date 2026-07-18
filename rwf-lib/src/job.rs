@@ -188,6 +188,37 @@ pub enum JobKind {
         max_results: usize,
         max_depth: usize,
     },
+    /// Magic-byte content-type detection for a single file (Phase 7.3).
+    /// `purpose` tells the job-completion handler what UI action follows.
+    DetectFileType {
+        path: std::path::PathBuf,
+        purpose: DetectFileTypePurpose,
+    },
+    /// Magic-byte content-type detection for multiple files at once
+    /// (used for grouping marked files in the "Open With..." picker).
+    DetectFileTypesBatch {
+        paths: Vec<std::path::PathBuf>,
+    },
+}
+
+/// Why a `JobKind::DetectFileType` job was started — tells the job-completion
+/// handler what UI action should follow the detection result.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DetectFileTypePurpose {
+    /// Detection is running immediately before executing `command`, to warn
+    /// the user if the detected content type disagrees with the extension's
+    /// declared type before running it.
+    CheckAssociationMismatch {
+        command: String,
+        working_dir: Option<String>,
+        shell: Option<String>,
+    },
+    /// Detection is running as a fallback for an unregistered extension, to
+    /// decide whether to route to `Transition::OpenWithSystem` (known
+    /// non-text kind) or fall through to the text viewer (`Unknown`).
+    FallbackOpen,
+    /// Detection was requested on demand from the File Information dialog.
+    FileInfoDisplay,
 }
 
 /// Action to perform with custom function output
@@ -244,6 +275,8 @@ pub enum SuccessData {
     FileContents(Vec<u8>),
     ComparisonResult(FileDiff),
     JumpCandidates(Vec<String>),
+    FileTypeDetected(crate::magic::DetectedKind),
+    FileTypesDetected(Vec<(std::path::PathBuf, crate::magic::DetectedKind)>),
     None,
 }
 

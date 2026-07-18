@@ -180,6 +180,10 @@ impl AppState {
                             }
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
                             crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
+                            // Phase 7.3 foundation (Task 1): nothing constructs these yet;
+                            // completion routing lands in a later task.
+                            crate::job::JobKind::DetectFileType { .. } => "Detect file type",
+                            crate::job::JobKind::DetectFileTypesBatch { .. } => "Detect file types",
                         };
                         if !skip_dialog {
                             let error_dialog =

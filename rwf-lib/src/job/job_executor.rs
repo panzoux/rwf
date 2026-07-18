@@ -197,6 +197,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     "SuspendAndRun reached worker pool unexpectedly".to_string(),
                 )
             }
+            JobKind::DetectFileType { path, purpose: _ } => {
+                self.execute_detect_file_type(path.clone()).await
+            }
+            JobKind::DetectFileTypesBatch { paths } => {
+                self.execute_detect_file_types_batch(paths.clone()).await
+            }
         };
 
         // Send completion event based on result
@@ -1046,6 +1052,37 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         .ok();
 
         OpResult::Success(SuccessData::None)
+    }
+
+    /// Detect a single file's content type from its leading bytes (magic-byte
+    /// detection, Phase 7.3). Reads at most the first 300 bytes on the blocking
+    /// thread pool via `SeekableFile`, mirroring `execute_load_file_for_viewer`'s
+    /// large-file read path so the async worker thread never touches file I/O.
+    async fn execute_detect_file_type(&self, path: std::path::PathBuf) -> OpResult {
+        match detect_file_type_blocking(path.clone()).await {
+            Ok(kind) => OpResult::Success(SuccessData::FileTypeDetected(kind)),
+            Err(e) => OpResult::Failed(format!(
+                "Failed to detect file type for {}: {}",
+                path.display(),
+                e
+            )),
+        }
+    }
+
+    /// Detect content types for multiple files in one job (used to group marked
+    /// files for the "Open With..." picker). A per-file read error is mapped to
+    /// `DetectedKind::Unknown` for that entry rather than failing the whole batch —
+    /// one unreadable file (permissions, mid-flight deletion) shouldn't block
+    /// detection for the rest of the marked set.
+    async fn execute_detect_file_types_batch(&self, paths: Vec<std::path::PathBuf>) -> OpResult {
+        let mut results = Vec::with_capacity(paths.len());
+        for path in paths {
+            let kind = detect_file_type_blocking(path.clone())
+                .await
+                .unwrap_or(crate::magic::DetectedKind::Unknown);
+            results.push((path, kind));
+        }
+        OpResult::Success(SuccessData::FileTypesDetected(results))
     }
 
     /// Execute a background viewer search (hex or text mode).
@@ -1905,6 +1942,26 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     }
 }
 
+/// Read the leading bytes of a file and run magic-byte detection on them.
+/// Runs entirely on the blocking thread pool (open + `SeekableFile::read_bytes`)
+/// so the async worker thread never blocks on file I/O — same pattern as the
+/// large-file read path in `execute_load_file_for_viewer`.
+async fn detect_file_type_blocking(
+    path: std::path::PathBuf,
+) -> std::io::Result<crate::magic::DetectedKind> {
+    const SNIFF_LEN: usize = 300;
+
+    tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(&path)?;
+        let size = file.metadata()?.len();
+        let seekable = SeekableFile::new(file, size);
+        let sample = seekable.read_bytes(0, SNIFF_LEN.min(size as usize))?;
+        Ok(crate::magic::detect_kind(&sample))
+    })
+    .await
+    .unwrap_or_else(|e| Err(std::io::Error::other(e.to_string())))
+}
+
 // ============================================================================
 // Conflict Detection Helper Function
 // ============================================================================
@@ -2194,5 +2251,155 @@ mod tests {
         // Then a cancelled event
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Cancelled(_))));
+    }
+
+    // ── DetectFileType / DetectFileTypesBatch (Phase 7.3) ──────────────────────
+
+    #[tokio::test]
+    async fn test_execute_detect_file_type_png_signature() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let png_path = temp_dir.path().join("picture.dat");
+        let mut bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        bytes.extend_from_slice(&[0u8; 32]); // trailing filler, irrelevant to detection
+        tokio::fs::write(&png_path, &bytes).await.unwrap();
+
+        let spec = JobSpec::new(JobKind::DetectFileType {
+            path: png_path,
+            purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(
+                _,
+                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Png)
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_detect_file_type_plain_text_is_unknown() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let text_path = temp_dir.path().join("notes.txt");
+        tokio::fs::write(&text_path, b"just some plain text, nothing magic here\n")
+            .await
+            .unwrap();
+
+        let spec = JobSpec::new(JobKind::DetectFileType {
+            path: text_path,
+            purpose: crate::job::DetectFileTypePurpose::FallbackOpen,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(
+                _,
+                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Unknown)
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_detect_file_type_reports_failure_for_missing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let missing_path = temp_dir.path().join("does_not_exist.bin");
+
+        let spec = JobSpec::new(JobKind::DetectFileType {
+            path: missing_path,
+            purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Failed(_, _))));
+    }
+
+    #[tokio::test]
+    async fn test_execute_detect_file_types_batch_mixed_signatures() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let png_path = temp_dir.path().join("a.dat");
+        tokio::fs::write(&png_path, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            .await
+            .unwrap();
+
+        let pdf_path = temp_dir.path().join("b.dat");
+        tokio::fs::write(&pdf_path, b"%PDF-1.7\n%...")
+            .await
+            .unwrap();
+
+        let text_path = temp_dir.path().join("c.dat");
+        tokio::fs::write(&text_path, b"hello world").await.unwrap();
+
+        // Included to prove a bad entry doesn't fail the whole batch.
+        let missing_path = temp_dir.path().join("missing.dat");
+
+        let spec = JobSpec::new(JobKind::DetectFileTypesBatch {
+            paths: vec![
+                png_path.clone(),
+                pdf_path.clone(),
+                text_path.clone(),
+                missing_path.clone(),
+            ],
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        let Some(JobEvent::Completed(_, SuccessData::FileTypesDetected(results))) = event else {
+            panic!("expected FileTypesDetected, got {:?}", event);
+        };
+
+        assert_eq!(results.len(), 4);
+        assert_eq!(
+            results.iter().find(|(p, _)| *p == png_path).unwrap().1,
+            crate::magic::DetectedKind::Png
+        );
+        assert_eq!(
+            results.iter().find(|(p, _)| *p == pdf_path).unwrap().1,
+            crate::magic::DetectedKind::Pdf
+        );
+        assert_eq!(
+            results.iter().find(|(p, _)| *p == text_path).unwrap().1,
+            crate::magic::DetectedKind::Unknown
+        );
+        assert_eq!(
+            results.iter().find(|(p, _)| *p == missing_path).unwrap().1,
+            crate::magic::DetectedKind::Unknown
+        );
     }
 }
