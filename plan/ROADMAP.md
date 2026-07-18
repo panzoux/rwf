@@ -217,14 +217,18 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 > - 2026-07-05: 欠番だった 7.1 に **Leap（完了済み、旧 7.8）** を、7.2 に **コマンドパレット（旧 Phase 8.7 から昇格）** を割当。
 >   7.8 は欠番。**詳細ファイル名 `7.8.leap_navigation.md` とコミット履歴 `feat(7.8)` は歴史的経緯としてそのまま**（リネームしない）。
 
+> **表の行順は実装優先順（上ほど先）**。番号（#列）は歴史的経緯で振られた識別子であり、
+> 詳細ファイル名（`7.4.xxx.md` 等）・コミット履歴（`feat(7.x)`）と対応するため固定。
+> 実行順の一次情報はこの表そのもの（旧「Phase 7 実装順序」節は本表に統合・廃止）。
+
 | # | 機能 | 状態 | 詳細 | 優先度 | 工期 |
 |---|------|------|------|--------|------|
 | 7.1 | **Leap ナビゲーション（高速フィルタ移動）** | `[x]` | **実装完了（2026-06〜07、705a392〜c8ff3e4、旧 7.8）**。F3 で Leap モード起動、AND セグメント + prefix/substring/Migemo union フィルタ、LEAP バー + スピナー、デフォルトキーバインド配線・キー衝突解消済み。詳細は [7.8.leap_navigation.md](7.8.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
-| 7.2 | **コマンドパレット** | `[ ]` | 旧 Phase 8.7 から昇格。ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要 | ⭐⭐⭐⭐ | 小規模 |
-| 7.3 | **スマート・ファイルオープナー（Rifle システム）** | `[ ]` | Phase 6.2 (ExtensionAssociations) の発展形。MIME型ベース、条件付きロジック、複数オプション選択メニュー。**詳細md未作成（着手時に設計から）** | ⭐⭐⭐⭐ | 2週間 |
+| 7.3 | **スマート・ファイルオープナー（Rifle + コンテンツ判定）** | `[ ]` | Phase 6.2 (ExtensionAssociations) の発展形 + 旧 8.7（マジックバイト判定）を統合。複数候補オープン（Open With ピッカー）、拡張子/実体不一致の警告、拡張子未登録ファイルの検出フォールバック。**次に着手する機能**。詳細は [7.3.smart_file_opener.md](7.3.smart_file_opener.md) 参照 | ⭐⭐⭐⭐⭐ | 2週間 |
+| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
+| 7.2 | **コマンドパレット** | `[ ]` | 旧 Phase 8.7 から昇格。ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要。**2026-07-18: 意図的に後回し** — コンテキスト絞り込み・他機能との自然な統合（Open With ピッカー等）を含めた設計をまだ詰めていないため、7.3/7.6 の後に着手 | ⭐⭐⭐ | 小規模 |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[ ]` | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
 | 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
-| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
 | 7.7 | **スマート・トラッシュ（ゴミ箱）管理** | `[ ]` | Windows/macOS/Linux 各OS標準への対応。削除ではなくゴミ箱へ移動、復元サポート。詳細は [7.7.smart_trash.md](7.7.smart_trash.md) 参照 | ⭐⭐⭐ | 2週間 |
 | 7.9 | **シンタックスハイライト（ビューア）** | `[ ]` | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張（旧7.6） | ⭐⭐⭐ | 2週間 |
 | 7.10 | **SSH/SFTP対応**（将来） | `[ ]` | リモートファイルシステム（大規模追加）（旧7.8） | ⭐⭐ | TBD |
@@ -243,9 +247,13 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | **Escape キャンセル** | バックグラウンドジョブ実行中に Escape で即座にキャンセル | Phase 8.4 |
 | **Git ステータス表示** | ペイン内で Git ファイル状態（modified/staged等）を色分け表示 | Phase 8.5 |
 | **Registered Folder へのコピー/移動** | **CopyToRegisteredFolder** / **MoveToRegisteredFolder**。大量の登録フォルダから高速に絞り込み・選択して整理する機能 | Phase 8.6 |
-| **マジックバイト/コンテンツ判定** | `file_type_map.json`（拡張子ベース、2026-07-14「Open With OS Default」機能）を補完。(1) 拡張子と実バイト内容が不一致の場合（例: 拡張子は文書だが実体は実行ファイル）に警告ダイアログを出し、続行するか確認してから開く。(2) 将来のインライン画像/メディアプレビュー機能の判定基盤としても利用。参考実装: `console-column-file-manager`（`FileTypeDetector` / `CheckExtensionMismatch`） | Phase 8.7 |
+| **ユーザー定義マジックバイト表** | Phase 7.3 の内蔵シグネチャテーブル（手組み・約20〜30形式）でカバーしきれない形式向けに、`file_type_map.json` と同じ外部JSONパターンで拡張可能にする | Phase 8.7 |
+| **libmagic 統合（オプション）** | `magic`クレート経由の完全なマジックバイト判定。libmagicがインストール済みの環境でのみ有効化（Phase 5.6 の compress-tools 同様の任意依存パターン）。Phase 7.3 では採用見送り（Windows非対応のため） | Phase 8.8 |
+| **ファイル一覧ペインへの常時タイプ表示** | Phase 7.3 では File Information ダイアログでのオンデマンド表示のみ。常時アイコン/列表示は都度I/Oコストが発生するため別途検討 | Phase 8.9 |
 
-> 旧 8.7 コマンドパレットは 2026-07-05 に Phase 7.2 へ昇格（8.7 は上記マジックバイト判定に再割当）。
+> 旧 8.7 コマンドパレットは 2026-07-05 に Phase 7.2 へ昇格。マジックバイト判定（旧 8.7 再割当分）は
+> 2026-07-18 に Phase 7.3 スマート・ファイルオープナーへ統合済み（[7.3.smart_file_opener.md](7.3.smart_file_opener.md)）。
+> 上記 8.7〜8.9 はその設計で意図的にスコープ外とした派生候補。
 
 ---
 
@@ -292,21 +300,14 @@ Phase 7 (再開)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-07-13（Phase M 完了・機能開発凍結解除）
+最終更新: 2026-07-18（Phase 7 優先順位の整理。7.3 を Rifle+マジックバイト統合版として昇格、7.2 を後回しに変更）
 現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
 Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md) の「Phase M 完了サマリ」）
-次の作業候補（優先順）:
-1. **7.2 コマンドパレット** — Phase M 完了後の最初の機能。ヘルプビューアに Enter ディスパッチを足すだけの小規模・高価値タスク
+次の作業候補（優先順。実行順の一次情報は上の Phase 7 表の行順）:
+1. **7.3 スマート・ファイルオープナー** — Rifle System と旧8.7マジックバイト判定を統合した設計が確定済み（[7.3.smart_file_opener.md](7.3.smart_file_opener.md)）。次に着手する機能
 2. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）
-
-## Phase 7 実装順序（2026-07-13 更新。Phase M 完了・着手可能）
-
-1. ~~**7.1 Leap Navigation**~~ — **完了**（705a392〜c8ff3e4、旧 7.8）
-2. **7.2 コマンドパレット** — 旧 8.7 から昇格。小規模・高価値
-3. **7.6 Undo/Redo** — Job 逆操作ベース。最高インパクト。詳細: 7.6.transactional_rollback.md
-4. **7.3 Rifle System** — Phase 6.2 の発展。詳細md未作成
-5. **7.4 Background Size Calculation** — Shift+S で非同期サイズ計算。詳細: 7.4.calculate_directory_size.md
+3. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
 
 ## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
 
@@ -317,129 +318,11 @@ Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md)
 - **Input ダイアログのテキスト編集実装**（d87a383）
 - **タスクパネル縮小順序の修正・スピナー共通化・LEAP バースピナー**（9e500c8, 13c7189, cad6bd7）
 
-## 4.6 実装内訳（2026-05-30）
-- `ViewerLayout` enum（`FullScreen` / `SideBySide`）を `model/ui.rs` に追加
-- `LayoutState` に `viewer_layout: ViewerLayout`・`viewer_preferred_layout: ViewerLayout` フィールド追加
-- `Transition::OpenSideBySideViewer { location }` — ファイルペインにフォーカスを残してビューア表示
-- `Transition::ViewerSwitchLayout { layout }` — FullScreen ↔ SideBySide 切り替え（UIMode も同時に更新）
-- `OpenTextViewer` / `OpenHexViewer` / `CloseViewer` に `viewer_layout` リセット処理を追加
-- `app.rs` セクション 2.0: ビューアモード中の `v`/`V`/Tab 処理（SideBySide ↔ FullScreen サイクル）
-- `app.rs` セクション 3.5: SideBySide 中の Tab/Shift+Tab でファイルペイン → ビューアへフォーカス移動
-- `app.rs` セクション 3.6: 通常モード中の `v`（preferred layout で開く / FullScreen→閉じる / SideBySide→FullScreen）と `V`（SideBySide で開く / FullScreen→SideBySide / SideBySide→閉じる）
-- `ui.rs` `render_ui()`: SideBySide レイアウト — 縦3段（tab bar / content / task panel）→ content を水平50/50分割。アクティブペインの反対側にビューア配置。ファイルペイン側は既存の path/volume/panes/pane-info/filename 構成を維持
-- タスクパネルは常に画面下部に表示（ビューアに隠れない）
-- `docs/rwf/keybindings.json` キーバインド記述更新（`V` → OpenSideBySideViewer、`Shift+V` 説明更新）
+## 実装内訳アーカイブ
 
-## 2.1 実装内訳（2026-05-26）
-- `DialogContent::JumpToPath { query, cursor_pos, scroll_pos, candidates, suggestions, selected_index, search_root }` を dialog.rs に追加
-- `Dialog::jump_to_path(search_root, candidates)` コンストラクタ追加
-- `filter_jump_to_path_suggestions(candidates, query)` — スペース区切りトークンの AND 絞り込み関数（テスト可能）
-- `collect_jump_candidates(state, root)` — ダイアログ開時に候補収集: カレントペイン dir → 登録フォルダ → ナビゲーション履歴 → 再帰ディスク探索（depth 3, max 100）
-- `Transition::ShowJumpToPathDialog` — 候補収集してダイアログ push
-- `Action::ShowJumpToPathDialog` + `J` キーバインド（twf の `Shift+J` 相当）
-- `dialog/mod.rs`:
-  - height: suggestions.min(10)+5, min 8; 80% height グループ; 70% width
-  - `render_jump_to_path_dialog()`: 入力行（クエリ + ヒット数）→ 区切り線 → 候補リスト（スクロール対応）→ 区切り線 → フルパスプレビュー → ヒント行
-  - input handler: ↑↓/j/k で選択移動、文字入力でリアルタイム AND フィルタ、Backspace/Ctrl+K でクエリ編集、Enter/Esc
-  - process_dialog_confirmation: 選択パスへ ChangeLocation（フォールバック: クエリを直接パスとして解釈）
-- `jump_to_path_tests.rs` — 11テスト: キーバインド(1)、ダイアログ開く(2)、初期状態(3)、フィルタロジック(5)
-- 全11テスト合格
-
-## 1.10 実装内訳（2026-05-26）
-- モーダルダイアログ方式を廃止し、タスクペインへの出力方式を採用
-- 出力フォーマット: `[System] RWF v{ver} | {os}/{arch} | Config: {config_path} | Log: {log_dir} | archives: ZIP | migemo: {status}`
-- 起動時: `App::with_cwd_flag()` の既存スタートアップログを `build_version_info()` に置き換え
-- バックティク（`` ` ``）: `Action::ShowVersionInfo` に割り当て（旧: `ShowContextMenu`）
-  - `Action::ShowVersionInfo` を `Action` enum に追加
-  - `action_to_transitions` では空ベクタを返す（app 層で処理）
-  - `handle_key_event` で検出し `log_version_info()` を呼ぶ
-- `App::build_version_info(state: &AppState) -> String` — `ConfigManager::new().config_path()` と `default_log_dir()` で実パスを取得
-- `App::log_version_info(&mut self)` — task_panel.add_log へ出力
-
-## 1.9 実装内訳（2026-05-25）
-- `DialogContent::PatternRename` に `cursor_pos`, `scroll_pos`, `focused_field`, `preview_scroll` 追加
-- `Dialog::pattern_rename()` コンストラクタでカーソル位置を pattern.len() に初期化
-- `as_pattern_rename()` / `as_pattern_rename_mut()` に `..` を追加
-- `DialogAction::PatternChanged` 追加（テキスト変更時にプレビュー再生成シグナル）
-- `dialog/mod.rs`:
-  - height: プレビュー行数 + 3（input+hint+status）、min 8、80% screen height
-  - width: 60%（デフォルト）
-  - `render_pattern_rename_dialog()`: Pattern行、シンタックスヒント行、プレビューリスト（変更=Yellow、未変更=DarkGray）、ステータス行
-  - input handler: Tab(focus cycle 0→1→2)、Esc/Enter、PageUp/Down(preview scroll)、TextInput(textbox focused)
-  - confirmation: PatternRename job (`JobKind::PatternRename { targets, pattern }`) を生成
-- `app.rs`: `PatternChanged` アクション → `UpdatePatternRenamePattern` transition でプレビュー再生成
-- `pattern_rename_dialog_tests.rs` 8テスト追加（キー, ダイアログ開く, タイトル, 初期値, 空ペイン時なし, プレビュー更新, 変換確認, マーク済みファイル）
-- 全8テスト合格
-
-## 1.7 実装内訳（2026-05-25）
-- `DialogContent::DriveSelection` に `filter: String` 追加（インクリメンタル検索状態）
-- `DriveInfo::display_label()` メソッド追加（ホーム/NWシェア/ローカルドライブ別フォーマット）
-- `Dialog::drive_selection()` のタイトルを "Select Drive" に変更
-- `state.rs` `ShowDriveChangeDialog` ハンドラを3段構成に拡張:
-  1. ホームディレクトリ (`~ User Directory`)
-  2. 両ペイン履歴からのNWシェアルート (`\\server\share` 形式で重複排除)
-  3. OS ドライブ一覧
-- `get_share_root_from_location()` ヘルパ関数追加
-- `as_drive_selection()` / `as_drive_selection_mut()` に `filter` 戻り値追加
-- `filter()` / `set_filter()` メソッドを `DriveSelection` に対応
-- `dialog/mod.rs`:
-  - height: エントリ数 + hint(1) + search(1)
-  - width: 60 chars
-  - `render_drive_selection_dialog()`: リスト表示、ヒント行、`/filter` 行
-  - input handler: Up/Down/j/k/Home/End/Backspace/Ctrl+K/Enter/Esc/印刷文字
-  - confirmation: フィルタ適用後の選択エントリへ `ChangeLocation`
-- `context_menu_drive_selection_tests.rs` のパターンマッチ・タイトルを更新
-- `drive_dialog_tests.rs` 11テスト追加（キー、display_label 5種、ダイアログ開く、タイトル、ホームエントリ、NWシェア、フィルタ初期値）
-- 全11テスト合格
-
-## 1.6 実装内訳（2026-05-25）
-- `DialogContent::HistoryDialog { entries, selected_index, current_pos }` を dialog.rs に追加
-- `Dialog::history_dialog(entries, current_pos)` コンストラクタ追加
-- `model/navigation.rs` に `stack_and_pos()` / `jump_to_index()` メソッド追加
-- `Transition::NavigateToHistoryIndex { pane, index }` を state.rs に追加、ハンドラ実装（キャッシュ対応）
-- `Action::ShowHistoryDialog` 追加、`h` キーバインド
-- `ShowHistoryDialog` ハンドラ: NavigationHistory スタック + 現在地をエントリ一覧に結合して開く
-- `dialog/mod.rs` に height・render dispatch・`render_history_dialog()`（逆順表示、`>`カーソル、`*`現在地）を追加
-- input handler: Up/Down/j/k/g/G/Enter/Esc
-- confirmation handler: `NavigateToHistoryIndex` を返す
-- 空履歴（エントリ1件以下）では開かない
-- `history_tests.rs` 9テスト追加（キー、空履歴、ダイアログ開く、タイトル、エントリ内容、インデックス位置、ナビゲーション遷移、境界外、有効ジャンプ）
-- 全9テスト合格
-
-## 1.5 修正内訳（2026-05-25）
-- `FileConflict` に `operation: String` フィールド追加（"Copy"/"Move" を格納）
-- `Dialog::file_conflict()` に `op_name: &str` 引数追加、タイトルを動的生成
-- `update_file_conflict_title()` を `operation` フィールド参照に変更
-- `app.rs`: Copy/Move 判定して `op_name` を渡すよう修正
-- `app.rs`: `ConfirmAll` ハンドラ追加（Shift+Enter が動作しなかった重大バグ修正）
-- `dialog/mod.rs`: textbox フォーカス時の Tab `% 6` → `% 5`、BackTab wrap `5` → `4` バグ修正
-- 11テスト追加（validate_filename × 5、Force/Skip/Cancel/Esc/ConfirmAll/Tab cycle）
-
-## 1.2 修正内訳（2026-05-24）
-- `raw_entries: Vec<FileEntry>` を PaneModel に追加（フィルタ適用前のマスタリスト）
-- `apply_sort()` を `cmp_entries()` 自由関数化し、raw_entries も同時にソート
-- `apply_current_filter()` を raw_entries から復元後フィルタ適用する方式に変更
-- `SetFileMask` transition: `with_refresh()`（再読み込み）→ `with_ui_change()`（インメモリ）に修正
-- ReadDirectory 完了時に `raw_entries` をセット、陳腐化チェックを `raw_entries` ベースに変更
-- `*` キーを `WildcardMarking` → `FileMaskFilter` に変更
-- パスラインにマスク表示 `[*.txt]` を追加（path_line.rs）
-- `s` 単独キーバインドを削除（`s+n`等のシーケンスと競合していたバグを修正）
-- search_filter_tests.rs の既存テストを新 FileMask ダイアログ仕様に更新
-
-## DIALOG_DESIGN_SPEC.md 追記内訳 (v2.1)
-- Appendix C に 3件の新規ミス事例追加（Block::title重複、行幅不揃い、ボタンParagraph着色）
-- Part 8 追加: SortDialogの仕様（レイアウト、レンダリングルール、キーバインド、状態構造体）
-
-## 1.4 実装内訳（2026-05-24）
-- `DialogContent::SimpleRename { input, cursor_pos, scroll_pos, focused_field }` を dialog.rs に追加
-- `Dialog::simple_rename(current_name)` コンストラクタ追加（cursor は文字数末尾）
-- `Action::Rename` を `DialogContent::Input`（レガシー）→ `Dialog::simple_rename()` に変更
-- `state.rs` の `title == "Rename"` レガシー分岐を削除
-- `dialog/mod.rs` に height(5)・exact-height グループ・render dispatch・`render_simple_rename_dialog()` を追加
-- input handler: Tab/Enter/Esc/TextInput（FileMask と同パターン）
-- confirmation handler: `JobKind::Rename { from, to }` を返す
-- `rename_tests.rs` 7テスト追加（キー、ダイアログオープン、タイトル、プレフィル、カーソル位置、空ペイン、ディレクトリ）
-- 全7テスト合格
+Phase 1〜4 の各タスクの実装内訳（コミット時点の詳細メモ）は
+[docs/history/roadmap_implementation_notes.md](../docs/history/roadmap_implementation_notes.md)
+へ移動した（2026-07-18、ROADMAP.md 肥大化対策）。
 
 ## 備考
 - テスト実行の規約（OOM 対策・推奨コマンド）は `.claude/CLAUDE.local.md` の「Test Suite Status」を参照。
