@@ -28,6 +28,7 @@ pub mod leap_filter;
 pub mod log_manager;
 pub mod logging;
 pub mod macro_expander;
+pub mod magic;
 pub mod model;
 pub mod pattern_rename;
 pub mod pipe_to_action;
