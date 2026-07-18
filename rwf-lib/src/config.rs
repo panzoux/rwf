@@ -9,6 +9,7 @@ use std::collections::HashMap;
 /// Main application configuration
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct AppConfig {
     /// Display configuration (colors, CJK width, etc.)
     pub display: DisplayConfig,
@@ -93,10 +94,20 @@ pub struct AppConfig {
     /// Default: 100. Range: 1–4096.
     #[serde(default = "default_viewer_large_file_threshold_mb")]
     pub viewer_large_file_threshold_mb: u32,
+
+    /// Sniff a file's leading bytes before running an ExtensionAssociation command,
+    /// warning if the content disagrees with the extension (Phase 7.3). Cheap
+    /// (reads ~300 bytes), so defaults on. Can be flipped for the running session
+    /// only via the `y+m` keybinding without touching this persisted value.
+    #[serde(default = "default_magic_byte_detection_enabled")]
+    pub magic_byte_detection_enabled: bool,
 }
 
 fn default_polling_interval_ms() -> u32 {
     1000
+}
+fn default_magic_byte_detection_enabled() -> bool {
+    true
 }
 fn default_help_show_unbound() -> bool {
     true
@@ -381,6 +392,7 @@ impl Default for AppConfig {
             jump_nav: JumpNavConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
+            magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
             is_creating_tab: false,
         }
     }
@@ -1560,5 +1572,18 @@ mod tests {
         assert_eq!(assocs[0].extension, "log");
         assert_eq!(assocs[0].command, "less $F");
         assert!(matches!(result.status, ConfigLoadStatus::Ok));
+    }
+
+    #[test]
+    fn magic_byte_detection_enabled_defaults_to_true() {
+        let config = AppConfig::default();
+        assert!(config.magic_byte_detection_enabled);
+    }
+
+    #[test]
+    fn magic_byte_detection_enabled_deserializes_from_json() {
+        let json = r#"{"MagicByteDetectionEnabled": false}"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.magic_byte_detection_enabled);
     }
 }
