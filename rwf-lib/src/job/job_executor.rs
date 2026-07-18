@@ -198,10 +198,11 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 )
             }
             JobKind::DetectFileType { path, purpose: _ } => {
-                self.execute_detect_file_type(path.clone()).await
+                self.execute_detect_file_type(path, &spec.cancel_token)
+                    .await
             }
             JobKind::DetectFileTypesBatch { paths } => {
-                self.execute_detect_file_types_batch(paths.clone()).await
+                self.execute_detect_file_types_batch(paths, &spec).await
             }
         };
 
@@ -1058,8 +1059,16 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     /// detection, Phase 7.3). Reads at most the first 300 bytes on the blocking
     /// thread pool via `SeekableFile`, mirroring `execute_load_file_for_viewer`'s
     /// large-file read path so the async worker thread never touches file I/O.
-    async fn execute_detect_file_type(&self, path: std::path::PathBuf) -> OpResult {
-        match detect_file_type_blocking(path.clone()).await {
+    async fn execute_detect_file_type(
+        &self,
+        path: &std::path::Path,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        match detect_file_type_blocking(path.to_path_buf()).await {
             Ok(kind) => OpResult::Success(SuccessData::FileTypeDetected(kind)),
             Err(e) => OpResult::Failed(format!(
                 "Failed to detect file type for {}: {}",
@@ -1073,14 +1082,23 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     /// files for the "Open With..." picker). A per-file read error is mapped to
     /// `DetectedKind::Unknown` for that entry rather than failing the whole batch —
     /// one unreadable file (permissions, mid-flight deletion) shouldn't block
-    /// detection for the rest of the marked set.
-    async fn execute_detect_file_types_batch(&self, paths: Vec<std::path::PathBuf>) -> OpResult {
+    /// detection for the rest of the marked set. Checks `spec.cancel_token` once
+    /// per item, same pattern as `execute_delete`/`execute_copy`/`execute_move` —
+    /// marked-file sets are exactly the potentially-large case this job exists for.
+    async fn execute_detect_file_types_batch(
+        &self,
+        paths: &[std::path::PathBuf],
+        spec: &JobSpec,
+    ) -> OpResult {
         let mut results = Vec::with_capacity(paths.len());
         for path in paths {
+            if spec.cancel_token.is_cancelled() {
+                return OpResult::Cancelled;
+            }
             let kind = detect_file_type_blocking(path.clone())
                 .await
                 .unwrap_or(crate::magic::DetectedKind::Unknown);
-            results.push((path, kind));
+            results.push((path.clone(), kind));
         }
         OpResult::Success(SuccessData::FileTypesDetected(results))
     }
@@ -2401,5 +2419,55 @@ mod tests {
             results.iter().find(|(p, _)| *p == missing_path).unwrap().1,
             crate::magic::DetectedKind::Unknown
         );
+    }
+
+    #[tokio::test]
+    async fn test_execute_detect_file_type_empty_file_is_unknown() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let empty_path = temp_dir.path().join("empty.dat");
+        tokio::fs::write(&empty_path, b"").await.unwrap();
+
+        let spec = JobSpec::new(JobKind::DetectFileType {
+            path: empty_path,
+            purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(
+                _,
+                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Unknown)
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_detect_file_types_batch_empty_paths_returns_empty_results() {
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let spec = JobSpec::new(JobKind::DetectFileTypesBatch { paths: vec![] });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::FileTypesDetected(results))) if results.is_empty()
+        ));
     }
 }
