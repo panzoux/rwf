@@ -627,6 +627,16 @@ pub enum Transition {
         working_dir: crate::model::Location,
         shell: Option<String>,
     },
+    /// Gate in front of `ExecuteAssociation` (Phase 7.3): sniffs the target
+    /// file's magic bytes and warns before running `command` if the content
+    /// looks like an executable but the extension disagrees. Behaves exactly
+    /// like `ExecuteAssociation` when `magic_byte_detection_enabled` is off.
+    ExecuteAssociationChecked {
+        path: std::path::PathBuf,
+        command: String,
+        working_dir: crate::model::Location,
+        shell: Option<String>,
+    },
     ShowDriveChangeDialog,
     ShowFileInfo,
     ShowVersion,

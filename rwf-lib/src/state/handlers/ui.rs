@@ -418,6 +418,34 @@ impl AppState {
                     });
                 Some(StateUpdateResult::with_job(job_spec))
             }
+            Transition::ExecuteAssociationChecked {
+                path,
+                command,
+                working_dir,
+                shell,
+            } => {
+                if !self.config.magic_byte_detection_enabled {
+                    // Detection disabled: behave exactly like the direct ExecuteAssociation path.
+                    let job_spec =
+                        crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
+                            command: command.clone(),
+                            working_dir: working_dir.clone(),
+                            pipe_to_action: None,
+                            shell: shell.clone(),
+                        });
+                    Some(StateUpdateResult::with_job(job_spec))
+                } else {
+                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                        path: path.clone(),
+                        purpose: crate::job::DetectFileTypePurpose::CheckAssociationMismatch {
+                            command: command.clone(),
+                            working_dir: working_dir.clone(),
+                            shell: shell.clone(),
+                        },
+                    });
+                    Some(StateUpdateResult::with_job(job_spec))
+                }
+            }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();
 

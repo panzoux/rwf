@@ -826,7 +826,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                                     );
                                     let working_dir = state.active_pane().current_location.clone();
                                     let shell = assoc.shell.clone();
-                                    vec![Transition::ExecuteAssociation {
+                                    vec![Transition::ExecuteAssociationChecked {
+                                        path: entry.location.display_path().into(),
                                         command,
                                         working_dir,
                                         shell,
@@ -1940,10 +1941,10 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociation { command, .. } => {
+            Transition::ExecuteAssociationChecked { command, .. } => {
                 assert!(command.contains("myplayer"))
             }
-            other => panic!("expected ExecuteAssociation, got {:?}", other),
+            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
         }
     }
 

@@ -32,6 +32,7 @@ mod simple_rename;
 mod sort;
 mod split_join;
 mod tab_selector;
+mod type_mismatch_warning;
 mod ui_state;
 mod version;
 mod wildcard_mark;
@@ -63,6 +64,7 @@ pub use simple_rename::SimpleRenameDialog;
 pub use sort::SortDialog;
 pub use split_join::SplitJoinDialogContent;
 pub use tab_selector::TabSelectorContent;
+pub use type_mismatch_warning::TypeMismatchWarningDialog;
 pub use ui_state::DialogUiState;
 pub use version::VersionDialog;
 pub use wildcard_mark::WildcardMarkDialog;
@@ -239,6 +241,9 @@ pub enum DialogContent {
     JumpToPath(JumpToPathDialog),
     /// Jump to File dialog — AND-filtered file+directory suggestions
     JumpToFile(JumpToFileDialog),
+    /// Magic-byte content-type mismatch warning before running an
+    /// `ExtensionAssociation` command (Phase 7.3).
+    TypeMismatchWarning(TypeMismatchWarningDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1013,6 +1018,28 @@ impl Dialog {
         Self {
             title,
             content: DialogContent::DeleteConfirm(DeleteConfirmDialog::new(targets)),
+        }
+    }
+
+    /// Create a type mismatch warning dialog (Phase 7.3 magic-byte detection):
+    /// shown before running an `ExtensionAssociation` command whose target file's
+    /// leading bytes look like an executable but the extension says otherwise.
+    pub fn type_mismatch_warning(
+        path: std::path::PathBuf,
+        detected: crate::magic::DetectedKind,
+        command: String,
+        working_dir: crate::model::Location,
+        shell: Option<String>,
+    ) -> Self {
+        Self {
+            title: "Type Mismatch Warning".to_string(),
+            content: DialogContent::TypeMismatchWarning(TypeMismatchWarningDialog::new(
+                path,
+                detected,
+                command,
+                working_dir,
+                shell,
+            )),
         }
     }
 }

@@ -756,6 +756,52 @@ impl AppState {
                                 }
                             }
                         }
+                        crate::job::JobKind::DetectFileType { path, purpose } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::FileTypeDetected(kind),
+                            ) = result
+                            {
+                                match purpose {
+                                    crate::job::DetectFileTypePurpose::CheckAssociationMismatch {
+                                        command,
+                                        working_dir,
+                                        shell,
+                                    } => {
+                                        let ext = path
+                                            .extension()
+                                            .and_then(|e| e.to_str())
+                                            .unwrap_or("");
+                                        if self.config.magic_byte_detection_enabled
+                                            && crate::magic::is_mismatch(ext, *kind)
+                                        {
+                                            let dialog = crate::model::Dialog::type_mismatch_warning(
+                                                path.clone(),
+                                                *kind,
+                                                command.clone(),
+                                                working_dir.clone(),
+                                                shell.clone(),
+                                            );
+                                            self.dialogs.push(dialog);
+                                            result_obj.ui_changed = true;
+                                        } else {
+                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(
+                                                crate::job::JobKind::ExecuteCustomFunction {
+                                                    command: command.clone(),
+                                                    working_dir: working_dir.clone(),
+                                                    pipe_to_action: None,
+                                                    shell: shell.clone(),
+                                                },
+                                            ));
+                                        }
+                                    }
+                                    crate::job::DetectFileTypePurpose::FallbackOpen
+                                    | crate::job::DetectFileTypePurpose::FileInfoDisplay => {
+                                        // Not this task's scope (Tasks 5 and 6 respectively) —
+                                        // leave unhandled for now.
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }

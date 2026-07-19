@@ -45,6 +45,7 @@ mod simple_rename;
 mod sort;
 mod split_join;
 mod tab_selector;
+mod type_mismatch_warning;
 mod version;
 mod wildcard_mark;
 

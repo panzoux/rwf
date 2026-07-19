@@ -210,7 +210,7 @@ pub enum DetectFileTypePurpose {
     /// declared type before running it.
     CheckAssociationMismatch {
         command: String,
-        working_dir: Option<String>,
+        working_dir: Location,
         shell: Option<String>,
     },
     /// Detection is running as a fallback for an unregistered extension, to

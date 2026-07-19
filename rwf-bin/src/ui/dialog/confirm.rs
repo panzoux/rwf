@@ -7,7 +7,8 @@ use rwf_lib::model::dialog::{
     CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
     DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
     FileMaskDialog, HistoryDialogContent, InputDialog, PatternRenameContent,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, WildcardMarkDialog,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -512,6 +513,21 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     targets: locations,
                 }));
             }
+            DialogContent::TypeMismatchWarning(TypeMismatchWarningDialog {
+                command,
+                working_dir,
+                shell,
+                ..
+            }) => {
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::ExecuteCustomFunction {
+                        command: command.clone(),
+                        working_dir: working_dir.clone(),
+                        pipe_to_action: None,
+                        shell: shell.clone(),
+                    },
+                ));
+            }
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 selected_index,
@@ -811,4 +827,75 @@ fn resolve_menu_item_action(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rwf_lib::magic::DetectedKind;
+    use rwf_lib::model::dialog::Dialog;
+    use rwf_lib::model::Location;
+    use rwf_lib::{AppConfig, AppState};
+    use std::path::PathBuf;
+
+    fn test_state() -> AppState {
+        AppState::new(AppConfig::default())
+    }
+
+    /// Confirming a TypeMismatchWarning dialog must run the *original*
+    /// association command — the whole point of the dialog is "warn, then
+    /// let the user proceed unchanged" (see plan/7.3.smart_file_opener.md §5).
+    #[test]
+    fn confirm_type_mismatch_warning_runs_original_command() {
+        let mut state = test_state();
+        let dialog = Dialog::type_mismatch_warning(
+            PathBuf::from("/test/notes.txt"),
+            DetectedKind::Pe,
+            "notepad $F".to_string(),
+            Location::Local(PathBuf::from("/test")),
+            Some("cmd".to_string()),
+        );
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::ExecuteCustomFunction {
+                command,
+                working_dir,
+                shell,
+                pipe_to_action,
+            } => {
+                assert_eq!(command, "notepad $F");
+                assert_eq!(working_dir, Location::Local(PathBuf::from("/test")));
+                assert_eq!(shell, Some("cmd".to_string()));
+                assert!(pipe_to_action.is_none());
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// Cancel needs no per-variant handling for this dialog: app.rs's generic
+    /// Cancel path just pops the current dialog (see app.rs's
+    /// `DialogAction::Cancel` arm) — verify popping leaves the stack clean
+    /// and doesn't invoke process_dialog_confirmation (i.e. no job is queued).
+    #[test]
+    fn cancel_type_mismatch_warning_pops_with_no_side_effects() {
+        let mut state = test_state();
+        let dialog = Dialog::type_mismatch_warning(
+            PathBuf::from("/test/notes.txt"),
+            DetectedKind::Pe,
+            "notepad $F".to_string(),
+            Location::Local(PathBuf::from("/test")),
+            None,
+        );
+        state.dialogs.push(dialog);
+        assert!(!state.dialogs.is_empty());
+
+        // The generic Cancel path (app.rs) does nothing but pop — no call to
+        // process_dialog_confirmation, so no job is ever produced.
+        state.dialogs.pop();
+        assert!(state.dialogs.is_empty());
+        assert_eq!(state.jobs.queue.len(), 0);
+        assert_eq!(state.jobs.active.len(), 0);
+    }
 }

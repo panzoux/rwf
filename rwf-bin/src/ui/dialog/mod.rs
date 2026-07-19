@@ -31,6 +31,7 @@ mod snapshot_tests;
 mod sort;
 #[cfg(test)]
 mod test_support;
+mod type_mismatch_warning;
 mod wildcard_mark;
 
 use basic::{handle_content_input, render_dialog_content};
@@ -48,6 +49,7 @@ use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
 use simple_rename::render_simple_rename_dialog;
 use sort::render_sort_dialog;
+use type_mismatch_warning::render_type_mismatch_warning_dialog;
 use wildcard_mark::render_wildcard_mark_dialog;
 
 use common::{DIALOG_DIM, DIALOG_TEXT};
@@ -72,7 +74,7 @@ use rwf_lib::model::dialog::{
     DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
     HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
     PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    WildcardMarkDialog,
+    TypeMismatchWarningDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -159,6 +161,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // layout: header(1)+blank(1)+list(N≤12) | spacer(1) | hint(1) | buttons(3)
             // min_content = (N+2) + 1 + 1 + 3 = N + 7
             (targets.len().min(12) as u16 + 7).max(10)
+        }
+        DialogContent::TypeMismatchWarning(_) => {
+            // path(1) + blank(1) + detected-type(1) + blank(1) + message (up to 3 wrapped
+            // rows) + buttons(3) = 10
+            10u16
         }
         DialogContent::JobManager { .. } => {
             // Job Manager dialog: calculate from constraints (Part 6.2)
@@ -294,6 +301,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::FileInfo { .. }
         | DialogContent::ExtractionConfirm(_)
         | DialogContent::Error(_)
+        | DialogContent::TypeMismatchWarning(_)
         | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))
@@ -798,6 +806,17 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
 
             // Buttons (chunks[3])
             render_dialog_buttons(frame, chunks[3], &dialog.content, 0);
+        }
+        DialogContent::TypeMismatchWarning(TypeMismatchWarningDialog {
+            path, detected, ..
+        }) => {
+            render_type_mismatch_warning_dialog(
+                frame,
+                &dialog.content,
+                content_area,
+                path,
+                detected.label(),
+            );
         }
         DialogContent::Input { .. } => {
             // No separate button row; Enter/Esc are the controls

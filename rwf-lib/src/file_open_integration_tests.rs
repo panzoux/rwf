@@ -5,8 +5,13 @@
 mod tests {
     use crate::config::{ExtensionAssociation, FileOpenAction, FileTypeMapping};
     use crate::input::{action_to_transitions, Action};
-    use crate::state::Transition;
+    use crate::job::{DetectFileTypePurpose, JobKind, JobSpec, OpResult, SuccessData};
+    use crate::magic::DetectedKind;
+    use crate::model::dialog::DialogContent;
+    use crate::model::Location;
+    use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
+    use std::path::PathBuf;
 
     #[test]
     fn extension_association_match_produces_execute_association() {
@@ -25,10 +30,10 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociation { command, .. } => {
+            Transition::ExecuteAssociationChecked { command, .. } => {
                 assert!(command.contains("less"))
             }
-            other => panic!("expected ExecuteAssociation, got {:?}", other),
+            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
         }
     }
 
@@ -71,6 +76,176 @@ mod tests {
         match &transitions[0] {
             Transition::OpenTextViewer { .. } => {}
             other => panic!("expected OpenTextViewer, got {:?}", other),
+        }
+    }
+
+    // ── ExecuteAssociationChecked gate (Phase 7.3 §5, magic-byte mismatch warning) ──
+
+    #[test]
+    fn checked_association_starts_detect_file_type_job_when_enabled() {
+        let mut state = test_state();
+        assert!(state.config.magic_byte_detection_enabled); // default is true
+
+        let result = update_state(
+            &mut state,
+            Transition::ExecuteAssociationChecked {
+                path: PathBuf::from("/test/notes.txt"),
+                command: "notepad $F".to_string(),
+                working_dir: Location::Local(PathBuf::from("/test")),
+                shell: None,
+            },
+        );
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::DetectFileType { path, purpose } => {
+                assert_eq!(path, &PathBuf::from("/test/notes.txt"));
+                match purpose {
+                    DetectFileTypePurpose::CheckAssociationMismatch { command, .. } => {
+                        assert_eq!(command, "notepad $F");
+                    }
+                    other => panic!("expected CheckAssociationMismatch, got {:?}", other),
+                }
+            }
+            other => panic!("expected DetectFileType, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn checked_association_skips_detection_when_disabled() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+
+        let result = update_state(
+            &mut state,
+            Transition::ExecuteAssociationChecked {
+                path: PathBuf::from("/test/notes.txt"),
+                command: "notepad $F".to_string(),
+                working_dir: Location::Local(PathBuf::from("/test")),
+                shell: None,
+            },
+        );
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => {
+                assert_eq!(command, "notepad $F");
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// Drive a `DetectFileType` job through the real job-manager lifecycle
+    /// (enqueue -> start -> complete), the same machinery production code uses,
+    /// rather than hand-rolling the completion routing.
+    fn run_detect_file_type_job(
+        state: &mut crate::AppState,
+        path: PathBuf,
+        command: &str,
+        detected: DetectedKind,
+    ) -> crate::state::StateUpdateResult {
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path,
+            purpose: DetectFileTypePurpose::CheckAssociationMismatch {
+                command: command.to_string(),
+                working_dir: Location::Local(PathBuf::from("/test")),
+                shell: None,
+            },
+        });
+        update_state(state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(state, Transition::StartNextJob);
+
+        update_state(
+            state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+            },
+        )
+    }
+
+    #[test]
+    fn detected_executable_mismatch_shows_warning_dialog() {
+        let mut state = test_state();
+        assert!(state.dialogs.is_empty());
+
+        let result = run_detect_file_type_job(
+            &mut state,
+            PathBuf::from("/test/notes.txt"),
+            "notepad $F",
+            DetectedKind::Pe,
+        );
+
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::TypeMismatchWarning(d) => {
+                assert_eq!(d.command, "notepad $F");
+                assert_eq!(d.detected, DetectedKind::Pe);
+                assert_eq!(d.path, PathBuf::from("/test/notes.txt"));
+            }
+            other => panic!("expected TypeMismatchWarning dialog, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detected_non_executable_auto_continues_without_dialog() {
+        let mut state = test_state();
+
+        let result = run_detect_file_type_job(
+            &mut state,
+            PathBuf::from("/test/notes.txt"),
+            "notepad $F",
+            DetectedKind::Png,
+        );
+
+        assert!(state.dialogs.is_empty());
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => {
+                assert_eq!(command, "notepad $F");
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detected_executable_with_matching_extension_auto_continues() {
+        let mut state = test_state();
+
+        let result = run_detect_file_type_job(
+            &mut state,
+            PathBuf::from("/test/setup.exe"),
+            "run $F",
+            DetectedKind::Pe,
+        );
+
+        assert!(state.dialogs.is_empty());
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { .. } => {}
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detected_mismatch_but_detection_disabled_auto_continues() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+
+        let result = run_detect_file_type_job(
+            &mut state,
+            PathBuf::from("/test/notes.txt"),
+            "notepad $F",
+            DetectedKind::Pe,
+        );
+
+        assert!(state.dialogs.is_empty());
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { .. } => {}
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
         }
     }
 }
