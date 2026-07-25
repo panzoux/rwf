@@ -153,9 +153,14 @@ impl AppState {
                         // modal). DetectFileType/FileInfoDisplay failures also skip the modal:
                         // the still-open File Information dialog already shows its own
                         // "detection failed" line (Phase 7.3 §7) — a second, stacked Error
-                        // dialog for the same failure would be redundant. Other DetectFileType
-                        // purposes (CheckAssociationMismatch, FallbackOpen) have no in-dialog
-                        // feedback of their own, so they still surface the generic Error dialog.
+                        // dialog for the same failure would be redundant.
+                        // CheckAssociationMismatch failures also skip the modal: the completion
+                        // arm below fails open and runs the association command anyway, so a
+                        // stacked Error dialog would be a spurious false alarm on top of the
+                        // (usually successful) association execution.
+                        // FallbackOpen failures also skip the modal: the completion arm below
+                        // falls back to the text viewer as its own safety net, so a stacked
+                        // Error dialog would be a redundant double-report.
                         let skip_dialog = matches!(
                             &spec.kind,
                             crate::job::JobKind::ExecuteCustomFunction { .. }
@@ -163,6 +168,19 @@ impl AppState {
                             &spec.kind,
                             crate::job::JobKind::DetectFileType {
                                 purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+                                ..
+                            }
+                        ) || matches!(
+                            &spec.kind,
+                            crate::job::JobKind::DetectFileType {
+                                purpose:
+                                    crate::job::DetectFileTypePurpose::CheckAssociationMismatch { .. },
+                                ..
+                            }
+                        ) || matches!(
+                            &spec.kind,
+                            crate::job::JobKind::DetectFileType {
+                                purpose: crate::job::DetectFileTypePurpose::FallbackOpen { .. },
                                 ..
                             }
                         );
@@ -900,6 +918,26 @@ impl AppState {
                                         }
                                     }
                                 }
+                            } else if let crate::job::DetectFileTypePurpose::CheckAssociationMismatch {
+                                command,
+                                working_dir,
+                                shell,
+                            } = purpose
+                            {
+                                // Fail-open: detection failed (e.g. a non-Local `display_path()`
+                                // like "archive.zip#inner/notes.txt" isn't a real filesystem path
+                                // that `std::fs::File::open` can read) or was cancelled. Don't
+                                // block the user's explicit association — run the command anyway.
+                                // This restores exact pre-7.3 behavior: ExecuteAssociationChecked
+                                // used to go straight to ExecuteAssociation -> ExecuteCustomFunction,
+                                // which silently no-ops for a non-Local working_dir on its own.
+                                result_obj.jobs_to_start.push(
+                                    crate::job::JobSpec::execute_association(
+                                        command.clone(),
+                                        working_dir.clone(),
+                                        shell.clone(),
+                                    ),
+                                );
                             } else if let crate::job::DetectFileTypePurpose::FallbackOpen {
                                 location,
                             } = purpose

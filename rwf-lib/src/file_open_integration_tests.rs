@@ -618,6 +618,107 @@ mod tests {
         }
     }
 
+    /// Regression test (Phase 7.3 review Fix 1): an ExtensionAssociation-matched
+    /// file living in a non-Local location (here, inside a browsed archive) has
+    /// a `display_path()` like "archive.zip#inner/notes.txt" — not a real
+    /// filesystem path, so the `DetectFileType { CheckAssociationMismatch }` job
+    /// started by `ExecuteAssociationChecked` fails when it tries to
+    /// `std::fs::File::open` it. Before this fix, that Failed result surfaced a
+    /// spurious generic "Detect file type: Failed" Error dialog and the
+    /// association command never ran. The fix: fail open — run the association
+    /// command anyway (restoring the exact pre-7.3 behavior of going straight
+    /// to ExecuteAssociation/ExecuteCustomFunction) and suppress the modal for
+    /// this purpose via `skip_dialog`.
+    #[test]
+    fn checked_association_fails_open_on_detection_failure_for_archive_location() {
+        let mut state = test_state();
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: "txt".to_string(),
+            command: "notepad $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        let archive_location = Location::Archive {
+            archive_path: Box::new(Location::Local(PathBuf::from("/test/archive.zip"))),
+            inner_path: PathBuf::from("inner/notes.txt"),
+        };
+        let entry = FileEntryBuilder::new("notes.txt")
+            .dir(false)
+            .location(archive_location.clone())
+            .build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        // Drive EnterDirectory for real to get the exact ExecuteAssociationChecked
+        // transition production code would build (path = synthetic display_path()).
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        let (path, command, working_dir, shell) = match &transitions[0] {
+            Transition::ExecuteAssociationChecked {
+                path,
+                command,
+                working_dir,
+                shell,
+            } => (
+                path.clone(),
+                command.clone(),
+                working_dir.clone(),
+                shell.clone(),
+            ),
+            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
+        };
+        assert_eq!(path, PathBuf::from(archive_location.display_path()));
+
+        // Run that transition, then drive the resulting DetectFileType job through
+        // the real enqueue -> start -> complete(Failed) lifecycle.
+        let start_result = update_state(
+            &mut state,
+            Transition::ExecuteAssociationChecked {
+                path,
+                command,
+                working_dir,
+                shell,
+            },
+        );
+        assert_eq!(start_result.jobs_to_start.len(), 1);
+        let job_spec = start_result.jobs_to_start[0].clone();
+        assert!(matches!(
+            &job_spec.kind,
+            JobKind::DetectFileType {
+                purpose: DetectFileTypePurpose::CheckAssociationMismatch { .. },
+                ..
+            }
+        ));
+
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("not a real filesystem path".to_string()),
+            },
+        );
+
+        // Fail-open: the association command still runs.
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => {
+                assert!(command.contains("notepad"));
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+        // No spurious Error dialog.
+        assert!(
+            state.dialogs.is_empty(),
+            "expected no dialog, found: {:?}",
+            state.dialogs.current().map(|d| &d.content)
+        );
+    }
+
     #[test]
     fn detected_mismatch_but_detection_disabled_auto_continues() {
         let mut state = test_state();

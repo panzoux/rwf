@@ -927,12 +927,20 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                                 unreachable!("filtered out by the .find() above")
                             }
                         }
-                    } else {
+                    } else if state.config.magic_byte_detection_enabled {
                         debug!(
                             "EnterDirectory: no association/mapping for {}, detecting content type",
                             entry.name
                         );
                         vec![Transition::CheckFallbackFileType {
+                            location: entry.location.clone(),
+                        }]
+                    } else {
+                        debug!(
+                            "EnterDirectory: no association/mapping for {} and magic-byte detection disabled, opening in text viewer",
+                            entry.name
+                        );
+                        vec![Transition::OpenTextViewer {
                             location: entry.location.clone(),
                         }]
                     }

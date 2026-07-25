@@ -1714,8 +1714,15 @@ mod tests {
         // Press Enter on the regular file
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
 
-        // Regular files now open in the text viewer
+        // Regular files with no matching association/mapping now go through
+        // detect-then-route (Phase 7.3): magic_byte_detection_enabled defaults to
+        // true, so Enter triggers CheckFallbackFileType rather than opening the
+        // text viewer directly. The detection completion routes Unknown content to
+        // OpenTextViewer (see file_open_integration_tests.rs for that flow).
         assert_eq!(transitions.len(), 1);
-        assert!(matches!(transitions[0], Transition::OpenTextViewer { .. }));
+        assert!(matches!(
+            transitions[0],
+            Transition::CheckFallbackFileType { .. }
+        ));
     }
 }

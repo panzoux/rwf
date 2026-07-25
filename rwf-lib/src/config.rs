@@ -95,8 +95,15 @@ pub struct AppConfig {
     #[serde(default = "default_viewer_large_file_threshold_mb")]
     pub viewer_large_file_threshold_mb: u32,
 
-    /// Sniff a file's leading bytes before running an ExtensionAssociation command,
-    /// warning if the content disagrees with the extension (Phase 7.3). Cheap
+    /// Gates automatic magic-byte detection (Phase 7.3): sniffing a file's leading
+    /// bytes (a) before running an ExtensionAssociation command, warning if the
+    /// content disagrees with the extension, and (b) before opening a file with no
+    /// matching ExtensionAssociation/FileTypeMapping, to route non-text content to
+    /// the OS default instead of the internal text viewer. When disabled, both
+    /// paths behave as they did before Phase 7.3: associations run unconditionally
+    /// and unmatched files always open in the text viewer. Does NOT gate the
+    /// explicit on-demand "detect type" action in the File Information dialog
+    /// (`d` key) — that always runs, since the user asked for it directly. Cheap
     /// (reads ~300 bytes), so defaults on. Can be flipped for the running session
     /// only via the `y+m` keybinding without touching this persisted value.
     #[serde(default = "default_magic_byte_detection_enabled")]
