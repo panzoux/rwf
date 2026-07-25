@@ -800,10 +800,35 @@ impl AppState {
                                             );
                                         }
                                     }
-                                    crate::job::DetectFileTypePurpose::FallbackOpen
-                                    | crate::job::DetectFileTypePurpose::FileInfoDisplay => {
-                                        // Not this task's scope (Tasks 5 and 6 respectively) —
-                                        // leave unhandled for now.
+                                    crate::job::DetectFileTypePurpose::FallbackOpen { location } => {
+                                        // Neither an ExtensionAssociation nor a FileTypeMapping
+                                        // matched this file's extension (Phase 7.3 §6). Route by
+                                        // the detected content: a known non-text kind opens via
+                                        // the OS default association; Unknown falls through to
+                                        // the internal text viewer exactly as before this task.
+                                        let follow_up = if *kind == crate::magic::DetectedKind::Unknown {
+                                            Transition::OpenTextViewer {
+                                                location: location.clone(),
+                                            }
+                                        } else {
+                                            result_obj.task_panel_logs.push(format!(
+                                                "[System] Detected {}; opening {} via OS default",
+                                                kind.label(),
+                                                location.display_path()
+                                            ));
+                                            Transition::OpenWithSystem {
+                                                path: location.display_path(),
+                                            }
+                                        };
+                                        let sub_res = update_state(self, follow_up);
+                                        result_obj.jobs_to_start.extend(sub_res.jobs_to_start);
+                                        result_obj.jobs_to_cancel.extend(sub_res.jobs_to_cancel);
+                                        result_obj.panes_to_refresh.extend(sub_res.panes_to_refresh);
+                                        result_obj.task_panel_logs.extend(sub_res.task_panel_logs);
+                                        result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
+                                    }
+                                    crate::job::DetectFileTypePurpose::FileInfoDisplay => {
+                                        // Not this task's scope (Task 6) — leave unhandled for now.
                                     }
                                 }
                             }

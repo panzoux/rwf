@@ -928,8 +928,11 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                             }
                         }
                     } else {
-                        debug!("EnterDirectory: opening text viewer for {}", entry.name);
-                        vec![Transition::OpenTextViewer {
+                        debug!(
+                            "EnterDirectory: no association/mapping for {}, detecting content type",
+                            entry.name
+                        );
+                        vec![Transition::CheckFallbackFileType {
                             location: entry.location.clone(),
                         }]
                     }
@@ -1962,6 +1965,11 @@ mod tests {
 
     #[test]
     fn enter_directory_unmapped_extension_still_opens_internal_viewer() {
+        // Phase 7.3 §6: the final fallback no longer jumps straight to the text
+        // viewer — it first detects content type via `CheckFallbackFileType`.
+        // The detect-job completion handler (see file_open_integration_tests.rs
+        // fallback_open_unknown_kind_opens_text_viewer) is what actually reaches
+        // the internal viewer once detection comes back Unknown.
         let mut state = test_state();
         state.file_type_map = vec![crate::config::FileTypeMapping {
             extension: "mp4".to_string(),
@@ -1976,13 +1984,19 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::OpenTextViewer { .. } => {}
-            other => panic!("expected OpenTextViewer, got {:?}", other),
+            Transition::CheckFallbackFileType { .. } => {}
+            other => panic!("expected CheckFallbackFileType, got {:?}", other),
         }
     }
 
     #[test]
     fn enter_directory_never_auto_runs_executables() {
+        // Phase 7.3 §6: this now routes through content-type detection first
+        // (CheckFallbackFileType) rather than opening the text viewer directly.
+        // The detect-job completion handler still never auto-runs the file —
+        // a detected Pe binary routes to OpenWithSystem (OS default), not to
+        // any form of direct execution; see fallback_open_known_binary_kind_opens_with_system
+        // in file_open_integration_tests.rs.
         let mut state = test_state();
         // file_type_map deliberately has no "exe" entry (executables are excluded from
         // the default set by design) — this confirms the omission actually protects.
@@ -1995,8 +2009,8 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::OpenTextViewer { .. } => {}
-            other => panic!("expected OpenTextViewer (never auto-run), got {:?}", other),
+            Transition::CheckFallbackFileType { .. } => {}
+            other => panic!("expected CheckFallbackFileType, got {:?}", other),
         }
     }
 

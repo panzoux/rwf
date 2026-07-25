@@ -244,11 +244,17 @@ mod tests {
     }
 
     #[test]
-    fn no_match_in_either_config_falls_through_to_internal_viewer() {
+    fn no_match_in_either_config_falls_through_to_content_type_detection() {
+        // Phase 7.3 §6: EnterDirectory no longer jumps straight to the text
+        // viewer when neither config matches — it detects content type first
+        // (CheckFallbackFileType) so binary files aren't force-fed into the
+        // viewer. See the fallback_open_* tests below for what happens once
+        // that detection job completes.
         let mut state = test_state();
         state.extension_associations = Vec::new();
         state.file_type_map = Vec::new();
         let entry = FileEntryBuilder::new("notes.md").dir(false).build();
+        let expected_location = entry.location.clone();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
@@ -256,9 +262,128 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::OpenTextViewer { .. } => {}
-            other => panic!("expected OpenTextViewer, got {:?}", other),
+            Transition::CheckFallbackFileType { location } => {
+                assert_eq!(location, &expected_location);
+            }
+            other => panic!("expected CheckFallbackFileType, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn check_fallback_file_type_transition_starts_detect_job() {
+        let mut state = test_state();
+        let location = Location::Local(PathBuf::from("/test/notes.md"));
+
+        let result = update_state(
+            &mut state,
+            Transition::CheckFallbackFileType {
+                location: location.clone(),
+            },
+        );
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::DetectFileType { path, purpose } => {
+                assert_eq!(path, &PathBuf::from("/test/notes.md"));
+                match purpose {
+                    DetectFileTypePurpose::FallbackOpen {
+                        location: purpose_location,
+                    } => {
+                        assert_eq!(purpose_location, &location);
+                    }
+                    other => panic!("expected FallbackOpen, got {:?}", other),
+                }
+            }
+            other => panic!("expected DetectFileType, got {:?}", other),
+        }
+    }
+
+    /// Drive a `DetectFileType { purpose: FallbackOpen }` job through the real
+    /// job-manager lifecycle (enqueue -> start -> complete), mirroring
+    /// `run_detect_file_type_job` above but for the fallback-open purpose.
+    fn run_fallback_open_job(
+        state: &mut crate::AppState,
+        location: Location,
+        detected: DetectedKind,
+    ) -> crate::state::StateUpdateResult {
+        let path: PathBuf = location.display_path().into();
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path,
+            purpose: DetectFileTypePurpose::FallbackOpen {
+                location: location.clone(),
+            },
+        });
+        update_state(state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(state, Transition::StartNextJob);
+
+        update_state(
+            state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+            },
+        )
+    }
+
+    /// A known non-text kind (PNG magic bytes, but no registered association or
+    /// mapping for the extension) opens via the OS default association instead
+    /// of the internal text viewer.
+    #[test]
+    fn fallback_open_known_binary_kind_opens_with_system() {
+        use std::io::Write;
+        let temp_dir = tempfile::TempDir::new().expect("tempdir");
+        let file_path = temp_dir.path().join("mystery.xyz");
+        let mut f = std::fs::File::create(&file_path).expect("create file");
+        // Real PNG magic bytes, matching the Task-1 job_executor.rs precedent.
+        f.write_all(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            .expect("write png signature");
+        drop(f);
+
+        let mut state = test_state();
+        let location = Location::Local(file_path.clone());
+
+        let result = run_fallback_open_job(&mut state, location, DetectedKind::Png);
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::SpawnProcess { .. } => {}
+            other => panic!("expected SpawnProcess (OS default open), got {:?}", other),
+        }
+        assert!(result
+            .task_panel_logs
+            .iter()
+            .any(|l| l.contains("[System]") && l.contains("mystery.xyz")));
+    }
+
+    /// Plain-text content (detected as Unknown) falls through to the internal
+    /// text viewer exactly as it did before this task's change.
+    #[test]
+    fn fallback_open_unknown_kind_opens_text_viewer() {
+        use std::io::Write;
+        let temp_dir = tempfile::TempDir::new().expect("tempdir");
+        let file_path = temp_dir.path().join("notes.xyz");
+        let mut f = std::fs::File::create(&file_path).expect("create file");
+        f.write_all(b"just some plain text, nothing magic here\n")
+            .expect("write text content");
+        drop(f);
+
+        let mut state = test_state();
+        let location = Location::Local(file_path.clone());
+
+        let result = run_fallback_open_job(&mut state, location.clone(), DetectedKind::Unknown);
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::LoadFileForViewer { location: loc, .. } => {
+                assert_eq!(loc, &location);
+            }
+            other => panic!("expected LoadFileForViewer, got {:?}", other),
+        }
+        assert_eq!(
+            state.viewer.as_ref().map(|v| v.mode),
+            Some(crate::model::ViewerMode::Text)
+        );
     }
 
     // ── ExecuteAssociationChecked gate (Phase 7.3 §5, magic-byte mismatch warning) ──

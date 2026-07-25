@@ -661,6 +661,14 @@ pub enum Transition {
     StartBatchOpenWith {
         paths: Vec<std::path::PathBuf>,
     },
+    /// Fallback for `EnterDirectory` when neither an `ExtensionAssociation`
+    /// nor a `FileTypeMapping` matched (Phase 7.3 §6): detects the file's
+    /// content type before deciding between `OpenWithSystem` (known
+    /// non-text kind) and the internal text viewer (`Unknown`), instead of
+    /// unconditionally opening the text viewer.
+    CheckFallbackFileType {
+        location: crate::model::Location,
+    },
     ShowDriveChangeDialog,
     ShowFileInfo,
     ShowVersion,

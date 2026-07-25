@@ -233,7 +233,9 @@ pub enum DetectFileTypePurpose {
     /// Detection is running as a fallback for an unregistered extension, to
     /// decide whether to route to `Transition::OpenWithSystem` (known
     /// non-text kind) or fall through to the text viewer (`Unknown`).
-    FallbackOpen,
+    /// Carries the original `Location` so the text-viewer fallback can be
+    /// opened directly (the viewer takes a `Location`, not a filesystem path).
+    FallbackOpen { location: crate::model::Location },
     /// Detection was requested on demand from the File Information dialog.
     FileInfoDisplay,
 }

@@ -443,6 +443,16 @@ impl AppState {
                     });
                 Some(StateUpdateResult::with_job(job_spec))
             }
+            Transition::CheckFallbackFileType { location } => {
+                let path: std::path::PathBuf = location.display_path().into();
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                    path,
+                    purpose: crate::job::DetectFileTypePurpose::FallbackOpen {
+                        location: location.clone(),
+                    },
+                });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();
 

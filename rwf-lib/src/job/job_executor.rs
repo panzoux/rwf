@@ -2319,8 +2319,10 @@ mod tests {
             .unwrap();
 
         let spec = JobSpec::new(JobKind::DetectFileType {
-            path: text_path,
-            purpose: crate::job::DetectFileTypePurpose::FallbackOpen,
+            path: text_path.clone(),
+            purpose: crate::job::DetectFileTypePurpose::FallbackOpen {
+                location: crate::model::Location::Local(text_path),
+            },
         });
 
         executor.execute(spec).await;
