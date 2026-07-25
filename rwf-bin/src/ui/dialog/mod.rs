@@ -162,10 +162,25 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // min_content = (N+2) + 1 + 1 + 3 = N + 7
             (targets.len().min(12) as u16 + 7).max(10)
         }
-        DialogContent::TypeMismatchWarning(_) => {
-            // path(1) + blank(1) + detected-type(1) + blank(1) + message (up to 3 wrapped
-            // rows) + buttons(3) = 10
-            10u16
+        DialogContent::TypeMismatchWarning(TypeMismatchWarningDialog { path, .. }) => {
+            // blank(1) + detected-type(1) + blank(1) + message (up to 3 wrapped rows) +
+            // buttons(3) = 9, plus however many rows the path itself wraps into (usually
+            // 1, but a long/deeply nested path can take more — without this the warning
+            // message gets silently clipped off the bottom of the dialog).
+            //
+            // This mirrors the default `dialog_width` formula below (`_ => ...`) since
+            // TypeMismatchWarning has no width arm of its own; the two must stay in sync.
+            let screen_width = frame.area().width;
+            let width = ((screen_width * 60) / 100)
+                .max(40)
+                .min(screen_width.saturating_sub(2));
+            let content_width = width.saturating_sub(2).max(1) as usize;
+            let path_cols = {
+                use unicode_width::UnicodeWidthStr;
+                path.display().to_string().width()
+            };
+            let path_rows = path_cols.div_ceil(content_width).max(1) as u16;
+            path_rows + 9
         }
         DialogContent::JobManager { .. } => {
             // Job Manager dialog: calculate from constraints (Part 6.2)

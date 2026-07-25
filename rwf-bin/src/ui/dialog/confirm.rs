@@ -871,12 +871,15 @@ mod tests {
         }
     }
 
-    /// Cancel needs no per-variant handling for this dialog: app.rs's generic
-    /// Cancel path just pops the current dialog (see app.rs's
-    /// `DialogAction::Cancel` arm) — verify popping leaves the stack clean
-    /// and doesn't invoke process_dialog_confirmation (i.e. no job is queued).
+    /// TypeMismatchWarning needs no per-variant Cancel handling: Esc falls
+    /// through `handle_dialog_input`'s generic "Esc cancels" arm (see
+    /// mod.rs's `handle_dialog_input`), and app.rs's `DialogAction::Cancel`
+    /// arm does nothing but pop. This drives the real Esc -> DialogAction
+    /// dispatch (the part reachable without an `App`/terminal harness) and
+    /// then replicates app.rs's pop, verifying the stack ends up clean and
+    /// no job is ever produced.
     #[test]
-    fn cancel_type_mismatch_warning_pops_with_no_side_effects() {
+    fn esc_on_type_mismatch_warning_returns_cancel_and_pop_leaves_no_side_effects() {
         let mut state = test_state();
         let dialog = Dialog::type_mismatch_warning(
             PathBuf::from("/test/notes.txt"),
@@ -888,8 +891,19 @@ mod tests {
         state.dialogs.push(dialog);
         assert!(!state.dialogs.is_empty());
 
-        // The generic Cancel path (app.rs) does nothing but pop — no call to
-        // process_dialog_confirmation, so no job is ever produced.
+        let action = super::super::handle_dialog_input(
+            state.dialogs.current_mut().expect("dialog pushed above"),
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Esc,
+                crossterm::event::KeyModifiers::NONE,
+            ),
+            None,
+        );
+        assert_eq!(action, super::super::DialogAction::Cancel);
+
+        // app.rs's DialogAction::Cancel arm does nothing but pop for this
+        // dialog — no call to process_dialog_confirmation, so no job is
+        // ever produced.
         state.dialogs.pop();
         assert!(state.dialogs.is_empty());
         assert_eq!(state.jobs.queue.len(), 0);
