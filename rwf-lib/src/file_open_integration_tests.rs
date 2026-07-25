@@ -571,6 +571,11 @@ mod tests {
             }
             other => panic!("expected TypeMismatchWarning dialog, got {:?}", other),
         }
+        // Plan §8: showing the mismatch warning must also surface a task-panel log.
+        assert_eq!(result.task_panel_logs.len(), 1);
+        assert!(result.task_panel_logs[0].starts_with("[Warning] Type mismatch: notes.txt"));
+        assert!(result.task_panel_logs[0].contains("Windows PE executable"));
+        assert!(result.task_panel_logs[0].contains(".txt"));
     }
 
     #[test]
@@ -851,6 +856,34 @@ mod tests {
         assert!(result.task_panel_logs[0].contains("zzz"));
     }
 
+    /// Deferred from the Task 4 review: a group that resolves to exactly one
+    /// candidate whose command fails to expand (here, a `$I` macro, which
+    /// `MacroExpander::expand` always rejects since it requires interactive
+    /// user input the batch flow can't supply) must skip that group silently
+    /// — no job started, no panic, no dialog. The 1-candidate arm's
+    /// `if let Ok(..) = expand_association_command(..)` has no `else`, so
+    /// this pins that intentional silent-skip behavior.
+    #[test]
+    fn batch_open_with_one_candidate_expansion_failure_skips_silently() {
+        let mut state = test_state();
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: "png".to_string(),
+            command: "viewer $I".to_string(),
+            description: None,
+            shell: None,
+        }];
+
+        let path = PathBuf::from("/test/a.png");
+        let paths = vec![path.clone()];
+        let detections = vec![(path.clone(), DetectedKind::Png)];
+
+        let result = run_detect_file_types_batch_job(&mut state, paths, detections);
+
+        assert!(result.jobs_to_start.is_empty());
+        assert!(state.dialogs.is_empty());
+        assert!(result.task_panel_logs.is_empty());
+    }
+
     /// Push a `FileInfo` dialog for `entry` onto the stack, exactly like
     /// `Transition::ShowFileInfo` does — detection must never auto-run there
     /// (Phase 7.3 §7); these tests drive `DetectFileInfoType` explicitly
@@ -954,6 +987,10 @@ mod tests {
             }
             other => panic!("expected FileInfo dialog, got {:?}", other),
         }
+        // Plan §8: on-demand detection completing must also surface a task-panel log.
+        assert_eq!(result.task_panel_logs.len(), 1);
+        assert!(result.task_panel_logs[0].starts_with("[System] Detected type: PNG image for"));
+        assert!(result.task_panel_logs[0].contains("photo.png"));
     }
 
     /// An executable detected under a mismatched extension (a `.txt` file
@@ -981,6 +1018,46 @@ mod tests {
                 assert!(detected.contains("Windows PE executable"));
                 assert!(detected.contains("mismatch"));
                 assert!(detected.contains(".txt"));
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// An executable detected on a file with NO extension must not render a
+    /// dangling-dot mismatch note (`"... implies ."`). Code review follow-up:
+    /// the mismatch note format assumed a non-empty extension; a file with no
+    /// extension at all previously produced a trailing bare dot.
+    #[test]
+    fn detect_file_info_type_pe_with_no_extension_has_no_dangling_dot() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("mystery").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Pe)),
+        );
+
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type_job_id, None);
+                let detected = d.detected_type.as_deref().expect("detected_type set");
+                assert!(detected.contains("Windows PE executable"));
+                assert!(detected.contains("mismatch"));
+                assert!(
+                    !detected.contains("implies ."),
+                    "dangling dot in mismatch note: {:?}",
+                    detected
+                );
+                assert!(
+                    !detected.ends_with('.'),
+                    "note ends with a bare dot: {:?}",
+                    detected
+                );
             }
             other => panic!("expected FileInfo dialog, got {:?}", other),
         }

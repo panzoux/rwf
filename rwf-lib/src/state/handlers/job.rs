@@ -793,6 +793,21 @@ impl AppState {
                                         if self.config.magic_byte_detection_enabled
                                             && crate::magic::is_mismatch(ext, *kind)
                                         {
+                                            let filename = path
+                                                .file_name()
+                                                .map(|n| n.to_string_lossy().to_string())
+                                                .unwrap_or_else(|| path.display().to_string());
+                                            let ext_note = if ext.is_empty() {
+                                                "no extension".to_string()
+                                            } else {
+                                                format!(".{}", ext)
+                                            };
+                                            result_obj.task_panel_logs.push(format!(
+                                                "[Warning] Type mismatch: {} looks like {} (extension {})",
+                                                filename,
+                                                kind.label(),
+                                                ext_note
+                                            ));
                                             let dialog = crate::model::Dialog::type_mismatch_warning(
                                                 path.clone(),
                                                 *kind,
@@ -833,11 +848,7 @@ impl AppState {
                                             }
                                         };
                                         let sub_res = update_state(self, follow_up);
-                                        result_obj.jobs_to_start.extend(sub_res.jobs_to_start);
-                                        result_obj.jobs_to_cancel.extend(sub_res.jobs_to_cancel);
-                                        result_obj.panes_to_refresh.extend(sub_res.panes_to_refresh);
-                                        result_obj.task_panel_logs.extend(sub_res.task_panel_logs);
-                                        result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
+                                        result_obj.absorb(sub_res);
                                     }
                                     crate::job::DetectFileTypePurpose::FileInfoDisplay => {
                                         // On-demand detection requested from the still-open File
@@ -861,13 +872,24 @@ impl AppState {
                                                     let label = if crate::magic::is_mismatch(
                                                         ext, *kind,
                                                     ) {
-                                                        format!(
-                                                            "{} (mismatch — extension implies .{})",
-                                                            label, ext
-                                                        )
+                                                        if ext.is_empty() {
+                                                            format!(
+                                                                "{} (mismatch — file has no extension)",
+                                                                label
+                                                            )
+                                                        } else {
+                                                            format!(
+                                                                "{} (mismatch — extension implies .{})",
+                                                                label, ext
+                                                            )
+                                                        }
                                                     } else {
                                                         label
                                                     };
+                                                    result_obj.task_panel_logs.push(format!(
+                                                        "[System] Detected type: {} for {}",
+                                                        label, d.file_name
+                                                    ));
                                                     d.detected_type = Some(label);
                                                     d.detecting = false;
                                                     d.detected_type_job_id = None;
@@ -893,11 +915,7 @@ impl AppState {
                                         location: location.clone(),
                                     },
                                 );
-                                result_obj.jobs_to_start.extend(sub_res.jobs_to_start);
-                                result_obj.jobs_to_cancel.extend(sub_res.jobs_to_cancel);
-                                result_obj.panes_to_refresh.extend(sub_res.panes_to_refresh);
-                                result_obj.task_panel_logs.extend(sub_res.task_panel_logs);
-                                result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
+                                result_obj.absorb(sub_res);
                             } else if matches!(
                                 purpose,
                                 crate::job::DetectFileTypePurpose::FileInfoDisplay

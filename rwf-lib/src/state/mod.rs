@@ -891,6 +891,38 @@ pub struct StateUpdateResult {
 }
 
 impl StateUpdateResult {
+    /// Fold another result's side effects into this one.
+    ///
+    /// Destructures `other` BY VALUE so that adding a new field to
+    /// `StateUpdateResult` becomes a compile error here instead of a silently
+    /// dropped field — the hazard this replaces was hand-rolled
+    /// field-by-field merges at re-entrant `update_state` call sites (Phase
+    /// 7.3 code review follow-up).
+    pub fn absorb(&mut self, other: StateUpdateResult) {
+        let StateUpdateResult {
+            jobs_to_start,
+            jobs_to_cancel,
+            completed_jobs,
+            failed_jobs,
+            cancelled_jobs,
+            started_jobs,
+            task_panel_logs,
+            panes_to_refresh,
+            ui_changed,
+            reload_keybindings,
+        } = other;
+        self.jobs_to_start.extend(jobs_to_start);
+        self.jobs_to_cancel.extend(jobs_to_cancel);
+        self.completed_jobs.extend(completed_jobs);
+        self.failed_jobs.extend(failed_jobs);
+        self.cancelled_jobs.extend(cancelled_jobs);
+        self.started_jobs.extend(started_jobs);
+        self.task_panel_logs.extend(task_panel_logs);
+        self.panes_to_refresh.extend(panes_to_refresh);
+        self.ui_changed = self.ui_changed || ui_changed;
+        self.reload_keybindings = self.reload_keybindings || reload_keybindings;
+    }
+
     /// Create an empty result with no side effects
     pub fn none() -> Self {
         Self {
