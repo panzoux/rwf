@@ -32,10 +32,11 @@ fn type_mismatch_warning_elf_executable() {
     snapshot_dialog("type_mismatch_warning_elf", &dialog, &state);
 }
 
-/// The dialog's min-height is hardcoded to 10 rows regardless of path length
-/// (see `calculate_min_dialog_height`'s `TypeMismatchWarning` arm). This
-/// snapshot documents current behavior for a long, deeply nested path so a
-/// future height-calc change has a baseline to diff against.
+/// Regression guard for a long/deeply nested path: the dialog's min-height
+/// (the `TypeMismatchWarning` arm of the inline match in `render_dialog`,
+/// see mod.rs) sizes itself from how many rows the path wraps into. Before
+/// that fix this was hardcoded to 10 rows regardless of path length, which
+/// silently clipped the warning message off the bottom of the dialog.
 #[test]
 fn type_mismatch_warning_long_nested_path() {
     let state = test_state();
