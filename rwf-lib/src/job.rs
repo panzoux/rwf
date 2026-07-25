@@ -73,6 +73,23 @@ impl JobSpec {
         self.requesting_pane = Some((tab_idx, pane));
         self
     }
+
+    /// Build the `ExecuteCustomFunction` job that runs an extension association's
+    /// command. Shared by every call site that runs an association command
+    /// (with or without a preceding magic-byte mismatch check) so they can't
+    /// drift apart on `pipe_to_action` or future field additions.
+    pub fn execute_association(
+        command: String,
+        working_dir: Location,
+        shell: Option<String>,
+    ) -> Self {
+        Self::new(JobKind::ExecuteCustomFunction {
+            command,
+            working_dir,
+            pipe_to_action: None,
+            shell,
+        })
+    }
 }
 
 /// Types of background jobs

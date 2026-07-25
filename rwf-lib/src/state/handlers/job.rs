@@ -767,6 +767,13 @@ impl AppState {
                                         working_dir,
                                         shell,
                                     } => {
+                                        // Unlike CollectJumpCandidates above, this arm doesn't match
+                                        // completion against a `loading_job_id` still open on some
+                                        // dialog — there's nothing to correlate against. The purpose
+                                        // captured command/working_dir/shell at job-creation time, so
+                                        // this job carries everything needed to complete the action on
+                                        // its own; even a "stale" confirm just re-runs the originally
+                                        // captured command, which is harmless. No staleness guard needed.
                                         let ext = path
                                             .extension()
                                             .and_then(|e| e.to_str())
@@ -784,14 +791,13 @@ impl AppState {
                                             self.dialogs.push(dialog);
                                             result_obj.ui_changed = true;
                                         } else {
-                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(
-                                                crate::job::JobKind::ExecuteCustomFunction {
-                                                    command: command.clone(),
-                                                    working_dir: working_dir.clone(),
-                                                    pipe_to_action: None,
-                                                    shell: shell.clone(),
-                                                },
-                                            ));
+                                            result_obj.jobs_to_start.push(
+                                                crate::job::JobSpec::execute_association(
+                                                    command.clone(),
+                                                    working_dir.clone(),
+                                                    shell.clone(),
+                                                ),
+                                            );
                                         }
                                     }
                                     crate::job::DetectFileTypePurpose::FallbackOpen

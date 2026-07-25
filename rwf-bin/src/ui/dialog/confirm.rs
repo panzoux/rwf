@@ -519,13 +519,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 shell,
                 ..
             }) => {
-                return Some(rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::ExecuteCustomFunction {
-                        command: command.clone(),
-                        working_dir: working_dir.clone(),
-                        pipe_to_action: None,
-                        shell: shell.clone(),
-                    },
+                return Some(rwf_lib::job::JobSpec::execute_association(
+                    command.clone(),
+                    working_dir.clone(),
+                    shell.clone(),
                 ));
             }
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {

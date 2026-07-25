@@ -409,13 +409,11 @@ impl AppState {
                 working_dir,
                 shell,
             } => {
-                let job_spec =
-                    crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                        command: command.clone(),
-                        working_dir: working_dir.clone(),
-                        pipe_to_action: None,
-                        shell: shell.clone(),
-                    });
+                let job_spec = crate::job::JobSpec::execute_association(
+                    command.clone(),
+                    working_dir.clone(),
+                    shell.clone(),
+                );
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ExecuteAssociationChecked {
@@ -426,13 +424,11 @@ impl AppState {
             } => {
                 if !self.config.magic_byte_detection_enabled {
                     // Detection disabled: behave exactly like the direct ExecuteAssociation path.
-                    let job_spec =
-                        crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                            command: command.clone(),
-                            working_dir: working_dir.clone(),
-                            pipe_to_action: None,
-                            shell: shell.clone(),
-                        });
+                    let job_spec = crate::job::JobSpec::execute_association(
+                        command.clone(),
+                        working_dir.clone(),
+                        shell.clone(),
+                    );
                     Some(StateUpdateResult::with_job(job_spec))
                 } else {
                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
