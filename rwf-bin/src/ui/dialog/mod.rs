@@ -145,8 +145,21 @@ fn chunk_path_preview(text: &str, width: u16, max_lines: u16) -> Vec<Line<'stati
     out
 }
 
+/// Default dialog width: 60% of the screen, at least 40, capped to fit the
+/// screen minus its border columns. Shared by the width match's `_ => ...`
+/// arm below and by any dialog (like TypeMismatchWarning) whose height
+/// calculation needs to know its own eventual width before the width match
+/// runs — a single definition so the two can't drift apart.
+fn default_dialog_width(screen_width: u16) -> u16 {
+    ((screen_width * 60) / 100)
+        .max(40)
+        .min(screen_width.saturating_sub(2))
+}
+
 /// Render a dialog overlay centered on screen
 pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppState) {
+    let screen_width = frame.area().width;
+
     // Calculate minimum dialog height based on content type BEFORE rendering (Part 1.1, 1.2)
     let min_content_height = match &dialog.content {
         DialogContent::Compression { .. } => {
@@ -168,18 +181,19 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // 1, but a long/deeply nested path can take more — without this the warning
             // message gets silently clipped off the bottom of the dialog).
             //
-            // This mirrors the default `dialog_width` formula below (`_ => ...`) since
-            // TypeMismatchWarning has no width arm of its own; the two must stay in sync.
-            let screen_width = frame.area().width;
-            let width = ((screen_width * 60) / 100)
-                .max(40)
-                .min(screen_width.saturating_sub(2));
-            let content_width = width.saturating_sub(2).max(1) as usize;
+            // TypeMismatchWarning has no width arm of its own, so it uses
+            // default_dialog_width (same formula as the width match's `_ => ...` arm)
+            // to know how many columns the path has to wrap into.
+            let content_width =
+                default_dialog_width(screen_width).saturating_sub(2).max(1) as usize;
             let path_cols = {
                 use unicode_width::UnicodeWidthStr;
                 path.display().to_string().width()
             };
-            let path_rows = path_cols.div_ceil(content_width).max(1) as u16;
+            let path_rows = path_cols
+                .div_ceil(content_width)
+                .min(u16::MAX as usize)
+                .max(1) as u16;
             path_rows + 9
         }
         DialogContent::JobManager { .. } => {
@@ -277,7 +291,6 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
     let min_dialog_height = min_content_height + 2;
 
     let screen_height = frame.area().height;
-    let screen_width = frame.area().width;
 
     // For compression and job manager dialogs, use exact minimum height (no extra space)
     // For other dialogs, use 70% of screen or minimum, whichever is larger
@@ -370,9 +383,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::Help { .. } => ((screen_width * 70) / 100)
             .max(40)
             .min(screen_width.saturating_sub(2)),
-        _ => ((screen_width * 60) / 100)
-            .max(40)
-            .min(screen_width.saturating_sub(2)),
+        _ => default_dialog_width(screen_width),
     };
 
     let area = centered_rect_abs(dialog_width, dialog_height, frame.area());
