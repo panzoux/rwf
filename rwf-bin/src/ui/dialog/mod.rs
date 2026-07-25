@@ -99,6 +99,10 @@ pub enum DialogAction {
         title: String,
         items: Vec<rwf_lib::model::dialog::MenuItem>,
     },
+    /// On-demand content-type detection requested from the open File
+    /// Information dialog (Phase 7.3 §7). The dialog stays open; the app
+    /// loop dispatches `Transition::DetectFileInfoType` for its `file_path`.
+    DetectFileType,
 }
 
 fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
@@ -267,13 +271,19 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::JumpToFile(JumpToFileDialog { suggestions, .. }) => {
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
-        DialogContent::FileInfo(FileInfoDialog { link_target, .. }) => {
-            if link_target.is_some() {
-                12u16
+        DialogContent::FileInfo(FileInfoDialog {
+            link_target,
+            detecting,
+            detected_type,
+            ..
+        }) => {
+            let base = if link_target.is_some() { 12u16 } else { 11u16 };
+            if *detecting || detected_type.is_some() {
+                base + 1
             } else {
-                11u16
+                base
             }
-        } // name+path+size+type+3×datetime + hint (+1 for link row)
+        } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type)
         DialogContent::PatternRename(PatternRenameContent { preview, .. }) => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
@@ -683,6 +693,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             group,
             link_target,
             link_kind,
+            detecting,
+            detected_type,
             ..
         }) => {
             render_file_info_dialog(
@@ -704,6 +716,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 group.as_deref(),
                 link_target.as_deref(),
                 link_kind.as_ref(),
+                *detecting,
+                detected_type.as_deref(),
             );
         }
         DialogContent::PatternRename(PatternRenameContent {

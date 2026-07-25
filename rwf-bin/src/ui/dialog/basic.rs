@@ -14,8 +14,8 @@ use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
 use rwf_lib::model::dialog::{
     CompressionDialog, DeleteConfirmDialog, DialogContent, ErrorDialog,
-    ExtractionConfirmDialog as RwfExtractionConfirmDialog, InputDialog, JobManagerContent,
-    SortDialog,
+    ExtractionConfirmDialog as RwfExtractionConfirmDialog, FileInfoDialog, InputDialog,
+    JobManagerContent, SortDialog,
 };
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
@@ -443,6 +443,16 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
                 _ => {}
             }
             DialogAction::None
+        }
+        DialogContent::FileInfo(FileInfoDialog { detecting, .. }) => {
+            // 'd' starts on-demand content-type detection (Phase 7.3 §7).
+            // Enter/Esc already close the dialog; this key is otherwise unbound
+            // for FileInfo. Ignored while a detection job is already in flight.
+            if key.code == crossterm::event::KeyCode::Char('d') && !*detecting {
+                DialogAction::DetectFileType
+            } else {
+                DialogAction::None
+            }
         }
         _ => DialogAction::None,
     }

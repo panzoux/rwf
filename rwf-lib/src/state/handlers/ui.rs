@@ -540,6 +540,20 @@ impl AppState {
                     Some(StateUpdateResult::none())
                 }
             }
+            Transition::DetectFileInfoType { path } => {
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                    path: path.clone(),
+                    purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+                });
+                let job_id = job_spec.id;
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                        d.detecting = true;
+                        d.detected_type_job_id = Some(job_id);
+                    }
+                }
+                Some(StateUpdateResult::with_job(job_spec))
+            }
             Transition::ShowVersion => {
                 let dialog = crate::model::Dialog::version();
                 self.dialogs.push(dialog);

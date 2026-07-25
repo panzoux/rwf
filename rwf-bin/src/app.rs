@@ -1090,6 +1090,25 @@ impl App {
                     self.state.dialogs.push(menu_dialog);
                     return true;
                 }
+                crate::ui::dialog::DialogAction::DetectFileType => {
+                    // Dialog stays open — mirrors RotateLanguage above. Read the
+                    // path back off the still-open FileInfo dialog rather than
+                    // threading it through DialogAction.
+                    if let Some(rwf_lib::model::dialog::DialogContent::FileInfo(
+                        rwf_lib::model::dialog::FileInfoDialog { file_path, .. },
+                    )) = self.state.dialogs.current().map(|d| &d.content)
+                    {
+                        let path = std::path::PathBuf::from(file_path.clone());
+                        let result = rwf_lib::state::update_state(
+                            &mut self.state,
+                            rwf_lib::state::Transition::DetectFileInfoType { path },
+                        );
+                        for job_spec in result.jobs_to_start {
+                            self.pending_job_submission.push(job_spec);
+                        }
+                    }
+                    return true;
+                }
                 _ => return true,
             }
         }

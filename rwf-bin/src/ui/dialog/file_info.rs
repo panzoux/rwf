@@ -49,6 +49,8 @@ pub(super) fn render_file_info_dialog(
     #[cfg(unix)] group: Option<&str>,
     link_target: Option<&str>,
     link_kind: Option<&rwf_lib::model::LinkKind>,
+    detecting: bool,
+    detected_type: Option<&str>,
 ) {
     let base = crate::ui::dialog::common::DIALOG_TEXT;
     let label = crate::ui::dialog::common::DIALOG_DIM;
@@ -83,6 +85,15 @@ pub(super) fn render_file_info_dialog(
     rows.push(("Modified", fmt_time(Some(modified))));
     rows.push(("Accessed", fmt_time(accessed)));
 
+    let detected_line = if detecting {
+        Some("Detecting...".to_string())
+    } else {
+        detected_type.map(|dt| format!("Detected type: {}", dt))
+    };
+    if detected_line.is_some() {
+        rows.push(("", String::new()));
+    }
+
     let col_w = 9u16; // label column width ("Modified" = 8 chars + space)
     for (row_i, (lbl, val)) in rows.iter().enumerate() {
         let y = area.y + row_i as u16;
@@ -107,10 +118,20 @@ pub(super) fn render_file_info_dialog(
         );
     }
 
+    if let Some(text) = detected_line {
+        let y = area.y + rows.len() as u16;
+        if y + 1 < area.y + area.height {
+            frame.render_widget(
+                Paragraph::new(text).style(base),
+                Rect::new(area.x + 2, y, w as u16, 1),
+            );
+        }
+    }
+
     // Hint line
     let hint_y = area.y + area.height.saturating_sub(1);
     frame.render_widget(
-        Paragraph::new("Enter/Esc: close").style(hint),
+        Paragraph::new("Enter/Esc: close  d: detect type").style(hint),
         Rect::new(area.x + 2, hint_y, w as u16, 1),
     );
 }

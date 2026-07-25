@@ -671,6 +671,14 @@ pub enum Transition {
     },
     ShowDriveChangeDialog,
     ShowFileInfo,
+    /// On-demand content-type detection for the open File Information dialog
+    /// (Phase 7.3 §7): started only by an explicit keypress while the dialog
+    /// is open, never automatically by `ShowFileInfo`. Starts a
+    /// `JobKind::DetectFileType` job and records its id on the still-open
+    /// `FileInfoDialog` so the completion handler can find it again.
+    DetectFileInfoType {
+        path: std::path::PathBuf,
+    },
     ShowVersion,
     SaveLog,
     RotateHelpLanguage,

@@ -18,6 +18,9 @@ pub struct FileInfoDialog {
     pub group: Option<String>,
     pub link_target: Option<String>,
     pub link_kind: Option<crate::model::LinkKind>,
+    pub detected_type: Option<String>,
+    pub detecting: bool,
+    pub detected_type_job_id: Option<crate::job::JobId>,
 }
 
 impl FileInfoDialog {
@@ -54,6 +57,9 @@ impl FileInfoDialog {
             group,
             link_target,
             link_kind,
+            detected_type: None,
+            detecting: false,
+            detected_type_job_id: None,
         }
     }
 }

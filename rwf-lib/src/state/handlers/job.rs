@@ -828,7 +828,42 @@ impl AppState {
                                         result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
                                     }
                                     crate::job::DetectFileTypePurpose::FileInfoDisplay => {
-                                        // Not this task's scope (Task 6) — leave unhandled for now.
+                                        // On-demand detection requested from the still-open File
+                                        // Information dialog (Phase 7.3 §7). Mirrors the
+                                        // CollectJumpCandidates pattern above: scan the dialog
+                                        // stack (not just the top) for the FileInfo dialog whose
+                                        // detected_type_job_id matches this completed job, since
+                                        // other dialogs may have been pushed on top meanwhile.
+                                        let job_id_val = *job_id;
+                                        for dialog in self.dialogs.stack.iter_mut().rev() {
+                                            if let crate::model::dialog::DialogContent::FileInfo(
+                                                d,
+                                            ) = &mut dialog.content
+                                            {
+                                                if d.detected_type_job_id == Some(job_id_val) {
+                                                    let ext = path
+                                                        .extension()
+                                                        .and_then(|e| e.to_str())
+                                                        .unwrap_or("");
+                                                    let label = kind.label().to_string();
+                                                    let label = if crate::magic::is_mismatch(
+                                                        ext, *kind,
+                                                    ) {
+                                                        format!(
+                                                            "{} (mismatch — extension implies .{})",
+                                                            label, ext
+                                                        )
+                                                    } else {
+                                                        label
+                                                    };
+                                                    d.detected_type = Some(label);
+                                                    d.detecting = false;
+                                                    d.detected_type_job_id = None;
+                                                    result_obj.ui_changed = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             } else if let crate::job::DetectFileTypePurpose::FallbackOpen {
@@ -851,6 +886,27 @@ impl AppState {
                                 result_obj.panes_to_refresh.extend(sub_res.panes_to_refresh);
                                 result_obj.task_panel_logs.extend(sub_res.task_panel_logs);
                                 result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
+                            } else if matches!(
+                                purpose,
+                                crate::job::DetectFileTypePurpose::FileInfoDisplay
+                            ) {
+                                // Detection failed or was cancelled — clear `detecting` so the
+                                // dialog doesn't show "Detecting..." forever. Scan the stack the
+                                // same way as the success path above.
+                                let job_id_val = *job_id;
+                                for dialog in self.dialogs.stack.iter_mut().rev() {
+                                    if let crate::model::dialog::DialogContent::FileInfo(d) =
+                                        &mut dialog.content
+                                    {
+                                        if d.detected_type_job_id == Some(job_id_val) {
+                                            d.detecting = false;
+                                            d.detected_type_job_id = None;
+                                            d.detected_type = Some("detection failed".to_string());
+                                            result_obj.ui_changed = true;
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
                         // Batch "Open With..." (Phase 7.3 §3, multi-select): 2+ marked files

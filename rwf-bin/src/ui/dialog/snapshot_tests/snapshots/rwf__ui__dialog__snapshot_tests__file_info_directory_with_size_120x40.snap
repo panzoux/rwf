@@ -1,5 +1,6 @@
 ---
 source: rwf-bin/src/ui/dialog/snapshot_tests/mod.rs
+assertion_line: 91
 expression: "render_dialog_to_string(dialog, state, width, height)"
 ---
 Buffer {
@@ -29,7 +30,7 @@ Buffer {
         "                        │  Accessed N/A                                                        │                        ",
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
-        "                        │  Enter/Esc: close                                                    │                        ",
+        "                        │  Enter/Esc: close  d: detect type                                    │                        ",
         "                        └──────────────────────────────────────────────────────────────────────┘                        ",
         "                                                                                                                        ",
         "                                                                                                                        ",

@@ -850,4 +850,172 @@ mod tests {
         assert!(result.task_panel_logs[0].contains("[Skipped]"));
         assert!(result.task_panel_logs[0].contains("zzz"));
     }
+
+    /// Push a `FileInfo` dialog for `entry` onto the stack, exactly like
+    /// `Transition::ShowFileInfo` does — detection must never auto-run there
+    /// (Phase 7.3 §7); these tests drive `DetectFileInfoType` explicitly
+    /// afterwards.
+    fn push_file_info_dialog(state: &mut crate::AppState, entry: &crate::model::FileEntry) {
+        let dialog = crate::model::Dialog::file_info(entry);
+        state.dialogs.push(dialog);
+    }
+
+    /// Drive `Transition::DetectFileInfoType` through the real job-manager
+    /// lifecycle (transition -> enqueue -> start -> complete), mirroring
+    /// `run_fallback_open_job` above but for the File Information dialog's
+    /// on-demand detection.
+    fn run_detect_file_info_type_job(
+        state: &mut crate::AppState,
+        path: PathBuf,
+        result: OpResult,
+    ) -> crate::state::StateUpdateResult {
+        let transition_result =
+            update_state(state, Transition::DetectFileInfoType { path: path.clone() });
+        assert_eq!(
+            transition_result.jobs_to_start.len(),
+            1,
+            "DetectFileInfoType should start exactly one job"
+        );
+        let job_spec = transition_result.jobs_to_start[0].clone();
+        update_state(state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(state, Transition::StartNextJob);
+
+        update_state(state, Transition::CompleteJob { job_id, result })
+    }
+
+    /// Opening the File Information dialog (`ShowFileInfo`) must not start
+    /// any detection job by itself — detection is on-demand only (Phase 7.3
+    /// §7). This guards against a future regression re-wiring detection into
+    /// the dialog-open path.
+    #[test]
+    fn show_file_info_does_not_auto_detect() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result = update_state(&mut state, Transition::ShowFileInfo);
+
+        assert!(result.jobs_to_start.is_empty());
+        match &state
+            .dialogs
+            .current()
+            .expect("FileInfo dialog pushed")
+            .content
+        {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type, None);
+                assert_eq!(d.detected_type_job_id, None);
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// A plain non-executable kind (PNG) populates `detected_type` with just
+    /// the label, no mismatch note, and `detecting` goes true -> false across
+    /// the flow.
+    #[test]
+    fn detect_file_info_type_png_populates_label_without_mismatch() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+
+        // DetectFileInfoType sets `detecting` immediately, before the job completes.
+        let path = PathBuf::from(entry.location.display_path());
+        let transition_result = update_state(
+            &mut state,
+            Transition::DetectFileInfoType { path: path.clone() },
+        );
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => assert!(d.detecting),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+        let job_spec = transition_result.jobs_to_start[0].clone();
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Png)),
+            },
+        );
+
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type_job_id, None);
+                assert_eq!(d.detected_type.as_deref(), Some("PNG image"));
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// An executable detected under a mismatched extension (a `.txt` file
+    /// whose content is actually a Windows PE binary) appends the mismatch
+    /// note to the label.
+    #[test]
+    fn detect_file_info_type_pe_under_txt_extension_flags_mismatch() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("readme.txt").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Pe)),
+        );
+
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type_job_id, None);
+                let detected = d.detected_type.as_deref().expect("detected_type set");
+                assert!(detected.contains("Windows PE executable"));
+                assert!(detected.contains("mismatch"));
+                assert!(detected.contains(".txt"));
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// If the detect job fails or is cancelled, `detecting` must be cleared
+    /// so the dialog doesn't show "Detecting..." forever (no permanent
+    /// spinner regression).
+    #[test]
+    fn detect_file_info_type_failure_clears_detecting() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("mystery.bin").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Failed("file vanished".to_string()),
+        );
+
+        assert!(result.ui_changed);
+        // A generic job-failure Error dialog is also pushed on top of the
+        // still-open FileInfo dialog (same as any other failed job kind) —
+        // find the FileInfo dialog wherever it sits in the stack.
+        let file_info = state
+            .dialogs
+            .stack
+            .iter()
+            .find_map(|d| match &d.content {
+                DialogContent::FileInfo(d) => Some(d),
+                _ => None,
+            })
+            .expect("FileInfo dialog still on the stack");
+        assert!(!file_info.detecting);
+        assert_eq!(file_info.detected_type_job_id, None);
+    }
 }

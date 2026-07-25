@@ -65,3 +65,49 @@ fn file_info_symlink() {
     let dialog = Dialog::file_info(&entry);
     snapshot_dialog("file_info_symlink", &dialog, &state);
 }
+
+#[test]
+fn file_info_detected_type() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "photo.png".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/photo.png")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detected_type = Some("PNG image".to_string());
+    }
+    snapshot_dialog("file_info_detected_type", &dialog, &state);
+}
+
+#[test]
+fn file_info_detecting() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "photo.png".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/photo.png")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detecting = true;
+    }
+    snapshot_dialog("file_info_detecting", &dialog, &state);
+}
