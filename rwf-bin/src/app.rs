@@ -957,6 +957,21 @@ impl App {
                             // background-job registration (these are never deletes).
                             let batch_jobs: Vec<JobSpec> =
                                 self.state.pending_confirmation_jobs.drain(..).collect();
+                            if !batch_jobs.is_empty() {
+                                // Surface the batch start in the task panel — otherwise
+                                // opening several marked files gives no visible feedback,
+                                // unlike Copy/Delete which report progress.
+                                self.task_panel.add_log(
+                                    format!(
+                                        "{} Open With: started {} job(s)",
+                                        chrono::Local::now().format("[%H:%M:%S]"),
+                                        batch_jobs.len()
+                                    ),
+                                    crate::ui::task_panel::LogLevel::Info,
+                                );
+                                let h = self.state.ui.layout.task_panel_height;
+                                self.task_panel.scroll_to_end(h);
+                            }
                             for job_spec in batch_jobs {
                                 self.state.jobs.start_job(job_spec.clone());
                                 if let Some(ref pool) = self.worker_pool {
