@@ -444,14 +444,33 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::CheckFallbackFileType { location } => {
-                let path: std::path::PathBuf = location.display_path().into();
-                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
-                    path,
-                    purpose: crate::job::DetectFileTypePurpose::FallbackOpen {
-                        location: location.clone(),
-                    },
-                });
-                Some(StateUpdateResult::with_job(job_spec))
+                // Magic-byte detection only makes sense against a real filesystem
+                // path. `display_path()` for non-Local locations (Archive, Ssh,
+                // Cloud) is a synthetic string (e.g. "archive.zip#inner/notes.txt"),
+                // not something `std::fs` can open — a DetectFileType job against
+                // it would just fail. Skip detection for those and go straight to
+                // the text viewer, exactly like before this fallback existed (the
+                // viewer's LoadFileForViewer job is location-aware and handles
+                // Archive/Ssh/Cloud correctly).
+                match location {
+                    crate::model::Location::Local(_) => {
+                        let path: std::path::PathBuf = location.display_path().into();
+                        let job_spec =
+                            crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                                path,
+                                purpose: crate::job::DetectFileTypePurpose::FallbackOpen {
+                                    location: location.clone(),
+                                },
+                            });
+                        Some(StateUpdateResult::with_job(job_spec))
+                    }
+                    _ => Some(update_state(
+                        self,
+                        Transition::OpenTextViewer {
+                            location: location.clone(),
+                        },
+                    )),
+                }
             }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();

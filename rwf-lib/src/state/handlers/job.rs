@@ -831,6 +831,26 @@ impl AppState {
                                         // Not this task's scope (Task 6) — leave unhandled for now.
                                     }
                                 }
+                            } else if let crate::job::DetectFileTypePurpose::FallbackOpen {
+                                location,
+                            } = purpose
+                            {
+                                // Safety net: the detect job failed or was cancelled (e.g. the
+                                // file became unreadable between listing and detection, or a
+                                // non-Local location slipped through despite the CheckFallbackFileType
+                                // guard). Don't silently drop the open — fall back to the text
+                                // viewer, matching pre-Task-5 behavior for this fallback path.
+                                let sub_res = update_state(
+                                    self,
+                                    Transition::OpenTextViewer {
+                                        location: location.clone(),
+                                    },
+                                );
+                                result_obj.jobs_to_start.extend(sub_res.jobs_to_start);
+                                result_obj.jobs_to_cancel.extend(sub_res.jobs_to_cancel);
+                                result_obj.panes_to_refresh.extend(sub_res.panes_to_refresh);
+                                result_obj.task_panel_logs.extend(sub_res.task_panel_logs);
+                                result_obj.ui_changed = result_obj.ui_changed || sub_res.ui_changed;
                             }
                         }
                         // Batch "Open With..." (Phase 7.3 §3, multi-select): 2+ marked files

@@ -386,6 +386,83 @@ mod tests {
         );
     }
 
+    /// Regression test (post-dabc032 review): if the detect job fails or is
+    /// cancelled (e.g. the file became unreadable between listing and
+    /// detection), FallbackOpen must NOT silently drop the open — it falls
+    /// back to the text viewer, same as an Unknown detection result.
+    #[test]
+    fn fallback_open_failed_detection_still_opens_text_viewer() {
+        let mut state = test_state();
+        let location = Location::Local(PathBuf::from("/test/vanished.xyz"));
+
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path: PathBuf::from("/test/vanished.xyz"),
+            purpose: DetectFileTypePurpose::FallbackOpen {
+                location: location.clone(),
+            },
+        });
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("file vanished".to_string()),
+            },
+        );
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::LoadFileForViewer { location: loc, .. } => {
+                assert_eq!(loc, &location);
+            }
+            other => panic!("expected LoadFileForViewer, got {:?}", other),
+        }
+        assert_eq!(
+            state.viewer.as_ref().map(|v| v.mode),
+            Some(crate::model::ViewerMode::Text)
+        );
+    }
+
+    /// Guard test (post-dabc032 review): a non-Local location (Archive, Ssh,
+    /// Cloud) reaching CheckFallbackFileType must skip magic-byte detection
+    /// entirely (its display_path() is a synthetic string, not something
+    /// std::fs can read) and go straight to the text viewer, with NO detect
+    /// job started.
+    #[test]
+    fn check_fallback_file_type_skips_detection_for_archive_location() {
+        let mut state = test_state();
+        let location = Location::Archive {
+            archive_path: Box::new(Location::Local(PathBuf::from("/test/archive.zip"))),
+            inner_path: PathBuf::from("inner/notes.txt"),
+        };
+
+        let result = update_state(
+            &mut state,
+            Transition::CheckFallbackFileType {
+                location: location.clone(),
+            },
+        );
+
+        // No DetectFileType job — went straight to the viewer instead.
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::LoadFileForViewer { location: loc, .. } => {
+                assert_eq!(loc, &location);
+            }
+            other => panic!(
+                "expected LoadFileForViewer directly (no detect job), got {:?}",
+                other
+            ),
+        }
+        assert_eq!(
+            state.viewer.as_ref().map(|v| v.mode),
+            Some(crate::model::ViewerMode::Text)
+        );
+    }
+
     // ── ExecuteAssociationChecked gate (Phase 7.3 §5, magic-byte mismatch warning) ──
 
     #[test]
