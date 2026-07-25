@@ -442,6 +442,12 @@ impl AppState {
                     Some(StateUpdateResult::with_job(job_spec))
                 }
             }
+            Transition::ShowOpenWithPicker { candidates, path } => {
+                let dialog =
+                    crate::model::Dialog::open_with_picker(path.clone(), candidates.clone());
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();
 

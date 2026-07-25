@@ -23,6 +23,7 @@ mod history;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod open_with_picker;
 mod pattern_rename;
 mod registered_folder;
 mod simple_rename;
@@ -45,6 +46,7 @@ use help::render_help_dialog;
 use history::render_history_dialog;
 use jump_to_file::render_jump_to_file_dialog;
 use jump_to_path::render_jump_to_path_dialog;
+use open_with_picker::{candidate_label, render_open_with_picker};
 use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
 use simple_rename::render_simple_rename_dialog;
@@ -73,8 +75,8 @@ use rwf_lib::model::dialog::{
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
     HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
-    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    TypeMismatchWarningDialog, WildcardMarkDialog,
+    OpenWithPickerDialog, PatternRenameContent, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -250,6 +252,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // items + hint(1)
             (items.len() as u16 + 1).max(4)
         }
+        DialogContent::OpenWithPicker(OpenWithPickerDialog { candidates, .. }) => {
+            // candidates + hint(1)
+            (candidates.len() as u16 + 1).max(4)
+        }
         DialogContent::ContextMenu(ContextMenuDialog { options, .. }) => {
             // options list + hint(1)
             (options.len() as u16 + 1).max(4)
@@ -317,6 +323,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // Exact size, same as ContextMenu
             min_dialog_height.min(screen_height.saturating_sub(2))
         }
+        DialogContent::OpenWithPicker { .. } => {
+            // Exact size, same as ContextMenu/CustomFunctionMenu
+            min_dialog_height.min(screen_height.saturating_sub(2))
+        }
         DialogContent::ContextMenu(_) => {
             // Exact size for context menu
             min_dialog_height.min(screen_height.saturating_sub(2))
@@ -367,6 +377,16 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 .iter()
                 .filter(|i| i.is_selectable())
                 .map(|i| i.name.len())
+                .max()
+                .unwrap_or(10);
+            ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
+        }
+        DialogContent::OpenWithPicker(OpenWithPickerDialog { candidates, .. }) => {
+            // label fits with outer_width = max_label + 8 (2 border + 4 indent + 2 margin)
+            // hint "[Enter] Open  [Esc] Cancel" fits at offset+1 with width-2 when outer>=34
+            let max_label = candidates
+                .iter()
+                .map(|c| candidate_label(c).len())
                 .max()
                 .unwrap_or(10);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
@@ -596,6 +616,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             selected_index,
         }) => {
             render_custom_function_menu(frame, content_area, items, *selected_index);
+        }
+        DialogContent::OpenWithPicker(OpenWithPickerDialog {
+            candidates,
+            selected_index,
+            ..
+        }) => {
+            render_open_with_picker(frame, content_area, candidates, *selected_index);
         }
         DialogContent::ContextMenu(ContextMenuDialog {
             options,
@@ -968,6 +995,11 @@ pub fn handle_dialog_input(
     // CustomFunctionMenu — second-level menu with separator skipping and char-jump
     if let DialogContent::CustomFunctionMenu(d) = &mut dialog.content {
         return custom_function::handle_menu_input(d, key);
+    }
+
+    // OpenWithPicker — plain index navigation (Phase 7.3, no separators)
+    if let DialogContent::OpenWithPicker(d) = &mut dialog.content {
+        return open_with_picker::handle_input(d, key);
     }
 
     // RegisteredFolderSelector — incremental search + arrow navigation

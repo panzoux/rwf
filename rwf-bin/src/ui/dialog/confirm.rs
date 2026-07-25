@@ -6,7 +6,7 @@
 use rwf_lib::model::dialog::{
     CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
     DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
-    FileMaskDialog, HistoryDialogContent, InputDialog, PatternRenameContent,
+    FileMaskDialog, HistoryDialogContent, InputDialog, OpenWithPickerDialog, PatternRenameContent,
     RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog,
     WildcardMarkDialog,
 };
@@ -525,6 +525,40 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     shell.clone(),
                 ));
             }
+            DialogContent::OpenWithPicker(OpenWithPickerDialog {
+                path,
+                candidates,
+                selected_index,
+            }) => {
+                let path = path.clone();
+                let assoc = candidates.get(*selected_index).cloned();
+                if let Some(assoc) = assoc {
+                    let expander = rwf_lib::macro_expander::MacroExpander::new();
+                    let func = rwf_lib::model::dialog::CustomFunction::new("open", &assoc.command);
+                    let func = if let Some(ref shell) = assoc.shell {
+                        func.with_shell(shell)
+                    } else {
+                        func
+                    };
+                    if let Ok(command) = expander.expand(state, &func) {
+                        let working_dir = state.active_pane().current_location.clone();
+                        let shell = assoc.shell.clone();
+                        let result = rwf_lib::state::update_state(
+                            state,
+                            rwf_lib::state::Transition::ExecuteAssociationChecked {
+                                path,
+                                command,
+                                working_dir,
+                                shell,
+                            },
+                        );
+                        if let Some(job) = result.jobs_to_start.into_iter().next() {
+                            return Some(job);
+                        }
+                    }
+                }
+                return None;
+            }
             DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
                 folders,
                 selected_index,
@@ -736,6 +770,18 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                                 }
                             }
                         }
+                        ContextMenuAction::OpenWith => {
+                            let transitions = rwf_lib::input::action_to_transitions(
+                                state,
+                                &rwf_lib::input::Action::OpenWith,
+                            );
+                            for t in transitions {
+                                let result = rwf_lib::state::update_state(state, t);
+                                if let Some(job) = result.jobs_to_start.into_iter().next() {
+                                    return Some(job);
+                                }
+                            }
+                        }
                         ContextMenuAction::Separator => {}
                     }
                 }
@@ -908,5 +954,84 @@ mod tests {
         assert!(state.dialogs.is_empty());
         assert_eq!(state.jobs.queue.len(), 0);
         assert_eq!(state.jobs.active.len(), 0);
+    }
+
+    /// Confirming the OpenWithPicker dialog must expand and run the
+    /// *selected* candidate's command (Phase 7.3 §3) — not the first one —
+    /// routed through the same `ExecuteAssociationChecked` gate the
+    /// single-match EnterDirectory path uses.
+    #[test]
+    fn confirm_open_with_picker_runs_selected_candidate() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false; // exercise the direct path
+        let candidates = vec![
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "less".to_string(),
+                description: Some("View with less".to_string()),
+                shell: None,
+            },
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "notepad".to_string(),
+                description: Some("Edit with Notepad".to_string()),
+                shell: Some("cmd".to_string()),
+            },
+        ];
+        let mut dialog = Dialog::open_with_picker(PathBuf::from("/test/server.log"), candidates);
+        if let rwf_lib::model::dialog::DialogContent::OpenWithPicker(d) = &mut dialog.content {
+            d.selected_index = 1; // pick the second candidate, not the first
+        } else {
+            panic!("expected OpenWithPicker dialog");
+        }
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::ExecuteCustomFunction {
+                command,
+                shell,
+                pipe_to_action,
+                ..
+            } => {
+                assert_eq!(command, "notepad");
+                assert_eq!(shell, Some("cmd".to_string()));
+                assert!(pipe_to_action.is_none());
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// selected_index=0 (the default / only-navigated-away-from case) runs
+    /// the first candidate, confirming the picker isn't just always running
+    /// whichever candidate happens to be last.
+    #[test]
+    fn confirm_open_with_picker_default_selection_runs_first_candidate() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+        let candidates = vec![
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "less".to_string(),
+                description: None,
+                shell: None,
+            },
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "notepad".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let dialog = Dialog::open_with_picker(PathBuf::from("/test/server.log"), candidates);
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::ExecuteCustomFunction { command, .. } => {
+                assert_eq!(command, "less");
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
     }
 }

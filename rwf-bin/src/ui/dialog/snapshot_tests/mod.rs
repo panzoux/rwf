@@ -38,6 +38,7 @@ mod input;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod open_with_picker;
 mod pattern_rename;
 mod progress;
 mod registered_folder_selector;

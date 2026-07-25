@@ -637,6 +637,14 @@ pub enum Transition {
         working_dir: crate::model::Location,
         shell: Option<String>,
     },
+    /// Open the "Open With..." picker (Phase 7.3): shown when 2+ `ExtensionAssociation`
+    /// entries match the cursor entry's extension, so the user picks which to run
+    /// instead of the first match silently winning. Opens only; nothing runs until the
+    /// user confirms a selection (see `DialogContent::OpenWithPicker`'s confirm handler).
+    ShowOpenWithPicker {
+        candidates: Vec<crate::config::ExtensionAssociation>,
+        path: std::path::PathBuf,
+    },
     ShowDriveChangeDialog,
     ShowFileInfo,
     ShowVersion,

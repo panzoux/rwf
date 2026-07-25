@@ -25,6 +25,7 @@ mod input;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod open_with_picker;
 mod pattern_rename;
 mod progress;
 mod registered_folder_selector;
@@ -57,6 +58,7 @@ pub use input::InputDialog;
 pub use job_manager::JobManagerContent;
 pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
+pub use open_with_picker::OpenWithPickerDialog;
 pub use pattern_rename::PatternRenameContent;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
@@ -244,6 +246,9 @@ pub enum DialogContent {
     /// Magic-byte content-type mismatch warning before running an
     /// `ExtensionAssociation` command (Phase 7.3).
     TypeMismatchWarning(TypeMismatchWarningDialog),
+    /// Choose among multiple `ExtensionAssociation` candidates that match one
+    /// file's extension (Phase 7.3 "Open With..." picker).
+    OpenWithPicker(OpenWithPickerDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -282,6 +287,8 @@ pub enum ContextMenuAction {
     Delete,
     Rename,
     View,
+    /// Open the "Open With..." picker for the cursor entry (Phase 7.3).
+    OpenWith,
     CustomFunction(String),
     /// Visual separator — not selectable
     Separator,
@@ -640,6 +647,10 @@ impl Dialog {
             ContextMenuOption {
                 label: "View".to_string(),
                 action: ContextMenuAction::View,
+            },
+            ContextMenuOption {
+                label: "Open With...".to_string(),
+                action: ContextMenuAction::OpenWith,
             },
             ContextMenuOption {
                 label: "─────".to_string(),
@@ -1040,6 +1051,19 @@ impl Dialog {
                 working_dir,
                 shell,
             )),
+        }
+    }
+
+    /// Create an "Open With..." picker dialog (Phase 7.3): shown when 2+
+    /// `ExtensionAssociation` entries match the same extension so the user picks
+    /// which one to run instead of the first match silently winning.
+    pub fn open_with_picker(
+        path: std::path::PathBuf,
+        candidates: Vec<crate::config::ExtensionAssociation>,
+    ) -> Self {
+        Self {
+            title: "Open With...".to_string(),
+            content: DialogContent::OpenWithPicker(OpenWithPickerDialog::new(path, candidates)),
         }
     }
 }

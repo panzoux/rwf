@@ -499,6 +499,7 @@ pub enum Action {
     ShowFileInfoForCursor,
     OpenWithEditor, // open cursor file with Editor from config
     OpenWithSystem, // open cursor entry with OS default association (Ctrl+Enter)
+    OpenWith, // open cursor entry via ExtensionAssociation lookup, picker if 2+ matches (Phase 7.3)
     ShowVersion,
     ReloadConfig,
     ShowVersionInfo,        // compact version/system info (backtick key)
@@ -709,6 +710,74 @@ fn delete_job_name(targets: &[Location]) -> String {
     }
 }
 
+/// Resolve the `ExtensionAssociation`(s) matching `entry`'s extension and produce the
+/// Transition(s) that should follow (Phase 7.3).
+///
+/// - No match: `None` (caller falls through to the FileTypeMapping/text-viewer chain).
+/// - Exactly one match: expand its command and build `ExecuteAssociationChecked` (same
+///   behavior as before this helper was extracted).
+/// - Two or more matches: `ShowOpenWithPicker` so the user chooses which one to run;
+///   expansion happens later, in the picker's Confirm handler.
+fn resolve_extension_association(
+    state: &AppState,
+    entry: &crate::model::FileEntry,
+) -> Option<Vec<Transition>> {
+    let ext_lower = entry.extension()?.to_lowercase();
+    let candidates: Vec<crate::config::ExtensionAssociation> = state
+        .extension_associations
+        .iter()
+        .filter(|a| a.extension.trim_start_matches('.').to_lowercase() == ext_lower)
+        .cloned()
+        .collect();
+
+    match candidates.len() {
+        0 => None,
+        1 => {
+            let assoc = &candidates[0];
+            let expander = crate::macro_expander::MacroExpander::new();
+            let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
+            let func = if let Some(ref shell) = assoc.shell {
+                func.with_shell(shell)
+            } else {
+                func
+            };
+            match expander.expand(state, &func) {
+                Ok(command) => {
+                    debug!(
+                        "resolve_extension_association: running association command: {}",
+                        command
+                    );
+                    let working_dir = state.active_pane().current_location.clone();
+                    let shell = assoc.shell.clone();
+                    Some(vec![Transition::ExecuteAssociationChecked {
+                        path: entry.location.display_path().into(),
+                        command,
+                        working_dir,
+                        shell,
+                    }])
+                }
+                Err(_) => {
+                    debug!("resolve_extension_association: association command expansion failed, falling back to viewer");
+                    Some(vec![Transition::OpenTextViewer {
+                        location: entry.location.clone(),
+                    }])
+                }
+            }
+        }
+        _ => {
+            debug!(
+                "resolve_extension_association: {} candidates match extension '{}', showing picker",
+                candidates.len(),
+                ext_lower
+            );
+            Some(vec![Transition::ShowOpenWithPicker {
+                candidates,
+                path: entry.location.display_path().into(),
+            }])
+        }
+    }
+}
+
 /// Map an action to state transitions
 pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transition> {
     match action {
@@ -801,81 +870,51 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                             pane: state.ui.active_pane,
                             location: archive_location,
                         }]
-                    } else {
-                        // Check for file-type extension association (Phase 6.2)
-                        let assoc = entry.extension().and_then(|ext| {
-                            let ext_lower = ext.to_lowercase();
-                            state.extension_associations.iter().find(|a| {
-                                a.extension.trim_start_matches('.').to_lowercase() == ext_lower
+                    } else if let Some(transitions) = resolve_extension_association(state, entry) {
+                        // Check for file-type extension association (Phase 6.2 / 7.3)
+                        transitions
+                    } else if let Some(action) = entry.extension().and_then(|ext| {
+                        let ext_lower = ext.to_lowercase();
+                        state
+                            .file_type_map
+                            .iter()
+                            .find(|m| {
+                                m.extension.trim_start_matches('.').to_lowercase() == ext_lower
                             })
-                        });
-                        if let Some(assoc) = assoc {
-                            let expander = crate::macro_expander::MacroExpander::new();
-                            let func =
-                                crate::model::dialog::CustomFunction::new("open", &assoc.command);
-                            let func = if let Some(ref shell) = assoc.shell {
-                                func.with_shell(shell)
-                            } else {
-                                func
-                            };
-                            match expander.expand(state, &func) {
-                                Ok(command) => {
-                                    debug!(
-                                        "EnterDirectory: running association command: {}",
-                                        command
-                                    );
-                                    let working_dir = state.active_pane().current_location.clone();
-                                    let shell = assoc.shell.clone();
-                                    vec![Transition::ExecuteAssociationChecked {
-                                        path: entry.location.display_path().into(),
-                                        command,
-                                        working_dir,
-                                        shell,
-                                    }]
-                                }
-                                Err(_) => {
-                                    debug!("EnterDirectory: association command expansion failed, falling back to viewer");
-                                    vec![Transition::OpenTextViewer {
-                                        location: entry.location.clone(),
-                                    }]
-                                }
+                            .and_then(|m| {
+                                m.actions
+                                    .iter()
+                                    .find(|a| **a != crate::config::FileOpenAction::Unknown)
+                            })
+                    }) {
+                        match action {
+                            crate::config::FileOpenAction::OsDefault => {
+                                debug!(
+                                    "EnterDirectory: opening {} via OS default association",
+                                    entry.name
+                                );
+                                vec![Transition::OpenWithSystem {
+                                    path: entry.location.display_path(),
+                                }]
                             }
-                        } else if let Some(action) = entry.extension().and_then(|ext| {
-                            let ext_lower = ext.to_lowercase();
-                            state
-                                .file_type_map
-                                .iter()
-                                .find(|m| {
-                                    m.extension.trim_start_matches('.').to_lowercase() == ext_lower
-                                })
-                                .and_then(|m| {
-                                    m.actions
-                                        .iter()
-                                        .find(|a| **a != crate::config::FileOpenAction::Unknown)
-                                })
-                        }) {
-                            match action {
-                                crate::config::FileOpenAction::OsDefault => {
-                                    debug!(
-                                        "EnterDirectory: opening {} via OS default association",
-                                        entry.name
-                                    );
-                                    vec![Transition::OpenWithSystem {
-                                        path: entry.location.display_path(),
-                                    }]
-                                }
-                                crate::config::FileOpenAction::Unknown => {
-                                    unreachable!("filtered out by the .find() above")
-                                }
+                            crate::config::FileOpenAction::Unknown => {
+                                unreachable!("filtered out by the .find() above")
                             }
-                        } else {
-                            debug!("EnterDirectory: opening text viewer for {}", entry.name);
-                            vec![Transition::OpenTextViewer {
-                                location: entry.location.clone(),
-                            }]
                         }
+                    } else {
+                        debug!("EnterDirectory: opening text viewer for {}", entry.name);
+                        vec![Transition::OpenTextViewer {
+                            location: entry.location.clone(),
+                        }]
                     }
                 }
+            } else {
+                vec![]
+            }
+        }
+        Action::OpenWith => {
+            if let Some(entry) = state.active_pane().current_entry() {
+                resolve_extension_association(state, entry).unwrap_or_default()
             } else {
                 vec![]
             }
