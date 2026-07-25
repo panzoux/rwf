@@ -149,10 +149,22 @@ impl AppState {
 
                 if let crate::job::OpResult::Failed(ref error_message) = result {
                     if let Some(ref spec) = job_spec {
-                        // ExecuteCustomFunction failures go to the task panel log only (no modal)
+                        // ExecuteCustomFunction failures go to the task panel log only (no
+                        // modal). DetectFileType/FileInfoDisplay failures also skip the modal:
+                        // the still-open File Information dialog already shows its own
+                        // "detection failed" line (Phase 7.3 §7) — a second, stacked Error
+                        // dialog for the same failure would be redundant. Other DetectFileType
+                        // purposes (CheckAssociationMismatch, FallbackOpen) have no in-dialog
+                        // feedback of their own, so they still surface the generic Error dialog.
                         let skip_dialog = matches!(
                             &spec.kind,
                             crate::job::JobKind::ExecuteCustomFunction { .. }
+                        ) || matches!(
+                            &spec.kind,
+                            crate::job::JobKind::DetectFileType {
+                                purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+                                ..
+                            }
                         );
                         let op_name = match &spec.kind {
                             crate::job::JobKind::ReadDirectory { .. } => "Read directory",

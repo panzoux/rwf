@@ -21,6 +21,12 @@ pub struct FileInfoDialog {
     pub detected_type: Option<String>,
     pub detecting: bool,
     pub detected_type_job_id: Option<crate::job::JobId>,
+    /// True when the entry's `Location` is `Location::Local` (Phase 7.3 §7).
+    /// On-demand content-type detection does real filesystem I/O, which is
+    /// meaningless for archive-internal or remote entries — `false` here
+    /// makes the 'd' handler report "not available" instead of starting a
+    /// doomed job.
+    pub is_local: bool,
 }
 
 impl FileInfoDialog {
@@ -39,6 +45,7 @@ impl FileInfoDialog {
         #[cfg(unix)] group: Option<String>,
         link_target: Option<String>,
         link_kind: Option<crate::model::LinkKind>,
+        is_local: bool,
     ) -> Self {
         Self {
             file_name,
@@ -60,6 +67,7 @@ impl FileInfoDialog {
             detected_type: None,
             detecting: false,
             detected_type_job_id: None,
+            is_local,
         }
     }
 }

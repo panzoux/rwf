@@ -988,9 +988,12 @@ mod tests {
 
     /// If the detect job fails or is cancelled, `detecting` must be cleared
     /// so the dialog doesn't show "Detecting..." forever (no permanent
-    /// spinner regression).
+    /// spinner regression). It must NOT also push a generic job-failure
+    /// Error dialog on top — the in-dialog "detection failed" line is
+    /// sufficient feedback on its own; a second, stacked failure signal for
+    /// the same event would be redundant (code review follow-up on 06c78de).
     #[test]
-    fn detect_file_info_type_failure_clears_detecting() {
+    fn detect_file_info_type_failure_clears_detecting_without_error_dialog() {
         let mut state = test_state();
         let entry = FileEntryBuilder::new("mystery.bin").dir(false).build();
         push_file_info_dialog(&mut state, &entry);
@@ -1003,19 +1006,64 @@ mod tests {
         );
 
         assert!(result.ui_changed);
-        // A generic job-failure Error dialog is also pushed on top of the
-        // still-open FileInfo dialog (same as any other failed job kind) —
-        // find the FileInfo dialog wherever it sits in the stack.
-        let file_info = state
+        // Exactly one dialog remains: the FileInfo dialog itself. No stacked
+        // Error dialog from the generic job-failure path.
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state
             .dialogs
-            .stack
-            .iter()
-            .find_map(|d| match &d.content {
-                DialogContent::FileInfo(d) => Some(d),
-                _ => None,
+            .current()
+            .expect("FileInfo dialog still open")
+            .content
+        {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type_job_id, None);
+                assert_eq!(d.detected_type.as_deref(), Some("detection failed"));
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// `d` on a File Information dialog for a non-Local entry (e.g. an
+    /// archive-internal file) must not start a detection job — the
+    /// synthetic `display_path()` (like `archive.zip#inner.txt`) isn't a
+    /// real filesystem path, so a real detect job would just fail. Instead
+    /// it immediately reports "not available" (code review follow-up on
+    /// 06c78de, same guard philosophy as Task 5's Local-only fallback
+    /// detection).
+    #[test]
+    fn detect_file_info_type_non_local_reports_not_available_without_job() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("inner.txt")
+            .location(Location::Archive {
+                archive_path: Box::new(Location::Local(PathBuf::from("/test/archive.zip"))),
+                inner_path: PathBuf::from("inner.txt"),
             })
-            .expect("FileInfo dialog still on the stack");
-        assert!(!file_info.detecting);
-        assert_eq!(file_info.detected_type_job_id, None);
+            .dir(false)
+            .build();
+        push_file_info_dialog(&mut state, &entry);
+        assert!(!matches!(
+            &state.dialogs.current().expect("dialog pushed").content,
+            DialogContent::FileInfo(d) if d.is_local
+        ));
+
+        let path = PathBuf::from(entry.location.display_path());
+        let result = update_state(&mut state, Transition::DetectFileInfoType { path });
+
+        assert!(
+            result.jobs_to_start.is_empty(),
+            "non-Local FileInfo dialog must not start a detect job"
+        );
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert!(!d.detecting);
+                assert_eq!(d.detected_type_job_id, None);
+                assert_eq!(
+                    d.detected_type.as_deref(),
+                    Some("not available for this location")
+                );
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
     }
 }

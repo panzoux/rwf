@@ -541,6 +541,31 @@ impl AppState {
                 }
             }
             Transition::DetectFileInfoType { path } => {
+                // Content-type detection does real filesystem I/O, which is meaningless
+                // for archive-internal or remote entries (Phase 7.3 §7, same guard
+                // philosophy as Task 5's Local-only fallback detection). Report "not
+                // available" instead of starting a doomed job.
+                let is_local = matches!(
+                    self.dialogs.current(),
+                    Some(crate::model::dialog::Dialog {
+                        content: crate::model::dialog::DialogContent::FileInfo(
+                            crate::model::dialog::FileInfoDialog { is_local: true, .. }
+                        ),
+                        ..
+                    })
+                );
+                if !is_local {
+                    if let Some(dialog) = self.dialogs.current_mut() {
+                        if let crate::model::dialog::DialogContent::FileInfo(d) =
+                            &mut dialog.content
+                        {
+                            d.detected_type = Some("not available for this location".to_string());
+                            d.detecting = false;
+                            d.detected_type_job_id = None;
+                        }
+                    }
+                    return Some(StateUpdateResult::with_ui_change());
+                }
                 let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
                     path: path.clone(),
                     purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,

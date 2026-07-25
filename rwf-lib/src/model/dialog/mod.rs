@@ -744,6 +744,8 @@ impl Dialog {
             false
         };
 
+        let is_local = matches!(entry.location, crate::model::Location::Local(_));
+
         let link_target = entry.link_target.as_ref().map(|p| {
             let s = p.to_string_lossy().into_owned();
             if let Some(stripped) = s.strip_prefix(r"\??\") {
@@ -772,6 +774,7 @@ impl Dialog {
                 group,
                 link_target,
                 entry.link_kind.clone(),
+                is_local,
             )),
         }
     }
