@@ -76,6 +76,34 @@ impl AppState {
         }
     }
 
+    /// Build the job that `Transition::ExecuteAssociationChecked` would start for
+    /// one file: a `DetectFileType { CheckAssociationMismatch }` job when
+    /// `magic_byte_detection_enabled`, else a direct `ExecuteCustomFunction` job
+    /// (via `JobSpec::execute_association`). Extracted (Phase 7.3 Task 4) so the
+    /// batch "Open With..." flow (one job per file in a group, run through the
+    /// same mismatch gate) and the single-file `ExecuteAssociationChecked` handler
+    /// share one implementation instead of drifting apart.
+    pub(crate) fn checked_association_job(
+        &self,
+        path: std::path::PathBuf,
+        command: String,
+        working_dir: crate::model::Location,
+        shell: Option<String>,
+    ) -> crate::job::JobSpec {
+        if !self.config.magic_byte_detection_enabled {
+            crate::job::JobSpec::execute_association(command, working_dir, shell)
+        } else {
+            crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                path,
+                purpose: crate::job::DetectFileTypePurpose::CheckAssociationMismatch {
+                    command,
+                    working_dir,
+                    shell,
+                },
+            })
+        }
+    }
+
     /// Build a job that opens `file_path` with the OS's default file association
     /// (Windows `start`, macOS `open`, Linux `xdg-open`). Always fire-and-forget —
     /// unlike `editor_job`, there is no "wait for exit" mode, since the whole point

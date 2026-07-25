@@ -422,31 +422,26 @@ impl AppState {
                 working_dir,
                 shell,
             } => {
-                if !self.config.magic_byte_detection_enabled {
-                    // Detection disabled: behave exactly like the direct ExecuteAssociation path.
-                    let job_spec = crate::job::JobSpec::execute_association(
-                        command.clone(),
-                        working_dir.clone(),
-                        shell.clone(),
-                    );
-                    Some(StateUpdateResult::with_job(job_spec))
-                } else {
-                    let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
-                        path: path.clone(),
-                        purpose: crate::job::DetectFileTypePurpose::CheckAssociationMismatch {
-                            command: command.clone(),
-                            working_dir: working_dir.clone(),
-                            shell: shell.clone(),
-                        },
-                    });
-                    Some(StateUpdateResult::with_job(job_spec))
-                }
+                let job_spec = self.checked_association_job(
+                    path.clone(),
+                    command.clone(),
+                    working_dir.clone(),
+                    shell.clone(),
+                );
+                Some(StateUpdateResult::with_job(job_spec))
             }
-            Transition::ShowOpenWithPicker { candidates, path } => {
+            Transition::ShowOpenWithPicker { candidates, paths } => {
                 let dialog =
-                    crate::model::Dialog::open_with_picker(path.clone(), candidates.clone());
+                    crate::model::Dialog::open_with_picker(paths.clone(), candidates.clone());
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::StartBatchOpenWith { paths } => {
+                let job_spec =
+                    crate::job::JobSpec::new(crate::job::JobKind::DetectFileTypesBatch {
+                        paths: paths.clone(),
+                    });
+                Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();

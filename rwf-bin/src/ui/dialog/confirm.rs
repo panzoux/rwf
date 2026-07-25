@@ -526,27 +526,43 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 ));
             }
             DialogContent::OpenWithPicker(OpenWithPickerDialog {
-                path,
+                paths,
                 candidates,
                 selected_index,
             }) => {
-                let path = path.clone();
+                let paths = paths.clone();
                 let assoc = candidates.get(*selected_index).cloned();
                 if let Some(assoc) = assoc {
                     if let Ok((command, working_dir, shell)) =
                         rwf_lib::expand_association_command(state, &assoc)
                     {
-                        let result = rwf_lib::state::update_state(
-                            state,
-                            rwf_lib::state::Transition::ExecuteAssociationChecked {
-                                path,
-                                command,
-                                working_dir,
-                                shell,
-                            },
-                        );
-                        if let Some(job) = result.jobs_to_start.into_iter().next() {
-                            return Some(job);
+                        // One job per file, each routed through the same
+                        // ExecuteAssociationChecked gate Task 2 built (per-file magic-byte
+                        // mismatch warnings still apply). A single-file picker (the
+                        // ordinary cursor-file flow) produces exactly one job, returned
+                        // the same way it always was; a multi-file picker (batch
+                        // "Open With..." on a marked-file group, Phase 7.3 Task 4)
+                        // produces N jobs, which `process_dialog_confirmation`'s single
+                        // `Option<JobSpec>` return can't carry — those go through
+                        // `pending_confirmation_jobs` instead, drained by app.rs
+                        // alongside the single-job path.
+                        let mut jobs: Vec<rwf_lib::job::JobSpec> = Vec::with_capacity(paths.len());
+                        for path in paths {
+                            let result = rwf_lib::state::update_state(
+                                state,
+                                rwf_lib::state::Transition::ExecuteAssociationChecked {
+                                    path,
+                                    command: command.clone(),
+                                    working_dir: working_dir.clone(),
+                                    shell: shell.clone(),
+                                },
+                            );
+                            jobs.extend(result.jobs_to_start);
+                        }
+                        if jobs.len() == 1 {
+                            return jobs.into_iter().next();
+                        } else if !jobs.is_empty() {
+                            state.pending_confirmation_jobs.extend(jobs);
                         }
                     }
                 }
@@ -987,7 +1003,8 @@ mod tests {
                 shell: Some("cmd".to_string()),
             },
         ];
-        let mut dialog = Dialog::open_with_picker(PathBuf::from("/test/server.log"), candidates);
+        let mut dialog =
+            Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates);
         if let rwf_lib::model::dialog::DialogContent::OpenWithPicker(d) = &mut dialog.content {
             d.selected_index = 1; // pick the second candidate, not the first
         } else {
@@ -1032,7 +1049,7 @@ mod tests {
                 shell: None,
             },
         ];
-        let dialog = Dialog::open_with_picker(PathBuf::from("/test/server.log"), candidates);
+        let dialog = Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates);
         state.dialogs.push(dialog);
 
         let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
@@ -1041,6 +1058,62 @@ mod tests {
                 assert_eq!(command, "less");
             }
             other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// Confirming a widened picker over a marked-file group (Phase 7.3 Task 4,
+    /// batch "Open With...") must start one job per file. `process_dialog_confirmation`'s
+    /// single `Option<JobSpec>` return can't carry 3 jobs, so they're routed through
+    /// `state.pending_confirmation_jobs` instead (decision C) — verify all 3 land there,
+    /// nothing is returned directly, and each carries the selected candidate's command.
+    #[test]
+    fn confirm_open_with_picker_multi_file_group_starts_job_per_file() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+        let candidates = vec![
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "less".to_string(),
+                description: None,
+                shell: None,
+            },
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "notepad".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let mut dialog = Dialog::open_with_picker(
+            vec![
+                PathBuf::from("/test/a.log"),
+                PathBuf::from("/test/b.log"),
+                PathBuf::from("/test/c.log"),
+            ],
+            candidates,
+        );
+        if let rwf_lib::model::dialog::DialogContent::OpenWithPicker(d) = &mut dialog.content {
+            d.selected_index = 1; // "notepad"
+        } else {
+            panic!("expected OpenWithPicker dialog");
+        }
+        state.dialogs.push(dialog);
+
+        assert!(state.pending_confirmation_jobs.is_empty());
+        let job_spec = process_dialog_confirmation(&mut state);
+        assert!(
+            job_spec.is_none(),
+            "3-file group must route through pending_confirmation_jobs, not the single-job return"
+        );
+
+        assert_eq!(state.pending_confirmation_jobs.len(), 3);
+        for job in &state.pending_confirmation_jobs {
+            match &job.kind {
+                rwf_lib::job::JobKind::ExecuteCustomFunction { command, .. } => {
+                    assert_eq!(command, "notepad");
+                }
+                other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+            }
         }
     }
 

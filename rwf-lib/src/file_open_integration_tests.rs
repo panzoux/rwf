@@ -63,9 +63,9 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowOpenWithPicker { candidates, path } => {
+            Transition::ShowOpenWithPicker { candidates, paths } => {
                 assert_eq!(candidates.len(), 2);
-                assert_eq!(path, &PathBuf::from(expected_path));
+                assert_eq!(paths, &vec![PathBuf::from(expected_path)]);
             }
             other => panic!("expected ShowOpenWithPicker, got {:?}", other),
         }
@@ -197,13 +197,13 @@ mod tests {
                 shell: None,
             },
         ];
-        let path = PathBuf::from("/test/server.log");
+        let paths = vec![PathBuf::from("/test/server.log")];
 
         let result = update_state(
             &mut state,
             Transition::ShowOpenWithPicker {
                 candidates: candidates.clone(),
-                path: path.clone(),
+                paths: paths.clone(),
             },
         );
 
@@ -212,7 +212,7 @@ mod tests {
         match &state.dialogs.current().expect("dialog pushed").content {
             DialogContent::OpenWithPicker(d) => {
                 assert_eq!(d.candidates.len(), 2);
-                assert_eq!(d.path, path);
+                assert_eq!(d.paths, paths);
                 assert_eq!(d.selected_index, 0);
             }
             other => panic!("expected OpenWithPicker dialog, got {:?}", other),
@@ -429,5 +429,223 @@ mod tests {
             JobKind::ExecuteCustomFunction { .. } => {}
             other => panic!("expected ExecuteCustomFunction, got {:?}", other),
         }
+    }
+
+    // ── Batch "Open With..." on marked files (Phase 7.3 §3, Task 4) ──────────
+
+    #[test]
+    fn action_open_with_two_marked_files_starts_batch() {
+        let mut state = test_state();
+        let entry_a = FileEntryBuilder::new("a.log").dir(false).build();
+        let entry_b = FileEntryBuilder::new("b.log").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry_a.clone(), entry_b.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry_a.clone(), entry_b.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(entry_a.location.clone());
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(entry_b.location.clone());
+
+        let transitions = action_to_transitions(&state, &Action::OpenWith);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::StartBatchOpenWith { paths } => assert_eq!(paths.len(), 2),
+            other => panic!("expected StartBatchOpenWith, got {:?}", other),
+        }
+    }
+
+    /// Exactly one marked file must NOT trigger the batch flow — it falls
+    /// through to the ordinary cursor-file flow, same as zero marked
+    /// (matches the `Action::Copy` marked-file convention).
+    #[test]
+    fn action_open_with_one_marked_file_uses_single_file_flow() {
+        let mut state = test_state();
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: "log".to_string(),
+            command: "less $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        let entry = FileEntryBuilder::new("server.log").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+        state
+            .current_tab_mut()
+            .left_pane
+            .marking
+            .mark(entry.location.clone());
+
+        let transitions = action_to_transitions(&state, &Action::OpenWith);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ExecuteAssociationChecked { .. } => {}
+            other => panic!(
+                "expected ExecuteAssociationChecked (single marked = cursor flow), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn start_batch_open_with_transition_starts_detect_batch_job() {
+        let mut state = test_state();
+        let paths = vec![PathBuf::from("/test/a.log"), PathBuf::from("/test/b.log")];
+
+        let result = update_state(
+            &mut state,
+            Transition::StartBatchOpenWith {
+                paths: paths.clone(),
+            },
+        );
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::DetectFileTypesBatch { paths: job_paths } => {
+                assert_eq!(job_paths, &paths)
+            }
+            other => panic!("expected DetectFileTypesBatch, got {:?}", other),
+        }
+    }
+
+    /// Drive a `DetectFileTypesBatch` job through the real job-manager lifecycle
+    /// (enqueue -> start -> complete), mirroring `run_detect_file_type_job` above
+    /// but for the batch job kind.
+    fn run_detect_file_types_batch_job(
+        state: &mut crate::AppState,
+        paths: Vec<PathBuf>,
+        detections: Vec<(PathBuf, DetectedKind)>,
+    ) -> crate::state::StateUpdateResult {
+        let job_spec = JobSpec::new(JobKind::DetectFileTypesBatch { paths });
+        update_state(state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(state, Transition::StartNextJob);
+
+        update_state(
+            state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypesDetected(detections)),
+            },
+        )
+    }
+
+    #[test]
+    fn batch_open_with_two_files_same_group_one_candidate_starts_two_jobs() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false; // simpler job-kind assertions
+                                                           // No $F/$W/$E macro in the command: `expand_association_command` expands
+                                                           // against the active pane's *cursor* entry, not per-group-file (Task 3
+                                                           // never needed otherwise, since its single-file flow always targets the
+                                                           // cursor). The batch flow reuses that same expansion once per group and
+                                                           // applies it to every file in the group unchanged — a real, documented
+                                                           // limitation (see the commit message / task report), not something this
+                                                           // test is trying to exercise.
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: "png".to_string(),
+            command: "viewer".to_string(),
+            description: None,
+            shell: None,
+        }];
+
+        let paths = vec![PathBuf::from("/test/a.png"), PathBuf::from("/test/b.png")];
+        let detections = vec![
+            (paths[0].clone(), DetectedKind::Png),
+            (paths[1].clone(), DetectedKind::Png),
+        ];
+
+        let result = run_detect_file_types_batch_job(&mut state, paths, detections);
+
+        assert!(state.dialogs.is_empty());
+        assert_eq!(result.jobs_to_start.len(), 2);
+        for job in &result.jobs_to_start {
+            match &job.kind {
+                JobKind::ExecuteCustomFunction { command, .. } => {
+                    assert_eq!(command, "viewer")
+                }
+                other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+            }
+        }
+    }
+
+    /// Mixed batch: one group resolves to exactly one candidate (auto-runs as a
+    /// job per file) and another resolves to 2+ candidates (pushes a picker for
+    /// just that group's files) in the same `CompleteJob` result.
+    #[test]
+    fn batch_open_with_mixed_groups_produces_jobs_and_picker() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: "png".to_string(),
+                command: "viewer".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: "pdf".to_string(),
+                command: "reader1".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: "pdf".to_string(),
+                command: "reader2".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+
+        let png_path = PathBuf::from("/test/a.png");
+        let pdf_path = PathBuf::from("/test/b.pdf");
+        let paths = vec![png_path.clone(), pdf_path.clone()];
+        let detections = vec![
+            (png_path.clone(), DetectedKind::Png),
+            (pdf_path.clone(), DetectedKind::Pdf),
+        ];
+
+        let result = run_detect_file_types_batch_job(&mut state, paths, detections);
+
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => assert_eq!(command, "viewer"),
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("picker pushed").content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.candidates.len(), 2);
+                assert_eq!(d.paths, vec![pdf_path]);
+            }
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
+        }
+    }
+
+    /// A group with no matching `ExtensionAssociation` is skipped (no job, no
+    /// picker) and logged to the task panel — Open With is association-only,
+    /// same as the single-file `Action::OpenWith` returning nothing on no match.
+    #[test]
+    fn batch_open_with_no_candidates_skips_and_logs() {
+        let mut state = test_state();
+        state.extension_associations = Vec::new();
+
+        let path = PathBuf::from("/test/a.zzz");
+        let paths = vec![path.clone()];
+        let detections = vec![(path.clone(), DetectedKind::Unknown)];
+
+        let result = run_detect_file_types_batch_job(&mut state, paths, detections);
+
+        assert!(result.jobs_to_start.is_empty());
+        assert!(state.dialogs.is_empty());
+        assert_eq!(result.task_panel_logs.len(), 1);
+        assert!(result.task_panel_logs[0].contains("[Skipped]"));
+        assert!(result.task_panel_logs[0].contains("zzz"));
     }
 }

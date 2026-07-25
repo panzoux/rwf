@@ -63,6 +63,12 @@ pub struct AppState {
     pub config_load_results: Vec<crate::config::ConfigLoadResult>,
     /// Staging: logs produced by dialog-confirmation built-in actions (drained by app.rs each frame)
     pub pending_confirmation_logs: Vec<String>,
+    /// Staging: jobs a dialog confirmation needs to start beyond the single job
+    /// `process_dialog_confirmation`'s `Option<JobSpec>` return can carry (Phase 7.3
+    /// batch "Open With...": confirming a picker for a marked-file group starts one
+    /// job per file). Drained and submitted by app.rs each frame, mirroring
+    /// `pending_confirmation_logs`. Not used by transition handlers — app-integration only.
+    pub pending_confirmation_jobs: Vec<crate::job::JobSpec>,
     /// Staging: set true when a dialog confirmation triggered ReloadConfig (app.rs reloads keybindings)
     pub confirmation_needs_keybinding_reload: bool,
     /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
@@ -209,6 +215,7 @@ impl AppState {
             custom_functions,
             config_load_results,
             pending_confirmation_logs: Vec::new(),
+            pending_confirmation_jobs: Vec::new(),
             confirmation_needs_keybinding_reload: false,
             pending_custom_function_input: None,
             suppress_next_dialog_pop: false,
@@ -641,9 +648,18 @@ pub enum Transition {
     /// entries match the cursor entry's extension, so the user picks which to run
     /// instead of the first match silently winning. Opens only; nothing runs until the
     /// user confirms a selection (see `DialogContent::OpenWithPicker`'s confirm handler).
+    /// `paths` is a single-element vec for the ordinary cursor-file flow, or a group of
+    /// marked files sharing a (DetectedKind, extension) pair for the batch flow.
     ShowOpenWithPicker {
         candidates: Vec<crate::config::ExtensionAssociation>,
-        path: std::path::PathBuf,
+        paths: Vec<std::path::PathBuf>,
+    },
+    /// Start the batch "Open With..." flow (Phase 7.3 §3): 2+ marked files were
+    /// targeted by `Action::OpenWith`. Kicks off `JobKind::DetectFileTypesBatch` to
+    /// classify all of them; the completion handler groups by (DetectedKind,
+    /// extension) and routes each group (skip / auto-run / picker) from there.
+    StartBatchOpenWith {
+        paths: Vec<std::path::PathBuf>,
     },
     ShowDriveChangeDialog,
     ShowFileInfo,

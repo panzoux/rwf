@@ -949,6 +949,20 @@ impl App {
                                     pool.submit_job(job_spec);
                                 }
                             }
+                            // Drain jobs staged for a multi-job confirm (Phase 7.3 batch
+                            // "Open With...": confirming a picker over a marked-file group
+                            // starts one job per file, which `confirmed_job`'s single
+                            // `Option<JobSpec>` can't carry). Same submission sequence as
+                            // the single confirmed_job path above, minus Delete-specific
+                            // background-job registration (these are never deletes).
+                            let batch_jobs: Vec<JobSpec> =
+                                self.state.pending_confirmation_jobs.drain(..).collect();
+                            for job_spec in batch_jobs {
+                                self.state.jobs.start_job(job_spec.clone());
+                                if let Some(ref pool) = self.worker_pool {
+                                    pool.submit_job(job_spec);
+                                }
+                            }
                         }
                     }
                     if should_pop {

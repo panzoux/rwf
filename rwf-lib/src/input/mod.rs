@@ -732,6 +732,24 @@ pub fn expand_association_command(
     Ok((command, working_dir, shell))
 }
 
+/// Resolve the `ExtensionAssociation`(s) whose extension matches `ext_lower`
+/// (already lowercased, no leading dot). Shared by `resolve_extension_association`
+/// (single cursor-file flow) and the `DetectFileTypesBatch` completion handler
+/// (`state/handlers/job.rs`, batch "Open With..." flow, Phase 7.3 Task 4) so the
+/// two lookup call sites can't drift apart on the extension-normalization rules
+/// (case-insensitive, leading-dot-tolerant).
+pub fn candidates_for_extension(
+    state: &AppState,
+    ext_lower: &str,
+) -> Vec<crate::config::ExtensionAssociation> {
+    state
+        .extension_associations
+        .iter()
+        .filter(|a| a.extension.trim_start_matches('.').to_lowercase() == ext_lower)
+        .cloned()
+        .collect()
+}
+
 /// Resolve the `ExtensionAssociation`(s) matching `entry`'s extension and produce the
 /// Transition(s) that should follow (Phase 7.3).
 ///
@@ -745,12 +763,7 @@ fn resolve_extension_association(
     entry: &crate::model::FileEntry,
 ) -> Option<Vec<Transition>> {
     let ext_lower = entry.extension()?.to_lowercase();
-    let candidates: Vec<crate::config::ExtensionAssociation> = state
-        .extension_associations
-        .iter()
-        .filter(|a| a.extension.trim_start_matches('.').to_lowercase() == ext_lower)
-        .cloned()
-        .collect();
+    let candidates = candidates_for_extension(state, &ext_lower);
 
     match candidates.len() {
         0 => None,
@@ -785,7 +798,7 @@ fn resolve_extension_association(
             );
             Some(vec![Transition::ShowOpenWithPicker {
                 candidates,
-                path: entry.location.display_path().into(),
+                paths: vec![entry.location.display_path().into()],
             }])
         }
     }
@@ -926,7 +939,23 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }
         }
         Action::OpenWith => {
-            if let Some(entry) = state.active_pane().current_entry() {
+            let pane = state.active_pane();
+            let marked: Vec<_> = pane
+                .entries
+                .iter()
+                .filter(|e| pane.marking.is_marked(&e.location))
+                .map(|e| e.location.clone())
+                .collect();
+
+            if marked.len() >= 2 {
+                // Batch flow (Phase 7.3 §3): detect all marked files' content types,
+                // group by (DetectedKind, extension), and route each group from the
+                // DetectFileTypesBatch completion handler. Exactly 1 or 0 marked falls
+                // through below to the ordinary single cursor-file flow.
+                let paths: Vec<std::path::PathBuf> =
+                    marked.iter().map(|loc| loc.display_path().into()).collect();
+                vec![Transition::StartBatchOpenWith { paths }]
+            } else if let Some(entry) = pane.current_entry() {
                 resolve_extension_association(state, entry).unwrap_or_default()
             } else {
                 vec![]

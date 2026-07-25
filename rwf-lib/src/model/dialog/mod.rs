@@ -1057,13 +1057,23 @@ impl Dialog {
     /// Create an "Open With..." picker dialog (Phase 7.3): shown when 2+
     /// `ExtensionAssociation` entries match the same extension so the user picks
     /// which one to run instead of the first match silently winning.
+    ///
+    /// `paths` is usually a single file (cursor-file flow); when it holds 2+
+    /// entries (batch "Open With..." on marked files, Phase 7.3 §3), the
+    /// title notes the file count since the picker otherwise gives no
+    /// indication it will apply the chosen candidate to a whole group.
     pub fn open_with_picker(
-        path: std::path::PathBuf,
+        paths: Vec<std::path::PathBuf>,
         candidates: Vec<crate::config::ExtensionAssociation>,
     ) -> Self {
+        let title = if paths.len() > 1 {
+            format!("Open With... ({} files)", paths.len())
+        } else {
+            "Open With...".to_string()
+        };
         Self {
-            title: "Open With...".to_string(),
-            content: DialogContent::OpenWithPicker(OpenWithPickerDialog::new(path, candidates)),
+            title,
+            content: DialogContent::OpenWithPicker(OpenWithPickerDialog::new(paths, candidates)),
         }
     }
 }

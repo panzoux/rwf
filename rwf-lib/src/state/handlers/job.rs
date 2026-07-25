@@ -808,6 +808,64 @@ impl AppState {
                                 }
                             }
                         }
+                        // Batch "Open With..." (Phase 7.3 §3, multi-select): 2+ marked files
+                        // were detected together for grouping purposes only — each group's
+                        // execution still goes through the same per-file ExecuteAssociationChecked
+                        // gate as the single-file flow (see `checked_association_job`), so
+                        // per-file magic-byte mismatch warnings still fire. No multi-path
+                        // command execution (MacroExpander has no such support); this is a
+                        // deliberate deviation from the plan's literal "pass all paths as
+                        // arguments" wording.
+                        crate::job::JobKind::DetectFileTypesBatch { .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::FileTypesDetected(pairs),
+                            ) = result
+                            {
+                                let groups = group_by_kind_and_ext(pairs.clone());
+                                for ((_kind, ext), paths) in groups {
+                                    let candidates =
+                                        crate::input::candidates_for_extension(self, &ext);
+                                    match candidates.len() {
+                                        0 => {
+                                            result_obj.task_panel_logs.push(format!(
+                                                "[Skipped] No association for group .{} ({} files)",
+                                                ext,
+                                                paths.len()
+                                            ));
+                                        }
+                                        1 => {
+                                            let assoc = &candidates[0];
+                                            if let Ok((command, working_dir, shell)) =
+                                                crate::input::expand_association_command(
+                                                    self, assoc,
+                                                )
+                                            {
+                                                for path in paths {
+                                                    result_obj.jobs_to_start.push(
+                                                        self.checked_association_job(
+                                                            path,
+                                                            command.clone(),
+                                                            working_dir.clone(),
+                                                            shell.clone(),
+                                                        ),
+                                                    );
+                                                }
+                                            }
+                                            // Expansion failure: Open With is association-only
+                                            // (no viewer fallback, matching Action::OpenWith's
+                                            // single-file behavior) — skip the group silently.
+                                        }
+                                        _ => {
+                                            let dialog = crate::model::Dialog::open_with_picker(
+                                                paths, candidates,
+                                            );
+                                            self.dialogs.push(dialog);
+                                            result_obj.ui_changed = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -879,5 +937,127 @@ impl AppState {
             }
             _ => None,
         }
+    }
+}
+
+/// Group `(path, detected_kind)` pairs by the `(DetectedKind, extension)` pair
+/// (Phase 7.3 §3, batch "Open With..."). Two-level grouping because
+/// `ExtensionAssociation` candidates are keyed on extension, not content type —
+/// primary key is the detected kind, secondary key is the extension, so each
+/// resulting group has exactly one extension and therefore one candidate set.
+///
+/// Order is preserved: groups appear in first-occurrence order, and within a
+/// group paths appear in input order. `DetectFileTypesBatch`'s executor
+/// preserves the input path order (see `execute_detect_file_types_batch`), so
+/// this makes grouping deterministic without requiring `Ord` on `DetectedKind`.
+pub(crate) fn group_by_kind_and_ext(
+    pairs: Vec<(std::path::PathBuf, crate::magic::DetectedKind)>,
+) -> Vec<(
+    (crate::magic::DetectedKind, String),
+    Vec<std::path::PathBuf>,
+)> {
+    let mut groups: Vec<(
+        (crate::magic::DetectedKind, String),
+        Vec<std::path::PathBuf>,
+    )> = Vec::new();
+    for (path, kind) in pairs {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let key = (kind, ext);
+        if let Some(existing) = groups.iter_mut().find(|(k, _)| *k == key) {
+            existing.1.push(path);
+        } else {
+            groups.push((key, vec![path]));
+        }
+    }
+    groups
+}
+
+#[cfg(test)]
+mod group_by_kind_and_ext_tests {
+    use super::group_by_kind_and_ext;
+    use crate::magic::DetectedKind;
+    use std::path::PathBuf;
+
+    #[test]
+    fn groups_by_kind_and_extension_pair() {
+        let pairs = vec![
+            (PathBuf::from("/a.png"), DetectedKind::Png),
+            (PathBuf::from("/b.png"), DetectedKind::Png),
+            (PathBuf::from("/c.pdf"), DetectedKind::Pdf),
+        ];
+        let groups = group_by_kind_and_ext(pairs);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, (DetectedKind::Png, "png".to_string()));
+        assert_eq!(
+            groups[0].1,
+            vec![PathBuf::from("/a.png"), PathBuf::from("/b.png")]
+        );
+        assert_eq!(groups[1].0, (DetectedKind::Pdf, "pdf".to_string()));
+        assert_eq!(groups[1].1, vec![PathBuf::from("/c.pdf")]);
+    }
+
+    #[test]
+    fn same_extension_different_kind_forms_separate_groups() {
+        // A .dat file that's actually a PNG vs. a .dat file that's actually a PDF:
+        // same extension, different detected content type -> must not merge, since
+        // they'd resolve to the same ExtensionAssociation candidates by extension
+        // alone but the grouping key is (kind, ext), not just ext.
+        let pairs = vec![
+            (PathBuf::from("/a.dat"), DetectedKind::Png),
+            (PathBuf::from("/b.dat"), DetectedKind::Pdf),
+        ];
+        let groups = group_by_kind_and_ext(pairs);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, (DetectedKind::Png, "dat".to_string()));
+        assert_eq!(groups[1].0, (DetectedKind::Pdf, "dat".to_string()));
+    }
+
+    #[test]
+    fn extension_is_lowercased_for_grouping() {
+        let pairs = vec![
+            (PathBuf::from("/a.PNG"), DetectedKind::Png),
+            (PathBuf::from("/b.png"), DetectedKind::Png),
+        ];
+        let groups = group_by_kind_and_ext(pairs);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].1.len(), 2);
+    }
+
+    #[test]
+    fn no_extension_groups_under_empty_string() {
+        let pairs = vec![
+            (PathBuf::from("/Makefile"), DetectedKind::Unknown),
+            (PathBuf::from("/README"), DetectedKind::Unknown),
+        ];
+        let groups = group_by_kind_and_ext(pairs);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].0, (DetectedKind::Unknown, String::new()));
+        assert_eq!(groups[0].1.len(), 2);
+    }
+
+    #[test]
+    fn empty_input_produces_no_groups() {
+        assert!(group_by_kind_and_ext(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn preserves_first_occurrence_order_across_interleaved_input() {
+        let pairs = vec![
+            (PathBuf::from("/a.png"), DetectedKind::Png),
+            (PathBuf::from("/b.pdf"), DetectedKind::Pdf),
+            (PathBuf::from("/c.png"), DetectedKind::Png),
+        ];
+        let groups = group_by_kind_and_ext(pairs);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, (DetectedKind::Png, "png".to_string()));
+        assert_eq!(
+            groups[0].1,
+            vec![PathBuf::from("/a.png"), PathBuf::from("/c.png")]
+        );
+        assert_eq!(groups[1].0, (DetectedKind::Pdf, "pdf".to_string()));
     }
 }
