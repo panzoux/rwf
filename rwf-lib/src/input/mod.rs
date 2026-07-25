@@ -710,6 +710,28 @@ fn delete_job_name(targets: &[Location]) -> String {
     }
 }
 
+/// Expand an `ExtensionAssociation`'s command via `MacroExpander`, returning
+/// `(command, working_dir, shell)` on success. Shared by
+/// `resolve_extension_association`'s single-match branch and the Open With
+/// picker's Confirm handler (`rwf-bin/src/ui/dialog/confirm.rs`) so the two
+/// expansion call sites can't drift apart (Phase 7.3).
+pub fn expand_association_command(
+    state: &AppState,
+    assoc: &crate::config::ExtensionAssociation,
+) -> Result<(String, Location, Option<String>), String> {
+    let expander = crate::macro_expander::MacroExpander::new();
+    let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
+    let func = if let Some(ref shell) = assoc.shell {
+        func.with_shell(shell)
+    } else {
+        func
+    };
+    let command = expander.expand(state, &func)?;
+    let working_dir = state.active_pane().current_location.clone();
+    let shell = assoc.shell.clone();
+    Ok((command, working_dir, shell))
+}
+
 /// Resolve the `ExtensionAssociation`(s) matching `entry`'s extension and produce the
 /// Transition(s) that should follow (Phase 7.3).
 ///
@@ -734,21 +756,12 @@ fn resolve_extension_association(
         0 => None,
         1 => {
             let assoc = &candidates[0];
-            let expander = crate::macro_expander::MacroExpander::new();
-            let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
-            let func = if let Some(ref shell) = assoc.shell {
-                func.with_shell(shell)
-            } else {
-                func
-            };
-            match expander.expand(state, &func) {
-                Ok(command) => {
+            match expand_association_command(state, assoc) {
+                Ok((command, working_dir, shell)) => {
                     debug!(
                         "resolve_extension_association: running association command: {}",
                         command
                     );
-                    let working_dir = state.active_pane().current_location.clone();
-                    let shell = assoc.shell.clone();
                     Some(vec![Transition::ExecuteAssociationChecked {
                         path: entry.location.display_path().into(),
                         command,

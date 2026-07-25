@@ -533,16 +533,9 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 let path = path.clone();
                 let assoc = candidates.get(*selected_index).cloned();
                 if let Some(assoc) = assoc {
-                    let expander = rwf_lib::macro_expander::MacroExpander::new();
-                    let func = rwf_lib::model::dialog::CustomFunction::new("open", &assoc.command);
-                    let func = if let Some(ref shell) = assoc.shell {
-                        func.with_shell(shell)
-                    } else {
-                        func
-                    };
-                    if let Ok(command) = expander.expand(state, &func) {
-                        let working_dir = state.active_pane().current_location.clone();
-                        let shell = assoc.shell.clone();
+                    if let Ok((command, working_dir, shell)) =
+                        rwf_lib::expand_association_command(state, &assoc)
+                    {
                         let result = rwf_lib::state::update_state(
                             state,
                             rwf_lib::state::Transition::ExecuteAssociationChecked {
@@ -771,15 +764,31 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             }
                         }
                         ContextMenuAction::OpenWith => {
+                            // 2+ candidates: OpenWith pushes the picker dialog and starts
+                            // no job. The generic post-confirm path in app.rs pops
+                            // whatever is now on top of the stack (the picker we just
+                            // pushed, not this ContextMenu) unless we suppress it — same
+                            // idiom the "Custom Function Input" $I case above uses.
+                            // 0/1 candidates never push a dialog here, so the ContextMenu
+                            // must pop normally in those cases.
+                            let depth_before = state.dialogs.stack.len();
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
                                 &rwf_lib::input::Action::OpenWith,
                             );
+                            let mut job_to_return = None;
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
                                 if let Some(job) = result.jobs_to_start.into_iter().next() {
-                                    return Some(job);
+                                    job_to_return = Some(job);
+                                    break;
                                 }
+                            }
+                            if state.dialogs.stack.len() > depth_before {
+                                state.suppress_next_dialog_pop = true;
+                            }
+                            if let Some(job) = job_to_return {
+                                return Some(job);
                             }
                         }
                         ContextMenuAction::Separator => {}
@@ -876,7 +885,7 @@ fn resolve_menu_item_action(
 mod tests {
     use super::*;
     use rwf_lib::magic::DetectedKind;
-    use rwf_lib::model::dialog::Dialog;
+    use rwf_lib::model::dialog::{ContextMenuAction, ContextMenuOption, Dialog};
     use rwf_lib::model::Location;
     use rwf_lib::{AppConfig, AppState};
     use std::path::PathBuf;
@@ -1033,5 +1042,145 @@ mod tests {
             }
             other => panic!("expected ExecuteCustomFunction, got {:?}", other),
         }
+    }
+
+    /// Places `entry` as the cursor entry of the active (left) pane so
+    /// `Action::OpenWith` (delegated to via `ContextMenuAction::OpenWith`)
+    /// has something to resolve extension associations against.
+    fn set_cursor_entry(state: &mut AppState, entry: rwf_lib::model::FileEntry) {
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+    }
+
+    fn log_file_entry(name: &str) -> rwf_lib::model::FileEntry {
+        rwf_lib::model::FileEntry {
+            name: name.to_string(),
+            location: rwf_lib::model::Location::Local(PathBuf::from(format!("/test/{name}"))),
+            size: 100,
+            is_dir: false,
+            is_hidden: false,
+            modified: std::time::SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    /// Regression test for the ghost-dialog bug: selecting "Open With..."
+    /// from the ContextMenu with 2+ matching associations must leave the
+    /// picker on top of the stack, not have it silently popped away by the
+    /// generic post-confirm path (see `suppress_next_dialog_pop` in the
+    /// `ContextMenuAction::OpenWith` arm above). This drives the real
+    /// `process_dialog_confirmation` dispatch the way `app.rs` does, then
+    /// asserts the survived stack shape.
+    #[test]
+    fn confirm_context_menu_open_with_two_candidates_leaves_picker_on_stack() {
+        let mut state = test_state();
+        set_cursor_entry(&mut state, log_file_entry("server.log"));
+        state.extension_associations = vec![
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "less".to_string(),
+                description: None,
+                shell: None,
+            },
+            rwf_lib::config::ExtensionAssociation {
+                extension: "log".to_string(),
+                command: "notepad".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let mut dialog =
+            rwf_lib::model::dialog::Dialog::context_menu_with_options(vec![ContextMenuOption {
+                label: "Open With...".to_string(),
+                action: ContextMenuAction::OpenWith,
+            }]);
+        if let DialogContent::ContextMenu(ContextMenuDialog { selected_index, .. }) =
+            &mut dialog.content
+        {
+            *selected_index = 0;
+        }
+        state.dialogs.push(dialog);
+        let depth_before_confirm = state.dialogs.stack.len();
+
+        let job_spec = process_dialog_confirmation(&mut state);
+        assert!(
+            job_spec.is_none(),
+            "picker push starts no job synchronously"
+        );
+        assert!(
+            state.suppress_next_dialog_pop,
+            "must suppress the generic post-confirm pop so it doesn't eat the picker"
+        );
+
+        // Replicate app.rs's post-confirm handling: check + consume the
+        // suppress flag, only pop if it wasn't set.
+        let mut should_pop = true;
+        if state.suppress_next_dialog_pop {
+            state.suppress_next_dialog_pop = false;
+            should_pop = false;
+        }
+        if should_pop {
+            state.dialogs.pop();
+        }
+
+        assert_eq!(
+            state.dialogs.stack.len(),
+            depth_before_confirm + 1,
+            "picker should have been pushed on top of the ContextMenu, not replaced it"
+        );
+        match &state.dialogs.current().expect("picker on top").content {
+            DialogContent::OpenWithPicker(d) => assert_eq!(d.candidates.len(), 2),
+            other => panic!(
+                "expected OpenWithPicker on top of the stack, got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Companion case: with 0 matching associations, `action_to_transitions`
+    /// returns nothing, no dialog is pushed, and the ContextMenu must pop
+    /// normally (not suppressed, no ghost left behind).
+    #[test]
+    fn confirm_context_menu_open_with_no_candidates_pops_normally() {
+        let mut state = test_state();
+        set_cursor_entry(&mut state, log_file_entry("notes.md"));
+        state.extension_associations = Vec::new();
+        let mut dialog =
+            rwf_lib::model::dialog::Dialog::context_menu_with_options(vec![ContextMenuOption {
+                label: "Open With...".to_string(),
+                action: ContextMenuAction::OpenWith,
+            }]);
+        if let DialogContent::ContextMenu(ContextMenuDialog { selected_index, .. }) =
+            &mut dialog.content
+        {
+            *selected_index = 0;
+        }
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state);
+        assert!(job_spec.is_none());
+        assert!(
+            !state.suppress_next_dialog_pop,
+            "no dialog was pushed, so the ContextMenu must pop normally"
+        );
+
+        let mut should_pop = true;
+        if state.suppress_next_dialog_pop {
+            state.suppress_next_dialog_pop = false;
+            should_pop = false;
+        }
+        if should_pop {
+            state.dialogs.pop();
+        }
+
+        assert!(
+            state.dialogs.is_empty(),
+            "ContextMenu should have popped normally, leaving no ghost dialog"
+        );
     }
 }

@@ -153,7 +153,7 @@ pub use help_content::{
 };
 pub use input::{
     action_to_transitions, check_keybindings_content_duplicates, check_keybindings_duplicates,
-    format_key_event, Action, ArchiveFormat, KeyBindings,
+    expand_association_command, format_key_event, Action, ArchiveFormat, KeyBindings,
 };
 pub use job::{Job, JobId, JobKind, JobManager, JobResult, JobSpec};
 pub use log_manager::{LogEntry, LogEntryLevel, LogManager};
