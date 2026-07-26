@@ -444,12 +444,20 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             }
             DialogAction::None
         }
-        DialogContent::FileInfo(FileInfoDialog { detecting, .. }) => {
+        DialogContent::FileInfo(FileInfoDialog {
+            detecting,
+            header_bytes,
+            ..
+        }) => {
             // 'd' starts on-demand content-type detection (Phase 7.3 §7).
-            // Enter/Esc already close the dialog; this key is otherwise unbound
-            // for FileInfo. Ignored while a detection job is already in flight.
+            // 't' toggles the header-bytes hex/text view (Phase 7.3b, Task
+            // 10) — only meaningful once detection has produced bytes to
+            // show. Enter/Esc already close the dialog; these keys are
+            // otherwise unbound for FileInfo.
             if key.code == crossterm::event::KeyCode::Char('d') && !*detecting {
                 DialogAction::DetectFileType
+            } else if key.code == crossterm::event::KeyCode::Char('t') && header_bytes.is_some() {
+                DialogAction::ToggleHeaderView
             } else {
                 DialogAction::None
             }

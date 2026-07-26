@@ -21,6 +21,12 @@ pub struct FileInfoDialog {
     pub detected_type: Option<String>,
     pub detecting: bool,
     pub detected_type_job_id: Option<crate::job::JobId>,
+    /// Leading bytes (up to 64) used for content-type detection, for audit
+    /// display alongside `detected_type` (Phase 7.3b, Task 10). `None` until
+    /// detection completes successfully; stays `None` on failure/cancel.
+    pub header_bytes: Option<Vec<u8>>,
+    /// true = hex/offset/ASCII view, false = raw text view. Defaults to true.
+    pub header_hex_mode: bool,
     /// True when the entry's `Location` is `Location::Local` (Phase 7.3 §7).
     /// On-demand content-type detection does real filesystem I/O, which is
     /// meaningless for archive-internal or remote entries — `false` here
@@ -67,6 +73,8 @@ impl FileInfoDialog {
             detected_type: None,
             detecting: false,
             detected_type_job_id: None,
+            header_bytes: None,
+            header_hex_mode: true,
             is_local,
         }
     }

@@ -1069,7 +1069,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
 
         match detect_file_type_blocking(path.to_path_buf()).await {
-            Ok(kind) => OpResult::Success(SuccessData::FileTypeDetected(kind)),
+            Ok((kind, header_bytes)) => {
+                OpResult::Success(SuccessData::FileTypeDetected { kind, header_bytes })
+            }
             Err(e) => OpResult::Failed(format!(
                 "Failed to detect file type for {}: {}",
                 path.display(),
@@ -1097,6 +1099,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
             let kind = detect_file_type_blocking(path.clone())
                 .await
+                .map(|(kind, _header_bytes)| kind)
                 .unwrap_or(crate::magic::DetectedKind::Unknown);
             results.push((path.clone(), kind));
         }
@@ -1966,7 +1969,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 /// large-file read path in `execute_load_file_for_viewer`.
 async fn detect_file_type_blocking(
     path: std::path::PathBuf,
-) -> std::io::Result<crate::magic::DetectedKind> {
+) -> std::io::Result<(crate::magic::DetectedKind, Vec<u8>)> {
     const SNIFF_LEN: usize = 300;
 
     tokio::task::spawn_blocking(move || {
@@ -1974,7 +1977,8 @@ async fn detect_file_type_blocking(
         let size = file.metadata()?.len();
         let seekable = SeekableFile::new(file, size);
         let sample = seekable.read_bytes(0, SNIFF_LEN.min(size as usize))?;
-        Ok(crate::magic::detect_kind(&sample))
+        let kind = crate::magic::detect_kind(&sample);
+        Ok((kind, sample))
     })
     .await
     .unwrap_or_else(|e| Err(std::io::Error::other(e.to_string())))
@@ -2296,13 +2300,16 @@ mod tests {
         let event = event_rx.recv().await;
         assert!(matches!(event, Some(JobEvent::Started(_))));
         let event = event_rx.recv().await;
-        assert!(matches!(
-            event,
-            Some(JobEvent::Completed(
-                _,
-                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Png)
-            ))
-        ));
+        let Some(JobEvent::Completed(_, SuccessData::FileTypeDetected { kind, header_bytes })) =
+            event
+        else {
+            panic!("expected FileTypeDetected, got {:?}", event);
+        };
+        assert_eq!(kind, crate::magic::DetectedKind::Png);
+        assert_eq!(
+            &header_bytes[..8],
+            &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        );
     }
 
     #[tokio::test]
@@ -2334,7 +2341,10 @@ mod tests {
             event,
             Some(JobEvent::Completed(
                 _,
-                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Unknown)
+                SuccessData::FileTypeDetected {
+                    kind: crate::magic::DetectedKind::Unknown,
+                    ..
+                }
             ))
         ));
     }
@@ -2448,7 +2458,10 @@ mod tests {
             event,
             Some(JobEvent::Completed(
                 _,
-                SuccessData::FileTypeDetected(crate::magic::DetectedKind::Unknown)
+                SuccessData::FileTypeDetected {
+                    kind: crate::magic::DetectedKind::Unknown,
+                    ..
+                }
             ))
         ));
     }

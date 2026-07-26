@@ -688,6 +688,11 @@ pub enum Transition {
     DetectFileInfoType {
         path: std::path::PathBuf,
     },
+    /// Toggle the open File Information dialog's header-bytes view between
+    /// hex/offset/ASCII and raw text (Phase 7.3b, Task 10). Pure UI-state
+    /// flip — no job — but still routed through a Transition per this
+    /// project's state-purity rule.
+    ToggleFileInfoHeaderView,
     ShowVersion,
     SaveLog,
     RotateHelpLanguage,

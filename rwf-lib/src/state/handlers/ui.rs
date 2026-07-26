@@ -621,6 +621,19 @@ impl AppState {
                 }
                 Some(StateUpdateResult::with_job(job_spec))
             }
+            Transition::ToggleFileInfoHeaderView => {
+                // Pure UI-state flip (Phase 7.3b, Task 10) — flip whichever
+                // FileInfo dialog is currently on top of the stack. No job;
+                // routed through a Transition per the project's state-purity
+                // rule (never mutate dialog content from the input/render
+                // layers directly).
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                        d.header_hex_mode = !d.header_hex_mode;
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::ShowVersion => {
                 let dialog = crate::model::Dialog::version();
                 self.dialogs.push(dialog);

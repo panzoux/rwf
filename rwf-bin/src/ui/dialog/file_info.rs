@@ -51,6 +51,8 @@ pub(super) fn render_file_info_dialog(
     link_kind: Option<&rwf_lib::model::LinkKind>,
     detecting: bool,
     detected_type: Option<&str>,
+    header_bytes: Option<&[u8]>,
+    header_hex_mode: bool,
 ) {
     let base = crate::ui::dialog::common::DIALOG_TEXT;
     let label = crate::ui::dialog::common::DIALOG_DIM;
@@ -118,11 +120,54 @@ pub(super) fn render_file_info_dialog(
         );
     }
 
+    let mut next_row = rows.len() as u16;
+
     if let Some(text) = detected_line {
-        let y = area.y + rows.len() as u16;
+        let y = area.y + next_row;
         if y + 1 < area.y + area.height {
             frame.render_widget(
                 Paragraph::new(text).style(base),
+                Rect::new(area.x + 2, y, w as u16, 1),
+            );
+        }
+        next_row += 1;
+    }
+
+    // Header-bytes audit view (Phase 7.3b, Task 10): up to 4 rows of the
+    // leading bytes used for content-type detection, hex or raw text
+    // depending on `header_hex_mode`. Nothing to show until detection has
+    // completed successfully.
+    if let Some(bytes) = header_bytes {
+        for (row_idx, chunk) in bytes.chunks(16).take(4).enumerate() {
+            let y = area.y + next_row + row_idx as u16;
+            if y + 1 >= area.y + area.height {
+                break;
+            }
+            let line = if header_hex_mode {
+                let (offset, hex_str, ascii_str) =
+                    rwf_lib::model::viewer::format_hex_row(row_idx * 16, chunk);
+                format!("{:06X}  {} {}", offset, hex_str, ascii_str)
+            } else {
+                // Raw text mode: reuse the same printable-ASCII-else-'.'
+                // mapping as the hex view's ASCII column rather than
+                // `String::from_utf8_lossy` — these are arbitrary magic
+                // bytes, not guaranteed valid UTF-8, and a lossy decode's
+                // multi-byte replacement characters would make the fixed
+                // 16-byte-per-row wrapping and width accounting drift from
+                // the actual byte count.
+                chunk
+                    .iter()
+                    .map(|&b| {
+                        if (32..=126).contains(&b) {
+                            b as char
+                        } else {
+                            '.'
+                        }
+                    })
+                    .collect::<String>()
+            };
+            frame.render_widget(
+                Paragraph::new(line).style(base),
                 Rect::new(area.x + 2, y, w as u16, 1),
             );
         }
@@ -130,8 +175,13 @@ pub(super) fn render_file_info_dialog(
 
     // Hint line
     let hint_y = area.y + area.height.saturating_sub(1);
+    let hint_text = if header_bytes.is_some() {
+        "Enter/Esc: close  d: detect type  t: toggle hex/text"
+    } else {
+        "Enter/Esc: close  d: detect type"
+    };
     frame.render_widget(
-        Paragraph::new("Enter/Esc: close  d: detect type").style(hint),
+        Paragraph::new(hint_text).style(hint),
         Rect::new(area.x + 2, hint_y, w as u16, 1),
     );
 }

@@ -1242,9 +1242,10 @@ mod tests {
             rwf_lib::state::Transition::CompleteJob {
                 job_id,
                 result: rwf_lib::job::OpResult::Success(
-                    rwf_lib::job::SuccessData::FileTypeDetected(
-                        rwf_lib::magic::DetectedKind::Unknown,
-                    ),
+                    rwf_lib::job::SuccessData::FileTypeDetected {
+                        kind: rwf_lib::magic::DetectedKind::Unknown,
+                        header_bytes: Vec::new(),
+                    },
                 ),
             },
         );

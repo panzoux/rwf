@@ -305,7 +305,10 @@ pub enum SuccessData {
     FileContents(Vec<u8>),
     ComparisonResult(FileDiff),
     JumpCandidates(Vec<String>),
-    FileTypeDetected(crate::magic::DetectedKind),
+    FileTypeDetected {
+        kind: crate::magic::DetectedKind,
+        header_bytes: Vec<u8>,
+    },
     FileTypesDetected(Vec<(std::path::PathBuf, crate::magic::DetectedKind)>),
     None,
 }

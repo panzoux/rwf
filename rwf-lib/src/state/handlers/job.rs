@@ -807,7 +807,7 @@ impl AppState {
                         }
                         crate::job::JobKind::DetectFileType { path, purpose } => {
                             if let crate::job::OpResult::Success(
-                                crate::job::SuccessData::FileTypeDetected(kind),
+                                crate::job::SuccessData::FileTypeDetected { kind, header_bytes },
                             ) = result
                             {
                                 match purpose {
@@ -1013,6 +1013,16 @@ impl AppState {
                                                     d.detected_type = Some(label);
                                                     d.detecting = false;
                                                     d.detected_type_job_id = None;
+                                                    // Retain only the first 64 bytes for
+                                                    // display — the dialog shows at most 4
+                                                    // hex rows (16 bytes each), and truncating
+                                                    // here (rather than at render time) keeps
+                                                    // the dialog struct itself small; nothing
+                                                    // downstream needs the full ≤300-byte
+                                                    // sniff sample.
+                                                    d.header_bytes = Some(
+                                                        header_bytes.iter().take(64).copied().collect(),
+                                                    );
                                                     result_obj.ui_changed = true;
                                                     break;
                                                 }

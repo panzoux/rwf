@@ -9,6 +9,39 @@ use crate::model::Location;
 use regex::Regex;
 use std::sync::{Arc, Mutex};
 
+/// Format up to 16 bytes as a hex-viewer row: `(offset, hex_string, ascii_string)`.
+///
+/// `hex_string` groups bytes in two 8-byte columns (space-separated, `XX `
+/// per byte) and pads short rows so columns stay aligned; `ascii_string` maps
+/// printable ASCII (0x20..=0x7E) through as-is and everything else to `.`.
+/// Pure formatting, no I/O — shared by the text viewer's `get_hex_line` and
+/// the File Info dialog's header-bytes hex view so the row format can't drift
+/// between the two call sites.
+pub fn format_hex_row(offset: usize, bytes: &[u8]) -> (usize, String, String) {
+    let mut hex_str = String::new();
+    for (i, byte) in bytes.iter().enumerate() {
+        if i > 0 && i % 8 == 0 {
+            hex_str.push(' ');
+        }
+        hex_str.push_str(&format!("{:02X} ", byte));
+    }
+    let padding = (16 - bytes.len()) * 3 + if bytes.len() <= 8 { 1 } else { 0 };
+    hex_str.push_str(&" ".repeat(padding));
+
+    let ascii_str: String = bytes
+        .iter()
+        .map(|&b| {
+            if (32..=126).contains(&b) {
+                b as char
+            } else {
+                '.'
+            }
+        })
+        .collect();
+
+    (offset, hex_str, ascii_str)
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // SeekableFile: File + Seek + Read (no mmap). Used for files above threshold.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -358,30 +391,8 @@ impl ViewerState {
             FileBytes::InMemory(v) => v[offset..end].to_vec(),
             FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
         };
-        let bytes = bytes.as_slice();
 
-        let mut hex_str = String::new();
-        for (i, byte) in bytes.iter().enumerate() {
-            if i > 0 && i % 8 == 0 {
-                hex_str.push(' ');
-            }
-            hex_str.push_str(&format!("{:02X} ", byte));
-        }
-        let padding = (16 - bytes.len()) * 3 + if bytes.len() <= 8 { 1 } else { 0 };
-        hex_str.push_str(&" ".repeat(padding));
-
-        let ascii_str: String = bytes
-            .iter()
-            .map(|&b| {
-                if (32..=126).contains(&b) {
-                    b as char
-                } else {
-                    '.'
-                }
-            })
-            .collect();
-
-        Some((offset, hex_str, ascii_str))
+        Some(format_hex_row(offset, &bytes))
     }
 
     // ── Encoding ──────────────────────────────────────────────────────────────
@@ -1279,6 +1290,37 @@ mod tests {
 
     fn loc() -> Location {
         Location::Local(std::path::PathBuf::from("/test/file.txt"))
+    }
+
+    // ── format_hex_row (Phase 7.3b, Task 10) ────────────────────────────────
+
+    #[test]
+    fn format_hex_row_full_16_byte_row() {
+        let bytes: Vec<u8> = (0..16).collect();
+        let (offset, hex_str, ascii_str) = format_hex_row(32, &bytes);
+        assert_eq!(offset, 32);
+        assert_eq!(hex_str, "00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F ");
+        // Bytes 0..16 are all non-printable control chars -> all dots.
+        assert_eq!(ascii_str, "................");
+    }
+
+    #[test]
+    fn format_hex_row_partial_row_pads_to_full_width() {
+        // 5 bytes: "Hello" — printable ASCII, exercises the ascii passthrough
+        // branch alongside the padding math for a row shorter than 8 bytes.
+        let bytes = b"Hello";
+        let (offset, hex_str, ascii_str) = format_hex_row(0, bytes);
+        assert_eq!(offset, 0);
+        let expected_padding = " ".repeat((16 - 5) * 3 + 1);
+        assert_eq!(hex_str, format!("48 65 6C 6C 6F {}", expected_padding));
+        assert_eq!(ascii_str, "Hello");
+    }
+
+    #[test]
+    fn format_hex_row_nonprintable_bytes_become_dots() {
+        let bytes = [0x00u8, 0x1F, 0x7F, 0x80, 0xFF, b'A'];
+        let (_, _, ascii_str) = format_hex_row(0, &bytes);
+        assert_eq!(ascii_str, ".....A");
     }
 
     #[test]

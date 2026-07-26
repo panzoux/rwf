@@ -37,7 +37,10 @@ mod tests {
             state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: detected,
+                    header_bytes: Vec::new(),
+                }),
             },
         )
     }
@@ -411,7 +414,10 @@ mod tests {
             state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: detected,
+                    header_bytes: Vec::new(),
+                }),
             },
         )
     }
@@ -634,7 +640,10 @@ mod tests {
             state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: detected,
+                    header_bytes: Vec::new(),
+                }),
             },
         )
     }
@@ -1168,11 +1177,15 @@ mod tests {
         update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
         let job_id = state.jobs.queue[0].id;
         update_state(&mut state, Transition::StartNextJob);
+        let png_signature: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         let result = update_state(
             &mut state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Png)),
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: DetectedKind::Png,
+                    header_bytes: png_signature.clone(),
+                }),
             },
         );
 
@@ -1182,6 +1195,10 @@ mod tests {
                 assert!(!d.detecting);
                 assert_eq!(d.detected_type_job_id, None);
                 assert_eq!(d.detected_type.as_deref(), Some("PNG image"));
+                // Task 10: the raw header bytes used for detection are also
+                // threaded through to the dialog for audit display.
+                let header_bytes = d.header_bytes.as_deref().expect("header_bytes set");
+                assert!(header_bytes.starts_with(&png_signature));
             }
             other => panic!("expected FileInfo dialog, got {:?}", other),
         }
@@ -1189,6 +1206,48 @@ mod tests {
         assert_eq!(result.task_panel_logs.len(), 1);
         assert!(result.task_panel_logs[0].starts_with("[System] Detected type: PNG image for"));
         assert!(result.task_panel_logs[0].contains("photo.png"));
+    }
+
+    /// `Transition::ToggleFileInfoHeaderView` flips `header_hex_mode` on the
+    /// open `FileInfoDialog` (Phase 7.3b, Task 10) — pure UI-state flip, no
+    /// job involved. Two toggles must round-trip back to the default (true).
+    #[test]
+    fn toggle_file_info_header_view_flips_hex_mode() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Png,
+                header_bytes: vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+            }),
+        );
+        assert!(result.ui_changed);
+
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => assert!(d.header_hex_mode, "defaults to hex mode"),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        let result = update_state(&mut state, Transition::ToggleFileInfoHeaderView);
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => assert!(!d.header_hex_mode, "first toggle -> text mode"),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        let result = update_state(&mut state, Transition::ToggleFileInfoHeaderView);
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert!(d.header_hex_mode, "second toggle -> back to hex mode")
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
     }
 
     /// An executable detected under a mismatched extension (a `.txt` file
@@ -1204,7 +1263,10 @@ mod tests {
         let result = run_detect_file_info_type_job(
             &mut state,
             path,
-            OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Pe)),
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Pe,
+                header_bytes: Vec::new(),
+            }),
         );
 
         assert!(result.ui_changed);
@@ -1235,7 +1297,10 @@ mod tests {
         let result = run_detect_file_info_type_job(
             &mut state,
             path,
-            OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Pe)),
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Pe,
+                header_bytes: Vec::new(),
+            }),
         );
 
         assert!(result.ui_changed);
@@ -1790,7 +1855,10 @@ mod tests {
             &mut state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Png)),
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: DetectedKind::Png,
+                    header_bytes: Vec::new(),
+                }),
             },
         );
         assert!(result.ui_changed);

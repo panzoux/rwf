@@ -1109,6 +1109,20 @@ impl App {
                     }
                     return true;
                 }
+                crate::ui::dialog::DialogAction::ToggleHeaderView => {
+                    // Dialog stays open — same pattern as DetectFileType above.
+                    // Pure UI-state flip, no job to start, but forward
+                    // jobs_to_start anyway to keep the pattern consistent with
+                    // every other DialogAction handler (it will just be empty).
+                    let result = rwf_lib::state::update_state(
+                        &mut self.state,
+                        rwf_lib::state::Transition::ToggleFileInfoHeaderView,
+                    );
+                    for job_spec in result.jobs_to_start {
+                        self.pending_job_submission.push(job_spec);
+                    }
+                    return true;
+                }
                 _ => return true,
             }
         }

@@ -103,6 +103,10 @@ pub enum DialogAction {
     /// Information dialog (Phase 7.3 §7). The dialog stays open; the app
     /// loop dispatches `Transition::DetectFileInfoType` for its `file_path`.
     DetectFileType,
+    /// Toggle the File Information dialog's header-bytes view between hex
+    /// and raw text (Phase 7.3b, Task 10). The dialog stays open; the app
+    /// loop dispatches `Transition::ToggleFileInfoHeaderView`.
+    ToggleHeaderView,
 }
 
 fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
@@ -275,15 +279,23 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             link_target,
             detecting,
             detected_type,
+            header_bytes,
             ..
         }) => {
             let base = if link_target.is_some() { 12u16 } else { 11u16 };
-            if *detecting || detected_type.is_some() {
+            let base = if *detecting || detected_type.is_some() {
                 base + 1
             } else {
                 base
+            };
+            // Up to 4 rows (64 bytes / 16 per row, or 4×~16-char text-wrap
+            // lines) for the header-bytes hex/text view (Task 10).
+            if header_bytes.is_some() {
+                base + 4
+            } else {
+                base
             }
-        } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type)
+        } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type, +4 for header bytes)
         DialogContent::PatternRename(PatternRenameContent { preview, .. }) => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)
@@ -740,6 +752,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             link_kind,
             detecting,
             detected_type,
+            header_bytes,
+            header_hex_mode,
             ..
         }) => {
             render_file_info_dialog(
@@ -763,6 +777,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 link_kind.as_ref(),
                 *detecting,
                 detected_type.as_deref(),
+                header_bytes.as_deref(),
+                *header_hex_mode,
             );
         }
         DialogContent::PatternRename(PatternRenameContent {

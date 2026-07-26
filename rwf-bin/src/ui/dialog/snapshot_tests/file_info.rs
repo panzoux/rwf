@@ -111,3 +111,56 @@ fn file_info_detecting() {
     }
     snapshot_dialog("file_info_detecting", &dialog, &state);
 }
+
+#[test]
+fn file_info_header_bytes_hex_mode() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "photo.png".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/photo.png")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detected_type = Some("PNG image".to_string());
+        d.header_bytes = Some(vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52,
+        ]);
+        d.header_hex_mode = true;
+    }
+    snapshot_dialog("file_info_header_bytes_hex_mode", &dialog, &state);
+}
+
+#[test]
+fn file_info_header_bytes_text_mode() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "notes.txt".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/notes.txt")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detected_type = Some("Unknown / plain text".to_string());
+        d.header_bytes = Some(b"Hello, world! This is plain text.".to_vec());
+        d.header_hex_mode = false;
+    }
+    snapshot_dialog("file_info_header_bytes_text_mode", &dialog, &state);
+}
