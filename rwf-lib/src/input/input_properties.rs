@@ -31,10 +31,12 @@ mod tests {
     pub(crate) fn create_state_with_entries(left_count: usize, right_count: usize) -> AppState {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
-        // AppState::new loads the real %APPDATA%\rwf\ config; clear the association
-        // list so these tests don't couple to whatever is installed on the host
-        // machine (the other integration suites already set this field explicitly).
+        // AppState::new loads the real %APPDATA%\rwf\ config; clear everything it
+        // loaded so these tests don't couple to whatever is installed on the host
+        // machine (the other integration suites already set these explicitly).
         state.extension_associations = Vec::new();
+        state.file_type_map = Vec::new();
+        state.custom_functions = Vec::new();
 
         // Add entries to left pane
         let left_entries: Vec<FileEntry> = (0..left_count)
