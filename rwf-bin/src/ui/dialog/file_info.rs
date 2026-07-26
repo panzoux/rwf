@@ -276,6 +276,80 @@ mod tests {
         );
     }
 
+    /// The whole point of routing through `TextEncoding::detect`/`.decode()`
+    /// is to get non-UTF-8 Japanese encodings (Shift-JIS, EUC-JP, ...)
+    /// "for free". Prove the File Info call site actually takes that branch
+    /// — not an accidental hardcode to `TextEncoding::Utf8` — by feeding
+    /// real Shift-JIS bytes through the exact same chain the render
+    /// function uses (detect -> decode -> sanitize -> wrap).
+    #[test]
+    fn shift_jis_bytes_decode_through_the_full_chain() {
+        let original = "こんにちは";
+        let (encoded, _, had_errors) = encoding_rs::SHIFT_JIS.encode(original);
+        assert!(
+            !had_errors,
+            "Shift-JIS encoding of the fixture must succeed"
+        );
+        let bytes = encoded.into_owned();
+
+        // Sanity check: these bytes must NOT already be valid UTF-8, or this
+        // test would pass even with a hardcoded Utf8 branch.
+        assert!(
+            std::str::from_utf8(&bytes).is_err(),
+            "fixture must be genuinely non-UTF-8 to exercise the Shift-JIS branch"
+        );
+
+        let encoding = TextEncoding::detect(&bytes);
+        assert_eq!(
+            encoding,
+            TextEncoding::ShiftJis,
+            "detect() must recognize Shift-JIS rather than falling back to Utf8"
+        );
+
+        let decoded = encoding.decode(&bytes);
+        let sanitized = sanitize_for_display(&decoded);
+        assert_eq!(sanitized, original);
+
+        let lines = wrap_decoded_text(&sanitized, 46, 4);
+        assert_eq!(lines.join(""), original);
+    }
+
+    /// `header_bytes` is a raw truncated window (first ~64 bytes of the
+    /// file), not aligned to a character boundary, so the trailing bytes
+    /// may form a partial multi-byte sequence at the cut-off. This must not
+    /// panic anywhere in the chain, and the incomplete sequence must render
+    /// as a replacement character rather than corrupting the rest of the
+    /// output.
+    #[test]
+    fn truncated_multibyte_sequence_decodes_to_replacement_char_without_panicking() {
+        let original = "こんにちは"; // 5 chars, 3 bytes each in UTF-8
+        let full_bytes = original.as_bytes();
+        // Cut off the last byte of the final 3-byte character.
+        let truncated = &full_bytes[..full_bytes.len() - 1];
+
+        let encoding = TextEncoding::detect(truncated);
+        let decoded = encoding.decode(truncated);
+        let sanitized = sanitize_for_display(&decoded);
+
+        // The 4 complete leading characters must survive intact.
+        assert!(
+            sanitized.starts_with("こんにち"),
+            "leading complete characters must decode correctly: {sanitized:?}"
+        );
+        // The cut-off character must surface as U+FFFD, not silently vanish
+        // or corrupt the preceding text.
+        assert!(
+            sanitized.contains('\u{FFFD}'),
+            "expected a replacement character for the truncated sequence: {sanitized:?}"
+        );
+
+        // The wrap function must not choke on it — still produces valid,
+        // fully-accounted-for line output.
+        let lines = wrap_decoded_text(&sanitized, 46, 4);
+        assert!(!lines.is_empty());
+        assert_eq!(lines.join(""), sanitized);
+    }
+
     /// Regression guard: hex mode must be byte-for-byte unchanged by the
     /// text-mode fix. Same helper (`format_hex_row`), same output.
     #[test]
