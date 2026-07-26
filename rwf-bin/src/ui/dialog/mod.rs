@@ -285,6 +285,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             detecting,
             detected_type,
             header_bytes,
+            header_encoding,
             ..
         }) => {
             let base = if link_target.is_some() { 12u16 } else { 11u16 };
@@ -295,12 +296,23 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             // Up to 4 rows (64 bytes / 16 per row, or 4×~16-char text-wrap
             // lines) for the header-bytes hex/text view (Task 10).
-            if header_bytes.is_some() {
+            let base = if header_bytes.is_some() {
                 base + 4
             } else {
                 base
+            };
+            // +1 for the "Text encoding: ..." row (Task 12), shown whenever
+            // `header_encoding` is set — which is always alongside
+            // `header_bytes` (see job.rs's FileInfoDisplay success arm), same
+            // conditioning as that field's own +4 above. Without this, the
+            // encoding row silently eats the one row of slack the old
+            // formula happened to leave before the hint line.
+            if header_encoding.is_some() {
+                base + 1
+            } else {
+                base
             }
-        } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type, +4 for header bytes)
+        } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type, +4 for header bytes, +1 for encoding row)
         DialogContent::PatternRename(PatternRenameContent { preview, .. }) => {
             // find(1) + replace(1) + flags(1) + mode-row(1) + separator(1) + preview rows + status(1) = 6 + preview count, min 8
             (preview.len() as u16 + 6).max(8)

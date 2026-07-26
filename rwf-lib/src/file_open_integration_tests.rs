@@ -1349,6 +1349,82 @@ mod tests {
         }
     }
 
+    /// Re-detection must unconditionally overwrite `header_encoding` with the
+    /// freshly auto-detected value, discarding any prior manual `e`-cycle
+    /// choice (Phase 7.3b, Task 12 follow-up). This guards against a future
+    /// refactor accidentally guarding the overwrite (e.g.
+    /// `if d.header_encoding.is_none() { ... }`), which would silently break
+    /// re-detection by leaving a stale manual override in place.
+    #[test]
+    fn re_detect_file_info_type_overwrites_stale_manual_encoding_override() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("readme.txt").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        // First detection: PNG bytes, auto-detect sets some initial encoding.
+        let png_signature: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        run_detect_file_info_type_job(
+            &mut state,
+            path.clone(),
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Png,
+                header_bytes: png_signature,
+            }),
+        );
+
+        // Simulate the user manually cycling away from whatever auto-detect
+        // picked, to a value that is deliberately NOT what the next
+        // detection's real bytes would auto-detect to (ShiftJis, asserted
+        // below).
+        match &mut state
+            .dialogs
+            .current_mut()
+            .expect("dialog still open")
+            .content
+        {
+            DialogContent::FileInfo(d) => {
+                d.header_encoding = Some(crate::model::viewer::TextEncoding::Windows1252);
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        // Re-detection with real Shift-JIS bytes.
+        let (encoded, _, had_errors) = encoding_rs::SHIFT_JIS.encode("こんにちは");
+        assert!(
+            !had_errors,
+            "Shift-JIS encoding of the fixture must succeed"
+        );
+        let shift_jis_bytes = encoded.into_owned();
+        assert_eq!(
+            crate::model::viewer::TextEncoding::detect(&shift_jis_bytes),
+            crate::model::viewer::TextEncoding::ShiftJis,
+            "fixture sanity check: these bytes must actually auto-detect as ShiftJis"
+        );
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Unknown,
+                header_bytes: shift_jis_bytes,
+            }),
+        );
+
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert_eq!(
+                    d.header_encoding,
+                    Some(crate::model::viewer::TextEncoding::ShiftJis),
+                    "re-detection must overwrite the stale manual override (Windows1252) \
+                     with the freshly auto-detected encoding (ShiftJis), not leave it stale"
+                );
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
     /// An executable detected under a mismatched extension (a `.txt` file
     /// whose content is actually a Windows PE binary) appends the mismatch
     /// note to the label.
