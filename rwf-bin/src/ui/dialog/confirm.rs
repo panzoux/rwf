@@ -991,13 +991,15 @@ mod tests {
         state.config.magic_byte_detection_enabled = false; // exercise the direct path
         let candidates = vec![
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less".to_string(),
                 description: Some("View with less".to_string()),
                 shell: None,
             },
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad".to_string(),
                 description: Some("Edit with Notepad".to_string()),
                 shell: Some("cmd".to_string()),
@@ -1037,13 +1039,15 @@ mod tests {
         state.config.magic_byte_detection_enabled = false;
         let candidates = vec![
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less".to_string(),
                 description: None,
                 shell: None,
             },
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad".to_string(),
                 description: None,
                 shell: None,
@@ -1072,13 +1076,15 @@ mod tests {
         state.config.magic_byte_detection_enabled = false;
         let candidates = vec![
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less".to_string(),
                 description: None,
                 shell: None,
             },
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad".to_string(),
                 description: None,
                 shell: None,
@@ -1155,13 +1161,15 @@ mod tests {
         set_cursor_entry(&mut state, log_file_entry("server.log"));
         state.extension_associations = vec![
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less".to_string(),
                 description: None,
                 shell: None,
             },
             rwf_lib::config::ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad".to_string(),
                 description: None,
                 shell: None,
@@ -1180,14 +1188,21 @@ mod tests {
         state.dialogs.push(dialog);
         let depth_before_confirm = state.dialogs.stack.len();
 
+        // Phase 7.3b: with magic-byte detection on (the default), resolving
+        // "Open With..." candidates is no longer synchronous — it defers to the
+        // detect-then-resolve pipeline (`Transition::ResolveAssociationByType`),
+        // which starts a `DetectFileType` job instead of pushing the picker
+        // immediately. No dialog is pushed on this tick, so nothing needs
+        // suppressing; the ContextMenu pops normally, exactly like the
+        // "no candidates" companion case below.
         let job_spec = process_dialog_confirmation(&mut state);
         assert!(
-            job_spec.is_none(),
-            "picker push starts no job synchronously"
+            job_spec.is_some(),
+            "expected the DetectFileType job that the detect-then-resolve pipeline starts"
         );
         assert!(
-            state.suppress_next_dialog_pop,
-            "must suppress the generic post-confirm pop so it doesn't eat the picker"
+            !state.suppress_next_dialog_pop,
+            "no dialog was pushed synchronously, so the ContextMenu must pop normally"
         );
 
         // Replicate app.rs's post-confirm handling: check + consume the
@@ -1200,11 +1215,40 @@ mod tests {
         if should_pop {
             state.dialogs.pop();
         }
+        assert_eq!(
+            state.dialogs.stack.len(),
+            depth_before_confirm - 1,
+            "ContextMenu should have popped normally (no picker on this tick)"
+        );
+
+        // Now drive the detect job to completion the way app.rs's real job
+        // pipeline would (enqueue -> start -> complete). Plain-text content
+        // (Unknown) is enough here since both candidates are pure-extension.
+        let job_spec = job_spec.expect("checked above");
+        rwf_lib::state::update_state(
+            &mut state,
+            rwf_lib::state::Transition::EnqueueJob {
+                spec: job_spec.clone(),
+            },
+        );
+        let job_id = state.jobs.queue[0].id;
+        rwf_lib::state::update_state(&mut state, rwf_lib::state::Transition::StartNextJob);
+        rwf_lib::state::update_state(
+            &mut state,
+            rwf_lib::state::Transition::CompleteJob {
+                job_id,
+                result: rwf_lib::job::OpResult::Success(
+                    rwf_lib::job::SuccessData::FileTypeDetected(
+                        rwf_lib::magic::DetectedKind::Unknown,
+                    ),
+                ),
+            },
+        );
 
         assert_eq!(
             state.dialogs.stack.len(),
-            depth_before_confirm + 1,
-            "picker should have been pushed on top of the ContextMenu, not replaced it"
+            1,
+            "the picker should now be on top, pushed once detection completed"
         );
         match &state.dialogs.current().expect("picker on top").content {
             DialogContent::OpenWithPicker(d) => assert_eq!(d.candidates.len(), 2),

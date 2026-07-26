@@ -879,12 +879,42 @@ impl Default for UIConfig {
     }
 }
 
-/// File type association: maps an extension to an external command
+/// File type association: maps a detected content type and/or an extension to
+/// an external command.
+///
+/// (Phase 7.3b) `file_type` and `extension` are both optional, but at least one
+/// must be present — an entry with neither is invalid and is skipped at load
+/// time with a `tracing::warn!` (see `Config::load` / wherever this is
+/// deserialized from `extension_associations.json`).
+///
+/// Resolution order (see `rwf_lib::input::candidates_for` / `resolve_extension_association`):
+/// 1. When magic-byte detection is enabled and the target is a local file, the
+///    file's content is detected first. Entries whose `file_type` matches the
+///    detected kind are preferred; when `extension` is *also* set on such an
+///    entry, the extension must match too (AND semantics — both conditions
+///    gate the match, not either).
+/// 2. If no `file_type` entry matches (or the detected kind is `Unknown`),
+///    resolution falls back to pure-extension entries (`file_type: None`).
+/// 3. When detection is disabled, or the target isn't a local file, only
+///    pure-extension entries are considered (a `file_type`-bearing entry can't
+///    be validated without detection, so it's inert on that path).
+///
+/// `file_type` vocabulary (case-insensitive; see `crate::magic::DetectedKind::matches_file_type_spec`):
+/// - Exact kinds: `png`, `jpeg`, `gif`, `bmp`, `webp`, `zip`, `gzip`, `7z`, `pdf`, `pe`, `elf`, `macho`
+/// - Group aliases: `image` (png/jpeg/gif/bmp/webp), `archive` (zip/gzip/7z), `executable` (pe/elf/macho)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExtensionAssociation {
-    /// File extension without leading dot, e.g. "pdf", "txt" (case-insensitive match)
-    pub extension: String,
+    /// Detected-content-type key or group alias this entry matches (see the
+    /// struct doc comment for the vocabulary). `None` means this entry is
+    /// extension-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_type: Option<String>,
+    /// File extension without leading dot, e.g. "pdf", "txt" (case-insensitive match).
+    /// `None` means this entry is FileType-only (requires magic-byte detection to
+    /// ever match — see the struct doc comment's resolution order).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
     /// Command template. Supports macros: $P (dir), $F (filename), $W (stem), $E (ext)
     pub command: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1087,7 +1117,26 @@ impl ConfigManager {
         }
         match std::fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<Vec<ExtensionAssociation>>(&content) {
-                Ok(assocs) => (assocs, ConfigLoadResult::ok(path)),
+                Ok(assocs) => {
+                    // Phase 7.3b: an entry with neither `FileType` nor `Extension` can never
+                    // match anything — skip it (with a warning) instead of failing the whole
+                    // file, so one bad entry doesn't take down every other association.
+                    let assocs: Vec<ExtensionAssociation> = assocs
+                        .into_iter()
+                        .filter(|a| {
+                            if a.file_type.is_none() && a.extension.is_none() {
+                                tracing::warn!(
+                                    "extension_associations.json: skipping entry with neither FileType nor Extension set (command: {:?})",
+                                    a.command
+                                );
+                                false
+                            } else {
+                                true
+                            }
+                        })
+                        .collect();
+                    (assocs, ConfigLoadResult::ok(path))
+                }
                 Err(e) => {
                     tracing::warn!("Failed to parse extension_associations.json: {}", e);
                     (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
@@ -1576,7 +1625,7 @@ mod tests {
         let (assocs, result) = manager.load_extension_associations_with_result();
 
         assert_eq!(assocs.len(), 1);
-        assert_eq!(assocs[0].extension, "log");
+        assert_eq!(assocs[0].extension.as_deref(), Some("log"));
         assert_eq!(assocs[0].command, "less $F");
         assert!(matches!(result.status, ConfigLoadStatus::Ok));
     }

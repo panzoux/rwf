@@ -472,6 +472,18 @@ impl AppState {
                     )),
                 }
             }
+            Transition::ResolveAssociationByType { location } => {
+                // Only reached for `Location::Local` (see `resolve_extension_association`'s
+                // pre-check) — no non-Local branch needed here, unlike `CheckFallbackFileType`.
+                let path: std::path::PathBuf = location.display_path().into();
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                    path,
+                    purpose: crate::job::DetectFileTypePurpose::ResolveAssociation {
+                        location: location.clone(),
+                    },
+                });
+                Some(StateUpdateResult::with_job(job_spec))
+            }
             Transition::ShowDriveChangeDialog => {
                 let mut entries = Vec::new();
 

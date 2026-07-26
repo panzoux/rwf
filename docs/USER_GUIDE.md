@@ -357,15 +357,22 @@ Pressing **Enter** on a file checks, in order:
 
 #### `extension_associations.json`
 
-For per-extension custom commands — for example, opening `.log` files in a specific pager instead of RWF's viewer:
+For per-extension (and, since Phase 7.3b, per-detected-content-type) custom commands — for example, opening `.log` files in a specific pager instead of RWF's viewer:
 
 ```json
 [
-  { "Extension": "log", "Command": "less $F", "Shell": "bash" }
+  { "Extension": "log", "Command": "less $F", "Shell": "bash" },
+  { "FileType": "image", "Command": "feh $F" }
 ]
 ```
 
-Fields: `Extension` (no leading dot, case-insensitive), `Command` (supports the same macros as custom functions — `$P`/`$F`/`$W`/`$E`/etc., see the Macro Reference above), optional `Description`, optional `Shell`. Location: `%APPDATA%\rwf\extension_associations.json`. Ships empty — there's no universally-correct default command to pre-fill, so this file exists purely for your own overrides.
+Fields: `Extension` (no leading dot, case-insensitive; optional since Phase 7.3b), `FileType` (optional — a detected-content-type key or group alias, see below), `Command` (supports the same macros as custom functions — `$P`/`$F`/`$W`/`$E`/etc., see the Macro Reference above), optional `Description`, optional `Shell`. At least one of `Extension`/`FileType` must be set — an entry with neither is skipped (with a warning) at load time. Location: `%APPDATA%\rwf\extension_associations.json`. Ships empty — there's no universally-correct default command to pre-fill, so this file exists purely for your own overrides.
+
+**`FileType` (Phase 7.3b, requires magic-byte detection to be enabled — see `magic_byte_detection_enabled` in `config.json`):** matches the file's *detected* content, not its name. When both `FileType` and `Extension` are set on the same entry, both must match (AND) for that entry to be a candidate. Resolution order when detection is on and the target is a local file: entries whose `FileType` matches the detected content are tried first; if none match (or the content is unrecognized), RWF falls back to plain `Extension`-only entries. With detection off, or for non-local files (e.g. inside an archive), only `Extension`-only entries are ever considered.
+
+Recognized `FileType` values (case-insensitive):
+- Exact kinds: `png`, `jpeg`, `gif`, `bmp`, `webp`, `zip`, `gzip`, `7z`, `pdf`, `pe`, `elf`, `macho`
+- Group aliases: `image` (png/jpeg/gif/bmp/webp), `archive` (zip/gzip/7z), `executable` (pe/elf/macho)
 
 #### `file_type_map.json`
 

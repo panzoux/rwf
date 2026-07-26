@@ -13,27 +13,70 @@ mod tests {
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
 
+    /// Drive a `DetectFileType { purpose: ResolveAssociation }` job through the
+    /// real job-manager lifecycle (enqueue -> start -> complete), mirroring
+    /// `run_detect_file_type_job` / `run_fallback_open_job` above but for the
+    /// detect-then-resolve purpose (Phase 7.3b).
+    fn run_resolve_association_job(
+        state: &mut crate::AppState,
+        location: Location,
+        detected: DetectedKind,
+    ) -> crate::state::StateUpdateResult {
+        let path: PathBuf = location.display_path().into();
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path,
+            purpose: DetectFileTypePurpose::ResolveAssociation {
+                location: location.clone(),
+            },
+        });
+        update_state(state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(state, Transition::StartNextJob);
+
+        update_state(
+            state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected(detected)),
+            },
+        )
+    }
+
     #[test]
     fn extension_association_match_produces_execute_association() {
         let mut state = test_state();
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: None,
             shell: None,
         }];
         let entry = FileEntryBuilder::new("server.log").dir(false).build();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
 
+        // Phase 7.3b: with magic-byte detection on (the default) and a Local
+        // location, EnterDirectory can no longer resolve synchronously — it
+        // defers to the detect-then-resolve pipeline.
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociationChecked { command, .. } => {
-                assert!(command.contains("less"))
+            Transition::ResolveAssociationByType { location } => {
+                assert_eq!(location, &entry.location);
             }
-            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        // Drive the detect job to completion: Unknown content, no FileType entry
+        // in play, so resolution falls back to the pure-extension "log" match.
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => assert!(command.contains("less")),
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
         }
     }
 
@@ -42,32 +85,45 @@ mod tests {
         let mut state = test_state();
         state.extension_associations = vec![
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less $F".to_string(),
                 description: Some("View with less".to_string()),
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad $F".to_string(),
                 description: Some("Edit with Notepad".to_string()),
                 shell: None,
             },
         ];
         let entry = FileEntryBuilder::new("server.log").dir(false).build();
-        let expected_path = entry.location.display_path();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
 
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowOpenWithPicker { candidates, paths } => {
-                assert_eq!(candidates.len(), 2);
-                assert_eq!(paths, &vec![PathBuf::from(expected_path)]);
+            Transition::ResolveAssociationByType { location } => {
+                assert_eq!(location, &entry.location);
             }
-            other => panic!("expected ShowOpenWithPicker, got {:?}", other),
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let expected_path: PathBuf = entry.location.display_path().into();
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.candidates.len(), 2);
+                assert_eq!(d.paths, vec![expected_path]);
+            }
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
         }
     }
 
@@ -76,19 +132,22 @@ mod tests {
         let mut state = test_state();
         state.extension_associations = vec![
             ExtensionAssociation {
-                extension: "txt".to_string(),
+                extension: Some("txt".to_string()),
+                file_type: None,
                 command: "cmd1 $F".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "TXT".to_string(), // case-insensitive match
+                extension: Some("TXT".to_string()),
+                file_type: None, // case-insensitive match
                 command: "cmd2 $F".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: ".txt".to_string(), // leading dot tolerated
+                extension: Some(".txt".to_string()),
+                file_type: None, // leading dot tolerated
                 command: "cmd3 $F".to_string(),
                 description: None,
                 shell: None,
@@ -96,16 +155,25 @@ mod tests {
         ];
         let entry = FileEntryBuilder::new("notes.txt").dir(false).build();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
 
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowOpenWithPicker { candidates, .. } => {
-                assert_eq!(candidates.len(), 3);
+            Transition::ResolveAssociationByType { .. } => {}
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.candidates.len(), 3);
             }
-            other => panic!("expected ShowOpenWithPicker, got {:?}", other),
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
         }
     }
 
@@ -126,23 +194,32 @@ mod tests {
     fn action_open_with_single_association_produces_execute_association_checked() {
         let mut state = test_state();
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: None,
             shell: None,
         }];
         let entry = FileEntryBuilder::new("server.log").dir(false).build();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
 
         let transitions = action_to_transitions(&state, &Action::OpenWith);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociationChecked { command, .. } => {
-                assert!(command.contains("less"))
+            Transition::ResolveAssociationByType { location } => {
+                assert_eq!(location, &entry.location);
             }
-            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => assert!(command.contains("less")),
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
         }
     }
 
@@ -151,13 +228,15 @@ mod tests {
         let mut state = test_state();
         state.extension_associations = vec![
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less $F".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad $F".to_string(),
                 description: None,
                 shell: None,
@@ -165,16 +244,25 @@ mod tests {
         ];
         let entry = FileEntryBuilder::new("server.log").dir(false).build();
         state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
         state.current_tab_mut().left_pane.cursor = 0;
 
         let transitions = action_to_transitions(&state, &Action::OpenWith);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ShowOpenWithPicker { candidates, .. } => {
-                assert_eq!(candidates.len(), 2);
+            Transition::ResolveAssociationByType { .. } => {}
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.candidates.len(), 2);
             }
-            other => panic!("expected ShowOpenWithPicker, got {:?}", other),
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
         }
     }
 
@@ -185,13 +273,15 @@ mod tests {
 
         let candidates = vec![
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "less $F".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "log".to_string(),
+                extension: Some("log".to_string()),
+                file_type: None,
                 command: "notepad $F".to_string(),
                 description: None,
                 shell: None,
@@ -633,7 +723,8 @@ mod tests {
     fn checked_association_fails_open_on_detection_failure_for_archive_location() {
         let mut state = test_state();
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "txt".to_string(),
+            extension: Some("txt".to_string()),
+            file_type: None,
             command: "notepad $F".to_string(),
             description: None,
             shell: None,
@@ -775,7 +866,8 @@ mod tests {
     fn action_open_with_one_marked_file_uses_single_file_flow() {
         let mut state = test_state();
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: None,
             shell: None,
@@ -793,9 +885,9 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::OpenWith);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociationChecked { .. } => {}
+            Transition::ResolveAssociationByType { .. } => {}
             other => panic!(
-                "expected ExecuteAssociationChecked (single marked = cursor flow), got {:?}",
+                "expected ResolveAssociationByType (single marked = cursor flow), got {:?}",
                 other
             ),
         }
@@ -856,7 +948,8 @@ mod tests {
                                                            // limitation (see the commit message / task report), not something this
                                                            // test is trying to exercise.
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "png".to_string(),
+            extension: Some("png".to_string()),
+            file_type: None,
             command: "viewer".to_string(),
             description: None,
             shell: None,
@@ -891,19 +984,22 @@ mod tests {
         state.config.magic_byte_detection_enabled = false;
         state.extension_associations = vec![
             ExtensionAssociation {
-                extension: "png".to_string(),
+                extension: Some("png".to_string()),
+                file_type: None,
                 command: "viewer".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "pdf".to_string(),
+                extension: Some("pdf".to_string()),
+                file_type: None,
                 command: "reader1".to_string(),
                 description: None,
                 shell: None,
             },
             ExtensionAssociation {
-                extension: "pdf".to_string(),
+                extension: Some("pdf".to_string()),
+                file_type: None,
                 command: "reader2".to_string(),
                 description: None,
                 shell: None,
@@ -968,7 +1064,8 @@ mod tests {
     fn batch_open_with_one_candidate_expansion_failure_skips_silently() {
         let mut state = test_state();
         state.extension_associations = vec![ExtensionAssociation {
-            extension: "png".to_string(),
+            extension: Some("png".to_string()),
+            file_type: None,
             command: "viewer $I".to_string(),
             description: None,
             shell: None,
@@ -1242,6 +1339,267 @@ mod tests {
                 );
             }
             other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    // ---- Phase 7.3b: FileType-aware association resolution ----
+
+    /// A file with PNG magic bytes but a `.dat` extension: an `image` FileType
+    /// association beats a pure-extension `.dat` association once detection
+    /// comes back.
+    #[test]
+    fn file_type_match_beats_extension_association() {
+        let mut state = test_state();
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: None,
+                file_type: Some("image".to_string()),
+                command: "image_viewer $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("dat".to_string()),
+                file_type: None,
+                command: "hex_editor $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let entry = FileEntryBuilder::new("x.dat").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        match &transitions[0] {
+            Transition::ResolveAssociationByType { .. } => {}
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Png);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => {
+                assert!(command.contains("image_viewer"))
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// Same PNG-bytes `.dat` file, but no FileType entry matches the detected
+    /// kind (only a `pdf` FileType entry exists) — resolution falls back to the
+    /// pure-extension `.dat` association.
+    #[test]
+    fn extension_fallback_when_file_type_does_not_match() {
+        let mut state = test_state();
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: None,
+                file_type: Some("pdf".to_string()),
+                command: "pdf_reader $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("dat".to_string()),
+                file_type: None,
+                command: "hex_editor $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let entry = FileEntryBuilder::new("x.dat").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        match &transitions[0] {
+            Transition::ResolveAssociationByType { .. } => {}
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
+        }
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Png);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ExecuteCustomFunction { command, .. } => {
+                assert!(command.contains("hex_editor"))
+            }
+            other => panic!("expected ExecuteCustomFunction, got {:?}", other),
+        }
+    }
+
+    /// An entry with BOTH `FileType` and `Extension` set requires both to match
+    /// (AND semantics, Phase 7.3b design): a PE-bytes `.log` file matches it, a
+    /// PE-bytes `.txt` file does not (falls back to "no candidates").
+    #[test]
+    fn and_rule_requires_both_file_type_and_extension() {
+        let assoc = crate::config::ExtensionAssociation {
+            extension: Some("log".to_string()),
+            file_type: Some("executable".to_string()),
+            command: "quarantine $F".to_string(),
+            description: None,
+            shell: None,
+        };
+
+        let mut state = test_state();
+        state.extension_associations = vec![assoc];
+
+        let matching = crate::input::candidates_for(&state, DetectedKind::Pe, "log");
+        assert_eq!(matching.len(), 1);
+
+        let non_matching = crate::input::candidates_for(&state, DetectedKind::Pe, "txt");
+        assert!(non_matching.is_empty());
+    }
+
+    /// Zero candidates after detection (PNG content, no matching association at
+    /// all) falls through to `open_by_detected_kind`'s routing: a known non-text
+    /// kind opens via the OS default, exactly like the `FallbackOpen` path.
+    #[test]
+    fn zero_candidates_after_detection_opens_with_system_for_known_kind() {
+        let mut state = test_state();
+        // FileType-only entry (no extension) so the pre-check still starts
+        // detection (a FileType-bearing entry always might match once the kind
+        // is known), but it won't actually match either detected kind used
+        // below ("pdf" vs. Png/Unknown) nor the ".dat" extension (unset here) —
+        // giving zero candidates once resolution runs.
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: None,
+            file_type: Some("pdf".to_string()),
+            command: "pdf_reader $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        let entry = FileEntryBuilder::new("x.dat").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert!(matches!(
+            &transitions[0],
+            Transition::ResolveAssociationByType { .. }
+        ));
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Png);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::SpawnProcess { .. } => {}
+            other => panic!("expected SpawnProcess (OS default open), got {:?}", other),
+        }
+    }
+
+    /// Same "zero candidates" case but with plain-text content (Unknown): falls
+    /// through to the internal text viewer instead of OpenWithSystem.
+    #[test]
+    fn zero_candidates_after_detection_opens_viewer_for_unknown_kind() {
+        let mut state = test_state();
+        // FileType-only entry (no extension) so the pre-check still starts
+        // detection (a FileType-bearing entry always might match once the kind
+        // is known), but it won't actually match either detected kind used
+        // below ("pdf" vs. Png/Unknown) nor the ".dat" extension (unset here) —
+        // giving zero candidates once resolution runs.
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: None,
+            file_type: Some("pdf".to_string()),
+            command: "pdf_reader $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        let entry = FileEntryBuilder::new("x.dat").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert!(matches!(
+            &transitions[0],
+            Transition::ResolveAssociationByType { .. }
+        ));
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Unknown);
+        // OpenTextViewer's own job-starting behavior is exercised elsewhere; here
+        // we only need confirmation it didn't route to OpenWithSystem/association.
+        assert!(result
+            .jobs_to_start
+            .iter()
+            .all(|j| !matches!(j.kind, JobKind::SpawnProcess { .. })));
+    }
+
+    /// Flag off: `resolve_extension_association` must use pure-extension
+    /// resolution directly, with no detect job started at all — even when a
+    /// `FileType`-bearing entry is present (it's simply inert on this path).
+    #[test]
+    fn flag_off_uses_pure_extension_resolution_no_detect_job() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: None,
+                file_type: Some("image".to_string()),
+                command: "image_viewer $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("dat".to_string()),
+                file_type: None,
+                command: "hex_editor $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let entry = FileEntryBuilder::new("x.dat").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ExecuteAssociationChecked { command, .. } => {
+                assert!(command.contains("hex_editor"))
+            }
+            other => panic!(
+                "expected ExecuteAssociationChecked (pure-extension resolution), got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Pre-check: a file whose extension matches nothing and for which no
+    /// `FileType`-bearing entry exists at all must skip detection entirely and
+    /// fall straight through to the FileTypeMapping/viewer chain, exactly as
+    /// pre-7.3b (zero detection cost for the common unassociated file).
+    #[test]
+    fn pre_check_skips_detection_when_no_association_could_match() {
+        let mut state = test_state();
+        state.extension_associations = vec![ExtensionAssociation {
+            extension: Some("pdf".to_string()),
+            file_type: None,
+            command: "pdf_reader $F".to_string(),
+            description: None,
+            shell: None,
+        }];
+        state.file_type_map = Vec::new();
+        let entry = FileEntryBuilder::new("notes.md").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let transitions = action_to_transitions(&state, &Action::EnterDirectory);
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::CheckFallbackFileType { .. } => {}
+            other => panic!(
+                "expected CheckFallbackFileType (direct fallthrough, no detect job), got {:?}",
+                other
+            ),
         }
     }
 }

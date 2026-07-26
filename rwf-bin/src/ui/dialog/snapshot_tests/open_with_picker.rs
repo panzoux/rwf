@@ -10,13 +10,15 @@ fn open_with_picker_two_candidates_first_selected() {
     let state = test_state();
     let candidates = vec![
         ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: Some("View with less".to_string()),
             shell: None,
         },
         ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "notepad $F".to_string(),
             description: Some("Edit with Notepad".to_string()),
             shell: None,
@@ -31,19 +33,22 @@ fn open_with_picker_three_candidates_middle_selected() {
     let state = test_state();
     let candidates = vec![
         ExtensionAssociation {
-            extension: "txt".to_string(),
+            extension: Some("txt".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: Some("View with less".to_string()),
             shell: None,
         },
         ExtensionAssociation {
-            extension: "txt".to_string(),
+            extension: Some("txt".to_string()),
+            file_type: None,
             command: "notepad $F".to_string(),
             description: Some("Edit with Notepad".to_string()),
             shell: None,
         },
         ExtensionAssociation {
-            extension: "txt".to_string(),
+            extension: Some("txt".to_string()),
+            file_type: None,
             command: "vim $F".to_string(),
             description: None, // falls back to raw command string
             shell: Some("bash".to_string()),
@@ -68,13 +73,15 @@ fn open_with_picker_multi_file_group_title_shows_count() {
     let state = test_state();
     let candidates = vec![
         ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "less $F".to_string(),
             description: Some("View with less".to_string()),
             shell: None,
         },
         ExtensionAssociation {
-            extension: "log".to_string(),
+            extension: Some("log".to_string()),
+            file_type: None,
             command: "notepad $F".to_string(),
             description: Some("Edit with Notepad".to_string()),
             shell: None,

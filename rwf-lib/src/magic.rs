@@ -63,6 +63,58 @@ impl DetectedKind {
             _ => &[],
         }
     }
+
+    /// Stable short config key for this kind, as written in an
+    /// `ExtensionAssociation.FileType` field (Phase 7.3b). `Unknown` has no key —
+    /// it never matches any `FileType` spec (see `matches_file_type_spec`).
+    pub fn config_key(self) -> Option<&'static str> {
+        match self {
+            DetectedKind::Png => Some("png"),
+            DetectedKind::Jpeg => Some("jpeg"),
+            DetectedKind::Gif => Some("gif"),
+            DetectedKind::Bmp => Some("bmp"),
+            DetectedKind::WebP => Some("webp"),
+            DetectedKind::Zip => Some("zip"),
+            DetectedKind::Gzip => Some("gzip"),
+            DetectedKind::SevenZ => Some("7z"),
+            DetectedKind::Pdf => Some("pdf"),
+            DetectedKind::Pe => Some("pe"),
+            DetectedKind::Elf => Some("elf"),
+            DetectedKind::MachO => Some("macho"),
+            DetectedKind::Unknown => None,
+        }
+    }
+
+    /// True if `spec` (a `FileType` value from `extension_associations.json`,
+    /// case-insensitive) matches this kind — either the exact `config_key`, or one
+    /// of the three group aliases: `"image"` (png/jpeg/gif/bmp/webp), `"archive"`
+    /// (zip/gzip/7z), `"executable"` (pe/elf/macho). `Unknown` never matches
+    /// anything, including an unrecognized `spec` string (Phase 7.3b).
+    pub fn matches_file_type_spec(self, spec: &str) -> bool {
+        if self == DetectedKind::Unknown {
+            return false;
+        }
+        let spec_lower = spec.to_lowercase();
+        if Some(spec_lower.as_str()) == self.config_key() {
+            return true;
+        }
+        match spec_lower.as_str() {
+            "image" => matches!(
+                self,
+                DetectedKind::Png
+                    | DetectedKind::Jpeg
+                    | DetectedKind::Gif
+                    | DetectedKind::Bmp
+                    | DetectedKind::WebP
+            ),
+            "archive" => matches!(
+                self,
+                DetectedKind::Zip | DetectedKind::Gzip | DetectedKind::SevenZ
+            ),
+            "executable" => self.is_executable(),
+            _ => false,
+        }
+    }
 }
 
 /// Identify a file's content type from its leading bytes. `bytes` should be the
@@ -246,5 +298,114 @@ mod tests {
     #[test]
     fn mismatch_never_fires_for_unknown() {
         assert!(!is_mismatch("txt", DetectedKind::Unknown));
+    }
+
+    const ALL_KINDS: &[DetectedKind] = &[
+        DetectedKind::Png,
+        DetectedKind::Jpeg,
+        DetectedKind::Gif,
+        DetectedKind::Bmp,
+        DetectedKind::WebP,
+        DetectedKind::Zip,
+        DetectedKind::Gzip,
+        DetectedKind::SevenZ,
+        DetectedKind::Pdf,
+        DetectedKind::Pe,
+        DetectedKind::Elf,
+        DetectedKind::MachO,
+        DetectedKind::Unknown,
+    ];
+
+    #[test]
+    fn config_key_table() {
+        let cases: &[(DetectedKind, Option<&str>)] = &[
+            (DetectedKind::Png, Some("png")),
+            (DetectedKind::Jpeg, Some("jpeg")),
+            (DetectedKind::Gif, Some("gif")),
+            (DetectedKind::Bmp, Some("bmp")),
+            (DetectedKind::WebP, Some("webp")),
+            (DetectedKind::Zip, Some("zip")),
+            (DetectedKind::Gzip, Some("gzip")),
+            (DetectedKind::SevenZ, Some("7z")),
+            (DetectedKind::Pdf, Some("pdf")),
+            (DetectedKind::Pe, Some("pe")),
+            (DetectedKind::Elf, Some("elf")),
+            (DetectedKind::MachO, Some("macho")),
+            (DetectedKind::Unknown, None),
+        ];
+        for (kind, expected) in cases {
+            assert_eq!(kind.config_key(), *expected, "config_key for {:?}", kind);
+        }
+        // Every non-Unknown kind above is covered; keep this in sync with ALL_KINDS.
+        assert_eq!(cases.len(), ALL_KINDS.len());
+    }
+
+    #[test]
+    fn matches_file_type_spec_exact_key_per_kind() {
+        for kind in ALL_KINDS {
+            if let Some(key) = kind.config_key() {
+                assert!(
+                    kind.matches_file_type_spec(key),
+                    "{:?} should match its own config_key {:?}",
+                    kind,
+                    key
+                );
+                // Case-insensitive
+                assert!(kind.matches_file_type_spec(&key.to_uppercase()));
+            }
+        }
+    }
+
+    #[test]
+    fn matches_file_type_spec_group_aliases() {
+        let images = [
+            DetectedKind::Png,
+            DetectedKind::Jpeg,
+            DetectedKind::Gif,
+            DetectedKind::Bmp,
+            DetectedKind::WebP,
+        ];
+        let archives = [DetectedKind::Zip, DetectedKind::Gzip, DetectedKind::SevenZ];
+        let executables = [DetectedKind::Pe, DetectedKind::Elf, DetectedKind::MachO];
+
+        for kind in ALL_KINDS {
+            let expect_image = images.contains(kind);
+            let expect_archive = archives.contains(kind);
+            let expect_executable = executables.contains(kind);
+            assert_eq!(
+                kind.matches_file_type_spec("image"),
+                expect_image,
+                "image alias for {:?}",
+                kind
+            );
+            assert_eq!(
+                kind.matches_file_type_spec("ARCHIVE"),
+                expect_archive,
+                "archive alias (case-insensitive) for {:?}",
+                kind
+            );
+            assert_eq!(
+                kind.matches_file_type_spec("executable"),
+                expect_executable,
+                "executable alias for {:?}",
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn matches_file_type_spec_unknown_never_matches() {
+        assert!(!DetectedKind::Unknown.matches_file_type_spec("image"));
+        assert!(!DetectedKind::Unknown.matches_file_type_spec("archive"));
+        assert!(!DetectedKind::Unknown.matches_file_type_spec("executable"));
+        assert!(!DetectedKind::Unknown.matches_file_type_spec("png"));
+        assert!(!DetectedKind::Unknown.matches_file_type_spec("anything"));
+    }
+
+    #[test]
+    fn matches_file_type_spec_unrecognized_spec_matches_nothing() {
+        for kind in ALL_KINDS {
+            assert!(!kind.matches_file_type_spec("not-a-real-spec"));
+        }
     }
 }

@@ -669,6 +669,15 @@ pub enum Transition {
     CheckFallbackFileType {
         location: crate::model::Location,
     },
+    /// Detect-then-resolve entry point (Phase 7.3b): started by
+    /// `resolve_extension_association` instead of resolving extension-only
+    /// candidates inline, when magic-byte detection is enabled and `location` is
+    /// a local file. Starts a `JobKind::DetectFileType { ResolveAssociation }`
+    /// job; the completion handler resolves FileType-first / extension-fallback
+    /// candidates and executes/prompts/falls through accordingly.
+    ResolveAssociationByType {
+        location: crate::model::Location,
+    },
     ShowDriveChangeDialog,
     ShowFileInfo,
     /// On-demand content-type detection for the open File Information dialog

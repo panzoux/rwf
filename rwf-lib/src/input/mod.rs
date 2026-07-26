@@ -732,12 +732,14 @@ pub fn expand_association_command(
     Ok((command, working_dir, shell))
 }
 
-/// Resolve the `ExtensionAssociation`(s) whose extension matches `ext_lower`
-/// (already lowercased, no leading dot). Shared by `resolve_extension_association`
-/// (single cursor-file flow) and the `DetectFileTypesBatch` completion handler
-/// (`state/handlers/job.rs`, batch "Open With..." flow, Phase 7.3 Task 4) so the
-/// two lookup call sites can't drift apart on the extension-normalization rules
-/// (case-insensitive, leading-dot-tolerant).
+/// Resolve the pure-extension `ExtensionAssociation`(s) whose extension matches
+/// `ext_lower` (already lowercased, no leading dot). "Pure-extension" means
+/// `file_type.is_none()` — a `FileType`-bearing entry can't be validated without
+/// magic-byte detection, so it's excluded here (Phase 7.3b). Shared by:
+/// - `resolve_extension_association`'s flag-off / non-Local branch,
+/// - `candidates_for`'s fallback step (once a detected kind is known but no
+///   FileType entry matched it),
+/// - the `DetectFileTypesBatch` completion handler's failure path.
 pub fn candidates_for_extension(
     state: &AppState,
     ext_lower: &str,
@@ -745,24 +747,114 @@ pub fn candidates_for_extension(
     state
         .extension_associations
         .iter()
-        .filter(|a| a.extension.trim_start_matches('.').to_lowercase() == ext_lower)
+        .filter(|a| {
+            a.file_type.is_none()
+                && a.extension
+                    .as_deref()
+                    .map(|e| e.trim_start_matches('.').to_lowercase() == ext_lower)
+                    .unwrap_or(false)
+        })
         .cloned()
         .collect()
 }
 
-/// Resolve the `ExtensionAssociation`(s) matching `entry`'s extension and produce the
-/// Transition(s) that should follow (Phase 7.3).
+/// Resolve `ExtensionAssociation` candidates using both the detected content
+/// type and the extension (Phase 7.3b detect-then-resolve pipeline). Shared by
+/// the `DetectFileType { ResolveAssociation }` completion handler (single
+/// cursor-file / Open With flow) and the `DetectFileTypesBatch` completion
+/// handler (batch "Open With..." flow), so the two resolution call sites can't
+/// drift apart on the FileType-first/extension-fallback/AND rules.
 ///
-/// - No match: `None` (caller falls through to the FileTypeMapping/text-viewer chain).
-/// - Exactly one match: expand its command and build `ExecuteAssociationChecked` (same
-///   behavior as before this helper was extracted).
-/// - Two or more matches: `ShowOpenWithPicker` so the user chooses which one to run;
-///   expansion happens later, in the picker's Confirm handler.
+/// - `kind != Unknown`: entries whose `file_type` matches `kind` (via
+///   `DetectedKind::matches_file_type_spec`) AND whose `extension` is either
+///   unset or matches `ext_lower` are preferred. If that set is non-empty, it's
+///   returned as-is.
+/// - Otherwise (no FileType match, or `kind == Unknown`): falls back to
+///   pure-extension entries via `candidates_for_extension`.
+pub fn candidates_for(
+    state: &AppState,
+    kind: crate::magic::DetectedKind,
+    ext_lower: &str,
+) -> Vec<crate::config::ExtensionAssociation> {
+    if kind != crate::magic::DetectedKind::Unknown {
+        let type_matches: Vec<_> = state
+            .extension_associations
+            .iter()
+            .filter(|a| {
+                a.file_type
+                    .as_deref()
+                    .map(|ft| kind.matches_file_type_spec(ft))
+                    .unwrap_or(false)
+                    && a.extension
+                        .as_deref()
+                        .map(|e| e.trim_start_matches('.').to_lowercase() == ext_lower)
+                        .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+        if !type_matches.is_empty() {
+            return type_matches;
+        }
+    }
+    candidates_for_extension(state, ext_lower)
+}
+
+/// Resolve the `ExtensionAssociation`(s) potentially matching `entry` and produce
+/// the Transition(s) that should follow (Phase 7.3 / 7.3b).
+///
+/// Two modes, chosen by `magic_byte_detection_enabled` and whether `entry`'s
+/// location is `Location::Local`:
+///
+/// - **Detect-then-resolve** (flag on, Local location): resolution can't happen
+///   here — it needs the detected content type, which requires an async job.
+///   Instead, this does a cheap pre-check: does *any* `ExtensionAssociation`
+///   entry have a chance of matching this file (any entry with `file_type` set,
+///   since we don't yet know the kind, OR any entry whose `extension` matches)?
+///   If not, return `None` immediately — zero detection cost for the common
+///   unassociated file, preserving the FileTypeMapping/viewer fallthrough. If
+///   so, return `ResolveAssociationByType`, deferring actual candidate
+///   resolution to the `DetectFileType` completion handler
+///   (`state/handlers/job.rs`), which has the detected kind in hand.
+/// - **Extension-only** (flag off, or non-Local location): unchanged pre-7.3b
+///   behavior, using `candidates_for_extension` (pure-extension entries only —
+///   a `FileType`-bearing entry can't be validated without detection on this
+///   path). No match: `None`. Exactly one match: expand its command and build
+///   `ExecuteAssociationChecked`. Two or more matches: `ShowOpenWithPicker`.
 fn resolve_extension_association(
     state: &AppState,
     entry: &crate::model::FileEntry,
 ) -> Option<Vec<Transition>> {
-    let ext_lower = entry.extension()?.to_lowercase();
+    let ext_lower = entry
+        .extension()
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    if state.config.magic_byte_detection_enabled
+        && matches!(entry.location, crate::model::Location::Local(_))
+    {
+        let could_match = state.extension_associations.iter().any(|a| {
+            a.file_type.is_some()
+                || a.extension
+                    .as_deref()
+                    .map(|e| e.trim_start_matches('.').to_lowercase() == ext_lower)
+                    .unwrap_or(false)
+        });
+        return if could_match {
+            debug!(
+                "resolve_extension_association: at least one association could match {}, deferring to detect-then-resolve",
+                entry.location.display_path()
+            );
+            Some(vec![Transition::ResolveAssociationByType {
+                location: entry.location.clone(),
+            }])
+        } else {
+            None
+        };
+    }
+
+    if ext_lower.is_empty() {
+        return None;
+    }
     let candidates = candidates_for_extension(state, &ext_lower);
 
     match candidates.len() {
@@ -2031,7 +2123,8 @@ mod tests {
             actions: vec![crate::config::FileOpenAction::OsDefault],
         }];
         state.extension_associations = vec![crate::config::ExtensionAssociation {
-            extension: "mp4".to_string(),
+            extension: Some("mp4".to_string()),
+            file_type: None,
             command: "myplayer $F".to_string(),
             description: None,
             shell: None,
@@ -2041,13 +2134,21 @@ mod tests {
         state.current_tab_mut().left_pane.entries = vec![entry];
         state.current_tab_mut().left_pane.cursor = 0;
 
+        // Phase 7.3b: with magic-byte detection on (default) and a Local
+        // location, resolution defers to the detect-then-resolve pipeline
+        // instead of resolving synchronously — the actual "extension
+        // association wins over file_type_map" behavior is exercised end-to-end
+        // by file_open_integration_tests.rs's `extension_association_match_produces_execute_association`
+        // and friends, which drive the DetectFileType job to completion. Here we
+        // only need to confirm the extension-association pre-check still fires
+        // (i.e. EnterDirectory doesn't skip straight to file_type_map).
         let transitions = action_to_transitions(&state, &Action::EnterDirectory);
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
-            Transition::ExecuteAssociationChecked { command, .. } => {
-                assert!(command.contains("myplayer"))
+            Transition::ResolveAssociationByType { location } => {
+                assert_eq!(location.display_path(), "/test/clip.mp4");
             }
-            other => panic!("expected ExecuteAssociationChecked, got {:?}", other),
+            other => panic!("expected ResolveAssociationByType, got {:?}", other),
         }
     }
 

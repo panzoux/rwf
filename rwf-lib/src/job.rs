@@ -236,6 +236,12 @@ pub enum DetectFileTypePurpose {
     /// Carries the original `Location` so the text-viewer fallback can be
     /// opened directly (the viewer takes a `Location`, not a filesystem path).
     FallbackOpen { location: crate::model::Location },
+    /// Resolve Open With candidates for one file using its detected kind
+    /// (Phase 7.3b): FileType-matching associations are tried first, with
+    /// extension-only entries as fallback. Only `location` is needed — the
+    /// extension is derived from it, and candidates are resolved from state at
+    /// completion time (see `state/handlers/job.rs`'s `DetectFileType` arm).
+    ResolveAssociation { location: crate::model::Location },
     /// Detection was requested on demand from the File Information dialog.
     FileInfoDisplay,
 }

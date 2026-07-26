@@ -161,6 +161,9 @@ impl AppState {
                         // FallbackOpen failures also skip the modal: the completion arm below
                         // falls back to the text viewer as its own safety net, so a stacked
                         // Error dialog would be a redundant double-report.
+                        // ResolveAssociation failures (Phase 7.3b) also skip the modal: the
+                        // completion arm below fails open to extension-only resolution (its
+                        // own safety net), so a stacked Error dialog would be redundant.
                         let skip_dialog = matches!(
                             &spec.kind,
                             crate::job::JobKind::ExecuteCustomFunction { .. }
@@ -181,6 +184,12 @@ impl AppState {
                             &spec.kind,
                             crate::job::JobKind::DetectFileType {
                                 purpose: crate::job::DetectFileTypePurpose::FallbackOpen { .. },
+                                ..
+                            }
+                        ) || matches!(
+                            &spec.kind,
+                            crate::job::JobKind::DetectFileType {
+                                purpose: crate::job::DetectFileTypePurpose::ResolveAssociation { .. },
                                 ..
                             }
                         );
@@ -851,22 +860,104 @@ impl AppState {
                                         // the detected content: a known non-text kind opens via
                                         // the OS default association; Unknown falls through to
                                         // the internal text viewer exactly as before this task.
-                                        let follow_up = if *kind == crate::magic::DetectedKind::Unknown {
-                                            Transition::OpenTextViewer {
-                                                location: location.clone(),
+                                        open_by_detected_kind(self, *kind, location, &mut result_obj);
+                                    }
+                                    crate::job::DetectFileTypePurpose::ResolveAssociation {
+                                        location,
+                                    } => {
+                                        // Detect-then-resolve (Phase 7.3b): we now have the
+                                        // detected kind, so resolve candidates FileType-first with
+                                        // extension fallback via the shared `candidates_for` (same
+                                        // logic the DetectFileTypesBatch arm below uses).
+                                        let ext_lower = path
+                                            .extension()
+                                            .and_then(|e| e.to_str())
+                                            .map(|e| e.to_lowercase())
+                                            .unwrap_or_default();
+                                        let candidates =
+                                            crate::input::candidates_for(self, *kind, &ext_lower);
+                                        match candidates.len() {
+                                            0 => {
+                                                // No association matched even with content-type
+                                                // awareness — same fallback FallbackOpen would have
+                                                // used, reusing the kind we already detected instead
+                                                // of starting a second detect job.
+                                                open_by_detected_kind(
+                                                    self, *kind, location, &mut result_obj,
+                                                );
                                             }
-                                        } else {
-                                            result_obj.task_panel_logs.push(format!(
-                                                "[System] Detected {}; opening {} via OS default",
-                                                kind.label(),
-                                                location.display_path()
-                                            ));
-                                            Transition::OpenWithSystem {
-                                                path: location.display_path(),
+                                            1 => {
+                                                let assoc = &candidates[0];
+                                                match crate::input::expand_association_command(
+                                                    self, assoc,
+                                                ) {
+                                                    Ok((command, working_dir, shell)) => {
+                                                        // Mirrors CheckAssociationMismatch's mismatch
+                                                        // gate above — we already have `kind` in hand,
+                                                        // so no second detect job is started.
+                                                        if self.config.magic_byte_detection_enabled
+                                                            && crate::magic::is_mismatch(
+                                                                &ext_lower, *kind,
+                                                            )
+                                                        {
+                                                            let filename = path
+                                                                .file_name()
+                                                                .map(|n| {
+                                                                    n.to_string_lossy().to_string()
+                                                                })
+                                                                .unwrap_or_else(|| {
+                                                                    path.display().to_string()
+                                                                });
+                                                            let ext_note = if ext_lower.is_empty() {
+                                                                "no extension".to_string()
+                                                            } else {
+                                                                format!(".{}", ext_lower)
+                                                            };
+                                                            result_obj.task_panel_logs.push(format!(
+                                                                "[Warning] Type mismatch: {} looks like {} (extension {})",
+                                                                filename,
+                                                                kind.label(),
+                                                                ext_note
+                                                            ));
+                                                            let dialog =
+                                                                crate::model::Dialog::type_mismatch_warning(
+                                                                    path.clone(),
+                                                                    *kind,
+                                                                    command,
+                                                                    working_dir,
+                                                                    shell,
+                                                                );
+                                                            self.dialogs.push(dialog);
+                                                            result_obj.ui_changed = true;
+                                                        } else {
+                                                            result_obj.jobs_to_start.push(
+                                                                crate::job::JobSpec::execute_association(
+                                                                    command, working_dir, shell,
+                                                                ),
+                                                            );
+                                                        }
+                                                    }
+                                                    Err(_) => {
+                                                        tracing::debug!("ResolveAssociation: association command expansion failed, falling back to viewer");
+                                                        let sub_res = update_state(
+                                                            self,
+                                                            Transition::OpenTextViewer {
+                                                                location: location.clone(),
+                                                            },
+                                                        );
+                                                        result_obj.absorb(sub_res);
+                                                    }
+                                                }
                                             }
-                                        };
-                                        let sub_res = update_state(self, follow_up);
-                                        result_obj.absorb(sub_res);
+                                            _ => {
+                                                let dialog = crate::model::Dialog::open_with_picker(
+                                                    vec![path.clone()],
+                                                    candidates,
+                                                );
+                                                self.dialogs.push(dialog);
+                                                result_obj.ui_changed = true;
+                                            }
+                                        }
                                     }
                                     crate::job::DetectFileTypePurpose::FileInfoDisplay => {
                                         // On-demand detection requested from the still-open File
@@ -954,6 +1045,67 @@ impl AppState {
                                     },
                                 );
                                 result_obj.absorb(sub_res);
+                            } else if let crate::job::DetectFileTypePurpose::ResolveAssociation {
+                                location,
+                            } = purpose
+                            {
+                                // Fail-open (Phase 7.3b): detection failed or was cancelled, so
+                                // there's no detected kind to resolve FileType-matching candidates
+                                // with. Fall back to extension-only resolution (pure-extension
+                                // entries — same rules as the flag-off path) rather than dropping
+                                // the open entirely.
+                                let ext_lower = path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|e| e.to_lowercase())
+                                    .unwrap_or_default();
+                                let candidates = if ext_lower.is_empty() {
+                                    Vec::new()
+                                } else {
+                                    crate::input::candidates_for_extension(self, &ext_lower)
+                                };
+                                match candidates.len() {
+                                    0 => {
+                                        // No kind available to try OpenWithSystem — pre-7.3
+                                        // behavior for "no candidates" was the text viewer, so
+                                        // that's the safety net here too.
+                                        let sub_res = update_state(
+                                            self,
+                                            Transition::OpenTextViewer {
+                                                location: location.clone(),
+                                            },
+                                        );
+                                        result_obj.absorb(sub_res);
+                                    }
+                                    1 => {
+                                        let assoc = &candidates[0];
+                                        if let Ok((command, working_dir, shell)) =
+                                            crate::input::expand_association_command(self, assoc)
+                                        {
+                                            result_obj.jobs_to_start.push(
+                                                crate::job::JobSpec::execute_association(
+                                                    command, working_dir, shell,
+                                                ),
+                                            );
+                                        } else {
+                                            let sub_res = update_state(
+                                                self,
+                                                Transition::OpenTextViewer {
+                                                    location: location.clone(),
+                                                },
+                                            );
+                                            result_obj.absorb(sub_res);
+                                        }
+                                    }
+                                    _ => {
+                                        let dialog = crate::model::Dialog::open_with_picker(
+                                            vec![path.clone()],
+                                            candidates,
+                                        );
+                                        self.dialogs.push(dialog);
+                                        result_obj.ui_changed = true;
+                                    }
+                                }
                             } else if matches!(
                                 purpose,
                                 crate::job::DetectFileTypePurpose::FileInfoDisplay
@@ -991,9 +1143,12 @@ impl AppState {
                             ) = result
                             {
                                 let groups = group_by_kind_and_ext(pairs.clone());
-                                for ((_kind, ext), paths) in groups {
-                                    let candidates =
-                                        crate::input::candidates_for_extension(self, &ext);
+                                for ((kind, ext), paths) in groups {
+                                    // Phase 7.3b: FileType-first resolution using the kind this
+                                    // group was detected as, extension fallback via the shared
+                                    // `candidates_for` (same logic the single-file
+                                    // ResolveAssociation completion arm above uses).
+                                    let candidates = crate::input::candidates_for(self, kind, &ext);
                                     match candidates.len() {
                                         0 => {
                                             result_obj.task_panel_logs.push(format!(
@@ -1107,6 +1262,37 @@ impl AppState {
             _ => None,
         }
     }
+}
+
+/// Route an open by the file's already-detected content type (Phase 7.3 Task 5 /
+/// 7.3b): a known non-text kind opens via the OS default association; `Unknown`
+/// falls through to the internal text viewer. Shared by `FallbackOpen`'s success
+/// arm and `ResolveAssociation`'s "0 candidates after detection" case (Phase
+/// 7.3b) so both routes to "no explicit association, decide by content type"
+/// can't drift apart — and so `ResolveAssociation` doesn't need to start a
+/// second detect job just to reuse this decision.
+fn open_by_detected_kind(
+    state: &mut AppState,
+    kind: crate::magic::DetectedKind,
+    location: &crate::model::Location,
+    result_obj: &mut StateUpdateResult,
+) {
+    let follow_up = if kind == crate::magic::DetectedKind::Unknown {
+        Transition::OpenTextViewer {
+            location: location.clone(),
+        }
+    } else {
+        result_obj.task_panel_logs.push(format!(
+            "[System] Detected {}; opening {} via OS default",
+            kind.label(),
+            location.display_path()
+        ));
+        Transition::OpenWithSystem {
+            path: location.display_path(),
+        }
+    };
+    let sub_res = update_state(state, follow_up);
+    result_obj.absorb(sub_res);
 }
 
 /// Group `(path, detected_kind)` pairs by the `(DetectedKind, extension)` pair
