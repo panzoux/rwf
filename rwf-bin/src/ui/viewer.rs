@@ -16,7 +16,7 @@ use rwf_lib::model::{Location, TextEncoding, UIMode, ViewerMode, ViewerState};
 use unicode_width::UnicodeWidthChar;
 
 use super::colors::parse_color;
-use super::{pad_to_width, smart_truncate};
+use super::{pad_to_width, sanitize_for_display, smart_truncate};
 use unicode_width::UnicodeWidthStr;
 
 /// Render the file viewer.
@@ -682,26 +682,10 @@ fn hex_row_spans(
     Line::from(spans)
 }
 
-// ── Control-character sanitization ───────────────────────────────────────────
-
-/// Replace control characters with their Unicode control-picture symbols
-/// (U+2400–U+2421).  This prevents raw binary bytes — especially ESC (\x1B) —
-/// from leaking to the terminal and corrupting the border/status chrome.
-/// The resulting characters are all printable and width-1, so the column
-/// accounting in `take_display_cols` / `pad_cols` stays exact.
-fn sanitize_for_display(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            let n = c as u32;
-            match n {
-                0x00..=0x1F => char::from_u32(0x2400 + n).unwrap_or('·'), // ␀..␟
-                0x7F => '\u{2421}',                                       // ␡
-                0x80..=0x9F => '·', // C1 controls — no Unicode picture; use middle dot
-                _ => c,
-            }
-        })
-        .collect()
-}
+// Control-character sanitization moved to `super::sanitize_for_display`
+// (rwf-bin/src/ui/unicode_utils.rs) so the File Info dialog's header-bytes
+// text-mode view can share the exact same pipeline. See its doc comment
+// there for details.
 
 // ── Unicode helpers ───────────────────────────────────────────────────────────
 

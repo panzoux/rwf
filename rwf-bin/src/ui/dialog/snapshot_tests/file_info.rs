@@ -164,3 +164,31 @@ fn file_info_header_bytes_text_mode() {
     }
     snapshot_dialog("file_info_header_bytes_text_mode", &dialog, &state);
 }
+
+/// CJK regression coverage for the Task 10 bug fix: the old byte-to-char
+/// mapping could never render CJK (a CJK char is multiple UTF-8 bytes).
+/// This snapshot proves the actual Japanese characters render, not dots.
+#[test]
+fn file_info_header_bytes_text_mode_cjk() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "notes_ja.txt".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/notes_ja.txt")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detected_type = Some("Unknown / plain text".to_string());
+        d.header_bytes = Some("こんにちは世界".as_bytes().to_vec());
+        d.header_hex_mode = false;
+    }
+    snapshot_dialog("file_info_header_bytes_text_mode_cjk", &dialog, &state);
+}

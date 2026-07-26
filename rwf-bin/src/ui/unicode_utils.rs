@@ -126,6 +126,28 @@ pub fn smart_truncate(s: &str, max_width: usize, ellipsis: &str) -> String {
     format!("{}{}{}", &s[..start_byte_pos], ellipsis, &s[end_byte_pos..])
 }
 
+/// Replace control characters with visible Unicode control-picture glyphs so
+/// they can't corrupt terminal rendering or break width accounting.
+///
+/// Iterates `.chars()` (Unicode codepoints, not raw bytes), so normal and CJK
+/// characters pass through untouched — only C0/C1 control codes and DEL are
+/// remapped. Shared by the file viewer's text-mode rendering and the File
+/// Info dialog's header-bytes text-mode audit view, so both decode/sanitize
+/// through the exact same pipeline.
+pub fn sanitize_for_display(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            let n = c as u32;
+            match n {
+                0x00..=0x1F => char::from_u32(0x2400 + n).unwrap_or('·'), // ␀..␟
+                0x7F => '\u{2421}',                                       // ␡
+                0x80..=0x9F => '·', // C1 controls — no Unicode picture; use middle dot
+                _ => c,
+            }
+        })
+        .collect()
+}
+
 /// Shorten a path to fit within max display width.
 /// Prefers `prefix…\last_component` so both the root and the destination are visible.
 pub fn shorten_path(path: &str, max_width: usize, ellipsis: &str) -> String {
@@ -359,5 +381,25 @@ mod tests {
         let result = smart_truncate("日本語ファイル名前", 10, "...");
         assert!(result.width() <= 10);
         assert!(result.contains("..."));
+    }
+
+    #[test]
+    fn test_sanitize_for_display_passes_through_cjk() {
+        // Normal and CJK characters must be untouched.
+        let result = sanitize_for_display("hello 日本語 world");
+        assert_eq!(result, "hello 日本語 world");
+    }
+
+    #[test]
+    fn test_sanitize_for_display_replaces_c0_controls() {
+        let result = sanitize_for_display("a\tb\nc");
+        assert_eq!(result, "a␉b␊c");
+    }
+
+    #[test]
+    fn test_sanitize_for_display_replaces_del_and_c1() {
+        let s = format!("a{}b{}c", '\u{7F}', '\u{85}');
+        let result = sanitize_for_display(&s);
+        assert_eq!(result, "a\u{2421}b·c");
     }
 }

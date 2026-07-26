@@ -34,7 +34,9 @@ pub use path_line::render_path_line;
 pub use smart_text::{SmartText, TruncateMode};
 pub use tab_bar::render_tab_bar;
 pub use task_panel::{render_task_panel, TaskPanel};
-pub use unicode_utils::{pad_to_width, shorten_path, smart_truncate};
+pub use unicode_utils::{
+    pad_to_width, sanitize_for_display, shorten_path, smart_truncate, truncate_to_width,
+};
 pub use volume_line::render_volume_line;
 
 /// Main UI rendering function
