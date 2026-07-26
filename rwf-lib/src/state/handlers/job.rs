@@ -1020,9 +1020,20 @@ impl AppState {
                                                     // the dialog struct itself small; nothing
                                                     // downstream needs the full ≤300-byte
                                                     // sniff sample.
-                                                    d.header_bytes = Some(
-                                                        header_bytes.iter().take(64).copied().collect(),
+                                                    let truncated_header: Vec<u8> =
+                                                        header_bytes.iter().take(64).copied().collect();
+                                                    // Auto-detect on the same (truncated) bytes
+                                                    // that get stored/displayed, so the initial
+                                                    // encoding shown always matches what's on
+                                                    // screen. This is just the starting point —
+                                                    // the user can cycle away from it with `e`
+                                                    // (Phase 7.3b, Task 12).
+                                                    d.header_encoding = Some(
+                                                        crate::model::viewer::TextEncoding::detect(
+                                                            &truncated_header,
+                                                        ),
                                                     );
+                                                    d.header_bytes = Some(truncated_header);
                                                     result_obj.ui_changed = true;
                                                     break;
                                                 }

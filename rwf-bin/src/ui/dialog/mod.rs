@@ -107,6 +107,11 @@ pub enum DialogAction {
     /// and raw text (Phase 7.3b, Task 10). The dialog stays open; the app
     /// loop dispatches `Transition::ToggleFileInfoHeaderView`.
     ToggleHeaderView,
+    /// Cycle the File Information dialog's manual text-encoding override for
+    /// the header-bytes text-mode view (Phase 7.3b, Task 12). The dialog
+    /// stays open; the app loop dispatches
+    /// `Transition::CycleFileInfoHeaderEncoding`.
+    CycleHeaderEncoding,
 }
 
 fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
@@ -754,6 +759,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             detected_type,
             header_bytes,
             header_hex_mode,
+            header_encoding,
             ..
         }) => {
             render_file_info_dialog(
@@ -779,6 +785,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 detected_type.as_deref(),
                 header_bytes.as_deref(),
                 *header_hex_mode,
+                *header_encoding,
             );
         }
         DialogContent::PatternRename(PatternRenameContent {

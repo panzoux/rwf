@@ -693,6 +693,11 @@ pub enum Transition {
     /// flip — no job — but still routed through a Transition per this
     /// project's state-purity rule.
     ToggleFileInfoHeaderView,
+    /// Cycle the open File Information dialog's manual text-encoding
+    /// override for the header-bytes text-mode view (Phase 7.3b, Task 12).
+    /// Pure UI-state flip — no job — same pattern as
+    /// `ToggleFileInfoHeaderView` above.
+    CycleFileInfoHeaderEncoding,
     ShowVersion,
     SaveLog,
     RotateHelpLanguage,

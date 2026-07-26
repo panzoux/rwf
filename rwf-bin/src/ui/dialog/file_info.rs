@@ -97,6 +97,7 @@ pub(super) fn render_file_info_dialog(
     detected_type: Option<&str>,
     header_bytes: Option<&[u8]>,
     header_hex_mode: bool,
+    header_encoding: Option<rwf_lib::model::viewer::TextEncoding>,
 ) {
     let base = crate::ui::dialog::common::DIALOG_TEXT;
     let label = crate::ui::dialog::common::DIALOG_DIM;
@@ -177,6 +178,24 @@ pub(super) fn render_file_info_dialog(
         next_row += 1;
     }
 
+    // Current text-decode encoding (Phase 7.3b, Task 12): shown on its own
+    // row rather than folded into the hint line — the hint line's fixed
+    // budget (see below) is already tight, and a dedicated row means the
+    // encoding name is never truncated regardless of terminal width. Shown
+    // whenever `header_encoding` has been set (i.e. detection has run),
+    // including in hex mode: it's "what text mode WOULD decode as", so it's
+    // still useful context before the user even toggles to text.
+    if let Some(encoding) = header_encoding {
+        let y = area.y + next_row;
+        if y + 1 < area.y + area.height {
+            frame.render_widget(
+                Paragraph::new(format!("Text encoding: {}", encoding.name())).style(base),
+                Rect::new(area.x + 2, y, w as u16, 1),
+            );
+        }
+        next_row += 1;
+    }
+
     // Header-bytes audit view (Phase 7.3b, Task 10): up to 4 rows of the
     // leading bytes used for content-type detection, hex or raw text
     // depending on `header_hex_mode`. Nothing to show until detection has
@@ -219,7 +238,15 @@ pub(super) fn render_file_info_dialog(
             // renders that as a replacement character (U+FFFD) rather than
             // panicking — expected behavior for any byte-window text
             // preview, not something to special-case here.
-            let encoding = rwf_lib::model::viewer::TextEncoding::detect(bytes);
+            // Use the persisted encoding (auto-detected at job-completion time,
+            // cyclable away via the `e` key — Phase 7.3b, Task 12) rather than
+            // re-detecting fresh on every render, which would silently discard
+            // any manual override the user made. The `unwrap_or_else` fallback
+            // is defensive only: in practice `header_encoding` is always set
+            // alongside `header_bytes` (see job.rs's FileInfoDisplay success
+            // arm), so this closure should never actually run.
+            let encoding = header_encoding
+                .unwrap_or_else(|| rwf_lib::model::viewer::TextEncoding::detect(bytes));
             let decoded = encoding.decode(bytes);
             let sanitized = sanitize_for_display(&decoded);
             for (row_idx, line) in wrap_decoded_text(&sanitized, w, 4).into_iter().enumerate() {
@@ -235,12 +262,20 @@ pub(super) fn render_file_info_dialog(
         }
     }
 
-    // Hint line
+    // Hint line. `e: encoding` (Phase 7.3b, Task 12) is appended whenever
+    // `header_encoding` has been set (i.e. detection has run) — the encoding
+    // NAME itself is shown on its own row above (not here): the hint line's
+    // width budget is already tight in the narrower dialog sizes, and a
+    // bracketed name (e.g. "[Windows-1252]") would get silently truncated
+    // there. Shown regardless of hex/text mode, same reasoning as the
+    // encoding row above.
     let hint_y = area.y + area.height.saturating_sub(1);
-    let hint_text = if header_bytes.is_some() {
-        "Enter/Esc: close  d: detect type  t: toggle hex/text"
-    } else {
-        "Enter/Esc: close  d: detect type"
+    let hint_text = match (header_bytes.is_some(), header_encoding) {
+        (true, Some(_)) => {
+            "Enter/Esc: close  d: detect type  t: toggle hex/text  e: encoding".to_string()
+        }
+        (true, None) => "Enter/Esc: close  d: detect type  t: toggle hex/text".to_string(),
+        (false, _) => "Enter/Esc: close  d: detect type".to_string(),
     };
     frame.render_widget(
         Paragraph::new(hint_text).style(hint),

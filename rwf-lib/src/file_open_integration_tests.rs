@@ -1250,6 +1250,105 @@ mod tests {
         }
     }
 
+    /// `Transition::CycleFileInfoHeaderEncoding` cycles `header_encoding`
+    /// through `TextEncoding::next()`'s real rotation (Phase 7.3b, Task 12)
+    /// — Utf8 -> Utf16Le is the first step. Also verify the handler's own
+    /// defensiveness against a `None` starting state: the real `e`-key input
+    /// guard (`rwf-bin/src/ui/dialog/basic.rs`) only ever dispatches this
+    /// Transition once `header_encoding` is `Some`, so `None` shouldn't be
+    /// reachable via the UI, but the handler must not panic if it is.
+    #[test]
+    fn cycle_file_info_header_encoding_advances_through_next_order() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+
+        match &mut state.dialogs.current_mut().expect("dialog open").content {
+            DialogContent::FileInfo(d) => {
+                d.header_encoding = Some(crate::model::viewer::TextEncoding::Utf8);
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        let result = update_state(&mut state, Transition::CycleFileInfoHeaderEncoding);
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => assert_eq!(
+                d.header_encoding,
+                Some(crate::model::viewer::TextEncoding::Utf16Le),
+                "Utf8 -> Utf16Le is the real TextEncoding::next() order"
+            ),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// Defensive-only: driving the cycle Transition when `header_encoding` is
+    /// `None` (not reachable via the real `e`-key guard, since that guard
+    /// requires `Some`) must be a no-op, not a panic.
+    #[test]
+    fn cycle_file_info_header_encoding_none_start_does_not_panic() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        match &state.dialogs.current().expect("dialog open").content {
+            DialogContent::FileInfo(d) => assert_eq!(d.header_encoding, None),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        let result = update_state(&mut state, Transition::CycleFileInfoHeaderEncoding);
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => assert_eq!(d.header_encoding, None, "stays None, no-op"),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// Full flow: `Transition::DetectFileInfoType` through the real job
+    /// lifecycle, completing with real Shift-JIS bytes (same fixture idiom as
+    /// `rwf-bin/src/ui/dialog/file_info.rs`'s
+    /// `shift_jis_bytes_decode_through_the_full_chain` test from Task 11).
+    /// The auto-detected starting `header_encoding` must be `ShiftJis` — this
+    /// is the value Task 12's `e`-key cycling then starts from.
+    #[test]
+    fn detect_file_info_type_shift_jis_sets_initial_header_encoding() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("readme.txt").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        let path = PathBuf::from(entry.location.display_path());
+
+        let (encoded, _, had_errors) = encoding_rs::SHIFT_JIS.encode("こんにちは");
+        assert!(
+            !had_errors,
+            "Shift-JIS encoding of the fixture must succeed"
+        );
+        let shift_jis_bytes = encoded.into_owned();
+        assert!(
+            std::str::from_utf8(&shift_jis_bytes).is_err(),
+            "fixture must be genuinely non-UTF-8"
+        );
+
+        let result = run_detect_file_info_type_job(
+            &mut state,
+            path,
+            OpResult::Success(SuccessData::FileTypeDetected {
+                kind: DetectedKind::Unknown,
+                header_bytes: shift_jis_bytes,
+            }),
+        );
+
+        assert!(result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
+                assert_eq!(
+                    d.header_encoding,
+                    Some(crate::model::viewer::TextEncoding::ShiftJis),
+                    "auto-detect must set the initial header_encoding to ShiftJis"
+                );
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
     /// An executable detected under a mismatched extension (a `.txt` file
     /// whose content is actually a Windows PE binary) appends the mismatch
     /// note to the label.

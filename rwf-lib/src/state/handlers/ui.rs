@@ -634,6 +634,23 @@ impl AppState {
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
+            Transition::CycleFileInfoHeaderEncoding => {
+                // Pure UI-state flip (Phase 7.3b, Task 12) — cycle whichever
+                // FileInfo dialog is currently on top of the stack through
+                // TextEncoding::next(). The `e`-key guard in the input layer
+                // only fires once `header_encoding` is `Some` (i.e. after
+                // detection has run), so the `None` branch here should be
+                // unreachable via the real UI path — but we still handle it
+                // defensively (no-op) rather than panicking.
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                        if let Some(enc) = d.header_encoding {
+                            d.header_encoding = Some(enc.next());
+                        }
+                    }
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::ShowVersion => {
                 let dialog = crate::model::Dialog::version();
                 self.dialogs.push(dialog);

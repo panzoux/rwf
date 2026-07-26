@@ -27,6 +27,11 @@ pub struct FileInfoDialog {
     pub header_bytes: Option<Vec<u8>>,
     /// true = hex/offset/ASCII view, false = raw text view. Defaults to true.
     pub header_hex_mode: bool,
+    /// Text encoding used to decode `header_bytes` for the text-mode view
+    /// (Phase 7.3b, Task 12). Set to the auto-detected encoding when
+    /// `header_bytes` is populated; the user can then cycle it away from
+    /// that guess with the `e` key. `None` until detection completes.
+    pub header_encoding: Option<crate::model::viewer::TextEncoding>,
     /// True when the entry's `Location` is `Location::Local` (Phase 7.3 §7).
     /// On-demand content-type detection does real filesystem I/O, which is
     /// meaningless for archive-internal or remote entries — `false` here
@@ -75,6 +80,7 @@ impl FileInfoDialog {
             detected_type_job_id: None,
             header_bytes: None,
             header_hex_mode: true,
+            header_encoding: None,
             is_local,
         }
     }
