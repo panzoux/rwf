@@ -84,3 +84,37 @@ fn context_menu_extended_options_last_selected() {
     }
     snapshot_dialog("context_menu_extended_options_last", &dialog, &state);
 }
+
+/// Phase 7.3b Task 9: once live content-type detection completes, the
+/// "Open With..." row shows the detected type appended to its label — e.g.
+/// "Open With... (PNG image)" — so the user sees why a picker would show up
+/// without opening File Info first.
+#[test]
+fn context_menu_open_with_row_shows_detected_type() {
+    let state = test_state();
+    let mut dialog = Dialog::context_menu();
+    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+        ref mut detected_type_label,
+        ..
+    }) = dialog.content
+    {
+        *detected_type_label = Some("PNG image".to_string());
+    }
+    snapshot_dialog("context_menu_open_with_row_detected_type", &dialog, &state);
+}
+
+/// While the detect job is still in flight, the row shows "(detecting...)"
+/// instead of a resolved label.
+#[test]
+fn context_menu_open_with_row_shows_detecting_placeholder() {
+    let state = test_state();
+    let mut dialog = Dialog::context_menu();
+    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+        ref mut detected_type_job_id,
+        ..
+    }) = dialog.content
+    {
+        *detected_type_job_id = Some(rwf_lib::job::JobId::new());
+    }
+    snapshot_dialog("context_menu_open_with_row_detecting", &dialog, &state);
+}

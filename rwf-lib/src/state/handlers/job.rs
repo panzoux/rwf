@@ -164,6 +164,10 @@ impl AppState {
                         // ResolveAssociation failures (Phase 7.3b) also skip the modal: the
                         // completion arm below fails open to extension-only resolution (its
                         // own safety net), so a stacked Error dialog would be redundant.
+                        // ContextMenuLabel failures (Phase 7.3b, Task 9) also skip the modal:
+                        // the completion arm below sets the still-open ContextMenu dialog's
+                        // "detection failed" label as its own inline feedback, so a stacked
+                        // Error dialog over a context menu would be a redundant double-report.
                         let skip_dialog = matches!(
                             &spec.kind,
                             crate::job::JobKind::ExecuteCustomFunction { .. }
@@ -190,6 +194,12 @@ impl AppState {
                             &spec.kind,
                             crate::job::JobKind::DetectFileType {
                                 purpose: crate::job::DetectFileTypePurpose::ResolveAssociation { .. },
+                                ..
+                            }
+                        ) || matches!(
+                            &spec.kind,
+                            crate::job::JobKind::DetectFileType {
+                                purpose: crate::job::DetectFileTypePurpose::ContextMenuLabel,
                                 ..
                             }
                         );
@@ -953,6 +963,7 @@ impl AppState {
                                                 let dialog = crate::model::Dialog::open_with_picker(
                                                     vec![path.clone()],
                                                     candidates,
+                                                    Some(*kind),
                                                 );
                                                 self.dialogs.push(dialog);
                                                 result_obj.ui_changed = true;
@@ -1001,6 +1012,28 @@ impl AppState {
                                                     ));
                                                     d.detected_type = Some(label);
                                                     d.detecting = false;
+                                                    d.detected_type_job_id = None;
+                                                    result_obj.ui_changed = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    crate::job::DetectFileTypePurpose::ContextMenuLabel => {
+                                        // Live detection for the "Open With..." row label
+                                        // (Phase 7.3b, Task 9). Same stack-scan pattern as
+                                        // FileInfoDisplay above: find the ContextMenu dialog
+                                        // whose detected_type_job_id matches this completed job
+                                        // (other dialogs may have been pushed on top meanwhile).
+                                        let job_id_val = *job_id;
+                                        for dialog in self.dialogs.stack.iter_mut().rev() {
+                                            if let crate::model::dialog::DialogContent::ContextMenu(
+                                                d,
+                                            ) = &mut dialog.content
+                                            {
+                                                if d.detected_type_job_id == Some(job_id_val) {
+                                                    d.detected_type_label =
+                                                        Some(kind.label().to_string());
                                                     d.detected_type_job_id = None;
                                                     result_obj.ui_changed = true;
                                                     break;
@@ -1101,6 +1134,7 @@ impl AppState {
                                         let dialog = crate::model::Dialog::open_with_picker(
                                             vec![path.clone()],
                                             candidates,
+                                            None,
                                         );
                                         self.dialogs.push(dialog);
                                         result_obj.ui_changed = true;
@@ -1122,6 +1156,27 @@ impl AppState {
                                             d.detecting = false;
                                             d.detected_type_job_id = None;
                                             d.detected_type = Some("detection failed".to_string());
+                                            result_obj.ui_changed = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } else if matches!(
+                                purpose,
+                                crate::job::DetectFileTypePurpose::ContextMenuLabel
+                            ) {
+                                // Detection failed or was cancelled — clear the in-flight job id
+                                // so the row doesn't show "(detecting...)" forever. Same
+                                // stack-scan pattern as FileInfoDisplay's failure arm above.
+                                let job_id_val = *job_id;
+                                for dialog in self.dialogs.stack.iter_mut().rev() {
+                                    if let crate::model::dialog::DialogContent::ContextMenu(d) =
+                                        &mut dialog.content
+                                    {
+                                        if d.detected_type_job_id == Some(job_id_val) {
+                                            d.detected_type_job_id = None;
+                                            d.detected_type_label =
+                                                Some("detection failed".to_string());
                                             result_obj.ui_changed = true;
                                             break;
                                         }
@@ -1181,7 +1236,9 @@ impl AppState {
                                         }
                                         _ => {
                                             let dialog = crate::model::Dialog::open_with_picker(
-                                                paths, candidates,
+                                                paths,
+                                                candidates,
+                                                Some(kind),
                                             );
                                             self.dialogs.push(dialog);
                                             result_obj.ui_changed = true;

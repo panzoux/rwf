@@ -529,6 +529,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 paths,
                 candidates,
                 selected_index,
+                ..
             }) => {
                 let paths = paths.clone();
                 let assoc = candidates.get(*selected_index).cloned();
@@ -695,6 +696,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
             DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
+                ..
             }) => {
                 use rwf_lib::model::dialog::ContextMenuAction;
                 if let Some(opt) = options.get(*selected_index) {
@@ -1006,7 +1008,7 @@ mod tests {
             },
         ];
         let mut dialog =
-            Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates);
+            Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates, None);
         if let rwf_lib::model::dialog::DialogContent::OpenWithPicker(d) = &mut dialog.content {
             d.selected_index = 1; // pick the second candidate, not the first
         } else {
@@ -1053,7 +1055,8 @@ mod tests {
                 shell: None,
             },
         ];
-        let dialog = Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates);
+        let dialog =
+            Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates, None);
         state.dialogs.push(dialog);
 
         let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
@@ -1097,6 +1100,7 @@ mod tests {
                 PathBuf::from("/test/c.log"),
             ],
             candidates,
+            None,
         );
         if let rwf_lib::model::dialog::DialogContent::OpenWithPicker(d) = &mut dialog.content {
             d.selected_index = 1; // "notepad"

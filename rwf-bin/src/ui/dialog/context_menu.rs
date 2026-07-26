@@ -17,6 +17,7 @@ pub(super) fn handle_input(dialog: &mut ContextMenuDialog, key: KeyEvent) -> Dia
     let ContextMenuDialog {
         options,
         selected_index,
+        ..
     } = dialog;
     use crossterm::event::KeyCode;
     use rwf_lib::model::dialog::ContextMenuAction;
@@ -78,6 +79,8 @@ pub(super) fn render_context_menu_dialog(
     area: Rect,
     options: &[rwf_lib::model::dialog::ContextMenuOption],
     selected_index: usize,
+    detected_type_label: Option<&str>,
+    detecting: bool,
 ) {
     use rwf_lib::model::dialog::ContextMenuAction;
 
@@ -117,7 +120,18 @@ pub(super) fn render_context_menu_dialog(
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
             );
         } else {
-            let label = smart_truncate(&opt.label, item_width.saturating_sub(2), "…");
+            let full_label = if matches!(opt.action, ContextMenuAction::OpenWith) {
+                if detecting {
+                    format!("{} (detecting...)", opt.label)
+                } else if let Some(t) = detected_type_label {
+                    format!("{} ({})", opt.label, t)
+                } else {
+                    opt.label.clone()
+                }
+            } else {
+                opt.label.clone()
+            };
+            let label = smart_truncate(&full_label, item_width.saturating_sub(2), "…");
             let style = if oi == selected_index {
                 selected_style
             } else {

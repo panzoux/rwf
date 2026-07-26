@@ -353,6 +353,33 @@ impl AppState {
             Transition::ShowContextMenu => {
                 let dialog = crate::model::Dialog::context_menu();
                 self.dialogs.push(dialog);
+
+                // Kick off live content-type detection for the "Open With..." row
+                // label (Phase 7.3b, Task 9) — mirrors the File Info dialog's
+                // on-demand 'd'-key detection (same guard philosophy as Tasks 5/6/8:
+                // magic-byte detection off, or a non-Local/directory entry, means
+                // no doomed detect job and the row stays plain "Open With...").
+                let entry = self.active_pane().current_entry().cloned();
+                if let Some(entry) = entry {
+                    let is_local = matches!(entry.location, crate::model::Location::Local(_));
+                    if self.config.magic_byte_detection_enabled && is_local && !entry.is_dir {
+                        let path: std::path::PathBuf = entry.location.display_path().into();
+                        let job_spec =
+                            crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                                path,
+                                purpose: crate::job::DetectFileTypePurpose::ContextMenuLabel,
+                            });
+                        let job_id = job_spec.id;
+                        if let Some(dialog) = self.dialogs.current_mut() {
+                            if let crate::model::dialog::DialogContent::ContextMenu(d) =
+                                &mut dialog.content
+                            {
+                                d.detected_type_job_id = Some(job_id);
+                            }
+                        }
+                        return Some(StateUpdateResult::with_job(job_spec));
+                    }
+                }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ShowCustomFunctionsDialog => {
@@ -431,8 +458,11 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowOpenWithPicker { candidates, paths } => {
+                // Reached via the flag-off/non-Local extension-only path in
+                // `resolve_extension_association` — content-type detection never ran,
+                // so there's no kind to show in the title.
                 let dialog =
-                    crate::model::Dialog::open_with_picker(paths.clone(), candidates.clone());
+                    crate::model::Dialog::open_with_picker(paths.clone(), candidates.clone(), None);
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }

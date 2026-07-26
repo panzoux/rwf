@@ -24,7 +24,8 @@ fn open_with_picker_two_candidates_first_selected() {
             shell: None,
         },
     ];
-    let dialog = Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates);
+    let dialog =
+        Dialog::open_with_picker(vec![PathBuf::from("/test/server.log")], candidates, None);
     snapshot_dialog("open_with_picker_two_first", &dialog, &state);
 }
 
@@ -54,7 +55,8 @@ fn open_with_picker_three_candidates_middle_selected() {
             shell: Some("bash".to_string()),
         },
     ];
-    let mut dialog = Dialog::open_with_picker(vec![PathBuf::from("/test/notes.txt")], candidates);
+    let mut dialog =
+        Dialog::open_with_picker(vec![PathBuf::from("/test/notes.txt")], candidates, None);
     if let DialogContent::OpenWithPicker(OpenWithPickerDialog {
         ref mut selected_index,
         ..
@@ -94,6 +96,7 @@ fn open_with_picker_multi_file_group_title_shows_count() {
             PathBuf::from("/test/c.log"),
         ],
         candidates,
+        None,
     );
     assert_eq!(dialog.title, "Open With... (3 files)");
     snapshot_dialog("open_with_picker_multi_file_group", &dialog, &state);

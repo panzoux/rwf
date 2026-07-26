@@ -401,9 +401,45 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 .unwrap_or(10);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
         }
-        DialogContent::ContextMenu(ContextMenuDialog { options, .. }) => {
-            let max_label = options.iter().map(|o| o.label.len()).max().unwrap_or(10);
-            ((max_label as u16 + 6).max(24)).min(screen_width.saturating_sub(2))
+        DialogContent::ContextMenu(ContextMenuDialog {
+            options,
+            detected_type_label,
+            detected_type_job_id,
+            ..
+        }) => {
+            // The OpenWith row's rendered label gets a " (<type>)" or
+            // " (detecting...)" suffix appended at render time (Phase 7.3b,
+            // Task 9) that isn't part of `option.label` — account for it here
+            // too, or a detected type longer than every other row's label
+            // just gets truncated even though there's room to show it.
+            let suffix_len = if detected_type_job_id.is_some() {
+                " (detecting...)".len()
+            } else if let Some(t) = detected_type_label {
+                format!(" ({t})").len()
+            } else {
+                0
+            };
+            let max_label = options
+                .iter()
+                .map(|o| {
+                    let extra = if matches!(
+                        o.action,
+                        rwf_lib::model::dialog::ContextMenuAction::OpenWith
+                    ) {
+                        suffix_len
+                    } else {
+                        0
+                    };
+                    o.label.len() + extra
+                })
+                .max()
+                .unwrap_or(10);
+            // +8 (not the base formula's +6) once a suffix is in play: the
+            // suffix isn't part of any `option.label`, so the extra couple of
+            // columns keeps it from immediately re-truncating against the
+            // render loop's own indent/margin (see `render_context_menu_dialog`).
+            let padding = if suffix_len > 0 { 8 } else { 6 };
+            ((max_label as u16 + padding).max(24)).min(screen_width.saturating_sub(2))
         }
         DialogContent::PatternRename { .. }
         | DialogContent::JumpToPath(_)
@@ -637,8 +673,17 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::ContextMenu(ContextMenuDialog {
             options,
             selected_index,
+            detected_type_label,
+            detected_type_job_id,
         }) => {
-            render_context_menu_dialog(frame, content_area, options, *selected_index);
+            render_context_menu_dialog(
+                frame,
+                content_area,
+                options,
+                *selected_index,
+                detected_type_label.as_deref(),
+                detected_type_job_id.is_some(),
+            );
         }
         DialogContent::JumpToPath(JumpToPathDialog {
             query,

@@ -244,6 +244,11 @@ pub enum DetectFileTypePurpose {
     ResolveAssociation { location: crate::model::Location },
     /// Detection was requested on demand from the File Information dialog.
     FileInfoDisplay,
+    /// Detection started automatically when the context menu was opened on a
+    /// Local regular file (Phase 7.3b, Task 9), to show the detected content
+    /// type inline on the "Open With..." row before the user commits to
+    /// opening the picker.
+    ContextMenuLabel,
 }
 
 /// Action to perform with custom function output

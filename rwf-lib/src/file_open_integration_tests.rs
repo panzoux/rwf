@@ -1602,4 +1602,251 @@ mod tests {
             ),
         }
     }
+
+    // -- Task 9 (Phase 7.3b): picker titles show the detected type --------
+
+    /// When the picker is reached via `ResolveAssociation`'s success arm, the
+    /// detected kind was already produced by the pipeline before the
+    /// candidate count was even known — the title should surface it so the
+    /// user can see WHY the picker showed up without opening File Info.
+    #[test]
+    fn open_with_picker_title_includes_detected_type_on_resolve_association_success() {
+        let mut state = test_state();
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: Some("png".to_string()),
+                file_type: None,
+                command: "viewer1 $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("png".to_string()),
+                file_type: None,
+                command: "viewer2 $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result =
+            run_resolve_association_job(&mut state, entry.location.clone(), DetectedKind::Png);
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        let dialog = state.dialogs.current().expect("dialog pushed");
+        assert_eq!(dialog.title, "Open With... (PNG image)");
+        match &dialog.content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.detected_kind, Some(DetectedKind::Png));
+            }
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
+        }
+    }
+
+    /// When `ResolveAssociation` detection itself failed/was cancelled, the
+    /// fail-open arm resolves candidates from extension-only associations
+    /// with no detected kind in hand — the title must stay plain, not claim
+    /// a type that was never actually determined.
+    #[test]
+    fn open_with_picker_title_has_no_type_suffix_on_resolve_association_fail_open() {
+        let mut state = test_state();
+        state.extension_associations = vec![
+            ExtensionAssociation {
+                extension: Some("log".to_string()),
+                file_type: None,
+                command: "less $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("log".to_string()),
+                file_type: None,
+                command: "notepad $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let location = Location::Local(PathBuf::from("/test/vanished.log"));
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path: PathBuf::from("/test/vanished.log"),
+            purpose: DetectFileTypePurpose::ResolveAssociation {
+                location: location.clone(),
+            },
+        });
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("file vanished".to_string()),
+            },
+        );
+        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(state.dialogs.stack.len(), 1);
+        let dialog = state.dialogs.current().expect("dialog pushed");
+        assert_eq!(dialog.title, "Open With...");
+        match &dialog.content {
+            DialogContent::OpenWithPicker(d) => {
+                assert_eq!(d.detected_kind, None);
+            }
+            other => panic!("expected OpenWithPicker dialog, got {:?}", other),
+        }
+    }
+
+    /// The flag-off / non-Local extension-only path (`ShowOpenWithPicker`,
+    /// driven directly rather than through detect-then-resolve) never runs
+    /// detection at all — same "no type suffix" contract as the fail-open
+    /// case above, exercised via the other production entry point.
+    #[test]
+    fn open_with_picker_title_has_no_type_suffix_via_show_open_with_picker_transition() {
+        let mut state = test_state();
+        let candidates = vec![
+            ExtensionAssociation {
+                extension: Some("log".to_string()),
+                file_type: None,
+                command: "less $F".to_string(),
+                description: None,
+                shell: None,
+            },
+            ExtensionAssociation {
+                extension: Some("log".to_string()),
+                file_type: None,
+                command: "notepad $F".to_string(),
+                description: None,
+                shell: None,
+            },
+        ];
+        let paths = vec![PathBuf::from("/test/server.log")];
+
+        update_state(
+            &mut state,
+            Transition::ShowOpenWithPicker { candidates, paths },
+        );
+
+        let dialog = state.dialogs.current().expect("dialog pushed");
+        assert_eq!(dialog.title, "Open With...");
+    }
+
+    // -- Task 9 (Phase 7.3b): context menu shows the detected type --------
+
+    /// Opening the context menu on a Local regular file with magic-byte
+    /// detection enabled (the default) must start a
+    /// `DetectFileType { ContextMenuLabel }` job and record its id on the
+    /// pushed `ContextMenuDialog` so the completion handler can find it back.
+    #[test]
+    fn show_context_menu_on_local_file_starts_detect_job() {
+        let mut state = test_state();
+        assert!(state.config.magic_byte_detection_enabled);
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result = update_state(&mut state, Transition::ShowContextMenu);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        let job_id = result.jobs_to_start[0].id;
+        match &result.jobs_to_start[0].kind {
+            JobKind::DetectFileType { purpose, .. } => {
+                assert_eq!(purpose, &DetectFileTypePurpose::ContextMenuLabel);
+            }
+            other => panic!("expected DetectFileType, got {:?}", other),
+        }
+        assert_eq!(state.dialogs.stack.len(), 1);
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::ContextMenu(d) => {
+                assert_eq!(d.detected_type_job_id, Some(job_id));
+                assert_eq!(d.detected_type_label, None);
+            }
+            other => panic!("expected ContextMenu dialog, got {:?}", other),
+        }
+    }
+
+    /// Completing the detect job started above must set `detected_type_label`
+    /// on the still-open `ContextMenuDialog` and clear the in-flight job id —
+    /// same stack-scan correlation pattern as the File Info dialog's 'd'-key
+    /// detection (Task 6).
+    #[test]
+    fn context_menu_detect_job_completion_sets_label() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result = update_state(&mut state, Transition::ShowContextMenu);
+        let job_spec = result.jobs_to_start[0].clone();
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected(DetectedKind::Png)),
+            },
+        );
+        assert!(result.ui_changed);
+
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::ContextMenu(d) => {
+                assert_eq!(d.detected_type_label, Some("PNG image".to_string()));
+                assert_eq!(d.detected_type_job_id, None);
+            }
+            other => panic!("expected ContextMenu dialog, got {:?}", other),
+        }
+    }
+
+    /// Opening the context menu on a directory must NOT start a detect job —
+    /// magic-byte detection does real filesystem I/O against a file's leading
+    /// bytes, which is meaningless for a directory entry (same class of guard
+    /// as the Local-only checks in Tasks 5/6/8).
+    #[test]
+    fn show_context_menu_on_directory_starts_no_job() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("subdir").dir(true).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result = update_state(&mut state, Transition::ShowContextMenu);
+        assert!(result.jobs_to_start.is_empty());
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::ContextMenu(d) => {
+                assert_eq!(d.detected_type_job_id, None);
+                assert_eq!(d.detected_type_label, None);
+            }
+            other => panic!("expected ContextMenu dialog, got {:?}", other),
+        }
+    }
+
+    /// With `magic_byte_detection_enabled` off, opening the context menu must
+    /// NOT start a detect job even for a Local regular file — the flag is a
+    /// hard gate on all magic-byte I/O, same as every other Phase 7.3 entry
+    /// point.
+    #[test]
+    fn show_context_menu_with_flag_off_starts_no_job() {
+        let mut state = test_state();
+        state.config.magic_byte_detection_enabled = false;
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        let result = update_state(&mut state, Transition::ShowContextMenu);
+        assert!(result.jobs_to_start.is_empty());
+        match &state.dialogs.current().expect("dialog pushed").content {
+            DialogContent::ContextMenu(d) => {
+                assert_eq!(d.detected_type_job_id, None);
+            }
+            other => panic!("expected ContextMenu dialog, got {:?}", other),
+        }
+    }
 }

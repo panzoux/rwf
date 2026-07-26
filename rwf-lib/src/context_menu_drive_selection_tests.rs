@@ -30,6 +30,7 @@ mod tests {
             if let DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
+                ..
             }) = &dialog.content
             {
                 assert_eq!(selected_index, &0);
@@ -253,6 +254,7 @@ mod tests {
             if let DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
+                ..
             }) = &dialog.content
             {
                 let initial_index = selected_index;

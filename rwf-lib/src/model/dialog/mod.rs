@@ -1068,15 +1068,23 @@ impl Dialog {
     pub fn open_with_picker(
         paths: Vec<std::path::PathBuf>,
         candidates: Vec<crate::config::ExtensionAssociation>,
+        detected_kind: Option<crate::magic::DetectedKind>,
     ) -> Self {
-        let title = if paths.len() > 1 {
-            format!("Open With... ({} files)", paths.len())
-        } else {
-            "Open With...".to_string()
+        let title = match (detected_kind, paths.len() > 1) {
+            (Some(kind), true) => {
+                format!("Open With... ({}, {} files)", kind.label(), paths.len())
+            }
+            (Some(kind), false) => format!("Open With... ({})", kind.label()),
+            (None, true) => format!("Open With... ({} files)", paths.len()),
+            (None, false) => "Open With...".to_string(),
         };
         Self {
             title,
-            content: DialogContent::OpenWithPicker(OpenWithPickerDialog::new(paths, candidates)),
+            content: DialogContent::OpenWithPicker(OpenWithPickerDialog::new(
+                paths,
+                candidates,
+                detected_kind,
+            )),
         }
     }
 }
@@ -1923,6 +1931,7 @@ impl DialogContent {
             DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
+                ..
             }) => Some((options, *selected_index)),
             _ => None,
         }
@@ -1934,6 +1943,7 @@ impl DialogContent {
             DialogContent::ContextMenu(ContextMenuDialog {
                 options,
                 selected_index,
+                ..
             }) => Some((options, selected_index)),
             _ => None,
         }
