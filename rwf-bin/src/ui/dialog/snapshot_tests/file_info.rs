@@ -399,6 +399,62 @@ fn file_info_hex_mode_ascii_column_reflects_encoding() {
     );
 }
 
+/// Phase 7.3b, Task 15: reproduces the user's live-testing screenshot bug —
+/// a full 16-byte hex row's ASCII column got cut off at the dialog's right
+/// border on a wide terminal, even though there was plenty of unused screen
+/// width (the background pane's own content was visibly peeking out past the
+/// dialog). Root cause: the dialog-width match had no dedicated
+/// `DialogContent::FileInfo` arm, so it fell through to the generic 60%
+/// catch-all (`default_dialog_width`), which doesn't know about the hex
+/// row's fixed 80-column content requirement.
+///
+/// At 100 columns: the OLD 60% formula gives 60 (clips well before the
+/// ASCII column even starts); the NEW content-driven formula
+/// (`file_info_dialog_width`, capped at 90%/floored at 40) gives exactly 80,
+/// which is precisely enough to show a full hex row with no wasted stretch.
+#[test]
+fn file_info_hex_mode_full_row_not_clipped_at_100_columns() {
+    let state = test_state();
+    let entry = FileEntry {
+        name: "photo.png".to_string(),
+        location: Location::Local(PathBuf::from("/test/documents/photo.png")),
+        size: 2048,
+        is_dir: false,
+        is_hidden: false,
+        modified: SystemTime::UNIX_EPOCH,
+        marked: false,
+        calculated_size: None,
+        is_symlink: false,
+        link_target: None,
+        link_kind: None,
+    };
+    let mut dialog = Dialog::file_info(&entry);
+    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+        d.detected_type = Some("PNG image".to_string());
+        // A full 16-byte row so the ASCII column runs the full width;
+        // bytes chosen so every position decodes to a printable ASCII char
+        // under the Utf8 fallback (0x20..=0x2B), matching the reported
+        // screenshot's row shape (offset + hex + trailing ASCII run).
+        d.header_bytes = Some(vec![
+            0x00, 0x05, 0x81, 0x44, 0x20, 0x20, 0x21, 0x22, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29,
+            0x2A, 0x2B,
+        ]);
+        d.header_hex_mode = true;
+    }
+
+    let rendered = super::render_dialog_to_string(&dialog, &state, 100, 24);
+
+    // The ASCII column's trailing run for these bytes: 0x24 '$' through 0x2B
+    // '+' are all printable ASCII, so they decode verbatim under the Utf8
+    // fallback. If the dialog is too narrow, this trailing slice of the
+    // ASCII column gets cut off (as in the user's screenshot) instead of
+    // appearing in full.
+    assert!(
+        rendered.contains("$%&'()*+"),
+        "expected the full trailing ASCII column to be visible, not clipped: {rendered}"
+    );
+}
+
 /// CJK regression coverage for the Task 10 bug fix: the old byte-to-char
 /// mapping could never render CJK (a CJK char is multiple UTF-8 bytes).
 /// This snapshot proves the actual Japanese characters render, not dots.

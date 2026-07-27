@@ -167,6 +167,65 @@ fn default_dialog_width(screen_width: u16) -> u16 {
         .min(screen_width.saturating_sub(2))
 }
 
+/// Minimum dialog border-to-border width (in columns) needed so the File
+/// Info dialog's hex-mode preview can show one full 16-byte row without
+/// clipping the ASCII column — derived directly from
+/// `render_file_info_dialog`'s hex-row line, not guessed:
+///
+/// ```text
+/// let line = format!("{:06X}  {} {}", offset, hex_str, ascii_str);
+/// ```
+///
+/// - `{:06X}` offset               ->  6 columns
+/// - `"  "` separator              ->  2 columns
+/// - `hex_str` (`format_hex_row`, a full 16-byte row: 16×"XX " = 48 cols,
+///   plus 1 extra mid-row gap space at the 8-byte boundary) -> 49 columns
+///   (see `format_hex_row_full_16_byte_row` in `rwf-lib/src/model/viewer.rs`,
+///   which pins this exact string).
+/// - `" "` separator before the ASCII column -> 1 column
+/// - `ascii_str` (`TextEncoding::decode_row_chars`, at most one char per
+///   input byte, so at most 16 columns for a 16-byte row) -> 16 columns
+///
+/// Total hex-row content = 6 + 2 + 49 + 1 + 16 = 74 columns.
+///
+/// That content is rendered into `w = area.width - 4` (2-column left/right
+/// margin applied inside `render_file_info_dialog`), where `area` is already
+/// the dialog's *inner* content area (`Block::inner` subtracts 1 column of
+/// border on each side from the outer dialog width). So:
+///
+/// ```text
+/// dialog_width - 2 (borders) - 4 (render_file_info_dialog's margin) >= 74
+/// dialog_width >= 80
+/// ```
+///
+/// The other rows that share this width ("Text encoding: <name>" and the
+/// "(showing first N of M bytes)" truncation indicator) are both well under
+/// 74 columns even in worst-case cases (longest encoding name is
+/// "Windows-1252" at 12 chars; the truncation line tops out around 50 chars
+/// even for a `u64::MAX`-sized file), so the hex row is the true binding
+/// constraint, not those lines. The Name/Path rows are excluded entirely:
+/// they already gracefully ellipsis-truncate via `smart_truncate`, so they
+/// never force extra width.
+const FILE_INFO_HEX_ROW_DIALOG_WIDTH: u16 = 80;
+
+/// File Info dialog width: exactly enough columns to show a full hex row
+/// (see `FILE_INFO_HEX_ROW_DIALOG_WIDTH`) with no wasted stretch beyond that
+/// — the user's complaint was clipping, not a desire for extra blank space,
+/// so unlike `TypeMismatchWarning`/`Help`/etc. this is NOT a "stretch to N%
+/// of screen" formula. It's capped at 90% of screen width (the widest the
+/// user asked any dialog to go) and floored at the same 40-column minimum
+/// every other dialog uses, so on a narrow terminal where even 90% can't fit
+/// the ideal 80 columns, the dialog still uses up to that 90%/40-floor
+/// range and simply clips the hex row — an accepted, inherent limit of a
+/// 16-byte-per-row hex format in a genuinely narrow terminal.
+fn file_info_dialog_width(screen_width: u16) -> u16 {
+    let cap_90 = (screen_width * 90) / 100;
+    FILE_INFO_HEX_ROW_DIALOG_WIDTH
+        .min(cap_90)
+        .max(40)
+        .min(screen_width.saturating_sub(2))
+}
+
 /// Render a dialog overlay centered on screen
 pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppState) {
     let screen_width = frame.area().width;
@@ -485,6 +544,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::Help { .. } => ((screen_width * 70) / 100)
             .max(40)
             .min(screen_width.saturating_sub(2)),
+        DialogContent::FileInfo { .. } => file_info_dialog_width(screen_width),
         _ => default_dialog_width(screen_width),
     };
 
@@ -1222,4 +1282,74 @@ pub fn handle_dialog_input(
 
     // Delegate to content-specific handler
     handle_content_input(&mut dialog.content, key)
+}
+
+#[cfg(test)]
+mod width_calc_tests {
+    use super::*;
+
+    /// The exact content-width requirement derived from
+    /// `render_file_info_dialog`'s hex-row format string — see the doc
+    /// comment on `FILE_INFO_HEX_ROW_DIALOG_WIDTH` for the full derivation.
+    #[test]
+    fn file_info_dialog_width_is_content_driven_not_stretched() {
+        // Wide enough that 90% comfortably clears the 80-column requirement:
+        // the dialog should land exactly on the content-driven minimum, not
+        // stretch out to fill the extra room.
+        assert_eq!(file_info_dialog_width(200), FILE_INFO_HEX_ROW_DIALOG_WIDTH);
+        assert_eq!(file_info_dialog_width(120), FILE_INFO_HEX_ROW_DIALOG_WIDTH);
+    }
+
+    /// Repro of the user's screenshot bug: at a terminal width where the OLD
+    /// 60%-based `default_dialog_width` formula clips a full hex row (needs
+    /// 80 columns) but the NEW 90%-capped, content-driven formula does not.
+    /// 100 columns: old 60% => 60 (< 80, clips); new min(80, 90%=90) => 80
+    /// (>= 80, no clip).
+    #[test]
+    fn file_info_dialog_width_fixes_the_old_60_percent_clipping_case() {
+        let screen_width = 100;
+        let old_width = default_dialog_width(screen_width);
+        let new_width = file_info_dialog_width(screen_width);
+
+        assert!(
+            old_width < FILE_INFO_HEX_ROW_DIALOG_WIDTH,
+            "expected the OLD formula to clip at this width (old={old_width}, needed={FILE_INFO_HEX_ROW_DIALOG_WIDTH})"
+        );
+        assert!(
+            new_width >= FILE_INFO_HEX_ROW_DIALOG_WIDTH,
+            "expected the NEW formula to fit a full hex row (new={new_width}, needed={FILE_INFO_HEX_ROW_DIALOG_WIDTH})"
+        );
+    }
+
+    /// Narrow terminals: the dialog shouldn't blow past 90% of the screen,
+    /// and should stay comfortably within the standard 80x24 size already
+    /// used by this project's snapshot tests, floored at the same 40-column
+    /// minimum every other dialog uses.
+    #[test]
+    fn file_info_dialog_width_stays_sane_at_80x24() {
+        let width = file_info_dialog_width(80);
+        assert!(width >= 40, "must respect the 40-column floor: {width}");
+        assert!(
+            width <= 78,
+            "must never exceed screen_width - 2 at 80 columns: {width}"
+        );
+        // 90% of 80 = 72, which is less than the 80-column ideal, so the
+        // dialog is expected to still clip the hex row here — that's the
+        // accepted, inherent narrow-terminal limitation the task calls out.
+        assert_eq!(width, 72);
+    }
+
+    /// Even at a genuinely tiny terminal, the formula must not panic or
+    /// underflow (u16 saturating arithmetic) and must respect the 40-column
+    /// floor without exceeding the screen.
+    #[test]
+    fn file_info_dialog_width_does_not_panic_on_tiny_screens() {
+        for w in [0u16, 1, 10, 39, 40, 41] {
+            let width = file_info_dialog_width(w);
+            assert!(
+                width <= w.max(40),
+                "width {width} unreasonable for screen {w}"
+            );
+        }
+    }
 }
