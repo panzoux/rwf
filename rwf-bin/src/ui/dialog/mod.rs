@@ -277,6 +277,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             (suggestions.len().min(10) as u16 + 5).max(8)
         }
         DialogContent::FileInfo(FileInfoDialog {
+            size,
             link_target,
             detecting,
             detected_type,
@@ -303,10 +304,20 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // conditioning as that field's own +4 above. Without this, the
             // encoding row silently eats the one row of slack the old
             // formula happened to leave before the hint line.
-            if header_encoding.is_some() {
+            let base = if header_encoding.is_some() {
                 base + 1
             } else {
                 base
+            };
+            // +1 for the "(showing first N of M bytes)" truncation indicator
+            // (Phase 7.3b, Task 14), shown whenever the file is bigger than
+            // the captured `header_bytes` window — same condition
+            // `render_file_info_dialog` uses. Without this, the indicator row
+            // silently eats the last row of slack before the hint line, just
+            // like the encoding row did before Task 12's height fix.
+            match header_bytes {
+                Some(bytes) if *size > bytes.len() as u64 => base + 1,
+                _ => base,
             }
         } // name+path+size+type+3×datetime + hint (+1 for link row, +1 for detected type, +4 for header bytes, +1 for encoding row)
         DialogContent::PatternRename(PatternRenameContent { preview, .. }) => {

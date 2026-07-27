@@ -12,8 +12,30 @@ use crate::ui::{sanitize_for_display, smart_truncate, truncate_to_width};
 /// (a CJK character counts as 2 columns), not char-count-aware, so CJK text
 /// wraps at half the column budget of ASCII text. If the text needs more
 /// than `max_lines` rows, the last row is truncated with an ellipsis.
+// Only exercised by tests now — production code calls `wrap_multi_line_text`
+// directly (Phase 7.3b, Task 14) so it can wrap MULTIPLE raw-byte-split
+// logical lines, not just one flattened blob. Kept as a thin single-line
+// wrapper (rather than rewriting every existing test call site) since its
+// single-logical-line behavior is still exactly what those tests exercise.
+#[cfg(test)]
 fn wrap_decoded_text(text: &str, max_width: usize, max_lines: usize) -> Vec<String> {
-    if max_width == 0 || max_lines == 0 {
+    wrap_multi_line_text(&[text.to_string()], max_width, max_lines)
+}
+
+/// Width-aware wrap of ONE already-decoded, already-sanitized logical line
+/// (no embedded `\n`/`\r` — those must already have been split out by the
+/// caller) into as many rows of at most `max_width` display columns as it
+/// takes. Unlike `wrap_multi_line_text`, this does not cap the row count —
+/// the caller accumulates rows across multiple logical lines and applies
+/// the shared budget/ellipsis truncation once, across the combined total.
+///
+/// Returns an empty `Vec` for an empty input line — callers that need a
+/// blank logical line to still occupy one display row (e.g. a blank line
+/// between two paragraphs) must special-case that themselves; a bare
+/// single-string caller (the old `wrap_decoded_text` behavior) wants zero
+/// rows for empty input, so that decision isn't baked in here.
+fn wrap_single_logical_line(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
         return Vec::new();
     }
 
@@ -26,20 +48,6 @@ fn wrap_decoded_text(text: &str, max_width: usize, max_lines: usize) -> Vec<Stri
         if current_width + ch_width > max_width {
             lines.push(std::mem::take(&mut current));
             current_width = 0;
-            if lines.len() == max_lines {
-                // More text remains than the row budget allows — mark the
-                // last visible row as truncated rather than growing further.
-                // The last row is already exactly `max_width` columns wide
-                // (that's why it was flushed), so `truncate_to_width` alone
-                // is a no-op here (it only shortens strings that overflow
-                // the target width) — shave one display column off first to
-                // make room for the ellipsis glyph.
-                if let Some(last) = lines.last_mut() {
-                    let shortened = truncate_to_width(last, max_width.saturating_sub(1), "");
-                    *last = format!("{shortened}…");
-                }
-                return lines;
-            }
         }
         current.push(ch);
         current_width += ch_width;
@@ -48,6 +56,110 @@ fn wrap_decoded_text(text: &str, max_width: usize, max_lines: usize) -> Vec<Stri
         lines.push(current);
     }
     lines
+}
+
+/// Wrap MULTIPLE already-decoded, already-sanitized logical lines
+/// independently, then flatten the resulting rows into a single list capped
+/// at a TOTAL of `max_lines` rows across all of them — if the combined
+/// output exceeds the budget, the row at the cap is truncated with an
+/// ellipsis (same convention as the old single-blob `wrap_decoded_text`).
+///
+/// A logical line that wraps to zero rows (i.e. it decoded to an empty
+/// string — a blank line between two `\n` bytes) still contributes exactly
+/// one empty row here: a blank line is a real, visible row in the real file
+/// viewer, and silently dropping it would collapse "two blank lines in a
+/// row" into "no gap at all".
+fn wrap_multi_line_text(
+    logical_lines: &[String],
+    max_width: usize,
+    max_lines: usize,
+) -> Vec<String> {
+    if max_width == 0 || max_lines == 0 {
+        return Vec::new();
+    }
+
+    let mut rows: Vec<String> = Vec::new();
+    for logical in logical_lines {
+        let wrapped = wrap_single_logical_line(logical, max_width);
+        let wrapped = if wrapped.is_empty() {
+            vec![String::new()]
+        } else {
+            wrapped
+        };
+        for row in wrapped {
+            if rows.len() == max_lines {
+                // More rows remain than the total budget allows — mark the
+                // last visible row as truncated rather than growing further.
+                // The last row is already exactly `max_width` columns wide
+                // (that's why it was flushed), so `truncate_to_width` alone
+                // is a no-op here (it only shortens strings that overflow
+                // the target width) — shave one display column off first to
+                // make room for the ellipsis glyph.
+                if let Some(last) = rows.last_mut() {
+                    let shortened = truncate_to_width(last, max_width.saturating_sub(1), "");
+                    *last = format!("{shortened}…");
+                }
+                return rows;
+            }
+            rows.push(row);
+        }
+    }
+    rows
+}
+
+/// Split RAW bytes into logical lines on `\n` (0x0A), stripping a trailing
+/// `\r` (0x0D) from each segment so both LF-only and CRLF line endings
+/// produce clean splits without a stray carriage-return byte left over.
+///
+/// This MUST run on the raw byte slice BEFORE `TextEncoding::decode()` is
+/// called — mirroring the real full-screen file viewer's `LineIndex`
+/// (rwf-lib/src/model/viewer.rs), which finds line boundaries by scanning
+/// raw bytes for `\n` before any decoding happens. That ordering is what
+/// keeps a literal `\n`/`\r` byte from ever reaching `sanitize_for_display`
+/// as part of a decoded blob: this whole fix exists because the old code
+/// decoded+sanitized the ENTIRE header as one string, so any embedded
+/// newline got turned into a visible "␊"/"␍" control-picture glyph instead
+/// of being consumed as a line break. After this split, each per-segment
+/// decode+sanitize pass structurally cannot see a `\n` byte, so that class
+/// of bug is impossible here, not just patched over for the common case.
+///
+/// Accepted limitation: this only works for encodings where 0x0A always
+/// means a literal LF byte and never appears as a non-final byte of a
+/// multi-byte sequence. That holds for every encoding `header_encoding` can
+/// actually be set to except UTF-16:
+/// - Shift-JIS lead bytes are 0x81-0x9F/0xE0-0xFC with trail bytes
+///   0x40-0x7E/0x80-0xFC (see `TextEncoding::detect`'s own lead/trail
+///   ranges), and EUC-JP lead bytes are 0xA1-0xFE/0x8E(SS2)/0x8F(SS3) with
+///   trail bytes >=0xA1 — none of those ranges include 0x0A, so a raw 0x0A
+///   is never "eaten" as part of a Shift-JIS/EUC-JP multi-byte character.
+/// - UTF-8 continuation bytes are always in 0x80-0xBF, and ASCII-range
+///   bytes (including 0x0A) never appear as a non-leading byte of a valid
+///   multi-byte sequence.
+/// - ISO-8859-1/Windows-1252 are single-byte, so this is moot for them.
+///
+/// It does NOT hold for `Utf16Le`/`Utf16Be`, where LF is encoded as a 2-byte
+/// unit (`0x0A 0x00` or `0x00 0x0A`) and a raw 0x0A byte can legitimately be
+/// the low or high byte of some unrelated UTF-16 code unit — splitting on
+/// it there can produce wrong boundaries. This is an accepted, documented
+/// gap: File Info's header preview is a best-effort audit tool, not a full
+/// UTF-16-aware line splitter, and fixing it would require decoding UTF-16
+/// code units first (which reintroduces the exact ordering problem this
+/// function exists to avoid) — not attempted here.
+fn split_raw_lines(bytes: &[u8]) -> Vec<&[u8]> {
+    let mut segments: Vec<&[u8]> = Vec::new();
+    let mut start = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == 0x0A {
+            let mut end = i;
+            if end > start && bytes[end - 1] == 0x0D {
+                end -= 1;
+            }
+            segments.push(&bytes[start..end]);
+            start = i + 1;
+        }
+    }
+    segments.push(&bytes[start..]);
+    segments
 }
 
 fn fmt_size(bytes: u64) -> String {
@@ -208,6 +320,28 @@ pub(super) fn render_file_info_dialog(
         next_row += 1;
     }
 
+    // Truncation indicator (Phase 7.3b, Task 14): `header_bytes` is captured
+    // at storage time capped to 64 bytes (Task 10), so for any file bigger
+    // than that cap, what's rendered below is a SAMPLE, not the whole file.
+    // Without this, the user has no way to tell "this IS the whole file"
+    // apart from "this is the first 64 of a much bigger file" just by
+    // looking at the hex/text preview. Shown only when something was
+    // actually cut off — small files (<= 64 bytes) get no extra row, so the
+    // common case stays uncluttered.
+    if let Some(bytes) = header_bytes {
+        if size > bytes.len() as u64 {
+            let y = area.y + next_row;
+            if y + 1 < area.y + area.height {
+                frame.render_widget(
+                    Paragraph::new(format!("(showing first {} of {} bytes)", bytes.len(), size))
+                        .style(hint),
+                    Rect::new(area.x + 2, y, w as u16, 1),
+                );
+            }
+            next_row += 1;
+        }
+    }
+
     // Header-bytes audit view (Phase 7.3b, Task 10): up to 4 rows of the
     // leading bytes used for content-type detection, hex or raw text
     // depending on `header_hex_mode`. Nothing to show until detection has
@@ -273,17 +407,28 @@ pub(super) fn render_file_info_dialog(
             // hand-rolled byte-to-char mapping. That old mapping treated
             // every byte as an independent ASCII-or-dot glyph, which can
             // never render CJK (a CJK char is 2-3 UTF-8/Shift-JIS/EUC-JP
-            // bytes). Decoding the full byte window (not chunked to 16 bytes
-            // first) lets multi-byte sequences that span a would-be 16-byte
-            // boundary decode correctly.
+            // bytes).
+            //
+            // Phase 7.3b, Task 14: split on RAW `\n`/`\r\n` bytes FIRST (see
+            // `split_raw_lines`), then decode+sanitize each resulting segment
+            // independently, matching the real viewer's `LineIndex` ordering
+            // exactly. Before this fix, the ENTIRE byte window was decoded
+            // and sanitized as one blob, so any real newline byte inside it
+            // hit `sanitize_for_display`'s control-picture-glyph branch and
+            // rendered as a visible "␊"/"␍" instead of producing a line
+            // break — cramming unrelated content from different logical
+            // lines onto one visual row. Splitting on raw bytes before
+            // decoding also still lets multi-byte sequences that would have
+            // spanned a would-be 16-byte hex-row boundary decode correctly,
+            // same as before.
             //
             // Known, accepted edge case: `header_bytes` is a raw truncated
             // window (first ~64 bytes of the file), not aligned to a
-            // character boundary, so the trailing bytes may form a partial
-            // multi-byte sequence at the cut-off. `TextEncoding::decode`
-            // renders that as a replacement character (U+FFFD) rather than
-            // panicking — expected behavior for any byte-window text
-            // preview, not something to special-case here.
+            // character boundary, so the trailing bytes of the LAST segment
+            // may form a partial multi-byte sequence at the cut-off.
+            // `TextEncoding::decode` renders that as a replacement character
+            // (U+FFFD) rather than panicking — expected behavior for any
+            // byte-window text preview, not something to special-case here.
             // Use the persisted encoding (auto-detected at job-completion time,
             // cyclable away via the `e` key — Phase 7.3b, Task 12) rather than
             // re-detecting fresh on every render, which would silently discard
@@ -293,9 +438,14 @@ pub(super) fn render_file_info_dialog(
             // arm), so this closure should never actually run.
             let encoding = header_encoding
                 .unwrap_or_else(|| rwf_lib::model::viewer::TextEncoding::detect(bytes));
-            let decoded = encoding.decode(bytes);
-            let sanitized = sanitize_for_display(&decoded);
-            for (row_idx, line) in wrap_decoded_text(&sanitized, w, 4).into_iter().enumerate() {
+            let decoded_lines: Vec<String> = split_raw_lines(bytes)
+                .into_iter()
+                .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+                .collect();
+            for (row_idx, line) in wrap_multi_line_text(&decoded_lines, w, 4)
+                .into_iter()
+                .enumerate()
+            {
                 let y = area.y + next_row + row_idx as u16;
                 if y + 1 >= area.y + area.height {
                     break;
@@ -576,5 +726,205 @@ mod tests {
         assert_eq!(lines.len(), 4);
         assert!(!lines[3].contains('…'));
         assert_eq!(lines.join(""), text);
+    }
+
+    // ── Phase 7.3b, Task 14: newline handling + truncation indicator ──────
+
+    /// The exact bug scenario from live testing: real JSON bytes with `\n`
+    /// separating logical lines. Before the fix, the whole blob was decoded
+    /// and sanitized as one string, so each `\n` byte became a visible "␊"
+    /// control-picture glyph and unrelated content from different lines got
+    /// crammed onto one visual row. After the fix, splitting on raw bytes
+    /// before decoding must produce SEPARATE rows for each logical line, and
+    /// no "␊" anywhere in the output.
+    #[test]
+    fn real_repro_bug_newlines_produce_separate_lines_not_control_glyphs() {
+        let text = "{\n  \"_comment\": [\n    \"RWF keybindings.json\"\n";
+        let bytes = text.as_bytes();
+        let encoding = TextEncoding::Utf8;
+
+        let decoded_lines: Vec<String> = split_raw_lines(bytes)
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+
+        assert_eq!(
+            decoded_lines,
+            vec![
+                "{".to_string(),
+                "  \"_comment\": [".to_string(),
+                "    \"RWF keybindings.json\"".to_string(),
+                String::new(), // trailing segment after the final \n
+            ]
+        );
+        assert!(
+            !decoded_lines.iter().any(|l| l.contains('␊')),
+            "no logical line may contain a line-feed control-picture glyph: {decoded_lines:?}"
+        );
+
+        let rows = wrap_multi_line_text(&decoded_lines, 46, 4);
+        assert!(
+            !rows.iter().any(|r| r.contains('␊')),
+            "rendered rows must never contain ␊: {rows:?}"
+        );
+        // Each logical line must land on its own row (none merged together).
+        assert!(rows.contains(&"{".to_string()));
+        assert!(rows.contains(&"  \"_comment\": [".to_string()));
+        assert!(rows.contains(&"    \"RWF keybindings.json\"".to_string()));
+    }
+
+    /// `\r\n` line endings must produce clean splits: no stray `␍`/`␊`
+    /// glyphs, and the `\r` must not leave a doubled/blank extra line.
+    #[test]
+    fn crlf_line_endings_split_cleanly_without_stray_glyphs() {
+        let bytes = b"line one\r\nline two\r\n";
+        let encoding = TextEncoding::Utf8;
+
+        let segments = split_raw_lines(bytes);
+        // "line one", "line two", "" (trailing empty segment after final \r\n)
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0], b"line one");
+        assert_eq!(segments[1], b"line two");
+        assert_eq!(segments[2], b"");
+
+        let decoded_lines: Vec<String> = segments
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+        assert_eq!(decoded_lines, vec!["line one", "line two", ""]);
+        for line in &decoded_lines {
+            assert!(!line.contains('␍'), "no stray ␍: {decoded_lines:?}");
+            assert!(!line.contains('␊'), "no stray ␊: {decoded_lines:?}");
+        }
+    }
+
+    /// The newline-splitting fix must NOT suppress sanitization of other,
+    /// non-newline control characters — a NUL byte or ESC byte embedded
+    /// within a logical line must still render as its control-picture glyph.
+    /// Only `\n`/`\r` are special-cased as line separators.
+    #[test]
+    fn non_newline_control_chars_still_get_sanitized_within_a_line() {
+        let bytes = b"before\x00after\x1Bend";
+        let encoding = TextEncoding::Utf8;
+
+        let decoded_lines: Vec<String> = split_raw_lines(bytes)
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+
+        assert_eq!(decoded_lines.len(), 1, "no \\n in the input, so one line");
+        assert!(
+            decoded_lines[0].contains('␀'),
+            "NUL must still be sanitized to its glyph: {:?}",
+            decoded_lines[0]
+        );
+        assert!(
+            decoded_lines[0].contains('\u{241B}'),
+            "ESC must still be sanitized to its glyph: {:?}",
+            decoded_lines[0]
+        );
+    }
+
+    /// Many short logical lines whose combined wrapped output exceeds the
+    /// 4-row budget must truncate cleanly with an ellipsis, never panic, and
+    /// never exceed 4 rows.
+    #[test]
+    fn multi_line_output_exceeding_budget_truncates_cleanly() {
+        let logical_lines: Vec<String> = (0..10).map(|i| format!("line {i}")).collect();
+        let rows = wrap_multi_line_text(&logical_lines, 46, 4);
+        assert_eq!(rows.len(), 4);
+        assert!(
+            rows[3].ends_with('…'),
+            "last row must be ellipsis-truncated: {:?}",
+            rows[3]
+        );
+    }
+
+    /// A blank logical line (two consecutive `\n` bytes) must still occupy
+    /// one empty display row, not vanish.
+    #[test]
+    fn blank_logical_line_occupies_one_empty_row() {
+        let bytes = b"first\n\nthird";
+        let encoding = TextEncoding::Utf8;
+        let decoded_lines: Vec<String> = split_raw_lines(bytes)
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+        assert_eq!(decoded_lines, vec!["first", "", "third"]);
+
+        let rows = wrap_multi_line_text(&decoded_lines, 46, 4);
+        assert_eq!(
+            rows,
+            vec!["first".to_string(), String::new(), "third".to_string()]
+        );
+    }
+
+    /// Re-verify Tasks 11-13's CJK/Shift-JIS fixtures still render
+    /// identically now that the text-mode branch routes through
+    /// `split_raw_lines` first: a CJK string with NO embedded newlines must
+    /// produce exactly the same output as before this fix.
+    #[test]
+    fn cjk_bytes_with_no_newlines_render_identically_through_the_new_pipeline() {
+        let bytes = "こんにちは".as_bytes();
+        let encoding = TextEncoding::detect(bytes);
+
+        let decoded_lines: Vec<String> = split_raw_lines(bytes)
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+        assert_eq!(decoded_lines, vec!["こんにちは"]);
+
+        let rows = wrap_multi_line_text(&decoded_lines, 46, 4);
+        assert_eq!(rows.join(""), "こんにちは");
+        assert!(!rows.join("").contains('.'));
+    }
+
+    #[test]
+    fn shift_jis_bytes_with_no_newlines_render_identically_through_the_new_pipeline() {
+        let original = "こんにちは";
+        let (encoded, _, had_errors) = encoding_rs::SHIFT_JIS.encode(original);
+        assert!(!had_errors);
+        let bytes = encoded.into_owned();
+
+        let encoding = TextEncoding::detect(&bytes);
+        assert_eq!(encoding, TextEncoding::ShiftJis);
+
+        let decoded_lines: Vec<String> = split_raw_lines(&bytes)
+            .into_iter()
+            .map(|segment| sanitize_for_display(&encoding.decode(segment)))
+            .collect();
+        assert_eq!(decoded_lines, vec![original]);
+
+        let rows = wrap_multi_line_text(&decoded_lines, 46, 4);
+        assert_eq!(rows.join(""), original);
+    }
+
+    // ── Truncation indicator ───────────────────────────────────────────────
+
+    /// Mirrors the exact condition used in `render_file_info_dialog`: a file
+    /// whose real `size` exceeds the captured `header_bytes` length must be
+    /// flagged as truncated.
+    #[test]
+    fn truncation_indicator_condition_true_when_size_exceeds_header_bytes() {
+        let header_bytes: Vec<u8> = vec![0u8; 64];
+        let size: u64 = 500;
+        assert!(size > header_bytes.len() as u64);
+
+        let text = format!("(showing first {} of {} bytes)", header_bytes.len(), size);
+        assert_eq!(text, "(showing first 64 of 500 bytes)");
+    }
+
+    /// A file at or below the 64-byte capture cap must NOT show the
+    /// truncation indicator — nothing was actually cut off, so the common
+    /// case of small files stays uncluttered.
+    #[test]
+    fn truncation_indicator_condition_false_when_size_within_header_bytes() {
+        let header_bytes: Vec<u8> = vec![0u8; 40];
+        let size: u64 = 40;
+        assert!(size <= header_bytes.len() as u64);
+
+        let header_bytes_smaller_file: Vec<u8> = vec![0u8; 64];
+        let size_exact: u64 = 64;
+        assert!(size_exact <= header_bytes_smaller_file.len() as u64);
     }
 }
