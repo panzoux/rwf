@@ -505,6 +505,40 @@ mod tests {
         }
     }
 
+    /// Code-review follow-up on Task 13a: the single-byte tests above only
+    /// prove the fallback ('.') behavior for orphan/lead bytes — they don't
+    /// prove the actual selling point of routing hex mode through
+    /// `decode_row_chars`: correctly reconstructing a genuine multi-byte
+    /// character when both its bytes land within the same 16-byte row. あ
+    /// (hiragana A) is the 2-byte Shift-JIS pair 0x82 0xA0 — same fixture
+    /// idiom (`encoding_rs::SHIFT_JIS.encode`) as the こんにちは fixtures used
+    /// elsewhere in this file for Tasks 11/12. Both bytes must be consumed as
+    /// ONE character spanning byte_start=0..byte_end=2, not rendered as two
+    /// separate dot/garbage entries.
+    #[test]
+    fn decode_row_chars_reconstructs_a_genuine_two_byte_shift_jis_character() {
+        let (encoded, _, had_errors) = encoding_rs::SHIFT_JIS.encode("あ");
+        assert!(
+            !had_errors,
+            "Shift-JIS encoding of the fixture must succeed"
+        );
+        let bytes = encoded.into_owned();
+        assert_eq!(
+            bytes,
+            vec![0x82, 0xA0],
+            "sanity: あ must be the 2-byte SJIS pair 0x82 0xA0"
+        );
+
+        let result = TextEncoding::ShiftJis.decode_row_chars(&bytes);
+
+        assert_eq!(
+            result,
+            vec![('あ', 0, 2)],
+            "both bytes must be consumed as one character spanning the full 2-byte \
+             range, not decoded as two separate entries: {result:?}"
+        );
+    }
+
     #[test]
     fn wrap_is_width_aware_not_char_count_aware() {
         // 10 CJK characters (width 2 each = width 20) must wrap sooner than

@@ -1225,6 +1225,108 @@ mod tests {
         );
     }
 
+    /// Code-review follow-up on Task 13b: auto-starting detection on every
+    /// `ShowFileInfo` makes a cross-file race far more plausible than the old
+    /// manual-`d`-trigger design ever did. Sequence: open File Info on A,
+    /// close it before its job completes, immediately open File Info on B
+    /// (a different, still in-flight job), THEN let A's now-stale job
+    /// complete. The `FileInfoDisplay` completion handler in
+    /// `state/handlers/job.rs` correlates strictly by scanning
+    /// `dialogs.stack` for a `detected_type_job_id` match — A's dialog is
+    /// gone, so A's late completion must find no match and be a safe no-op,
+    /// leaving B's dialog (with its own, different job id) completely
+    /// untouched.
+    #[test]
+    fn stale_file_info_detection_job_does_not_corrupt_a_different_open_dialog() {
+        let mut state = test_state();
+        let entry_a = FileEntryBuilder::new("a.png").dir(false).build();
+        let entry_b = FileEntryBuilder::new("b.txt").dir(false).build();
+
+        // 1. Open File Info for A; its auto-detect job starts but never completes.
+        let result_a = push_file_info_dialog(&mut state, &entry_a);
+        let job_spec_a = result_a.jobs_to_start[0].clone();
+        let job_id_a = job_spec_a.id;
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec_a });
+        update_state(&mut state, Transition::StartNextJob);
+
+        // 2. Close A's dialog before its job completes.
+        update_state(&mut state, Transition::CloseDialog);
+        assert!(state.dialogs.is_empty(), "sanity: A's dialog is gone");
+
+        // 3. Immediately open File Info for B — a different job id.
+        let result_b = push_file_info_dialog(&mut state, &entry_b);
+        let job_spec_b = result_b.jobs_to_start[0].clone();
+        let job_id_b = job_spec_b.id;
+        assert_ne!(
+            job_id_a, job_id_b,
+            "sanity: A's and B's detect jobs must be distinct"
+        );
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec_b });
+        update_state(&mut state, Transition::StartNextJob);
+
+        match &state.dialogs.current().expect("B's dialog open").content {
+            DialogContent::FileInfo(d) => {
+                assert_eq!(d.detected_type_job_id, Some(job_id_b));
+                assert!(d.detecting, "sanity: B's own detection is still in flight");
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        // 4. A's stale job completes LATE, after B is already open.
+        let png_signature: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: job_id_a,
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: DetectedKind::Png,
+                    header_bytes: png_signature,
+                }),
+            },
+        );
+
+        // 5. B's dialog must be completely untouched: still the only dialog
+        // on the stack, still waiting on its OWN job, with none of A's PNG
+        // detection results bled in.
+        assert_eq!(
+            state.dialogs.stack.len(),
+            1,
+            "A's stale completion must not have pushed/left any extra dialog"
+        );
+        match &state
+            .dialogs
+            .current()
+            .expect("B's dialog still open")
+            .content
+        {
+            DialogContent::FileInfo(d) => {
+                assert_eq!(
+                    d.detected_type_job_id,
+                    Some(job_id_b),
+                    "B's job id must be unchanged by A's stale completion"
+                );
+                assert!(
+                    d.detecting,
+                    "B must still show detecting — A's completion must not have \
+                     flipped a flag it doesn't own"
+                );
+                assert_eq!(
+                    d.detected_type, None,
+                    "A's PNG detection result must not have leaked into B's dialog"
+                );
+                assert_eq!(
+                    d.header_bytes, None,
+                    "A's header bytes must not leak into B"
+                );
+                assert_eq!(
+                    d.header_encoding, None,
+                    "A's auto-detected encoding must not leak into B"
+                );
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
     /// Full lifecycle without ever driving the (now-removed) manual
     /// `DetectFileInfoType` transition: `ShowFileInfo` -> real
     /// `EnqueueJob -> StartNextJob -> CompleteJob`, and `header_bytes` /
