@@ -98,6 +98,13 @@ pub(super) fn render_file_info_dialog(
     header_bytes: Option<&[u8]>,
     header_hex_mode: bool,
     header_encoding: Option<rwf_lib::model::viewer::TextEncoding>,
+    // Phase 7.3b, Task 13b: detection now auto-starts on dialog open, so the
+    // static "Detecting..." text becomes a real spinner — same shared
+    // `spinner::current_frame` widget `tab_bar.rs`/`leap_bar.rs` use, threaded
+    // in as the two config fields directly (matching `leap_bar`'s
+    // convention) rather than the whole `AppState`.
+    spinner_frames: &[String],
+    spinner_frame_ms: u64,
 ) {
     let base = crate::ui::dialog::common::DIALOG_TEXT;
     let label = crate::ui::dialog::common::DIALOG_DIM;
@@ -133,7 +140,12 @@ pub(super) fn render_file_info_dialog(
     rows.push(("Accessed", fmt_time(accessed)));
 
     let detected_line = if detecting {
-        Some("Detecting...".to_string())
+        // Real spinner (Phase 7.3b, Task 13b) instead of a static string —
+        // detection now auto-starts on open, so a dead-looking "Detecting..."
+        // with no visible progress would be misleading. Same convention as
+        // `leap_bar.rs`: frame AFTER the label text.
+        let frame = crate::ui::spinner::current_frame(spinner_frames, spinner_frame_ms);
+        Some(format!("Detecting... {frame}"))
     } else {
         detected_type.map(|dt| format!("Detected type: {}", dt))
     };
@@ -202,18 +214,52 @@ pub(super) fn render_file_info_dialog(
     // completed successfully.
     if let Some(bytes) = header_bytes {
         if header_hex_mode {
-            // Hex mode: unchanged from Task 10. `format_hex_row` is the same
-            // helper the real hex viewer uses for its own ASCII column — a
-            // hex view's ASCII column is legitimately byte-granular (one
-            // glyph per raw byte, non-printable -> '.'), that's standard
-            // hex-editor convention. Do not decode this as text.
+            // Hex mode (Phase 7.3b, Task 13a): offset + hex-bytes columns
+            // still come from the shared `format_hex_row` helper, untouched —
+            // but the ASCII column is now decoded through `header_encoding`
+            // via `TextEncoding::decode_row_chars`, the same per-row,
+            // encoding-aware decoder the real full-screen hex viewer uses
+            // for its own ASCII gutter (rwf-bin/src/ui/viewer.rs). Before
+            // this, `e` visibly did nothing in File Info's hex mode because
+            // the ASCII column was pure byte-value mapping, independent of
+            // any encoding.
+            //
+            // Accepted limitation: decoding is still done 16 bytes at a
+            // time, so a multi-byte character split across a row boundary
+            // can't be reconstructed correctly — for genuinely multi-byte
+            // encodings (Utf8, Utf16Le/Be, ShiftJis, EucJp) most positions
+            // still render '.' except where a byte happens to be valid
+            // standalone (e.g. ASCII-range bytes). The real payoff is the
+            // single-byte encodings (Iso8859_1, Windows1252), where per-byte
+            // decode is fully correct, plus giving honest visible feedback
+            // that `e` does *something* in hex mode for every encoding.
+            //
+            // Fallback deliberately does NOT re-run `TextEncoding::detect`
+            // (unlike the text-mode branch below): `detect`'s statistical
+            // Shift-JIS/EUC-JP heuristic is tuned for prose, and running it
+            // against arbitrary binary header bytes (e.g. a PNG signature)
+            // can misfire into a multi-byte encoding, which then decodes
+            // pairs of unrelated bytes into a real (wide, double-column) CJK
+            // glyph — corrupting the hex table's column alignment for data
+            // that was never text in the first place. `Utf8` is a safe,
+            // narrow-width fallback: invalid byte sequences cleanly become
+            // the '.' placeholder byte-for-byte, matching this column's old
+            // byte-value-mapping behavior. In practice this fallback is
+            // unreachable anyway — `header_encoding` is always set alongside
+            // `header_bytes` (see job.rs's FileInfoDisplay success arm).
+            let encoding = header_encoding.unwrap_or(rwf_lib::model::viewer::TextEncoding::Utf8);
             for (row_idx, chunk) in bytes.chunks(16).take(4).enumerate() {
                 let y = area.y + next_row + row_idx as u16;
                 if y + 1 >= area.y + area.height {
                     break;
                 }
-                let (offset, hex_str, ascii_str) =
+                let (offset, hex_str, _) =
                     rwf_lib::model::viewer::format_hex_row(row_idx * 16, chunk);
+                let ascii_str: String = encoding
+                    .decode_row_chars(chunk)
+                    .into_iter()
+                    .map(|(ch, _, _)| ch)
+                    .collect();
                 let line = format!("{:06X}  {} {}", offset, hex_str, ascii_str);
                 frame.render_widget(
                     Paragraph::new(line).style(base),
@@ -271,11 +317,9 @@ pub(super) fn render_file_info_dialog(
     // encoding row above.
     let hint_y = area.y + area.height.saturating_sub(1);
     let hint_text = match (header_bytes.is_some(), header_encoding) {
-        (true, Some(_)) => {
-            "Enter/Esc: close  d: detect type  t: toggle hex/text  e: encoding".to_string()
-        }
-        (true, None) => "Enter/Esc: close  d: detect type  t: toggle hex/text".to_string(),
-        (false, _) => "Enter/Esc: close  d: detect type".to_string(),
+        (true, Some(_)) => "Enter/Esc: close  t: toggle hex/text  e: encoding".to_string(),
+        (true, None) => "Enter/Esc: close  t: toggle hex/text".to_string(),
+        (false, _) => "Enter/Esc: close".to_string(),
     };
     frame.render_widget(
         Paragraph::new(hint_text).style(hint),
@@ -385,8 +429,12 @@ mod tests {
         assert_eq!(lines.join(""), sanitized);
     }
 
-    /// Regression guard: hex mode must be byte-for-byte unchanged by the
-    /// text-mode fix. Same helper (`format_hex_row`), same output.
+    /// Regression guard: `format_hex_row` itself (offset + hex-bytes columns,
+    /// and its own standalone byte-value ASCII mapping) is byte-for-byte
+    /// unchanged by the text-mode fix and by Task 13a's encoding-aware ASCII
+    /// column change — `render_file_info_dialog` still calls this helper for
+    /// the offset/hex portions, it just no longer uses its `ascii_str` return
+    /// value for the rendered ASCII column (see Task 13a tests below).
     #[test]
     fn hex_mode_output_is_unchanged_by_the_text_mode_fix() {
         let bytes = [
@@ -399,6 +447,62 @@ mod tests {
             line,
             "000000  89 50 4E 47 0D 0A 1A 0A  00 00 00 0D 49 48 44 52  .PNG........IHDR"
         );
+    }
+
+    /// Task 13a: proves the two encodings genuinely decode this byte
+    /// differently, at the `decode_row_chars` level `render_file_info_dialog`
+    /// now uses for hex mode's ASCII column. Byte 0x92 is a Windows-1252/
+    /// ISO-8859-1 printable character (U+2019 RIGHT SINGLE QUOTATION MARK,
+    /// both map through `encoding_rs::WINDOWS_1252` in this codebase) but a
+    /// Shift-JIS lead byte that has no trailing byte to pair with here, so it
+    /// falls back to '.'. This is the exact byte/encoding pair used by the
+    /// render-level test in `snapshot_tests::file_info`.
+    #[test]
+    fn decode_row_chars_differs_between_windows1252_and_shift_jis_for_0x92() {
+        let bytes = [0x92u8];
+        let win1252_chars: Vec<char> = TextEncoding::Windows1252
+            .decode_row_chars(&bytes)
+            .into_iter()
+            .map(|(ch, _, _)| ch)
+            .collect();
+        let sjis_chars: Vec<char> = TextEncoding::ShiftJis
+            .decode_row_chars(&bytes)
+            .into_iter()
+            .map(|(ch, _, _)| ch)
+            .collect();
+
+        assert_eq!(win1252_chars, vec!['\u{2019}']);
+        assert_eq!(sjis_chars, vec!['.']);
+        assert_ne!(
+            win1252_chars, sjis_chars,
+            "the whole point of Task 13a is that these must differ"
+        );
+    }
+
+    /// Task 13a: a control byte must always render as '.' regardless of which
+    /// encoding is selected — the printability check (`is_control` /
+    /// replacement-char check inside `decode_row_chars`) is unconditional.
+    #[test]
+    fn decode_row_chars_control_byte_always_renders_as_dot() {
+        let bytes = [0x01u8]; // SOH, a C0 control character
+        for encoding in [
+            TextEncoding::Utf8,
+            TextEncoding::Iso8859_1,
+            TextEncoding::Windows1252,
+            TextEncoding::ShiftJis,
+            TextEncoding::EucJp,
+        ] {
+            let chars: Vec<char> = encoding
+                .decode_row_chars(&bytes)
+                .into_iter()
+                .map(|(ch, _, _)| ch)
+                .collect();
+            assert_eq!(
+                chars,
+                vec!['.'],
+                "control byte 0x01 must render as '.' under {encoding:?}"
+            );
+        }
     }
 
     #[test]

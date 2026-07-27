@@ -99,10 +99,6 @@ pub enum DialogAction {
         title: String,
         items: Vec<rwf_lib::model::dialog::MenuItem>,
     },
-    /// On-demand content-type detection requested from the open File
-    /// Information dialog (Phase 7.3 §7). The dialog stays open; the app
-    /// loop dispatches `Transition::DetectFileInfoType` for its `file_path`.
-    DetectFileType,
     /// Toggle the File Information dialog's header-bytes view between hex
     /// and raw text (Phase 7.3b, Task 10). The dialog stays open; the app
     /// loop dispatches `Transition::ToggleFileInfoHeaderView`.
@@ -798,6 +794,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 header_bytes.as_deref(),
                 *header_hex_mode,
                 *header_encoding,
+                &state.config.display.spinner_frames,
+                state.config.display.spinner_frame_ms,
             );
         }
         DialogContent::PatternRename(PatternRenameContent {

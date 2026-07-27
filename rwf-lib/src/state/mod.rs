@@ -679,15 +679,12 @@ pub enum Transition {
         location: crate::model::Location,
     },
     ShowDriveChangeDialog,
+    /// Opens the File Information dialog and immediately starts content-type
+    /// detection for local entries (Phase 7.3b, Task 13b reversed the old
+    /// manual-trigger design — see `state/handlers/ui.rs`'s handler for the
+    /// full reasoning). Detection completion is still routed the same way
+    /// as before, by `detected_type_job_id` recorded on the `FileInfoDialog`.
     ShowFileInfo,
-    /// On-demand content-type detection for the open File Information dialog
-    /// (Phase 7.3 §7): started only by an explicit keypress while the dialog
-    /// is open, never automatically by `ShowFileInfo`. Starts a
-    /// `JobKind::DetectFileType` job and records its id on the still-open
-    /// `FileInfoDialog` so the completion handler can find it again.
-    DetectFileInfoType {
-        path: std::path::PathBuf,
-    },
     /// Toggle the open File Information dialog's header-bytes view between
     /// hex/offset/ASCII and raw text (Phase 7.3b, Task 10). Pure UI-state
     /// flip — no job — but still routed through a Transition per this

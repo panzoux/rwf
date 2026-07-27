@@ -33,7 +33,7 @@ Buffer {
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
-        "                        │  Enter/Esc: close  d: detect type  t: toggle hex/text                │                        ",
+        "                        │  Enter/Esc: close  t: toggle hex/text                                │                        ",
         "                        └──────────────────────────────────────────────────────────────────────┘                        ",
         "                                                                                                                        ",
         "                                                                                                                        ",

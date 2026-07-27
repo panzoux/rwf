@@ -445,21 +445,20 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             DialogAction::None
         }
         DialogContent::FileInfo(FileInfoDialog {
-            detecting,
             header_bytes,
             header_encoding,
             ..
         }) => {
-            // 'd' starts on-demand content-type detection (Phase 7.3 §7).
-            // 't' toggles the header-bytes hex/text view (Phase 7.3b, Task
-            // 10). 'e' cycles the manual text-encoding override (Phase
-            // 7.3b, Task 12) — only meaningful once detection has produced
-            // bytes (and thus an initial auto-detected encoding) to show.
-            // Enter/Esc already close the dialog; these keys are otherwise
-            // unbound for FileInfo.
-            if key.code == crossterm::event::KeyCode::Char('d') && !*detecting {
-                DialogAction::DetectFileType
-            } else if key.code == crossterm::event::KeyCode::Char('t') && header_bytes.is_some() {
+            // Content-type detection now auto-starts the moment the dialog
+            // opens (Phase 7.3b, Task 13b) — there is no more manual `d`
+            // trigger. 't' toggles the header-bytes hex/text view (Phase
+            // 7.3b, Task 10). 'e' cycles the manual text-encoding override
+            // (Phase 7.3b, Task 12) — only meaningful once detection has
+            // produced bytes (and thus an initial auto-detected encoding) to
+            // show; this guard still matters for the brief window before the
+            // auto-started job completes. Enter/Esc already close the
+            // dialog; these keys are otherwise unbound for FileInfo.
+            if key.code == crossterm::event::KeyCode::Char('t') && header_bytes.is_some() {
                 DialogAction::ToggleHeaderView
             } else if key.code == crossterm::event::KeyCode::Char('e') && header_encoding.is_some()
             {

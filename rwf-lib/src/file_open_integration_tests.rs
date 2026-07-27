@@ -1091,54 +1091,98 @@ mod tests {
         assert!(result.task_panel_logs.is_empty());
     }
 
-    /// Push a `FileInfo` dialog for `entry` onto the stack, exactly like
-    /// `Transition::ShowFileInfo` does — detection must never auto-run there
-    /// (Phase 7.3 §7); these tests drive `DetectFileInfoType` explicitly
-    /// afterwards.
-    fn push_file_info_dialog(state: &mut crate::AppState, entry: &crate::model::FileEntry) {
-        let dialog = crate::model::Dialog::file_info(entry);
-        state.dialogs.push(dialog);
+    /// Push a `FileInfo` dialog for `entry` onto the stack via the real
+    /// `Transition::ShowFileInfo` handler. Since Phase 7.3b Task 13b,
+    /// `ShowFileInfo` auto-starts content-type detection for local entries as
+    /// part of opening the dialog (see `show_file_info_auto_starts_detection`
+    /// below for the test that proves that wiring itself) — this helper just
+    /// drives the pane/cursor setup needed to make `current_entry()` resolve
+    /// to `entry`, then returns the `StateUpdateResult` so callers that need
+    /// the auto-started job (if any) can inspect `jobs_to_start`.
+    fn push_file_info_dialog(
+        state: &mut crate::AppState,
+        entry: &crate::model::FileEntry,
+    ) -> crate::state::StateUpdateResult {
+        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.entries = vec![entry.clone()];
+        state.current_tab_mut().left_pane.cursor = 0;
+        update_state(state, Transition::ShowFileInfo)
     }
 
-    /// Drive `Transition::DetectFileInfoType` through the real job-manager
-    /// lifecycle (transition -> enqueue -> start -> complete), mirroring
-    /// `run_fallback_open_job` above but for the File Information dialog's
-    /// on-demand detection.
-    fn run_detect_file_info_type_job(
+    /// Manually build and run a `DetectFileType { FileInfoDisplay }` job
+    /// against the currently-open `FileInfo` dialog, driving it through the
+    /// real job lifecycle (enqueue -> start -> complete). Used by tests that
+    /// only care about completion-time behavior (label formatting,
+    /// `header_encoding` overwrite semantics, mismatch notes) — building the
+    /// job manually here, rather than relying on `ShowFileInfo`'s auto-start,
+    /// lets these tests simulate a SECOND detection against an
+    /// already-open dialog (e.g. re-detection overwrite semantics), which
+    /// `ShowFileInfo` itself can't do since it always pushes a fresh dialog.
+    /// The completion handler in `state/handlers/job.rs` doesn't care what
+    /// started the job, so this is a faithful simulation.
+    fn run_file_info_detection_job(
         state: &mut crate::AppState,
         path: PathBuf,
         result: OpResult,
     ) -> crate::state::StateUpdateResult {
-        let transition_result =
-            update_state(state, Transition::DetectFileInfoType { path: path.clone() });
-        assert_eq!(
-            transition_result.jobs_to_start.len(),
-            1,
-            "DetectFileInfoType should start exactly one job"
-        );
-        let job_spec = transition_result.jobs_to_start[0].clone();
+        let job_spec = JobSpec::new(JobKind::DetectFileType {
+            path,
+            purpose: DetectFileTypePurpose::FileInfoDisplay,
+        });
+        let job_id = job_spec.id;
+        match &mut state
+            .dialogs
+            .current_mut()
+            .expect("FileInfo dialog open")
+            .content
+        {
+            DialogContent::FileInfo(d) => {
+                d.detecting = true;
+                d.detected_type_job_id = Some(job_id);
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
         update_state(state, Transition::EnqueueJob { spec: job_spec });
-        let job_id = state.jobs.queue[0].id;
+        let queued_job_id = state.jobs.queue[0].id;
         update_state(state, Transition::StartNextJob);
-
-        update_state(state, Transition::CompleteJob { job_id, result })
+        update_state(
+            state,
+            Transition::CompleteJob {
+                job_id: queued_job_id,
+                result,
+            },
+        )
     }
 
-    /// Opening the File Information dialog (`ShowFileInfo`) must not start
-    /// any detection job by itself — detection is on-demand only (Phase 7.3
-    /// §7). This guards against a future regression re-wiring detection into
-    /// the dialog-open path.
+    /// Opening the File Information dialog (`ShowFileInfo`) now auto-starts
+    /// content-type detection for local entries the instant the dialog opens
+    /// (Phase 7.3b, Task 13b). This REVERSES the prior requirement (see git
+    /// history: `show_file_info_does_not_auto_detect`) — dogfooding on the
+    /// manual `d`-trigger design revealed its "avoid I/O on open" premise
+    /// didn't hold: detection is a cheap ~64-300 byte async `Job`, not a
+    /// blocking read, and File Info is opened deliberately via a keypress,
+    /// not on every cursor move, so there's no hot-path cost to guard
+    /// against. The manual re-detect trigger had no real product value either
+    /// (same file/bytes always produce the same result; closing and
+    /// reopening the dialog already re-reads fresh if the file changed).
     #[test]
-    fn show_file_info_does_not_auto_detect() {
+    fn show_file_info_auto_starts_detection() {
         let mut state = test_state();
         let entry = FileEntryBuilder::new("photo.png").dir(false).build();
-        state.current_tab_mut().left_pane.raw_entries = vec![entry.clone()];
-        state.current_tab_mut().left_pane.entries = vec![entry];
-        state.current_tab_mut().left_pane.cursor = 0;
 
-        let result = update_state(&mut state, Transition::ShowFileInfo);
+        let result = push_file_info_dialog(&mut state, &entry);
 
-        assert!(result.jobs_to_start.is_empty());
+        assert_eq!(
+            result.jobs_to_start.len(),
+            1,
+            "ShowFileInfo must start exactly one DetectFileType job for a local entry"
+        );
+        match &result.jobs_to_start[0].kind {
+            JobKind::DetectFileType { purpose, .. } => {
+                assert!(matches!(purpose, DetectFileTypePurpose::FileInfoDisplay));
+            }
+            other => panic!("expected DetectFileType job, got {:?}", other),
+        }
         match &state
             .dialogs
             .current()
@@ -1146,9 +1190,78 @@ mod tests {
             .content
         {
             DialogContent::FileInfo(d) => {
+                assert!(
+                    d.detecting,
+                    "detecting must already be true before the job completes"
+                );
+                assert!(d.detected_type_job_id.is_some());
+            }
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+    }
+
+    /// Esc/Enter must close the File Information dialog immediately even
+    /// while detection is still in flight (`detecting == true`) — this is
+    /// the concrete proof behind the "shouldn't block" half of Task 13b's
+    /// premise. Dialog-close at the generic level doesn't check any
+    /// FileInfo-specific `detecting` flag, so this should already work; this
+    /// test pins that behavior so a future regression can't silently make
+    /// close depend on the in-flight job.
+    #[test]
+    fn file_info_dialog_closes_immediately_while_detecting() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+        push_file_info_dialog(&mut state, &entry);
+        match &state.dialogs.current().expect("dialog open").content {
+            DialogContent::FileInfo(d) => assert!(d.detecting, "sanity: detection in flight"),
+            other => panic!("expected FileInfo dialog, got {:?}", other),
+        }
+
+        update_state(&mut state, Transition::CloseDialog);
+
+        assert!(
+            state.dialogs.is_empty(),
+            "dialog must close immediately regardless of the in-flight detect job"
+        );
+    }
+
+    /// Full lifecycle without ever driving the (now-removed) manual
+    /// `DetectFileInfoType` transition: `ShowFileInfo` -> real
+    /// `EnqueueJob -> StartNextJob -> CompleteJob`, and `header_bytes` /
+    /// `detected_type` / `header_encoding` all end up populated.
+    #[test]
+    fn show_file_info_full_lifecycle_populates_all_fields_without_manual_trigger() {
+        let mut state = test_state();
+        let entry = FileEntryBuilder::new("photo.png").dir(false).build();
+
+        let result = push_file_info_dialog(&mut state, &entry);
+        let job_spec = result.jobs_to_start[0].clone();
+        update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+        let png_signature: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let complete_result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::FileTypeDetected {
+                    kind: DetectedKind::Png,
+                    header_bytes: png_signature.clone(),
+                }),
+            },
+        );
+
+        assert!(complete_result.ui_changed);
+        match &state.dialogs.current().expect("dialog still open").content {
+            DialogContent::FileInfo(d) => {
                 assert!(!d.detecting);
-                assert_eq!(d.detected_type, None);
-                assert_eq!(d.detected_type_job_id, None);
+                assert_eq!(d.detected_type.as_deref(), Some("PNG image"));
+                let header_bytes = d.header_bytes.as_deref().expect("header_bytes set");
+                assert!(header_bytes.starts_with(&png_signature));
+                assert!(
+                    d.header_encoding.is_some(),
+                    "header_encoding must be set alongside header_bytes"
+                );
             }
             other => panic!("expected FileInfo dialog, got {:?}", other),
         }
@@ -1161,19 +1274,14 @@ mod tests {
     fn detect_file_info_type_png_populates_label_without_mismatch() {
         let mut state = test_state();
         let entry = FileEntryBuilder::new("photo.png").dir(false).build();
-        push_file_info_dialog(&mut state, &entry);
-
-        // DetectFileInfoType sets `detecting` immediately, before the job completes.
-        let path = PathBuf::from(entry.location.display_path());
-        let transition_result = update_state(
-            &mut state,
-            Transition::DetectFileInfoType { path: path.clone() },
-        );
+        // ShowFileInfo auto-starts detection and sets `detecting` immediately,
+        // before the job completes (Phase 7.3b, Task 13b).
+        let show_result = push_file_info_dialog(&mut state, &entry);
         match &state.dialogs.current().expect("dialog still open").content {
             DialogContent::FileInfo(d) => assert!(d.detecting),
             other => panic!("expected FileInfo dialog, got {:?}", other),
         }
-        let job_spec = transition_result.jobs_to_start[0].clone();
+        let job_spec = show_result.jobs_to_start[0].clone();
         update_state(&mut state, Transition::EnqueueJob { spec: job_spec });
         let job_id = state.jobs.queue[0].id;
         update_state(&mut state, Transition::StartNextJob);
@@ -1218,7 +1326,7 @@ mod tests {
         push_file_info_dialog(&mut state, &entry);
         let path = PathBuf::from(entry.location.display_path());
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1303,8 +1411,9 @@ mod tests {
         }
     }
 
-    /// Full flow: `Transition::DetectFileInfoType` through the real job
-    /// lifecycle, completing with real Shift-JIS bytes (same fixture idiom as
+    /// Full flow: a manually-driven detection job (see
+    /// `run_file_info_detection_job`) through the real job lifecycle,
+    /// completing with real Shift-JIS bytes (same fixture idiom as
     /// `rwf-bin/src/ui/dialog/file_info.rs`'s
     /// `shift_jis_bytes_decode_through_the_full_chain` test from Task 11).
     /// The auto-detected starting `header_encoding` must be `ShiftJis` — this
@@ -1327,7 +1436,7 @@ mod tests {
             "fixture must be genuinely non-UTF-8"
         );
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1364,7 +1473,7 @@ mod tests {
 
         // First detection: PNG bytes, auto-detect sets some initial encoding.
         let png_signature: Vec<u8> = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        run_detect_file_info_type_job(
+        run_file_info_detection_job(
             &mut state,
             path.clone(),
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1402,7 +1511,7 @@ mod tests {
             "fixture sanity check: these bytes must actually auto-detect as ShiftJis"
         );
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1435,7 +1544,7 @@ mod tests {
         push_file_info_dialog(&mut state, &entry);
         let path = PathBuf::from(entry.location.display_path());
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1469,7 +1578,7 @@ mod tests {
         push_file_info_dialog(&mut state, &entry);
         let path = PathBuf::from(entry.location.display_path());
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Success(SuccessData::FileTypeDetected {
@@ -1514,7 +1623,7 @@ mod tests {
         push_file_info_dialog(&mut state, &entry);
         let path = PathBuf::from(entry.location.display_path());
 
-        let result = run_detect_file_info_type_job(
+        let result = run_file_info_detection_job(
             &mut state,
             path,
             OpResult::Failed("file vanished".to_string()),
@@ -1539,15 +1648,16 @@ mod tests {
         }
     }
 
-    /// `d` on a File Information dialog for a non-Local entry (e.g. an
-    /// archive-internal file) must not start a detection job — the
-    /// synthetic `display_path()` (like `archive.zip#inner.txt`) isn't a
+    /// Opening the File Information dialog (`ShowFileInfo`) for a non-Local
+    /// entry (e.g. an archive-internal file) must not start a detection job —
+    /// the synthetic `display_path()` (like `archive.zip#inner.txt`) isn't a
     /// real filesystem path, so a real detect job would just fail. Instead
-    /// it immediately reports "not available" (code review follow-up on
-    /// 06c78de, same guard philosophy as Task 5's Local-only fallback
-    /// detection).
+    /// it immediately reports "not available" (Phase 7.3b, Task 13b moved
+    /// this guard from the deleted manual `d`-trigger handler into
+    /// `ShowFileInfo` itself, same message and same guard philosophy as Task
+    /// 5's Local-only fallback detection).
     #[test]
-    fn detect_file_info_type_non_local_reports_not_available_without_job() {
+    fn show_file_info_non_local_reports_not_available_without_job() {
         let mut state = test_state();
         let entry = FileEntryBuilder::new("inner.txt")
             .location(Location::Archive {
@@ -1556,15 +1666,13 @@ mod tests {
             })
             .dir(false)
             .build();
-        push_file_info_dialog(&mut state, &entry);
+
+        let result = push_file_info_dialog(&mut state, &entry);
+
         assert!(!matches!(
             &state.dialogs.current().expect("dialog pushed").content,
             DialogContent::FileInfo(d) if d.is_local
         ));
-
-        let path = PathBuf::from(entry.location.display_path());
-        let result = update_state(&mut state, Transition::DetectFileInfoType { path });
-
         assert!(
             result.jobs_to_start.is_empty(),
             "non-Local FileInfo dialog must not start a detect job"

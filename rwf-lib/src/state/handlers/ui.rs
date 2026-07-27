@@ -575,51 +575,45 @@ impl AppState {
             }
             Transition::ShowFileInfo => {
                 if let Some(entry) = self.active_pane().current_entry() {
-                    let dialog = crate::model::Dialog::file_info(entry);
+                    let mut dialog = crate::model::Dialog::file_info(entry);
+                    // Auto-start content-type detection the moment the dialog
+                    // opens (Phase 7.3b, Task 13b) — this used to require an
+                    // explicit `d` keypress, but detection is a cheap async
+                    // `Job` (reads only the first ~64-300 bytes), not a
+                    // blocking read, so gating it behind a manual trigger had
+                    // no real payoff. Only meaningful for local entries —
+                    // archive-internal/remote entries skip it, same guard the
+                    // old manual-trigger handler used (real filesystem I/O is
+                    // meaningless there).
+                    if let crate::model::Location::Local(path) = &entry.location {
+                        let job_spec =
+                            crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
+                                path: path.clone(),
+                                purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
+                            });
+                        let job_id = job_spec.id;
+                        if let crate::model::dialog::DialogContent::FileInfo(d) =
+                            &mut dialog.content
+                        {
+                            d.detecting = true;
+                            d.detected_type_job_id = Some(job_id);
+                        }
+                        self.dialogs.push(dialog);
+                        return Some(StateUpdateResult::with_job(job_spec));
+                    }
+                    // Non-local entries (archive-internal, remote): a real
+                    // detect job against the synthetic display_path() would
+                    // just fail, so report "not available" immediately rather
+                    // than silently never detecting anything (same message
+                    // the old manual `d`-trigger handler used).
+                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                        d.detected_type = Some("not available for this location".to_string());
+                    }
                     self.dialogs.push(dialog);
                     Some(StateUpdateResult::with_ui_change())
                 } else {
                     Some(StateUpdateResult::none())
                 }
-            }
-            Transition::DetectFileInfoType { path } => {
-                // Content-type detection does real filesystem I/O, which is meaningless
-                // for archive-internal or remote entries (Phase 7.3 §7, same guard
-                // philosophy as Task 5's Local-only fallback detection). Report "not
-                // available" instead of starting a doomed job.
-                let is_local = matches!(
-                    self.dialogs.current(),
-                    Some(crate::model::dialog::Dialog {
-                        content: crate::model::dialog::DialogContent::FileInfo(
-                            crate::model::dialog::FileInfoDialog { is_local: true, .. }
-                        ),
-                        ..
-                    })
-                );
-                if !is_local {
-                    if let Some(dialog) = self.dialogs.current_mut() {
-                        if let crate::model::dialog::DialogContent::FileInfo(d) =
-                            &mut dialog.content
-                        {
-                            d.detected_type = Some("not available for this location".to_string());
-                            d.detecting = false;
-                            d.detected_type_job_id = None;
-                        }
-                    }
-                    return Some(StateUpdateResult::with_ui_change());
-                }
-                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::DetectFileType {
-                    path: path.clone(),
-                    purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
-                });
-                let job_id = job_spec.id;
-                if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
-                        d.detecting = true;
-                        d.detected_type_job_id = Some(job_id);
-                    }
-                }
-                Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ToggleFileInfoHeaderView => {
                 // Pure UI-state flip (Phase 7.3b, Task 10) — flip whichever
