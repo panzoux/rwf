@@ -345,45 +345,6 @@ impl ViewerState {
         Some((offset, bytes))
     }
 
-    /// Get hex display for one line: (byte_offset, hex_string, ascii_string)
-    pub fn get_hex_line(&self, line_idx: usize) -> Option<(usize, String, String)> {
-        let buffer = self.buffer.as_ref()?;
-        let total = buffer.bytes.len();
-        let offset = line_idx * 16;
-        if offset >= total {
-            return None;
-        }
-        let end = (offset + 16).min(total);
-        let bytes = match buffer.bytes.as_ref() {
-            FileBytes::InMemory(v) => v[offset..end].to_vec(),
-            FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
-        };
-        let bytes = bytes.as_slice();
-
-        let mut hex_str = String::new();
-        for (i, byte) in bytes.iter().enumerate() {
-            if i > 0 && i % 8 == 0 {
-                hex_str.push(' ');
-            }
-            hex_str.push_str(&format!("{:02X} ", byte));
-        }
-        let padding = (16 - bytes.len()) * 3 + if bytes.len() <= 8 { 1 } else { 0 };
-        hex_str.push_str(&" ".repeat(padding));
-
-        let ascii_str: String = bytes
-            .iter()
-            .map(|&b| {
-                if (32..=126).contains(&b) {
-                    b as char
-                } else {
-                    '.'
-                }
-            })
-            .collect();
-
-        Some((offset, hex_str, ascii_str))
-    }
-
     // ── Encoding ──────────────────────────────────────────────────────────────
 
     /// Switch to the next text encoding in the cycle
@@ -1384,14 +1345,13 @@ mod tests {
             0xAA, 0x55, 0x01, 0x02, 0x03,
         ]);
         assert_eq!(v.hex_line_count(), 2);
-        let (offset, hex, ascii) = v.get_hex_line(0).unwrap();
+        let (offset, bytes) = v.get_hex_bytes_vec(0).unwrap();
         assert_eq!(offset, 0);
-        assert!(hex.contains("48 65 6C 6C"));
-        assert!(ascii.contains("Hello"));
+        assert_eq!(&bytes[0..4], &[0x48, 0x65, 0x6C, 0x6C]);
 
-        let (offset, hex, _) = v.get_hex_line(1).unwrap();
+        let (offset, bytes) = v.get_hex_bytes_vec(1).unwrap();
         assert_eq!(offset, 16);
-        assert!(hex.contains("01 02 03"));
+        assert_eq!(bytes, vec![0x01, 0x02, 0x03]);
     }
 
     #[test]
