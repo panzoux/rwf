@@ -14,9 +14,9 @@ use std::sync::{Arc, Mutex};
 /// `hex_string` groups bytes in two 8-byte columns (space-separated, `XX `
 /// per byte) and pads short rows so columns stay aligned; `ascii_string` maps
 /// printable ASCII (0x20..=0x7E) through as-is and everything else to `.`.
-/// Pure formatting, no I/O — shared by the text viewer's `get_hex_line` and
-/// the File Info dialog's header-bytes hex view so the row format can't drift
-/// between the two call sites.
+/// Pure formatting, no I/O — used by the File Info dialog's header-bytes hex
+/// view. (The text viewer's own hex-mode rendering uses `get_hex_bytes_vec` +
+/// `decode_row_chars` instead, since its ASCII column is encoding-aware.)
 pub fn format_hex_row(offset: usize, bytes: &[u8]) -> (usize, String, String) {
     let mut hex_str = String::new();
     for (i, byte) in bytes.iter().enumerate() {
@@ -376,23 +376,6 @@ impl ViewerState {
             FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
         };
         Some((offset, bytes))
-    }
-
-    /// Get hex display for one line: (byte_offset, hex_string, ascii_string)
-    pub fn get_hex_line(&self, line_idx: usize) -> Option<(usize, String, String)> {
-        let buffer = self.buffer.as_ref()?;
-        let total = buffer.bytes.len();
-        let offset = line_idx * 16;
-        if offset >= total {
-            return None;
-        }
-        let end = (offset + 16).min(total);
-        let bytes = match buffer.bytes.as_ref() {
-            FileBytes::InMemory(v) => v[offset..end].to_vec(),
-            FileBytes::Seekable(s) => s.read_bytes(offset as u64, end - offset).ok()?,
-        };
-
-        Some(format_hex_row(offset, &bytes))
     }
 
     // ── Encoding ──────────────────────────────────────────────────────────────
@@ -1426,14 +1409,13 @@ mod tests {
             0xAA, 0x55, 0x01, 0x02, 0x03,
         ]);
         assert_eq!(v.hex_line_count(), 2);
-        let (offset, hex, ascii) = v.get_hex_line(0).unwrap();
+        let (offset, bytes) = v.get_hex_bytes_vec(0).unwrap();
         assert_eq!(offset, 0);
-        assert!(hex.contains("48 65 6C 6C"));
-        assert!(ascii.contains("Hello"));
+        assert_eq!(&bytes[0..4], &[0x48, 0x65, 0x6C, 0x6C]);
 
-        let (offset, hex, _) = v.get_hex_line(1).unwrap();
+        let (offset, bytes) = v.get_hex_bytes_vec(1).unwrap();
         assert_eq!(offset, 16);
-        assert!(hex.contains("01 02 03"));
+        assert_eq!(bytes, vec![0x01, 0x02, 0x03]);
     }
 
     #[test]

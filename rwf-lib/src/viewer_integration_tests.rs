@@ -402,12 +402,11 @@ fn test_viewer_hex_line_formatting() {
 
     let viewer = state.viewer.as_ref().unwrap();
 
-    // Get first hex line
-    let (offset, hex, ascii) = viewer.get_hex_line(0).unwrap();
+    // Get first hex line's raw bytes (what the production renderer reads)
+    let (offset, bytes) = viewer.get_hex_bytes_vec(0).unwrap();
     assert_eq!(offset, 0);
-    assert!(hex.contains("48 65 6C 6C")); // "Hell"
-    assert!(ascii.contains("Hello"));
-    assert!(ascii.contains("World"));
+    assert_eq!(&bytes[0..4], &[0x48, 0x65, 0x6C, 0x6C]); // "Hell"
+    assert_eq!(bytes.len(), 16);
 }
 
 // ── Seekable path e2e tests ───────────────────────────────────────────────────
@@ -540,9 +539,9 @@ fn test_viewer_seekable_hex_mode() {
     assert_eq!(viewer.mode, ViewerMode::Hex);
     assert_eq!(viewer.hex_line_count(), 2);
 
-    let (offset, hex, _ascii) = viewer.get_hex_line(0).unwrap();
+    let (offset, bytes) = viewer.get_hex_bytes_vec(0).unwrap();
     assert_eq!(offset, 0);
-    assert!(hex.contains("00 01 02 03"));
+    assert_eq!(&bytes[0..4], &[0x00, 0x01, 0x02, 0x03]);
 }
 
 #[test]
