@@ -940,13 +940,13 @@ mod tests {
 
     fn hex_styles() -> (Style, Style, Style, Style, Style, Style, Style, Style) {
         (
-            Style::default().fg(Color::Cyan),   // addr_style
-            Style::default().fg(Color::White),  // hex_style
-            Style::default().fg(Color::Yellow), // hex_match_style
-            Style::default().fg(Color::Red),    // hex_current_style
-            Style::default().fg(Color::Gray),   // ascii_style
-            Style::default().fg(Color::Yellow), // ascii_match_style
-            Style::default().fg(Color::Red),    // ascii_current_style
+            Style::default().fg(Color::Cyan),     // addr_style
+            Style::default().fg(Color::White),    // hex_style
+            Style::default().fg(Color::Yellow),   // hex_match_style
+            Style::default().fg(Color::Red),      // hex_current_style
+            Style::default().fg(Color::Gray),     // ascii_style
+            Style::default().fg(Color::Yellow),   // ascii_match_style
+            Style::default().fg(Color::Red),      // ascii_current_style
             Style::default().fg(Color::DarkGray), // sep_style
         )
     }
@@ -1005,9 +1005,17 @@ mod tests {
             "expected hex groups in {:?}",
             text
         );
-        assert!(text.starts_with("00000000  "), "unexpected address: {:?}", text);
+        assert!(
+            text.starts_with("00000000  "),
+            "unexpected address: {:?}",
+            text
+        );
         assert!(text.contains(" |"), "missing separator: {:?}", text);
-        assert!(text.ends_with('|'), "missing trailing separator: {:?}", text);
+        assert!(
+            text.ends_with('|'),
+            "missing trailing separator: {:?}",
+            text
+        );
 
         // ASCII column: bytes 0x00-0x0F are non-printable control chars — decoding
         // depends on TextEncoding::Utf8's control-char handling, so just check width.
@@ -1080,7 +1088,7 @@ mod tests {
         ) = hex_styles();
 
         let bytes: Vec<u8> = (0x41u8..0x41 + 16).collect(); // 'A'..'P', all printable ASCII
-        // Byte offset 2 is an "other match"; byte offset 5 is the current match.
+                                                            // Byte offset 2 is an "other match"; byte offset 5 is the current match.
         let line = call_hex_row_spans(0, &bytes, &[(2, 3)], Some((5, 6)), None);
 
         // Find the hex span covering byte 2 ("43 ") and assert it uses hex_match_style,
@@ -1145,13 +1153,7 @@ mod tests {
     #[test]
     fn hex_row_spans_addr_highlight_splits_address_span() {
         let bytes: Vec<u8> = vec![0x41; 4];
-        let (
-            addr_style,
-            _hex_style,
-            _hex_match_style,
-            hex_current_style,
-            ..
-        ) = hex_styles();
+        let (addr_style, _hex_style, _hex_match_style, hex_current_style, ..) = hex_styles();
 
         // No highlight: the address is a single span in addr_style.
         let plain = call_hex_row_spans(0x1000, &bytes, &[], None, None);
