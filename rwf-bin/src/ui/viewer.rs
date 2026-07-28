@@ -935,4 +935,244 @@ mod tests {
         let output = format!("{:?}", terminal.backend().buffer());
         insta::assert_snapshot!("render_viewer_smoke", output);
     }
+
+    // ── hex_row_spans ─────────────────────────────────────────────────────────
+
+    fn hex_styles() -> (Style, Style, Style, Style, Style, Style, Style, Style) {
+        (
+            Style::default().fg(Color::Cyan),     // addr_style
+            Style::default().fg(Color::White),    // hex_style
+            Style::default().fg(Color::Yellow),   // hex_match_style
+            Style::default().fg(Color::Red),      // hex_current_style
+            Style::default().fg(Color::Gray),     // ascii_style
+            Style::default().fg(Color::Yellow),   // ascii_match_style
+            Style::default().fg(Color::Red),      // ascii_current_style
+            Style::default().fg(Color::DarkGray), // sep_style
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn call_hex_row_spans(
+        offset: usize,
+        bytes: &[u8],
+        match_ranges: &[(usize, usize)],
+        current_match: Option<(usize, usize)>,
+        addr_highlight: Option<(usize, usize)>,
+    ) -> Line<'static> {
+        let (
+            addr_style,
+            hex_style,
+            hex_match_style,
+            hex_current_style,
+            ascii_style,
+            ascii_match_style,
+            ascii_current_style,
+            sep_style,
+        ) = hex_styles();
+        hex_row_spans(
+            offset,
+            bytes,
+            match_ranges,
+            current_match,
+            addr_style,
+            hex_style,
+            hex_match_style,
+            hex_current_style,
+            ascii_style,
+            ascii_match_style,
+            ascii_current_style,
+            sep_style,
+            TextEncoding::Utf8,
+            addr_highlight,
+        )
+    }
+
+    /// Concatenate all span contents in a Line, for easy substring assertions.
+    fn line_text(line: &Line<'static>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn hex_row_spans_full_row_formats_two_groups_and_ascii() {
+        let bytes: Vec<u8> = (0u8..16).collect();
+        let line = call_hex_row_spans(0, &bytes, &[], None, None);
+        let text = line_text(&line);
+
+        // Address, two 8-byte hex groups (with mid separator), then " |" + ascii + "|".
+        let expected_hex = "00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F ";
+        assert!(
+            text.contains(expected_hex),
+            "expected hex groups in {:?}",
+            text
+        );
+        assert!(
+            text.starts_with("00000000  "),
+            "unexpected address: {:?}",
+            text
+        );
+        assert!(text.contains(" |"), "missing separator: {:?}", text);
+        assert!(
+            text.ends_with('|'),
+            "missing trailing separator: {:?}",
+            text
+        );
+
+        // ASCII column: bytes 0x00-0x0F are non-printable control chars — decoding
+        // depends on TextEncoding::Utf8's control-char handling, so just check width.
+        let ascii_start = text.find(" |").unwrap() + 2;
+        let ascii_part = &text[ascii_start..text.len() - 1];
+        assert_eq!(
+            ascii_part.chars().count(),
+            16,
+            "ascii column should be padded to 16 cols: {:?}",
+            ascii_part
+        );
+    }
+
+    #[test]
+    fn hex_row_spans_short_row_pads_hex_and_ascii_columns() {
+        let bytes: Vec<u8> = vec![0x41, 0x42, 0x43]; // "ABC"
+        let full = call_hex_row_spans(0, &bytes, &[], None, None);
+        let full_text = line_text(&full);
+
+        let expected_hex = "41 42 43 ";
+        assert!(
+            full_text.contains(expected_hex),
+            "expected partial hex group in {:?}",
+            full_text
+        );
+
+        // Same total row width as a full 16-byte row (hex column + ascii column).
+        let full16 = call_hex_row_spans(0, &(0u8..16).collect::<Vec<u8>>(), &[], None, None);
+        assert_eq!(
+            line_text(&full).chars().count(),
+            line_text(&full16).chars().count(),
+            "short row should pad to same width as full row"
+        );
+
+        // ASCII column decodes "ABC" and pads the remaining 13 columns with spaces.
+        let ascii_start = full_text.find(" |").unwrap() + 2;
+        let ascii_part = &full_text[ascii_start..full_text.len() - 1];
+        assert!(
+            ascii_part.starts_with("ABC"),
+            "expected ABC prefix in ascii column: {:?}",
+            ascii_part
+        );
+        assert_eq!(ascii_part.chars().count(), 16);
+    }
+
+    #[test]
+    fn hex_row_spans_short_row_at_8_bytes_gets_extra_padding() {
+        // n <= 8 gets one extra padding char to account for the mid-group separator
+        // that a full row would have but this row never emits.
+        let bytes: Vec<u8> = vec![0x41; 8];
+        let row8 = call_hex_row_spans(0, &bytes, &[], None, None);
+        let full16 = call_hex_row_spans(0, &(0u8..16).collect::<Vec<u8>>(), &[], None, None);
+        assert_eq!(
+            line_text(&row8).chars().count(),
+            line_text(&full16).chars().count(),
+        );
+    }
+
+    #[test]
+    fn hex_row_spans_applies_current_and_match_styles_per_byte() {
+        let (
+            addr_style,
+            hex_style,
+            hex_match_style,
+            hex_current_style,
+            ascii_style,
+            ascii_match_style,
+            ascii_current_style,
+            _sep_style,
+        ) = hex_styles();
+
+        let bytes: Vec<u8> = (0x41u8..0x41 + 16).collect(); // 'A'..'P', all printable ASCII
+                                                            // Byte offset 2 is an "other match"; byte offset 5 is the current match.
+        let line = call_hex_row_spans(0, &bytes, &[(2, 3)], Some((5, 6)), None);
+
+        // Find the hex span covering byte 2 ("43 ") and assert it uses hex_match_style,
+        // and the span covering byte 5 ("45 ") uses hex_current_style.
+        let hex_other_span = line
+            .spans
+            .iter()
+            .find(|s| s.content.contains("43 "))
+            .expect("span for matched byte 2 not found");
+        assert_eq!(hex_other_span.style, hex_match_style);
+
+        let hex_current_span = line
+            .spans
+            .iter()
+            .find(|s| s.content.contains("46 "))
+            .expect("span for current-match byte 5 not found");
+        assert_eq!(hex_current_span.style, hex_current_style);
+
+        // A byte outside both ranges (e.g. byte 0, "41 ") uses the base hex_style.
+        let hex_normal_span = line
+            .spans
+            .iter()
+            .find(|s| s.content.contains("41 "))
+            .expect("span for normal byte 0 not found");
+        assert_eq!(hex_normal_span.style, hex_style);
+
+        // ASCII column starts right after the " |" separator span — scope the
+        // remaining assertions to spans past that point, since hex digits can
+        // themselves contain letters (e.g. "4A") and collide with ascii content.
+        let sep_idx = line
+            .spans
+            .iter()
+            .position(|s| s.content.as_ref() == " |")
+            .expect("separator span not found");
+        let ascii_spans = &line.spans[sep_idx + 1..];
+
+        // ASCII column: char at index 2 ('C') is the other-match style, char at
+        // index 5 ('F') is the current-match style, char at index 0 ('A') is normal.
+        let ascii_c_span = ascii_spans
+            .iter()
+            .find(|s| s.content.as_ref() == "C")
+            .expect("ascii span for byte 2 not found");
+        assert_eq!(ascii_c_span.style, ascii_match_style);
+
+        let ascii_f_span = ascii_spans
+            .iter()
+            .find(|s| s.content.as_ref() == "F")
+            .expect("ascii span for byte 5 not found");
+        assert_eq!(ascii_f_span.style, ascii_current_style);
+
+        // Byte 0 ('A') is adjacent to another normal-style byte ('B'), so it merges
+        // into a shared span rather than standing alone — check by substring instead.
+        let ascii_a_span = ascii_spans
+            .iter()
+            .find(|s| s.content.contains('A'))
+            .expect("ascii span for byte 0 not found");
+        assert_eq!(ascii_a_span.style, ascii_style);
+
+        let _ = addr_style;
+    }
+
+    #[test]
+    fn hex_row_spans_addr_highlight_splits_address_span() {
+        let bytes: Vec<u8> = vec![0x41; 4];
+        let (addr_style, _hex_style, _hex_match_style, hex_current_style, ..) = hex_styles();
+
+        // No highlight: the address is a single span in addr_style.
+        let plain = call_hex_row_spans(0x1000, &bytes, &[], None, None);
+        let addr_span = &plain.spans[0];
+        assert_eq!(addr_span.style, addr_style);
+        assert!(addr_span.content.starts_with("00001000"));
+
+        // With addr_highlight = Some((4, 8)) — the last 4 hex digits of
+        // "00001000" highlighted — the address should be split into three spans:
+        // prefix (addr_style), highlighted digits (hex_current_style), suffix.
+        let highlighted = call_hex_row_spans(0x1000, &bytes, &[], None, Some((4, 8)));
+        assert_eq!(highlighted.spans[0].style, addr_style);
+        assert_eq!(highlighted.spans[0].content.as_ref(), "0000");
+        assert_eq!(highlighted.spans[1].style, hex_current_style);
+        assert_eq!(highlighted.spans[1].content.as_ref(), "1000");
+        assert_eq!(highlighted.spans[2].style, addr_style);
+        assert!(highlighted.spans[2].content.starts_with("  "));
+
+        // Sanity: compute_addr_highlight actually produces this range for query "1000".
+        assert_eq!(compute_addr_highlight("1000", 0x1000), Some((4, 8)));
+    }
 }
