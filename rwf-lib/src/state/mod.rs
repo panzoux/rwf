@@ -816,6 +816,19 @@ pub enum Transition {
         viewport_height: usize,
     },
 
+    /// Open the attribute/timestamp change dialog for marked entries, or the
+    /// cursor entry if none are marked (Phase 7.11).
+    ShowAttrTimestampDialog,
+    /// Apply the currently-edited attribute/timestamp change and enqueue the
+    /// corresponding Job(s), closing the dialog.
+    ConfirmAttrTimestampDialog,
+    /// Open the Create Link dialog for the cursor entry (or first marked
+    /// entry), placing the link in the opposite pane's directory (Phase 7.12).
+    ShowCreateLinkDialog,
+    /// Enqueue the CreateLink Job for the currently-edited dialog state,
+    /// closing the dialog.
+    ConfirmCreateLinkDialog,
+
     // Pattern rename operations
     ShowPatternRenameDialog,
     UpdatePatternRenameFields {

@@ -393,6 +393,9 @@ pub enum Action {
     Rename,
     PatternRename,
     CreateDirectory,
+    CreateFile,
+    ShowAttrTimestampDialog,
+    ShowCreateLinkDialog,
 
     // Marking
     ToggleMark,
@@ -1444,6 +1447,17 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             vec![Transition::ShowDialog {
                 dialog: crate::model::Dialog::input("Create Directory", "Directory name:", ""),
             }]
+        }
+        Action::CreateFile => {
+            vec![Transition::ShowDialog {
+                dialog: crate::model::Dialog::input("Create File", "File name:", ""),
+            }]
+        }
+        Action::ShowAttrTimestampDialog => {
+            vec![Transition::ShowAttrTimestampDialog]
+        }
+        Action::ShowCreateLinkDialog => {
+            vec![Transition::ShowCreateLinkDialog]
         }
         Action::StartSearch => {
             // Enter search mode (integrated in pane info area)

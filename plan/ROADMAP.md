@@ -225,7 +225,9 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 |---|------|------|------|--------|------|
 | 7.1 | **Leap ナビゲーション（高速フィルタ移動）** | `[x]` | **実装完了（2026-06〜07、705a392〜c8ff3e4、旧 7.8）**。F3 で Leap モード起動、AND セグメント + prefix/substring/Migemo union フィルタ、LEAP バー + スピナー、デフォルトキーバインド配線・キー衝突解消済み。詳細は [7.8.leap_navigation.md](7.8.leap_navigation.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
 | 7.3 | **スマート・ファイルオープナー（Rifle + コンテンツ判定）** | `[x]` | **実装完了（2026-07、234758f〜351b45b）+ 7.3b 拡張（10d802d まで）**。Phase 6.2 (ExtensionAssociations) の発展形 + 旧 8.7（マジックバイト判定）を統合。Open With ピッカー（単一/バッチ）、マジックバイトによる拡張子/実体不一致の警告、拡張子未登録ファイルのコンテンツ判定フォールバック、File Information ダイアログのオンデマンド判定表示。**7.3b（実機ドッグフーディング後の拡張）**: `extension_associations.json` に `FileType` フィールドを追加し検出タイプ優先・拡張子フォールバックの解決順に変更（旧: 拡張子のみ）、コンテキストメニュー/ピッカータイトルへの検出タイプ表示、File Info でのヘッダーバイト実表示（hex/text 切替、`t` キー）。詳細は [7.3.smart_file_opener.md](7.3.smart_file_opener.md) 参照 | ⭐⭐⭐⭐⭐ | 完了 |
-| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"** | ⭐⭐⭐⭐⭐ | 3週間 |
+| 7.11 | **属性/タイムスタンプ変更** | `[x]` | **実装完了（2026-07-30）**。ファイル属性（Windows: ReadOnly/Hidden/System/Archive、Unix: パーミッション、8進数直接入力+rwx連動表示）とタイムスタンプ（modified/accessed、Windowsのみcreatedも読み取り専用表示）の編集ダイアログ（`Ctrl+a`）。マーク複数選択の一括編集・混在状態表示に対応。touchはこのダイアログの `Now` キーへ統合。Windows属性設定は`volume_info.rs`（唯一のunsafe許可モジュール）へ`SetFileAttributesW`呼び出しを追加、タイムスタンプ設定は新規`filetime`クレート依存で対応。7.6 Undo対象表（Attribute Change / Timestamp Change）の前提操作。詳細は [7.6.attribute_timestamp_edit.md](7.6.attribute_timestamp_edit.md) 参照 | ⭐⭐⭐ | 完了 |
+| 7.12 | **Create Link / Create File** | `[x]` | **実装完了（2026-07-30）**。シンボリックリンク/ハードリンク/(Windows)ジャンクション作成ダイアログ（`;`。当初`Ctrl+l`を予定していたがターミナルに予約されて使用不可と判明し変更）と空ファイル作成ダイアログ（`N`）。Create File はマクロ+外部コマンドでも代替可能だが、Job化することで 7.6 の Undo/Operation Report 追跡対象になれる点が内蔵化の主な価値。Junction作成は`mklink /J`シェルアウト（`/D`でAutoRun無効化— Clink等のシェル拡張によるexit code汚染を回避）。targetはダイアログを開いた時点のカーソル位置アイテムに固定・非入力、dest_dirは対向ペインのカレントディレクトリに固定・非入力(設計通り)。7.6 Undo対象表（Create Link / Create File）の前提操作は全て解消。詳細は [7.6.create_link_file.md](7.6.create_link_file.md) 参照 | ⭐⭐⭐ | 完了 |
+| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"**。**2026-07-28 設計改訂**: Operation Report 中心へ転換（[7.6.operation_report_ui.md](7.6.operation_report_ui.md) が UI/UX の正）。前提操作は 7.7 Trash・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File の3つ。**7.11・7.12 は実装完了（2026-07-30）**、残るは 7.7 Trash のみ | ⭐⭐⭐⭐⭐ | 3週間 |
 | 7.2 | **コマンドパレット** | `[ ]` | 旧 Phase 8.7 から昇格。ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要。**2026-07-18: 意図的に後回し** — コンテキスト絞り込み・他機能との自然な統合（Open With ピッカー等）を含めた設計をまだ詰めていないため、7.3/7.6 の後に着手 | ⭐⭐⭐ | 小規模 |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[ ]` | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
 | 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
@@ -300,13 +302,15 @@ Phase 7 (再開)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-07-26（7.3 スマート・ファイルオープナー、実機ドッグフーディングを経て 7.3b 拡張まで完了。次候補は 7.6 Undo/Redo のまま）
-現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation・7.3 スマート・ファイルオープナーは完了済み）
+最終更新: 2026-07-30（7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File 実装完了。
+残る 7.6 前提操作は 7.7 Trash のみ）
+現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation・7.3 スマート・ファイルオープナー・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
 Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md) の「Phase M 完了サマリ」）
 次の作業候補（優先順。実行順の一次情報は上の Phase 7 表の行順）:
-1. **7.6 Undo/Redo** — killer feature、仕様確定済み（7.6.transactional_rollback.md）。**次に着手する機能**
-2. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
+1. **7.7 Trash** — 7.6 の Delete Undo に必須の唯一残る前提操作（詳細は [7.7.smart_trash.md](7.7.smart_trash.md)）
+2. **7.6 Undo/Redo** — killer feature、**2026-07-28 設計改訂済み**（Operation Report 中心。UI/UX の正は 7.6.operation_report_ui.md、力学は 7.6.transactional_rollback.md）。前提操作は 7.7 のみ残り、完了後に着手可能
+3. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
 
 ## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
 

@@ -3,7 +3,7 @@
 //! This module implements the FilesystemBackend trait for local filesystem operations.
 
 use crate::backend::FilesystemBackend;
-use crate::model::{FileEntry, Location};
+use crate::model::{AttributeChange, FileEntry, LinkCreateKind, Location, TimestampChange};
 use anyhow::{bail, Context, Result};
 use std::path::Path;
 use std::time::SystemTime;
@@ -317,6 +317,273 @@ impl FilesystemBackend for LocalFilesystemBackend {
         tokio::fs::create_dir_all(path)
             .await
             .context("Failed to create directory")?;
+
+        Ok(())
+    }
+
+    async fn create_file(
+        &self,
+        location: &Location,
+        cancel_token: &CancellationToken,
+    ) -> Result<()> {
+        let path = match location {
+            Location::Local(path) => path,
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+
+        // Check cancellation before starting
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+
+        // Check if file already exists
+        if path.exists() {
+            bail!("File already exists");
+        }
+
+        // Validate file name
+        if let Some(filename) = path.file_name() {
+            let filename_str = filename.to_string_lossy();
+            if filename_str.contains(['<', '>', ':', '"', '|', '?', '*']) {
+                bail!("Invalid characters in file name");
+            }
+        }
+
+        tokio::fs::File::create(path)
+            .await
+            .context("Failed to create file")?;
+
+        Ok(())
+    }
+
+    async fn set_attributes(
+        &self,
+        location: &Location,
+        attrs: &AttributeChange,
+        cancel_token: &CancellationToken,
+    ) -> Result<AttributeChange> {
+        let path = match location {
+            Location::Local(path) => path,
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_READONLY: u32 = 0x1;
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+            const FILE_ATTRIBUTE_ARCHIVE: u32 = 0x20;
+
+            let old_bits = tokio::fs::metadata(path)
+                .await
+                .context("Failed to read file attributes")?
+                .file_attributes();
+
+            let old = AttributeChange {
+                readonly: Some(old_bits & FILE_ATTRIBUTE_READONLY != 0),
+                hidden: Some(old_bits & FILE_ATTRIBUTE_HIDDEN != 0),
+                system: Some(old_bits & FILE_ATTRIBUTE_SYSTEM != 0),
+                archive: Some(old_bits & FILE_ATTRIBUTE_ARCHIVE != 0),
+            };
+
+            let mut new_bits = old_bits;
+            let mut apply_bit = |flag: u32, value: Option<bool>| {
+                if let Some(set) = value {
+                    if set {
+                        new_bits |= flag;
+                    } else {
+                        new_bits &= !flag;
+                    }
+                }
+            };
+            apply_bit(FILE_ATTRIBUTE_READONLY, attrs.readonly);
+            apply_bit(FILE_ATTRIBUTE_HIDDEN, attrs.hidden);
+            apply_bit(FILE_ATTRIBUTE_SYSTEM, attrs.system);
+            apply_bit(FILE_ATTRIBUTE_ARCHIVE, attrs.archive);
+
+            if new_bits != old_bits {
+                let path = path.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::volume_info::set_windows_file_attributes(&path, new_bits)
+                })
+                .await
+                .context("set_attributes task panicked")??;
+            }
+
+            Ok(old)
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let metadata = tokio::fs::metadata(path)
+                .await
+                .context("Failed to read file permissions")?;
+            let old_mode = metadata.permissions().mode() & 0o7777;
+            let old = AttributeChange {
+                mode: Some(old_mode),
+            };
+
+            if let Some(new_mode) = attrs.mode {
+                if new_mode != old_mode {
+                    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(new_mode))
+                        .await
+                        .context("Failed to set file permissions")?;
+                }
+            }
+
+            Ok(old)
+        }
+    }
+
+    async fn set_timestamps(
+        &self,
+        location: &Location,
+        times: &TimestampChange,
+        cancel_token: &CancellationToken,
+    ) -> Result<TimestampChange> {
+        let path = match location {
+            Location::Local(path) => path,
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .context("Failed to read file timestamps")?;
+        #[cfg(windows)]
+        let old = TimestampChange {
+            modified: metadata.modified().ok(),
+            accessed: metadata.accessed().ok(),
+            created: metadata.created().ok(),
+        };
+        #[cfg(not(windows))]
+        let old = TimestampChange {
+            modified: metadata.modified().ok(),
+            accessed: metadata.accessed().ok(),
+        };
+
+        if times.modified.is_some() || times.accessed.is_some() {
+            let new_modified = times
+                .modified
+                .or(old.modified)
+                .unwrap_or(std::time::SystemTime::now());
+            let new_accessed = times
+                .accessed
+                .or(old.accessed)
+                .unwrap_or(std::time::SystemTime::now());
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || {
+                filetime::set_file_times(
+                    &path,
+                    filetime::FileTime::from_system_time(new_accessed),
+                    filetime::FileTime::from_system_time(new_modified),
+                )
+            })
+            .await
+            .context("set_timestamps task panicked")?
+            .context("Failed to set file timestamps")?;
+        }
+
+        #[cfg(windows)]
+        if let Some(new_created) = times.created {
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::volume_info::set_windows_creation_time(&path, new_created)
+            })
+            .await
+            .context("set_creation_time task panicked")??;
+        }
+
+        Ok(old)
+    }
+
+    async fn create_link(
+        &self,
+        target: &Location,
+        link_path: &Location,
+        kind: LinkCreateKind,
+        cancel_token: &CancellationToken,
+    ) -> Result<()> {
+        let (target_path, link_path) = match (target, link_path) {
+            (Location::Local(t), Location::Local(l)) => (t, l),
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+        if link_path.exists() {
+            bail!("Link path already exists");
+        }
+
+        match kind {
+            LinkCreateKind::Symlink => {
+                #[cfg(windows)]
+                {
+                    let is_dir = target_path.is_dir();
+                    let target_path = target_path.clone();
+                    let link_path = link_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if is_dir {
+                            std::os::windows::fs::symlink_dir(&target_path, &link_path)
+                        } else {
+                            std::os::windows::fs::symlink_file(&target_path, &link_path)
+                        }
+                    })
+                    .await
+                    .context("create_link task panicked")?
+                    .context("Failed to create symlink")?;
+                }
+                #[cfg(unix)]
+                {
+                    tokio::fs::symlink(target_path, link_path)
+                        .await
+                        .context("Failed to create symlink")?;
+                }
+            }
+            LinkCreateKind::Hardlink => {
+                tokio::fs::hard_link(target_path, link_path)
+                    .await
+                    .context("Failed to create hard link")?;
+            }
+            #[cfg(windows)]
+            LinkCreateKind::Junction => {
+                // `/D` disables cmd.exe's AutoRun (HKCU/HKLM
+                // Software\Microsoft\Command Processor\AutoRun) — without it,
+                // a registered shell enhancement (e.g. Clink) that fails to
+                // inject itself pollutes the process exit code even though
+                // mklink itself succeeded. Stdio is also fully detached, not
+                // just piped, matching `execute_spawn_process`'s fix for the
+                // same class of interference.
+                let output = tokio::process::Command::new("cmd")
+                    .args(["/D", "/C", "mklink", "/J"])
+                    .arg(link_path)
+                    .arg(target_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output()
+                    .await
+                    .context("Failed to spawn mklink")?;
+                if !output.status.success() {
+                    bail!(
+                        "mklink /J failed (exit {:?}): stdout={:?} stderr={:?}",
+                        output.status.code(),
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+        }
 
         Ok(())
     }
@@ -777,6 +1044,279 @@ mod tests {
 
         assert!(new_dir.exists());
         assert!(new_dir.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_create_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let new_file = temp_path.join("new_file.txt");
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(new_file.clone());
+        let cancel_token = CancellationToken::new();
+
+        backend.create_file(&location, &cancel_token).await.unwrap();
+
+        assert!(new_file.exists());
+        assert!(new_file.is_file());
+        assert_eq!(tokio::fs::metadata(&new_file).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_file_already_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let existing_file = temp_path.join("existing.txt");
+        tokio::fs::write(&existing_file, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(existing_file.clone());
+        let cancel_token = CancellationToken::new();
+
+        let result = backend.create_file(&location, &cancel_token).await;
+
+        assert!(result.is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_set_attributes_windows_hidden() {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("visible.txt");
+        tokio::fs::write(&file_path, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(file_path.clone());
+        let cancel_token = CancellationToken::new();
+
+        let change = AttributeChange {
+            readonly: None,
+            hidden: Some(true),
+            system: None,
+            archive: None,
+        };
+
+        let old = backend
+            .set_attributes(&location, &change, &cancel_token)
+            .await
+            .unwrap();
+
+        // Newly-created file was not hidden before the change
+        assert_eq!(old.hidden, Some(false));
+
+        let attrs_after = tokio::fs::metadata(&file_path)
+            .await
+            .unwrap()
+            .file_attributes();
+        assert_ne!(attrs_after & FILE_ATTRIBUTE_HIDDEN, 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_set_attributes_unix_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("script.sh");
+        tokio::fs::write(&file_path, b"content").await.unwrap();
+        tokio::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o644))
+            .await
+            .unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(file_path.clone());
+        let cancel_token = CancellationToken::new();
+
+        let change = AttributeChange { mode: Some(0o755) };
+
+        let old = backend
+            .set_attributes(&location, &change, &cancel_token)
+            .await
+            .unwrap();
+
+        assert_eq!(old.mode, Some(0o644));
+
+        let mode_after = tokio::fs::metadata(&file_path)
+            .await
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode_after, 0o755);
+    }
+
+    #[tokio::test]
+    async fn test_set_timestamps_modified() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("stamped.txt");
+        tokio::fs::write(&file_path, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(file_path.clone());
+        let cancel_token = CancellationToken::new();
+
+        let new_modified =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let change = TimestampChange {
+            modified: Some(new_modified),
+            accessed: None,
+            #[cfg(windows)]
+            created: None,
+        };
+
+        let old = backend
+            .set_timestamps(&location, &change, &cancel_token)
+            .await
+            .unwrap();
+
+        assert!(old.modified.is_some());
+        assert_ne!(old.modified, Some(new_modified));
+
+        let modified_after = tokio::fs::metadata(&file_path)
+            .await
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(modified_after, new_modified);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_set_timestamps_created_windows() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("stamped.txt");
+        tokio::fs::write(&file_path, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let location = Location::Local(file_path.clone());
+        let cancel_token = CancellationToken::new();
+
+        let new_created =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let change = TimestampChange {
+            modified: None,
+            accessed: None,
+            created: Some(new_created),
+        };
+
+        let old = backend
+            .set_timestamps(&location, &change, &cancel_token)
+            .await
+            .unwrap();
+
+        assert!(old.created.is_some());
+        assert_ne!(old.created, Some(new_created));
+
+        let created_after = tokio::fs::metadata(&file_path)
+            .await
+            .unwrap()
+            .created()
+            .unwrap();
+        assert_eq!(created_after, new_created);
+    }
+
+    #[tokio::test]
+    async fn test_create_link_hardlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        tokio::fs::write(&target, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let cancel_token = CancellationToken::new();
+
+        backend
+            .create_link(
+                &Location::Local(target.clone()),
+                &Location::Local(link.clone()),
+                LinkCreateKind::Hardlink,
+                &cancel_token,
+            )
+            .await
+            .unwrap();
+
+        assert!(link.exists());
+        assert_eq!(tokio::fs::read(&link).await.unwrap(), b"content");
+    }
+
+    #[tokio::test]
+    async fn test_create_link_symlink_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        tokio::fs::write(&target, b"content").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let cancel_token = CancellationToken::new();
+
+        backend
+            .create_link(
+                &Location::Local(target.clone()),
+                &Location::Local(link.clone()),
+                LinkCreateKind::Symlink,
+                &cancel_token,
+            )
+            .await
+            .unwrap();
+
+        let sym_meta = tokio::fs::symlink_metadata(&link).await.unwrap();
+        assert!(sym_meta.file_type().is_symlink());
+    }
+
+    #[tokio::test]
+    async fn test_create_link_already_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        tokio::fs::write(&target, b"content").await.unwrap();
+        tokio::fs::write(&link, b"existing").await.unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let cancel_token = CancellationToken::new();
+
+        let result = backend
+            .create_link(
+                &Location::Local(target),
+                &Location::Local(link),
+                LinkCreateKind::Hardlink,
+                &cancel_token,
+            )
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn test_create_link_junction_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target_dir");
+        let link = temp_dir.path().join("link_dir");
+        tokio::fs::create_dir(&target_dir).await.unwrap();
+        tokio::fs::write(target_dir.join("inside.txt"), b"x")
+            .await
+            .unwrap();
+
+        let backend = LocalFilesystemBackend::new();
+        let cancel_token = CancellationToken::new();
+
+        backend
+            .create_link(
+                &Location::Local(target_dir),
+                &Location::Local(link.clone()),
+                LinkCreateKind::Junction,
+                &cancel_token,
+            )
+            .await
+            .unwrap();
+
+        assert!(link.join("inside.txt").exists());
     }
 
     #[tokio::test]

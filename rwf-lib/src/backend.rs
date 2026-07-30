@@ -3,7 +3,7 @@
 //! This module defines the FilesystemBackend trait for abstracting
 //! file I/O operations across different storage types.
 
-use crate::model::{FileEntry, Location};
+use crate::model::{AttributeChange, FileEntry, LinkCreateKind, Location, TimestampChange};
 use anyhow::Result;
 use tokio_util::sync::CancellationToken;
 
@@ -67,6 +67,41 @@ pub trait FilesystemBackend: Send + Sync {
     async fn create_directory(
         &self,
         location: &Location,
+        cancel_token: &CancellationToken,
+    ) -> Result<()>;
+
+    /// Create an empty file
+    async fn create_file(
+        &self,
+        location: &Location,
+        cancel_token: &CancellationToken,
+    ) -> Result<()>;
+
+    /// Change file attributes. Only fields set to `Some` in `attrs` are changed;
+    /// returns the attribute values as they were immediately before the change.
+    async fn set_attributes(
+        &self,
+        location: &Location,
+        attrs: &AttributeChange,
+        cancel_token: &CancellationToken,
+    ) -> Result<AttributeChange>;
+
+    /// Change file timestamps. Only fields set to `Some` in `times` are changed;
+    /// returns the timestamp values as they were immediately before the change.
+    async fn set_timestamps(
+        &self,
+        location: &Location,
+        times: &TimestampChange,
+        cancel_token: &CancellationToken,
+    ) -> Result<TimestampChange>;
+
+    /// Create a link at `link_path` pointing to `target`. Fails if
+    /// `link_path` already exists.
+    async fn create_link(
+        &self,
+        target: &Location,
+        link_path: &Location,
+        kind: LinkCreateKind,
         cancel_token: &CancellationToken,
     ) -> Result<()>;
 

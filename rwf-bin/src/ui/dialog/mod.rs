@@ -5,12 +5,14 @@
 //! - Content-specific rendering via trait
 //! - Centralized input handling with consistent shortcuts
 
+mod attr_timestamp;
 mod basic;
 mod close_tab_with_active_job;
 pub mod common;
 mod compression;
 mod confirm;
 mod context_menu;
+mod create_link;
 mod custom_function;
 mod drive_selection;
 mod extract_confirm;
@@ -35,8 +37,10 @@ mod test_support;
 mod type_mismatch_warning;
 mod wildcard_mark;
 
+use attr_timestamp::render_attr_timestamp_dialog;
 use basic::{handle_content_input, render_dialog_content};
 use context_menu::render_context_menu_dialog;
+use create_link::render_create_link_dialog;
 use custom_function::{render_custom_function_menu, render_custom_function_selector};
 use drive_selection::render_drive_selection_dialog;
 use file_conflict::render_file_conflict_dialog;
@@ -286,6 +290,16 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // prompt(1) + textbox(1) + hint(1) + spacer(1) + buttons(1) = 5
             5u16
         }
+        DialogContent::AttrTimestamp { .. } => {
+            // label(1) + fields(1) + spacer/preview(1) + label(1) + 2 timestamp rows(2) +
+            // created/spacer(1) + buttons(1) = 8 (same row count on both platforms)
+            8u16
+        }
+        DialogContent::CreateLink { .. } => {
+            // type(1) + reasons(1) + spacer(1) + label(1) + dest_dir(1) + link_name(1) +
+            // spacer(1) + label(1) + target(1) + buttons(1) = 10
+            10u16
+        }
         DialogContent::HistoryDialog(HistoryDialogContent {
             left_entries,
             right_entries,
@@ -441,6 +455,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::FileMask { .. }
         | DialogContent::WildcardMark { .. }
         | DialogContent::SimpleRename { .. }
+        | DialogContent::AttrTimestamp { .. }
+        | DialogContent::CreateLink { .. }
         | DialogContent::FileInfo { .. }
         | DialogContent::ExtractionConfirm(_)
         | DialogContent::Error(_)
@@ -545,6 +561,16 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             .max(40)
             .min(screen_width.saturating_sub(2)),
         DialogContent::FileInfo { .. } => file_info_dialog_width(screen_width),
+        DialogContent::AttrTimestamp { .. } => {
+            // Wide enough for the 4-checkbox attribute row (~51 chars) and a
+            // full "YYYY-MM-DD HH:MM:SS" timestamp field + "[t:now]" hint.
+            64u16.min(screen_width.saturating_sub(2)).max(50)
+        }
+        DialogContent::CreateLink { .. } => {
+            // Wide enough for the Type row (3 options) and the unavailable-
+            // reasons row when more than one option is disabled.
+            76u16.min(screen_width.saturating_sub(2)).max(50)
+        }
         _ => default_dialog_width(screen_width),
     };
 
@@ -699,6 +725,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 *scroll_pos,
                 *focused_field,
             );
+        }
+        DialogContent::AttrTimestamp(d) => {
+            render_attr_timestamp_dialog(frame, content_area, d);
+        }
+        DialogContent::CreateLink(d) => {
+            render_create_link_dialog(frame, content_area, d);
         }
         DialogContent::HistoryDialog(HistoryDialogContent {
             left_entries,
@@ -1117,6 +1149,18 @@ pub fn handle_dialog_input(
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
     if let DialogContent::SimpleRename(d) = &mut dialog.content {
         return simple_rename::handle_input(d, key);
+    }
+
+    // AttrTimestamp dialog — checkbox/text-field focus cycling, Space toggles,
+    // `t` stamps "now" into a focused timestamp field.
+    if let DialogContent::AttrTimestamp(d) = &mut dialog.content {
+        return attr_timestamp::handle_input(d, key);
+    }
+
+    // CreateLink dialog — Type/link-name focus cycling, Left/Right cycles
+    // the link type.
+    if let DialogContent::CreateLink(d) = &mut dialog.content {
+        return create_link::handle_input(d, key);
     }
 
     // PatternRename dialog — Find/Replace textboxes + Alt+R/S flag toggles + preview scroll

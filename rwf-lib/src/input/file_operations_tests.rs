@@ -170,6 +170,31 @@ mod tests {
     }
 
     #[test]
+    fn test_create_file_action_shows_input_dialog() {
+        let state = create_test_state();
+        let transitions = action_to_transitions(&state, &Action::CreateFile);
+
+        assert_eq!(transitions.len(), 1);
+        match &transitions[0] {
+            Transition::ShowDialog { dialog } => {
+                assert_eq!(dialog.title, "Create File");
+                match &dialog.content {
+                    crate::model::DialogContent::Input(crate::model::InputDialog {
+                        prompt,
+                        default_value,
+                        ..
+                    }) => {
+                        assert_eq!(prompt, "File name:");
+                        assert_eq!(default_value, "");
+                    }
+                    _ => panic!("Expected input dialog"),
+                }
+            }
+            _ => panic!("Expected ShowDialog transition"),
+        }
+    }
+
+    #[test]
     fn test_confirm_copy_dialog_creates_job() {
         let mut state = create_test_state();
 

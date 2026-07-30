@@ -603,4 +603,202 @@ mod tests {
         assert_eq!(state.jobs.active.len(), 0);
         assert_eq!(state.jobs.completed.len(), 1);
     }
+
+    /// Test complete create-file workflow
+    #[test]
+    fn test_complete_create_file_workflow() {
+        let mut state = test_state();
+
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from("/test"));
+
+        // Step 1: User initiates create-file operation
+        let transitions = action_to_transitions(&state, &Action::CreateFile);
+        for transition in transitions {
+            update_state(&mut state, transition);
+        }
+
+        // Verify create-file dialog is shown
+        assert!(!state.dialogs.is_empty());
+        let dialog = state.dialogs.current().unwrap();
+        if let DialogContent::Input(InputDialog { prompt, .. }) = &dialog.content {
+            assert_eq!(prompt, "File name:");
+        } else {
+            panic!("Expected input dialog");
+        }
+
+        // Step 2: User enters file name
+        state.dialogs.input_buffer = "newfile.txt".to_string();
+        let result = update_state(&mut state, Transition::ConfirmDialog);
+
+        // Verify create-file job was created
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::CreateFile { location } => {
+                assert_eq!(
+                    location,
+                    &Location::Local(PathBuf::from("/test/newfile.txt"))
+                );
+            }
+            _ => panic!("Expected CreateFile job"),
+        }
+
+        // Enqueue the job
+        for job in result.jobs_to_start {
+            update_state(&mut state, Transition::EnqueueJob { spec: job });
+        }
+
+        // Step 3: Execute job
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+
+        // Step 4: Complete job
+        let complete_result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+
+        // Verify completion
+        assert_eq!(state.jobs.active.len(), 0);
+        assert_eq!(state.jobs.completed.len(), 1);
+
+        // Verify the pane is refreshed so the new file becomes visible (mirrors Mkdir)
+        assert_eq!(complete_result.panes_to_refresh.len(), 1);
+    }
+
+    /// Test complete attribute-change workflow: open dialog for the cursor
+    /// entry (nothing marked), toggle a field, confirm, verify the resulting
+    /// job. Requires a real file since attributes are read via `metadata()`.
+    #[cfg(windows)]
+    #[test]
+    fn test_complete_attr_timestamp_workflow() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("a.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(temp_dir.path().to_path_buf());
+        state.current_tab_mut().left_pane.entries = vec![create_test_file_entry(
+            "a.txt",
+            file_path.to_str().unwrap(),
+            false,
+            false,
+        )];
+
+        // Step 1: open dialog for the cursor entry (nothing marked)
+        let transitions = action_to_transitions(&state, &Action::ShowAttrTimestampDialog);
+        for t in transitions {
+            update_state(&mut state, t);
+        }
+        assert!(!state.dialogs.is_empty());
+
+        // Step 2: toggle "hidden" (simulates the dialog-mode key handler)
+        if let Some(dialog) = state.dialogs.current_mut() {
+            if let DialogContent::AttrTimestamp(d) = &mut dialog.content {
+                d.hidden.toggle();
+            } else {
+                panic!("Expected AttrTimestamp dialog");
+            }
+        }
+
+        // Step 3: confirm
+        let result = update_state(&mut state, Transition::ConfirmAttrTimestampDialog);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::ChangeAttributes { targets, attrs } => {
+                assert_eq!(targets, &vec![Location::Local(file_path)]);
+                assert_eq!(attrs.hidden, Some(true));
+            }
+            other => panic!("Expected ChangeAttributes, got {:?}", other),
+        }
+        assert!(state.dialogs.is_empty());
+    }
+
+    /// Test complete create-link workflow: open dialog for the cursor entry
+    /// (target), destination comes from the opposite pane, confirm, verify
+    /// the resulting job.
+    #[test]
+    fn test_complete_create_link_workflow() {
+        use tempfile::TempDir;
+
+        let source_dir = TempDir::new().unwrap();
+        let dest_dir = TempDir::new().unwrap();
+        let target_path = source_dir.path().join("report.docx");
+        std::fs::write(&target_path, b"x").unwrap();
+
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(source_dir.path().to_path_buf());
+        state.current_tab_mut().left_pane.entries = vec![create_test_file_entry(
+            "report.docx",
+            target_path.to_str().unwrap(),
+            false,
+            false,
+        )];
+        state.current_tab_mut().right_pane.current_location =
+            Location::Local(dest_dir.path().to_path_buf());
+
+        // Step 1: open dialog for the cursor entry, left pane active
+        let transitions = action_to_transitions(&state, &Action::ShowCreateLinkDialog);
+        for t in transitions {
+            update_state(&mut state, t);
+        }
+        assert!(!state.dialogs.is_empty());
+        if let Some(dialog) = state.dialogs.current() {
+            if let DialogContent::CreateLink(d) = &dialog.content {
+                assert_eq!(d.target, Location::Local(target_path.clone()));
+                assert_eq!(d.dest_dir, dest_dir.path());
+                assert_eq!(d.link_name, "report.docx");
+            } else {
+                panic!("Expected CreateLink dialog");
+            }
+        }
+
+        // Step 2: confirm
+        let result = update_state(&mut state, Transition::ConfirmCreateLinkDialog);
+        assert_eq!(result.jobs_to_start.len(), 1);
+        match &result.jobs_to_start[0].kind {
+            JobKind::CreateLink {
+                target,
+                link_path,
+                kind,
+            } => {
+                assert_eq!(target, &Location::Local(target_path));
+                assert_eq!(
+                    link_path,
+                    &Location::Local(dest_dir.path().join("report.docx"))
+                );
+                assert_eq!(kind, &crate::model::LinkCreateKind::Symlink);
+            }
+            other => panic!("Expected CreateLink, got {:?}", other),
+        }
+        assert!(state.dialogs.is_empty());
+
+        // Step 3: enqueue, start, complete the job — the link lands in the
+        // *opposite* (right) pane's directory, not the active (left) pane,
+        // so that's the one that must be refreshed to show the new entry.
+        for job in result.jobs_to_start {
+            update_state(&mut state, Transition::EnqueueJob { spec: job });
+        }
+        let job_id = state.jobs.queue[0].id;
+        update_state(&mut state, Transition::StartNextJob);
+        let complete_result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::None),
+            },
+        );
+        assert_eq!(complete_result.panes_to_refresh.len(), 1);
+        assert_eq!(
+            complete_result.panes_to_refresh[0].pane,
+            crate::model::ActivePane::Right
+        );
+    }
 }

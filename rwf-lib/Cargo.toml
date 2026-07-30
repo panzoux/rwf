@@ -25,6 +25,7 @@ zip = { workspace = true }
 # Additional dependencies
 async-trait = "0.1"
 dirs = "5.0"
+filetime = "0.2"
 rustmigemo = { workspace = true }
 encoding_rs = "0.8"
 sevenz-rust = { workspace = true }
@@ -40,7 +41,7 @@ default = []
 migemo = []
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+windows = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_Security"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

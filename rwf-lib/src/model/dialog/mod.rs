@@ -5,11 +5,13 @@ pub use crate::job::PipeToAction;
 use crate::model::Location;
 use std::collections::HashMap;
 
+mod attr_timestamp;
 mod close_tab_with_active_job;
 mod comparison_view;
 mod compression;
 mod confirmation;
 mod context_menu;
+mod create_link;
 mod custom_function_menu;
 mod custom_function_selector;
 mod delete_confirm;
@@ -38,11 +40,13 @@ mod ui_state;
 mod version;
 mod wildcard_mark;
 
+pub use attr_timestamp::{AttrTextField, AttrTimestampDialog, TriToggle};
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use comparison_view::ComparisonViewDialog;
 pub use compression::CompressionDialog;
 pub use confirmation::ConfirmationDialog;
 pub use context_menu::ContextMenuDialog;
+pub use create_link::CreateLinkDialog;
 pub use custom_function_menu::CustomFunctionMenuDialog;
 pub use custom_function_selector::CustomFunctionSelectorContent;
 pub use delete_confirm::DeleteConfirmDialog;
@@ -249,6 +253,10 @@ pub enum DialogContent {
     /// Choose among multiple `ExtensionAssociation` candidates that match one
     /// file's extension (Phase 7.3 "Open With..." picker).
     OpenWithPicker(OpenWithPickerDialog),
+    /// Edit file attributes/timestamps (Phase 7.11).
+    AttrTimestamp(AttrTimestampDialog),
+    /// Create a symlink/hardlink/(Windows) junction (Phase 7.12).
+    CreateLink(CreateLinkDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -621,6 +629,22 @@ impl Dialog {
     }
 
     /// Create a pattern rename dialog (TWF-style: separate Find/Replace fields)
+    /// Create an attribute/timestamp change dialog for the given targets.
+    pub fn attr_timestamp(targets: Vec<Location>) -> Self {
+        Self {
+            title: "Change Attributes / Timestamps".to_string(),
+            content: DialogContent::AttrTimestamp(AttrTimestampDialog::new(targets)),
+        }
+    }
+
+    /// Create a Create Link dialog for `target`, placing the link in `dest_dir`.
+    pub fn create_link(target: Location, dest_dir: std::path::PathBuf) -> Self {
+        Self {
+            title: "Create Link".to_string(),
+            content: DialogContent::CreateLink(CreateLinkDialog::new(target, dest_dir)),
+        }
+    }
+
     pub fn pattern_rename() -> Self {
         Self {
             title: "Pattern Rename".to_string(),

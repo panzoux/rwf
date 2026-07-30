@@ -112,6 +112,22 @@ pub enum JobKind {
     Mkdir {
         location: Location,
     },
+    CreateFile {
+        location: Location,
+    },
+    ChangeAttributes {
+        targets: Vec<Location>,
+        attrs: crate::model::AttributeChange,
+    },
+    CreateLink {
+        target: Location,
+        link_path: Location,
+        kind: crate::model::LinkCreateKind,
+    },
+    ChangeTimestamps {
+        targets: Vec<Location>,
+        times: crate::model::TimestampChange,
+    },
     Rename {
         from: Location,
         to: Location,
@@ -310,6 +326,8 @@ pub enum SuccessData {
         header_bytes: Vec<u8>,
     },
     FileTypesDetected(Vec<(std::path::PathBuf, crate::magic::DetectedKind)>),
+    AttributesChanged(Vec<crate::model::FileOpOutcome<crate::model::AttributeChange>>),
+    TimestampsChanged(Vec<crate::model::FileOpOutcome<crate::model::TimestampChange>>),
     None,
 }
 

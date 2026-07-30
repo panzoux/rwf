@@ -139,6 +139,15 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     location: new_dir_loc,
                 }));
             }
+            "Create File" if !input.is_empty() => {
+                let current_location = state.active_pane().current_location.clone();
+                let new_file_loc = current_location.join(&input);
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::CreateFile {
+                        location: new_file_loc,
+                    },
+                ));
+            }
             "Custom Function Input" => {
                 if let Some(func) = state.pending_custom_function_input.take() {
                     let expander = rwf_lib::macro_expander::MacroExpander::new();
@@ -238,6 +247,45 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     }
                 }
                 return None;
+            }
+            DialogContent::AttrTimestamp(d) => {
+                let attrs = d.to_attribute_change();
+                let times = d.to_timestamp_change();
+                let targets = d.targets.clone();
+
+                let mut jobs = Vec::new();
+                if !attrs.is_empty() {
+                    jobs.push(rwf_lib::job::JobSpec::new(
+                        rwf_lib::job::JobKind::ChangeAttributes {
+                            targets: targets.clone(),
+                            attrs,
+                        },
+                    ));
+                }
+                if !times.is_empty() {
+                    jobs.push(rwf_lib::job::JobSpec::new(
+                        rwf_lib::job::JobKind::ChangeTimestamps { targets, times },
+                    ));
+                }
+
+                if jobs.len() == 1 {
+                    return jobs.into_iter().next();
+                } else if !jobs.is_empty() {
+                    state.pending_confirmation_jobs.extend(jobs);
+                }
+                return None;
+            }
+            DialogContent::CreateLink(d) => {
+                if d.link_name.is_empty() {
+                    return None;
+                }
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::CreateLink {
+                        target: d.target.clone(),
+                        link_path: d.link_path(),
+                        kind: d.kind,
+                    },
+                ));
             }
             DialogContent::DriveSelection(DriveSelectionDialog {
                 drives,
@@ -910,6 +958,160 @@ mod tests {
 
     fn test_state() -> AppState {
         AppState::new(AppConfig::default())
+    }
+
+    #[test]
+    fn confirm_create_file_dialog_starts_create_file_job() {
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from("/test"));
+        let dialog = Dialog::input("Create File", "File name:", "");
+        let mut dialog = dialog;
+        if let rwf_lib::model::dialog::DialogContent::Input(rwf_lib::model::InputDialog {
+            input,
+            ..
+        }) = &mut dialog.content
+        {
+            *input = "newfile.txt".to_string();
+        }
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::CreateFile { location } => {
+                assert_eq!(
+                    location,
+                    Location::Local(PathBuf::from("/test/newfile.txt"))
+                );
+            }
+            other => panic!("expected CreateFile, got {:?}", other),
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn confirm_attr_timestamp_dialog_starts_change_attributes_job() {
+        use tempfile::TempDir;
+
+        let mut state = test_state();
+        let temp_dir = TempDir::new().unwrap();
+        let file_a = temp_dir.path().join("a.txt");
+        std::fs::write(&file_a, b"x").unwrap();
+
+        let mut dialog =
+            rwf_lib::model::Dialog::attr_timestamp(vec![Location::Local(file_a.clone())]);
+        if let rwf_lib::model::dialog::DialogContent::AttrTimestamp(d) = &mut dialog.content {
+            d.hidden.toggle();
+        } else {
+            panic!("expected AttrTimestamp dialog");
+        }
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::ChangeAttributes { targets, attrs } => {
+                assert_eq!(targets, vec![Location::Local(file_a)]);
+                assert_eq!(attrs.hidden, Some(true));
+            }
+            other => panic!("expected ChangeAttributes, got {:?}", other),
+        }
+        assert!(state.pending_confirmation_jobs.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn confirm_attr_timestamp_dialog_with_no_edits_starts_no_job() {
+        use tempfile::TempDir;
+
+        let mut state = test_state();
+        let temp_dir = TempDir::new().unwrap();
+        let file_a = temp_dir.path().join("a.txt");
+        std::fs::write(&file_a, b"x").unwrap();
+
+        let dialog = rwf_lib::model::Dialog::attr_timestamp(vec![Location::Local(file_a)]);
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state);
+        assert!(job_spec.is_none());
+        assert!(state.pending_confirmation_jobs.is_empty());
+    }
+
+    #[test]
+    fn confirm_create_link_dialog_starts_create_link_job() {
+        use tempfile::TempDir;
+
+        let mut state = test_state();
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        std::fs::write(&target, b"x").unwrap();
+
+        let dialog = rwf_lib::model::Dialog::create_link(
+            Location::Local(target.clone()),
+            temp_dir.path().to_path_buf(),
+        );
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::CreateLink {
+                target: job_target,
+                link_path,
+                kind,
+            } => {
+                assert_eq!(job_target, Location::Local(target));
+                assert_eq!(
+                    link_path,
+                    Location::Local(temp_dir.path().join("target.txt"))
+                );
+                assert_eq!(kind, rwf_lib::model::LinkCreateKind::Symlink);
+            }
+            other => panic!("expected CreateLink, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn confirm_create_link_dialog_with_empty_name_starts_no_job() {
+        use tempfile::TempDir;
+
+        let mut state = test_state();
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.txt");
+        std::fs::write(&target, b"x").unwrap();
+
+        let mut dialog = rwf_lib::model::Dialog::create_link(
+            Location::Local(target),
+            temp_dir.path().to_path_buf(),
+        );
+        if let rwf_lib::model::dialog::DialogContent::CreateLink(d) = &mut dialog.content {
+            d.link_name.clear();
+        }
+        state.dialogs.push(dialog);
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+    }
+
+    #[test]
+    fn confirm_create_directory_dialog_starts_mkdir_job() {
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from("/test"));
+        let mut dialog = Dialog::input("Create Directory", "Directory name:", "");
+        if let rwf_lib::model::dialog::DialogContent::Input(rwf_lib::model::InputDialog {
+            input,
+            ..
+        }) = &mut dialog.content
+        {
+            *input = "newdir".to_string();
+        }
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::Mkdir { location } => {
+                assert_eq!(location, Location::Local(PathBuf::from("/test/newdir")));
+            }
+            other => panic!("expected Mkdir, got {:?}", other),
+        }
     }
 
     /// Confirming a TypeMismatchWarning dialog must run the *original*

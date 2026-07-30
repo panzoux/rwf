@@ -209,6 +209,10 @@ impl AppState {
                             crate::job::JobKind::Move { .. } => "Move",
                             crate::job::JobKind::Delete { .. } => "Delete",
                             crate::job::JobKind::Mkdir { .. } => "Create directory",
+                            crate::job::JobKind::CreateFile { .. } => "Create file",
+                            crate::job::JobKind::ChangeAttributes { .. } => "Change attributes",
+                            crate::job::JobKind::ChangeTimestamps { .. } => "Change timestamps",
+                            crate::job::JobKind::CreateLink { .. } => "Create link",
                             crate::job::JobKind::Rename { .. } => "Rename",
                             crate::job::JobKind::CalculateSize { .. } => "Calculate size",
                             crate::job::JobKind::ExtractArchive { .. } => "Extract archive",
@@ -284,8 +288,14 @@ impl AppState {
                                 }
                             }
                         }
-                        crate::job::JobKind::Mkdir { location } => {
+                        crate::job::JobKind::Mkdir { location }
+                        | crate::job::JobKind::CreateFile { location } => {
                             if let Some(parent) = location.parent() {
+                                self.cache.invalidate(&parent);
+                            }
+                        }
+                        crate::job::JobKind::CreateLink { link_path, .. } => {
+                            if let Some(parent) = link_path.parent() {
                                 self.cache.invalidate(&parent);
                             }
                         }
@@ -593,11 +603,36 @@ impl AppState {
                             self.unmark_all_panes();
                         }
                         crate::job::JobKind::PatternRename { .. }
-                        | crate::job::JobKind::Mkdir { .. } => {
+                        | crate::job::JobKind::Mkdir { .. }
+                        | crate::job::JobKind::CreateFile { .. } => {
                             result_obj.panes_to_refresh.push(PaneRefresh {
                                 tab_id: self.tabs.active_index,
                                 pane: self.ui.active_pane,
                             });
+                        }
+                        // Unlike Mkdir/CreateFile, the link lands in the
+                        // *opposite* pane's directory (design: dest_dir is
+                        // always `state.opposite_pane()`), so refreshing
+                        // "the active pane" is wrong here — find whichever
+                        // pane is actually showing that directory, same
+                        // pattern as Copy/Move/JoinFiles above.
+                        crate::job::JobKind::CreateLink { link_path, .. } => {
+                            if let Some(parent) = link_path.parent() {
+                                for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                    if tab.left_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Left,
+                                        });
+                                    }
+                                    if tab.right_pane.current_location == parent {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Right,
+                                        });
+                                    }
+                                }
+                            }
                         }
                         crate::job::JobKind::CalculateSize { location } => {
                             if let crate::job::OpResult::Success(

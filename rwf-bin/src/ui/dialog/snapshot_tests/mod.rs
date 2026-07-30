@@ -18,11 +18,13 @@ use ratatui::Terminal;
 use rwf_lib::model::dialog::Dialog;
 use rwf_lib::{AppConfig, AppState};
 
+mod attr_timestamp;
 mod close_tab_with_active_job;
 mod comparison_view;
 mod compression;
 mod confirmation;
 mod context_menu;
+mod create_link;
 mod custom_function_menu;
 mod custom_function_selector;
 mod delete_confirm;

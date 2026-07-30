@@ -298,6 +298,77 @@ fn format_unix_volume_info(device: &str, mount_point: &str, label: &str) -> Stri
     }
 }
 
+/// Set the raw Win32 file attribute bitmask (`FILE_ATTRIBUTE_*`) for a path.
+///
+/// `SetFileAttributesW` replaces the entire attribute word, so callers must pass
+/// the complete desired bitmask (including bits that are staying unchanged), not
+/// just the bits they want to flip.
+#[cfg(target_os = "windows")]
+pub fn set_windows_file_attributes(path: &Path, attrs: u32) -> anyhow::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_FLAGS_AND_ATTRIBUTES};
+
+    let mut wide_path: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide_path.push(0);
+
+    // SAFETY: wide_path is null-terminated and outlives the call.
+    unsafe {
+        SetFileAttributesW(PCWSTR(wide_path.as_ptr()), FILE_FLAGS_AND_ATTRIBUTES(attrs))
+            .map_err(|e| anyhow::anyhow!("SetFileAttributesW failed: {e}"))
+    }
+}
+
+/// Set a file/directory's Windows creation time. Unlike `modified`/`accessed`,
+/// this isn't exposed by the `filetime` crate, so it needs a raw handle +
+/// `SetFileTime` call. `FILE_FLAG_BACKUP_SEMANTICS` is required to open a
+/// directory handle at all (not just files).
+#[cfg(target_os = "windows")]
+pub fn set_windows_creation_time(path: &Path, time: std::time::SystemTime) -> anyhow::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, SetFileTime, FILE_FLAG_BACKUP_SEMANTICS, FILE_GENERIC_WRITE, FILE_SHARE_READ,
+        FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+
+    let mut wide_path: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide_path.push(0);
+
+    // FILETIME = 100ns intervals since 1601-01-01; Unix epoch is
+    // 11,644,473,600 seconds after that.
+    let duration = time
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| anyhow::anyhow!("time is before the Unix epoch: {e}"))?;
+    let intervals = (duration.as_secs() + 11_644_473_600) * 10_000_000
+        + u64::from(duration.subsec_nanos()) / 100;
+    let filetime = FILETIME {
+        dwLowDateTime: (intervals & 0xFFFF_FFFF) as u32,
+        dwHighDateTime: (intervals >> 32) as u32,
+    };
+
+    // SAFETY: wide_path is null-terminated and outlives the call. The handle
+    // is always closed before returning, on both the success and error path.
+    unsafe {
+        let handle = CreateFileW(
+            PCWSTR(wide_path.as_ptr()),
+            FILE_GENERIC_WRITE.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        .map_err(|e| anyhow::anyhow!("CreateFileW failed: {e}"))?;
+
+        let result = SetFileTime(handle, Some(&filetime), None, None)
+            .map_err(|e| anyhow::anyhow!("SetFileTime failed: {e}"));
+        let _ = CloseHandle(handle);
+        result
+    }
+}
+
 /// Get all available drives and network shares
 /// **Validates: Requirements 42.4, 42.6**
 pub fn get_all_drives() -> Vec<crate::model::dialog::DriveInfo> {

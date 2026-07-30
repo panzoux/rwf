@@ -211,6 +211,15 @@ impl AppState {
                                     });
                                 self.dialogs.pop();
                                 return Some(StateUpdateResult::with_job(job_spec));
+                            } else if title == "Create File" {
+                                let current_location = self.active_pane().current_location.clone();
+                                let new_file_location = current_location.join(&input);
+                                let job_spec =
+                                    crate::job::JobSpec::new(crate::job::JobKind::CreateFile {
+                                        location: new_file_location,
+                                    });
+                                self.dialogs.pop();
+                                return Some(StateUpdateResult::with_job(job_spec));
                             } else if title == "Wildcard Marking" {
                                 if !input.is_empty() {
                                     self.dialogs.pop();
@@ -627,6 +636,112 @@ impl AppState {
                     }
                 }
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ShowAttrTimestampDialog => {
+                let pane = self.active_pane();
+                let targets: Vec<crate::model::Location> = if pane.marking.count() > 0 {
+                    pane.entries
+                        .iter()
+                        .filter(|e| pane.marking.is_marked(&e.location))
+                        .map(|e| e.location.clone())
+                        .collect()
+                } else if let Some(entry) = pane.current_entry() {
+                    vec![entry.location.clone()]
+                } else {
+                    Vec::new()
+                };
+
+                if targets.is_empty() {
+                    return Some(StateUpdateResult::none());
+                }
+
+                self.dialogs
+                    .push(crate::model::Dialog::attr_timestamp(targets));
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ConfirmAttrTimestampDialog => {
+                let Some(dialog) = self.dialogs.current() else {
+                    return Some(StateUpdateResult::none());
+                };
+                let crate::model::dialog::DialogContent::AttrTimestamp(d) = &dialog.content else {
+                    return Some(StateUpdateResult::none());
+                };
+
+                let attrs = d.to_attribute_change();
+                let times = d.to_timestamp_change();
+                let targets = d.targets.clone();
+
+                let mut jobs = Vec::new();
+                if !attrs.is_empty() {
+                    jobs.push(crate::job::JobSpec::new(
+                        crate::job::JobKind::ChangeAttributes {
+                            targets: targets.clone(),
+                            attrs,
+                        },
+                    ));
+                }
+                if !times.is_empty() {
+                    jobs.push(crate::job::JobSpec::new(
+                        crate::job::JobKind::ChangeTimestamps { targets, times },
+                    ));
+                }
+
+                self.dialogs.pop();
+
+                if jobs.is_empty() {
+                    return Some(StateUpdateResult::with_ui_change());
+                }
+                let mut result = StateUpdateResult::with_ui_change();
+                result.jobs_to_start = jobs;
+                Some(result)
+            }
+            Transition::ShowCreateLinkDialog => {
+                let target = {
+                    let pane = self.active_pane();
+                    if pane.marking.count() > 0 {
+                        pane.entries
+                            .iter()
+                            .find(|e| pane.marking.is_marked(&e.location))
+                            .map(|e| e.location.clone())
+                    } else {
+                        pane.current_entry().map(|e| e.location.clone())
+                    }
+                };
+                let Some(target) = target else {
+                    return Some(StateUpdateResult::none());
+                };
+
+                // Create Link only makes sense between two local directories;
+                // if the opposite pane is remote/archive there's nowhere
+                // sensible to place the link.
+                let dest_dir = match &self.opposite_pane().current_location {
+                    crate::model::Location::Local(path) => path.clone(),
+                    _ => return Some(StateUpdateResult::none()),
+                };
+
+                self.dialogs
+                    .push(crate::model::Dialog::create_link(target, dest_dir));
+                Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::ConfirmCreateLinkDialog => {
+                let Some(dialog) = self.dialogs.current() else {
+                    return Some(StateUpdateResult::none());
+                };
+                let crate::model::dialog::DialogContent::CreateLink(d) = &dialog.content else {
+                    return Some(StateUpdateResult::none());
+                };
+                if d.link_name.is_empty() {
+                    return Some(StateUpdateResult::none());
+                }
+
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CreateLink {
+                    target: d.target.clone(),
+                    link_path: d.link_path(),
+                    kind: d.kind,
+                });
+
+                self.dialogs.pop();
+                Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::CycleFileInfoHeaderEncoding => {
                 // Pure UI-state flip (Phase 7.3b, Task 12) — cycle whichever

@@ -61,6 +61,25 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::Move { sources, dest } => self.execute_move(sources, dest, &spec).await,
             JobKind::Delete { targets } => self.execute_delete(targets, &spec).await,
             JobKind::Mkdir { location } => self.execute_mkdir(location, &spec.cancel_token).await,
+            JobKind::CreateFile { location } => {
+                self.execute_create_file(location, &spec.cancel_token).await
+            }
+            JobKind::ChangeAttributes { targets, attrs } => {
+                self.execute_change_attributes(targets, attrs, &spec.cancel_token)
+                    .await
+            }
+            JobKind::ChangeTimestamps { targets, times } => {
+                self.execute_change_timestamps(targets, times, &spec.cancel_token)
+                    .await
+            }
+            JobKind::CreateLink {
+                target,
+                link_path,
+                kind,
+            } => {
+                self.execute_create_link(target, link_path, *kind, &spec.cancel_token)
+                    .await
+            }
             JobKind::Rename { from, to } => self.execute_rename(from, to, &spec.cancel_token).await,
             JobKind::CalculateSize { location } => {
                 self.execute_calculate_size(location, &spec).await
@@ -593,6 +612,121 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Ok(_) => OpResult::Success(SuccessData::None),
             Err(e) => OpResult::Failed(e.to_string()),
         }
+    }
+
+    /// Execute a create-file operation
+    async fn execute_create_file(
+        &self,
+        location: &Location,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        match self.backend.create_file(location, cancel_token).await {
+            Ok(_) => OpResult::Success(SuccessData::None),
+            Err(e) => OpResult::Failed(e.to_string()),
+        }
+    }
+
+    /// Execute a create-link operation (symlink/hardlink/junction).
+    async fn execute_create_link(
+        &self,
+        target: &Location,
+        link_path: &Location,
+        kind: crate::model::LinkCreateKind,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        match self
+            .backend
+            .create_link(target, link_path, kind, cancel_token)
+            .await
+        {
+            Ok(_) => OpResult::Success(SuccessData::None),
+            Err(e) => OpResult::Failed(e.to_string()),
+        }
+    }
+
+    /// Execute an attribute-change operation across one or more targets.
+    ///
+    /// Loops per-file rather than failing fast so that a Vec<FileOpOutcome>
+    /// covering every target is always returned (see plan/7.6.transactional_rollback.md §8).
+    async fn execute_change_attributes(
+        &self,
+        targets: &[Location],
+        attrs: &crate::model::AttributeChange,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        let mut outcomes = Vec::with_capacity(targets.len());
+        for target in targets {
+            let outcome = match self
+                .backend
+                .set_attributes(target, attrs, cancel_token)
+                .await
+            {
+                Ok(old) => crate::model::FileOpOutcome {
+                    target: target.clone(),
+                    old: Some(old),
+                    new: attrs.clone(),
+                    result: Ok(()),
+                },
+                Err(e) => crate::model::FileOpOutcome {
+                    target: target.clone(),
+                    old: None,
+                    new: attrs.clone(),
+                    result: Err(e.to_string()),
+                },
+            };
+            outcomes.push(outcome);
+        }
+
+        OpResult::Success(SuccessData::AttributesChanged(outcomes))
+    }
+
+    /// Execute a timestamp-change operation across one or more targets.
+    async fn execute_change_timestamps(
+        &self,
+        targets: &[Location],
+        times: &crate::model::TimestampChange,
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        let mut outcomes = Vec::with_capacity(targets.len());
+        for target in targets {
+            let outcome = match self
+                .backend
+                .set_timestamps(target, times, cancel_token)
+                .await
+            {
+                Ok(old) => crate::model::FileOpOutcome {
+                    target: target.clone(),
+                    old: Some(old),
+                    new: times.clone(),
+                    result: Ok(()),
+                },
+                Err(e) => crate::model::FileOpOutcome {
+                    target: target.clone(),
+                    old: None,
+                    new: times.clone(),
+                    result: Err(e.to_string()),
+                },
+            };
+            outcomes.push(outcome);
+        }
+
+        OpResult::Success(SuccessData::TimestampsChanged(outcomes))
     }
 
     /// Execute a rename operation
@@ -2157,6 +2291,165 @@ mod tests {
 
         // Directory should exist
         assert!(new_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let new_file = temp_dir.path().join("test_file.txt");
+        let spec = JobSpec::new(JobKind::CreateFile {
+            location: Location::Local(new_file.clone()),
+        });
+
+        executor.execute(spec).await;
+
+        // Should receive a started event first
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+
+        // Then a completed event
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::None))
+        ));
+
+        // File should exist
+        assert!(new_file.exists());
+        assert!(new_file.is_file());
+    }
+
+    #[tokio::test]
+    async fn test_execute_change_attributes() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file1 = temp_dir.path().join("a.txt");
+        let file2 = temp_dir.path().join("b.txt");
+        tokio::fs::write(&file1, b"x").await.unwrap();
+        tokio::fs::write(&file2, b"y").await.unwrap();
+
+        let spec = JobSpec::new(JobKind::ChangeAttributes {
+            targets: vec![
+                Location::Local(file1.clone()),
+                Location::Local(file2.clone()),
+            ],
+            attrs: crate::model::AttributeChange {
+                #[cfg(windows)]
+                readonly: None,
+                #[cfg(windows)]
+                hidden: Some(true),
+                #[cfg(windows)]
+                system: None,
+                #[cfg(windows)]
+                archive: None,
+                #[cfg(unix)]
+                mode: None,
+            },
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::AttributesChanged(outcomes))) => {
+                assert_eq!(outcomes.len(), 2);
+                assert!(outcomes.iter().all(|o| o.result.is_ok()));
+            }
+            other => panic!("Expected AttributesChanged success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_change_timestamps() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file1 = temp_dir.path().join("a.txt");
+        tokio::fs::write(&file1, b"x").await.unwrap();
+
+        let new_modified =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let spec = JobSpec::new(JobKind::ChangeTimestamps {
+            targets: vec![Location::Local(file1.clone())],
+            times: crate::model::TimestampChange {
+                modified: Some(new_modified),
+                accessed: None,
+                #[cfg(windows)]
+                created: None,
+            },
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::TimestampsChanged(outcomes))) => {
+                assert_eq!(outcomes.len(), 1);
+                assert!(outcomes[0].result.is_ok());
+            }
+            other => panic!("Expected TimestampsChanged success, got {other:?}"),
+        }
+
+        let modified_after = tokio::fs::metadata(&file1)
+            .await
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(modified_after, new_modified);
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_link() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        tokio::fs::write(&target, b"content").await.unwrap();
+
+        let spec = JobSpec::new(JobKind::CreateLink {
+            target: Location::Local(target),
+            link_path: Location::Local(link.clone()),
+            kind: crate::model::LinkCreateKind::Hardlink,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+
+        let event = event_rx.recv().await;
+        assert!(matches!(
+            event,
+            Some(JobEvent::Completed(_, SuccessData::None))
+        ));
+
+        assert!(link.exists());
     }
 
     #[tokio::test]
