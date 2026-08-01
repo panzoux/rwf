@@ -588,6 +588,62 @@ impl FilesystemBackend for LocalFilesystemBackend {
         Ok(())
     }
 
+    async fn move_to_trash(
+        &self,
+        location: &Location,
+        force_fallback: bool,
+        cancel_token: &CancellationToken,
+    ) -> Result<crate::model::TrashRecord> {
+        let path = match location {
+            Location::Local(path) => path.clone(),
+            _ => bail!("LocalFilesystemBackend only supports Local locations"),
+        };
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+        tokio::task::spawn_blocking(move || {
+            crate::backend::trash::move_to_trash_sync(&path, force_fallback)
+        })
+        .await
+        .context("move_to_trash task panicked")?
+    }
+
+    async fn restore_from_trash(
+        &self,
+        record: &crate::model::TrashRecord,
+        cancel_token: &CancellationToken,
+    ) -> Result<()> {
+        if cancel_token.is_cancelled() {
+            bail!("Operation cancelled");
+        }
+        let record = record.clone();
+        tokio::task::spawn_blocking(move || crate::backend::trash::restore_from_trash_sync(&record))
+            .await
+            .context("restore_from_trash task panicked")?
+    }
+
+    async fn empty_trash(
+        &self,
+        scope: crate::model::EmptyTrashScope,
+        older_than_days: Option<u32>,
+        fallback_roots: &[std::path::PathBuf],
+    ) -> Result<usize> {
+        use crate::model::EmptyTrashScope::{All, Fallback, OsManaged};
+        let fallback_roots = fallback_roots.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let mut purged = 0usize;
+            if matches!(scope, OsManaged | All) {
+                purged += crate::backend::trash::purge_os_trash_sync(older_than_days)?;
+            }
+            if matches!(scope, Fallback | All) {
+                purged += crate::backend::trash::purge_fallback_dirs_sync(&fallback_roots)?;
+            }
+            Ok(purged)
+        })
+        .await
+        .context("empty_trash task panicked")?
+    }
+
     async fn calculate_directory_size(
         &self,
         location: &Location,
@@ -1454,6 +1510,91 @@ mod tests {
         let result = backend.read_file_content(&location, &cancel_token).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn test_move_to_trash_and_restore_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("backend_trash_test.txt");
+        std::fs::write(&file_path, b"hello").unwrap();
+        let location = Location::Local(file_path.clone());
+        let backend = LocalFilesystemBackend::new();
+        let cancel_token = CancellationToken::new();
+
+        let record = backend
+            .move_to_trash(&location, false, &cancel_token)
+            .await
+            .expect("move_to_trash should succeed");
+        assert!(!file_path.exists());
+
+        backend
+            .restore_from_trash(&record, &cancel_token)
+            .await
+            .expect("restore_from_trash should succeed");
+        assert!(file_path.exists());
+        assert_eq!(std::fs::read(&file_path).unwrap(), b"hello");
+    }
+
+    /// Best-effort cleanup of a real `.rwf-trash` directory this test wrote
+    /// to at the true filesystem volume root (not a `TempDir`). Runs on
+    /// `Drop` so it fires even if an assertion in the test body panics,
+    /// letting the test's own assertions run in their natural order without
+    /// a manual cleanup step short-circuiting what they're actually
+    /// verifying.
+    struct RealTrashDirCleanup(std::path::PathBuf);
+    impl Drop for RealTrashDirCleanup {
+        fn drop(&mut self) {
+            if let Ok(entries) = std::fs::read_dir(&self.0) {
+                for entry in entries.flatten() {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_empty_trash_scoped_to_fallback_only() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("scoped_purge.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        let backend = LocalFilesystemBackend::new();
+
+        // `force_fallback=true` moves into `.rwf-trash` anchored at the true
+        // filesystem volume root (`backend::trash::volume_root`), not under
+        // `dir.path()` — scoping `fallback_roots`/the assertion to the real
+        // volume root mirrors production behavior instead of asserting
+        // against a directory that was never written to. This does briefly
+        // touch the real drive root, so `_cleanup` guarantees it's cleaned
+        // up unconditionally, even if an assertion below panics.
+        let volume_root = dir.path().ancestors().last().unwrap().to_path_buf();
+        let trash_dir = volume_root.join(".rwf-trash");
+        let _cleanup = RealTrashDirCleanup(trash_dir.clone());
+
+        backend
+            .move_to_trash(
+                &Location::Local(file_path.clone()),
+                true,
+                &CancellationToken::new(),
+            )
+            .await
+            .expect("forced fallback move should succeed");
+
+        let purged = backend
+            .empty_trash(
+                crate::model::EmptyTrashScope::Fallback,
+                None,
+                std::slice::from_ref(&volume_root),
+            )
+            .await
+            .expect("empty_trash should succeed");
+
+        assert!(purged >= 1);
+        assert!(
+            std::fs::read_dir(&trash_dir)
+                .map(|mut e| e.next().is_none())
+                .unwrap_or(true),
+            ".rwf-trash should be empty after purge"
+        );
     }
 }
 

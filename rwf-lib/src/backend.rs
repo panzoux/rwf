@@ -106,6 +106,34 @@ pub trait FilesystemBackend: Send + Sync {
         cancel_token: &CancellationToken,
     ) -> Result<()>;
 
+    /// Move a file/dir to the OS trash (or `.rwf-trash` fallback), returning
+    /// a record with enough detail to restore it later. `force_fallback`
+    /// skips the OS trash call entirely (see `TrashConfig.force_fallback`).
+    async fn move_to_trash(
+        &self,
+        location: &Location,
+        force_fallback: bool,
+        cancel_token: &CancellationToken,
+    ) -> Result<crate::model::TrashRecord>;
+
+    /// Restore a previously trashed item back to its original location.
+    async fn restore_from_trash(
+        &self,
+        record: &crate::model::TrashRecord,
+        cancel_token: &CancellationToken,
+    ) -> Result<()>;
+
+    /// Permanently purge trash contents. `scope` selects OS-managed trash,
+    /// the `.rwf-trash` fallback dirs under `fallback_roots`, or both. See
+    /// `backend::trash::{purge_os_trash_sync, purge_fallback_dirs_sync}`
+    /// for exact semantics. Returns the number of items purged.
+    async fn empty_trash(
+        &self,
+        scope: crate::model::EmptyTrashScope,
+        older_than_days: Option<u32>,
+        fallback_roots: &[std::path::PathBuf],
+    ) -> Result<usize>;
+
     /// Calculate directory size recursively
     async fn calculate_directory_size(
         &self,
