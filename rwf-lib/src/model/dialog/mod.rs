@@ -1045,17 +1045,29 @@ impl Dialog {
         }
     }
 
-    /// Create a delete confirmation dialog
-    pub fn delete_confirm(targets: Vec<(crate::model::Location, bool)>) -> Self {
+    /// Create a delete confirmation dialog. `to_trash` controls both the
+    /// title wording and which JobKind confirming it builds; `force_fallback`
+    /// is threaded straight through to that JobKind (see
+    /// `DeleteConfirmDialog`).
+    pub fn delete_confirm(
+        targets: Vec<(crate::model::Location, bool)>,
+        to_trash: bool,
+        force_fallback: bool,
+    ) -> Self {
         let n = targets.len();
-        let title = if n == 1 {
-            "Delete File".to_string()
-        } else {
-            format!("Delete {} Files", n)
+        let title = match (to_trash, n) {
+            (true, 1) => "Move File to Trash".to_string(),
+            (true, n) => format!("Move {n} Files to Trash"),
+            (false, 1) => "Delete File".to_string(),
+            (false, n) => format!("Delete {n} Files"),
         };
         Self {
             title,
-            content: DialogContent::DeleteConfirm(DeleteConfirmDialog::new(targets)),
+            content: DialogContent::DeleteConfirm(DeleteConfirmDialog::new(
+                targets,
+                to_trash,
+                force_fallback,
+            )),
         }
     }
 

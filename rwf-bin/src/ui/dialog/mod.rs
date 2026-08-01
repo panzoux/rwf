@@ -964,6 +964,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::DeleteConfirm(DeleteConfirmDialog {
             targets,
             scroll_offset,
+            to_trash,
+            ..
         }) => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -982,10 +984,11 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let total = targets.len();
 
             // Header
-            let header_txt = if total == 1 {
-                "Delete this item?".to_string()
-            } else {
-                format!("Delete these {} items?", total)
+            let header_txt = match (*to_trash, total == 1) {
+                (true, true) => "Move this item to Trash?".to_string(),
+                (true, false) => format!("Move these {} items to Trash?", total),
+                (false, true) => "Delete this item?".to_string(),
+                (false, false) => format!("Delete these {} items?", total),
             };
             frame.render_widget(
                 Paragraph::new(smart_truncate(&header_txt, w, "…")).style(base),
@@ -1042,13 +1045,14 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             }
 
             // Hint (chunks[2])
+            let action_word = if *to_trash { "move to trash" } else { "delete" };
             let hint_txt = if total > 1 {
-                "↑↓:scroll  Enter:delete  Esc:cancel"
+                format!("↑↓:scroll  Enter:{action_word}  Esc:cancel")
             } else {
-                "Enter:delete  Esc:cancel"
+                format!("Enter:{action_word}  Esc:cancel")
             };
             frame.render_widget(
-                Paragraph::new(smart_truncate(hint_txt, w, "…")).style(hint),
+                Paragraph::new(smart_truncate(&hint_txt, w, "…")).style(hint),
                 Rect::new(chunks[2].x + 1, chunks[2].y, w as u16, 1),
             );
 

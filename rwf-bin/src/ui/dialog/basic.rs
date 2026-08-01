@@ -416,6 +416,7 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
         DialogContent::DeleteConfirm(DeleteConfirmDialog {
             targets,
             scroll_offset,
+            ..
         }) => {
             let total = targets.len();
             // Mirror the render-side height formula exactly (now using centered_rect_abs, no rounding loss)

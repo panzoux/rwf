@@ -1395,7 +1395,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }
 
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::delete_confirm(targets),
+                // TODO(7.7 task 11): read to_trash/force_fallback from
+                // state.config.trash instead of hardcoding placeholders.
+                dialog: crate::model::Dialog::delete_confirm(targets, true, false),
             }]
         }
         Action::DeleteForce => {

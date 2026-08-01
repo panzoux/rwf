@@ -112,11 +112,23 @@ mod tests {
         assert_eq!(transitions.len(), 1);
         match &transitions[0] {
             Transition::ShowDialog { dialog } => {
-                assert!(dialog.title.contains("Delete"));
-                assert!(matches!(
-                    dialog.content,
-                    crate::model::DialogContent::DeleteConfirm(_)
-                ));
+                // Action::Delete currently passes the to_trash=true,
+                // force_fallback=false placeholder (Phase 7.7 task 10); the
+                // title reflects that until task 11 wires real config values.
+                assert!(dialog.title.contains("Trash"));
+                match &dialog.content {
+                    crate::model::DialogContent::DeleteConfirm(
+                        crate::model::dialog::DeleteConfirmDialog {
+                            to_trash,
+                            force_fallback,
+                            ..
+                        },
+                    ) => {
+                        assert!(*to_trash);
+                        assert!(!*force_fallback);
+                    }
+                    _ => panic!("Expected DeleteConfirm dialog content"),
+                }
             }
             _ => panic!("Expected ShowDialog transition"),
         }

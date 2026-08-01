@@ -9,7 +9,10 @@ use std::path::PathBuf;
 fn delete_confirm_single_file() {
     let state = test_state();
     let targets = vec![(Location::Local(PathBuf::from("/test/file.txt")), false)];
-    let dialog = Dialog::delete_confirm(targets);
+    // to_trash=false here preserves the pinned "Delete File"/"Delete N Files"
+    // titles these snapshots assert on; real to_trash wiring lands in a
+    // later task (Phase 7.7 task 11).
+    let dialog = Dialog::delete_confirm(targets, false, false);
     snapshot_dialog("delete_confirm_single_file", &dialog, &state);
 }
 
@@ -17,7 +20,10 @@ fn delete_confirm_single_file() {
 fn delete_confirm_single_directory() {
     let state = test_state();
     let targets = vec![(Location::Local(PathBuf::from("/test/directory")), true)];
-    let dialog = Dialog::delete_confirm(targets);
+    // to_trash=false here preserves the pinned "Delete File"/"Delete N Files"
+    // titles these snapshots assert on; real to_trash wiring lands in a
+    // later task (Phase 7.7 task 11).
+    let dialog = Dialog::delete_confirm(targets, false, false);
     snapshot_dialog("delete_confirm_single_dir", &dialog, &state);
 }
 
@@ -29,6 +35,9 @@ fn delete_confirm_multiple_targets() {
         (Location::Local(PathBuf::from("/test/file2.txt")), false),
         (Location::Local(PathBuf::from("/test/folder")), true),
     ];
-    let dialog = Dialog::delete_confirm(targets);
+    // to_trash=false here preserves the pinned "Delete File"/"Delete N Files"
+    // titles these snapshots assert on; real to_trash wiring lands in a
+    // later task (Phase 7.7 task 11).
+    let dialog = Dialog::delete_confirm(targets, false, false);
     snapshot_dialog("delete_confirm_three_targets", &dialog, &state);
 }
