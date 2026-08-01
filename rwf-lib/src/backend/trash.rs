@@ -80,6 +80,52 @@ fn volume_root(path: &Path) -> std::path::PathBuf {
     path.ancestors().last().unwrap_or(path).to_path_buf()
 }
 
+/// Restore a previously trashed item back to `record.original`.
+pub fn restore_from_trash_sync(record: &TrashRecord) -> Result<()> {
+    match &record.trash_location {
+        TrashLocation::OsManaged {
+            id,
+            name,
+            original_parent,
+            time_deleted,
+        } => restore_os_managed(id, name, original_parent, *time_deleted),
+        TrashLocation::Fallback { trash_path } => restore_fallback(trash_path),
+        TrashLocation::Untracked => {
+            anyhow::bail!(
+                "this item was trashed without restore tracking on this platform; \
+                 restore it manually from the OS trash"
+            )
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn restore_os_managed(
+    id: &std::ffi::OsString,
+    name: &std::ffi::OsString,
+    original_parent: &Path,
+    time_deleted: i64,
+) -> Result<()> {
+    let item = trash::TrashItem {
+        id: id.clone(),
+        name: name.clone(),
+        original_parent: original_parent.to_path_buf(),
+        time_deleted,
+    };
+    trash::os_limited::restore_all(std::iter::once(item))
+        .context("failed to restore item from trash")
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn restore_os_managed(
+    _id: &std::ffi::OsString,
+    _name: &std::ffi::OsString,
+    _original_parent: &Path,
+    _time_deleted: i64,
+) -> Result<()> {
+    anyhow::bail!("restore from OS trash is not supported on this platform")
+}
+
 /// The `.rwf-meta.json` sidecar path for a fallback-trashed item, derived
 /// via `OsString` concatenation (not `format!`/`to_string_lossy`) so it
 /// round-trips non-UTF-8 paths losslessly. Shared by `fallback_move_to_trash`
@@ -128,10 +174,6 @@ fn fallback_move_to_trash(
 }
 
 /// Restore a `.rwf-trash`-fallback-trashed item back to its original path.
-// Not called yet outside tests — a later task (Task 4) wires this up to the
-// restore flow. `cargo clippy -D warnings` errors on the resulting
-// dead-code lint (plain `cargo build` only warns), so it's silenced here.
-#[allow(dead_code)]
 fn restore_fallback(trash_path: &Path) -> Result<()> {
     let meta_path = sidecar_meta_path(trash_path);
 
@@ -288,5 +330,34 @@ mod tests {
         );
         assert!(!trash_path.exists(), "trashed copy should be gone");
         assert_eq!(std::fs::read(&file_path).unwrap(), b"back again");
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_restore_from_trash_os_managed_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("restore_me.txt");
+        std::fs::write(&file_path, b"restore me").unwrap();
+
+        let record = move_to_trash_sync(&file_path, false).expect("trash should succeed");
+        assert!(!file_path.exists());
+
+        restore_from_trash_sync(&record).expect("restore should succeed");
+
+        assert!(file_path.exists(), "file should be back after restore");
+        assert_eq!(std::fs::read(&file_path).unwrap(), b"restore me");
+    }
+
+    #[test]
+    fn test_restore_from_trash_untracked_returns_error() {
+        let record = TrashRecord {
+            original: Location::Local(std::path::PathBuf::from("C:/nowhere/x.txt")),
+            trash_location: TrashLocation::Untracked,
+            size: 0,
+            modified: SystemTime::now(),
+        };
+
+        let err = restore_from_trash_sync(&record).expect_err("Untracked must not be restorable");
+        assert!(err.to_string().contains("manually"));
     }
 }
