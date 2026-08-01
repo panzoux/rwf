@@ -109,6 +109,27 @@ pub enum JobKind {
     Delete {
         targets: Vec<Location>,
     },
+    MoveToTrash {
+        targets: Vec<Location>,
+        /// Skip the OS trash and go straight to the `.rwf-trash` fallback.
+        /// Mirrors `TrashConfig.force_fallback`, resolved once at the point
+        /// the job is built (same pattern as `DeleteConfirmDialog.to_trash`).
+        force_fallback: bool,
+    },
+    RestoreFromTrash {
+        records: Vec<crate::model::TrashRecord>,
+    },
+    EmptyTrash {
+        scope: crate::model::EmptyTrashScope,
+        /// `None` purges everything in scope now. `Some(days)` is reserved
+        /// for a future Phase 7.5 automatic sweep — not driven by anything
+        /// yet in this phase.
+        older_than_days: Option<u32>,
+        /// Volume roots (from currently open panes) whose `.rwf-trash`
+        /// fallback directory, if any, gets swept when `scope` includes
+        /// `Fallback`.
+        fallback_roots: Vec<std::path::PathBuf>,
+    },
     Mkdir {
         location: Location,
     },
@@ -328,6 +349,9 @@ pub enum SuccessData {
     FileTypesDetected(Vec<(std::path::PathBuf, crate::magic::DetectedKind)>),
     AttributesChanged(Vec<crate::model::FileOpOutcome<crate::model::AttributeChange>>),
     TimestampsChanged(Vec<crate::model::FileOpOutcome<crate::model::TimestampChange>>),
+    TrashMoved(Vec<crate::model::TrashOutcome>),
+    TrashRestored(Vec<crate::model::RestoreOutcome>),
+    TrashEmptied { purged: usize },
     None,
 }
 
