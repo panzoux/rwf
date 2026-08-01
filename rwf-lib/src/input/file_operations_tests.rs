@@ -135,6 +135,132 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_action_opens_trash_confirm_dialog_when_trash_enabled_and_confirm_required() {
+        let (mut state, _left, _right) = crate::test_utils::state_with_temp_dirs();
+        state.config.trash.enabled = true;
+        state.config.trash.confirm_before_move = true;
+        let entry = crate::test_utils::entry("target.txt");
+        state.active_pane_mut().entries.push(entry.clone());
+        state.active_pane_mut().raw_entries.push(entry);
+
+        let transitions = action_to_transitions(&state, &Action::Delete);
+        let dialog =
+            crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
+
+        match &dialog.content {
+            crate::model::DialogContent::DeleteConfirm(d) => {
+                assert!(d.to_trash, "trash enabled -> dialog should target trash")
+            }
+            other => panic!("expected DeleteConfirm dialog, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delete_action_skips_dialog_and_starts_trash_job_when_confirm_disabled() {
+        let (mut state, _left, _right) = crate::test_utils::state_with_temp_dirs();
+        state.config.trash.enabled = true;
+        state.config.trash.confirm_before_move = false;
+        state.config.trash.force_fallback = true;
+        let entry = crate::test_utils::entry("target.txt");
+        state.active_pane_mut().entries.push(entry.clone());
+        state.active_pane_mut().raw_entries.push(entry);
+
+        let transitions = action_to_transitions(&state, &Action::Delete);
+        match transitions.into_iter().next() {
+            Some(Transition::CreateAndStartFileJob { spec, .. }) => match spec.kind {
+                crate::job::JobKind::MoveToTrash { force_fallback, .. } => {
+                    assert!(
+                        force_fallback,
+                        "force_fallback must thread into the no-dialog job-creation path too"
+                    );
+                }
+                other => panic!("expected MoveToTrash, got {other:?}"),
+            },
+            other => panic!("expected CreateAndStartFileJob(MoveToTrash), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delete_action_uses_permanent_delete_when_trash_disabled() {
+        let (mut state, _left, _right) = crate::test_utils::state_with_temp_dirs();
+        state.config.trash.enabled = false;
+        let entry = crate::test_utils::entry("target.txt");
+        state.active_pane_mut().entries.push(entry.clone());
+        state.active_pane_mut().raw_entries.push(entry);
+
+        let transitions = action_to_transitions(&state, &Action::Delete);
+        let dialog =
+            crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
+        match &dialog.content {
+            crate::model::DialogContent::DeleteConfirm(d) => assert!(
+                !d.to_trash,
+                "trash disabled -> dialog should target permanent delete"
+            ),
+            other => panic!("expected DeleteConfirm dialog, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delete_action_threads_force_fallback_into_dialog() {
+        let (mut state, _left, _right) = crate::test_utils::state_with_temp_dirs();
+        state.config.trash.enabled = true;
+        state.config.trash.force_fallback = true;
+        let entry = crate::test_utils::entry("target.txt");
+        state.active_pane_mut().entries.push(entry.clone());
+        state.active_pane_mut().raw_entries.push(entry);
+
+        let transitions = action_to_transitions(&state, &Action::Delete);
+        let dialog =
+            crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
+        match &dialog.content {
+            crate::model::DialogContent::DeleteConfirm(d) => assert!(d.force_fallback),
+            other => panic!("expected DeleteConfirm dialog, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_empty_trash_action_builds_job_with_deduplicated_volume_roots() {
+        let (mut state, left_dir, right_dir) = crate::test_utils::state_with_temp_dirs();
+        // Second tab's panes point at the same two temp dirs as the first
+        // tab — on a single-drive dev machine all four panes (2 tabs x
+        // left/right) resolve to the same volume root, so this exercises
+        // the flat_map-over-tabs -> volume_root -> BTreeSet dedup pipeline
+        // and proves it collapses duplicates rather than passing them
+        // through untouched.
+        state.tabs.create_tab();
+        state.tabs.tabs[1].left_pane.current_location =
+            Location::Local(left_dir.path().to_path_buf());
+        state.tabs.tabs[1].right_pane.current_location =
+            Location::Local(right_dir.path().to_path_buf());
+
+        let transitions = action_to_transitions(&state, &Action::EmptyTrash);
+        match transitions.into_iter().next() {
+            Some(Transition::CreateAndStartFileJob { spec, .. }) => match spec.kind {
+                crate::job::JobKind::EmptyTrash {
+                    scope,
+                    older_than_days,
+                    fallback_roots,
+                } => {
+                    assert_eq!(scope, crate::model::EmptyTrashScope::All);
+                    assert_eq!(older_than_days, None);
+                    assert!(
+                        !fallback_roots.is_empty(),
+                        "should collect at least one volume root"
+                    );
+                    let unique: std::collections::BTreeSet<_> = fallback_roots.iter().collect();
+                    assert_eq!(
+                        unique.len(),
+                        fallback_roots.len(),
+                        "fallback_roots must already be deduplicated, got {fallback_roots:?}"
+                    );
+                }
+                other => panic!("expected EmptyTrash, got {other:?}"),
+            },
+            other => panic!("expected CreateAndStartFileJob(EmptyTrash), got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_rename_action_shows_input_dialog() {
         let state = create_test_state();
         let transitions = action_to_transitions(&state, &Action::Rename);

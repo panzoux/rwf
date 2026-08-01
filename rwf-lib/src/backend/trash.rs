@@ -76,7 +76,7 @@ struct FallbackMeta {
 /// `Action::EmptyTrash` locate `.rwf-trash` dirs to sweep — if this ever
 /// anchored somewhere other than the true volume root, EmptyTrash would
 /// silently stop finding fallback-trashed files.
-fn volume_root(path: &Path) -> std::path::PathBuf {
+pub(crate) fn volume_root(path: &Path) -> std::path::PathBuf {
     path.ancestors().last().unwrap_or(path).to_path_buf()
 }
 

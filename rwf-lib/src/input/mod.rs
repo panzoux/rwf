@@ -390,6 +390,7 @@ pub enum Action {
     Move,
     Delete,
     DeleteForce,
+    EmptyTrash,
     Rename,
     PatternRename,
     CreateDirectory,
@@ -1394,10 +1395,25 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 return vec![];
             }
 
+            let to_trash = state.config.trash.enabled;
+            let force_fallback = state.config.trash.force_fallback;
+
+            if to_trash && !state.config.trash.confirm_before_move {
+                let locations: Vec<_> = targets.iter().map(|(loc, _)| loc.clone()).collect();
+                let name = delete_job_name(&locations);
+                let job_spec = crate::job::JobSpec::new(crate::job::JobKind::MoveToTrash {
+                    targets: locations,
+                    force_fallback,
+                });
+                return vec![Transition::CreateAndStartFileJob {
+                    spec: job_spec,
+                    name: name.clone(),
+                    description: name,
+                }];
+            }
+
             vec![Transition::ShowDialog {
-                // TODO(7.7 task 11): read to_trash/force_fallback from
-                // state.config.trash instead of hardcoding placeholders.
-                dialog: crate::model::Dialog::delete_confirm(targets, true, false),
+                dialog: crate::model::Dialog::delete_confirm(targets, to_trash, force_fallback),
             }]
         }
         Action::DeleteForce => {
@@ -1429,6 +1445,35 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 spec: job_spec,
                 name: name.clone(),
                 description: name,
+            }]
+        }
+        Action::EmptyTrash => {
+            let fallback_roots: Vec<std::path::PathBuf> = state
+                .tabs
+                .tabs
+                .iter()
+                .flat_map(|tab| {
+                    [
+                        &tab.left_pane.current_location,
+                        &tab.right_pane.current_location,
+                    ]
+                })
+                .filter_map(|loc| loc.path())
+                .map(crate::backend::trash::volume_root)
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::EmptyTrash {
+                scope: crate::model::EmptyTrashScope::All,
+                older_than_days: None,
+                fallback_roots,
+            });
+
+            vec![Transition::CreateAndStartFileJob {
+                spec: job_spec,
+                name: "Empty trash".to_string(),
+                description: "Empty trash".to_string(),
             }]
         }
         Action::Rename => {
