@@ -33,7 +33,7 @@ pub fn move_to_trash_sync(path: &Path, force_fallback: bool) -> Result<TrashReco
         });
     }
 
-    fallback_move_to_trash(path, size, modified)
+    fallback_move_to_trash(path, &volume_root(path).join(".rwf-trash"), size, modified)
 }
 
 /// Look up the OS trash entry that `trash::delete(path)` just created, by
@@ -63,8 +63,90 @@ fn os_trash_entry_for(_path: &Path) -> Option<TrashLocation> {
     None
 }
 
-fn fallback_move_to_trash(_path: &Path, _size: u64, _modified: SystemTime) -> Result<TrashRecord> {
-    anyhow::bail!("not yet implemented")
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FallbackMeta {
+    original: std::path::PathBuf,
+    trashed_at: i64,
+}
+
+/// The topmost ancestor of `path` — the drive root on Windows, `/` on Unix.
+/// Used as the anchor for the `.rwf-trash` sidecar directory, matching the
+/// original spec's "create it at the volume root" fallback strategy, and
+/// matching how `purge_fallback_dirs_sync` (a later task) and
+/// `Action::EmptyTrash` locate `.rwf-trash` dirs to sweep — if this ever
+/// anchored somewhere other than the true volume root, EmptyTrash would
+/// silently stop finding fallback-trashed files.
+fn volume_root(path: &Path) -> std::path::PathBuf {
+    path.ancestors().last().unwrap_or(path).to_path_buf()
+}
+
+/// The `.rwf-meta.json` sidecar path for a fallback-trashed item, derived
+/// via `OsString` concatenation (not `format!`/`to_string_lossy`) so it
+/// round-trips non-UTF-8 paths losslessly. Shared by `fallback_move_to_trash`
+/// (which writes it) and `restore_fallback` (which reads it) so the naming
+/// convention can't drift between the two.
+fn sidecar_meta_path(trash_path: &Path) -> std::path::PathBuf {
+    let mut meta_os = trash_path.as_os_str().to_os_string();
+    meta_os.push(".rwf-meta.json");
+    std::path::PathBuf::from(meta_os)
+}
+
+fn fallback_move_to_trash(
+    path: &Path,
+    trash_dir: &Path,
+    size: u64,
+    modified: SystemTime,
+) -> Result<TrashRecord> {
+    std::fs::create_dir_all(trash_dir).context("failed to create .rwf-trash directory")?;
+
+    let file_name = path
+        .file_name()
+        .context("trash target has no file name")?
+        .to_string_lossy();
+    let unique_name = format!("{}-{}", uuid::Uuid::new_v4(), file_name);
+    let trash_path = trash_dir.join(&unique_name);
+
+    std::fs::rename(path, &trash_path).context("failed to move file into .rwf-trash fallback")?;
+
+    let meta = FallbackMeta {
+        original: path.to_path_buf(),
+        trashed_at: chrono::Utc::now().timestamp(),
+    };
+    let meta_path = sidecar_meta_path(&trash_path);
+    std::fs::write(
+        &meta_path,
+        serde_json::to_string_pretty(&meta).context("failed to serialize .rwf-trash metadata")?,
+    )
+    .context("failed to write .rwf-trash metadata")?;
+
+    Ok(TrashRecord {
+        original: Location::Local(path.to_path_buf()),
+        trash_location: TrashLocation::Fallback { trash_path },
+        size,
+        modified,
+    })
+}
+
+/// Restore a `.rwf-trash`-fallback-trashed item back to its original path.
+// Not called yet outside tests — a later task (Task 4) wires this up to the
+// restore flow. `cargo clippy -D warnings` errors on the resulting
+// dead-code lint (plain `cargo build` only warns), so it's silenced here.
+#[allow(dead_code)]
+fn restore_fallback(trash_path: &Path) -> Result<()> {
+    let meta_path = sidecar_meta_path(trash_path);
+
+    let meta_json =
+        std::fs::read_to_string(&meta_path).context("failed to read .rwf-trash metadata")?;
+    let meta: FallbackMeta =
+        serde_json::from_str(&meta_json).context("failed to parse .rwf-trash metadata")?;
+
+    if let Some(parent) = meta.original.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::rename(trash_path, &meta.original)
+        .context("failed to restore file from .rwf-trash fallback")?;
+    std::fs::remove_file(&meta_path).ok();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -135,5 +217,76 @@ mod tests {
             "force_fallback=true should always use the fallback tier, got {:?}",
             record.trash_location
         );
+
+        // Cleanup: this test exercises the real move_to_trash_sync public
+        // entry point, which computes the true volume root — remove the
+        // fallback file + its metadata sidecar so no residue is left on the
+        // real drive root across test runs.
+        if let TrashLocation::Fallback { trash_path } = &record.trash_location {
+            let _ = std::fs::remove_file(sidecar_meta_path(trash_path));
+            let _ = std::fs::remove_file(trash_path);
+        }
+    }
+
+    #[test]
+    fn test_fallback_move_to_trash_creates_sidecar_and_metadata() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("fallback_me.txt");
+        std::fs::write(&file_path, b"12345").unwrap();
+
+        let record = fallback_move_to_trash(
+            &file_path,
+            &dir.path().join(".rwf-trash"),
+            5,
+            SystemTime::now(),
+        )
+        .expect("fallback move should succeed");
+
+        assert!(!file_path.exists());
+        let trash_path = match &record.trash_location {
+            TrashLocation::Fallback { trash_path } => trash_path.clone(),
+            other => panic!("expected Fallback, got {other:?}"),
+        };
+        assert!(
+            trash_path.exists(),
+            "trashed file should exist at trash_path"
+        );
+        assert!(
+            trash_path.starts_with(dir.path().join(".rwf-trash")),
+            "trash_path should be under .rwf-trash: {trash_path:?}"
+        );
+
+        assert!(
+            sidecar_meta_path(&trash_path).exists(),
+            "metadata sidecar should exist"
+        );
+    }
+
+    #[test]
+    fn test_restore_fallback_moves_file_back() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("roundtrip.txt");
+        std::fs::write(&file_path, b"back again").unwrap();
+
+        let record = fallback_move_to_trash(
+            &file_path,
+            &dir.path().join(".rwf-trash"),
+            10,
+            SystemTime::now(),
+        )
+        .unwrap();
+        let trash_path = match &record.trash_location {
+            TrashLocation::Fallback { trash_path } => trash_path.clone(),
+            other => panic!("expected Fallback, got {other:?}"),
+        };
+
+        restore_fallback(&trash_path).expect("restore should succeed");
+
+        assert!(
+            file_path.exists(),
+            "file should be back at its original path"
+        );
+        assert!(!trash_path.exists(), "trashed copy should be gone");
+        assert_eq!(std::fs::read(&file_path).unwrap(), b"back again");
     }
 }
