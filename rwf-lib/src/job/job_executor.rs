@@ -60,6 +60,29 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::Copy { sources, dest } => self.execute_copy(sources, dest, &spec).await,
             JobKind::Move { sources, dest } => self.execute_move(sources, dest, &spec).await,
             JobKind::Delete { targets } => self.execute_delete(targets, &spec).await,
+            JobKind::MoveToTrash {
+                targets,
+                force_fallback,
+            } => {
+                self.execute_move_to_trash(targets, *force_fallback, &spec)
+                    .await
+            }
+            JobKind::RestoreFromTrash { records } => {
+                self.execute_restore_from_trash(records, &spec).await
+            }
+            JobKind::EmptyTrash {
+                scope,
+                older_than_days,
+                fallback_roots,
+            } => {
+                self.execute_empty_trash(
+                    *scope,
+                    *older_than_days,
+                    fallback_roots,
+                    &spec.cancel_token,
+                )
+                .await
+            }
             JobKind::Mkdir { location } => self.execute_mkdir(location, &spec.cancel_token).await,
             JobKind::CreateFile { location } => {
                 self.execute_create_file(location, &spec.cancel_token).await
@@ -596,6 +619,102 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         }
 
         OpResult::Success(SuccessData::None)
+    }
+
+    /// Execute a move-to-trash operation. Loops per-target (not fail-fast)
+    /// so every target is represented in the result, matching the
+    /// convention established by `execute_change_attributes` (see
+    /// `plan/7.6.transactional_rollback.md` §8).
+    async fn execute_move_to_trash(
+        &self,
+        targets: &[Location],
+        force_fallback: bool,
+        spec: &JobSpec,
+    ) -> OpResult {
+        if spec.cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        let mut outcomes = Vec::with_capacity(targets.len());
+        for target in targets {
+            if spec.cancel_token.is_cancelled() {
+                return OpResult::Cancelled;
+            }
+
+            let outcome = match self
+                .backend
+                .move_to_trash(target, force_fallback, &spec.cancel_token)
+                .await
+            {
+                Ok(record) => crate::model::TrashOutcome {
+                    target: target.clone(),
+                    record: Some(record),
+                    result: Ok(()),
+                },
+                Err(e) => crate::model::TrashOutcome {
+                    target: target.clone(),
+                    record: None,
+                    result: Err(e.to_string()),
+                },
+            };
+            outcomes.push(outcome);
+        }
+
+        OpResult::Success(SuccessData::TrashMoved(outcomes))
+    }
+
+    /// Execute a restore-from-trash operation. Per-target loop, same
+    /// rationale as `execute_move_to_trash`.
+    async fn execute_restore_from_trash(
+        &self,
+        records: &[crate::model::TrashRecord],
+        spec: &JobSpec,
+    ) -> OpResult {
+        if spec.cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+
+        let mut outcomes = Vec::with_capacity(records.len());
+        for record in records {
+            if spec.cancel_token.is_cancelled() {
+                return OpResult::Cancelled;
+            }
+            let result = match self
+                .backend
+                .restore_from_trash(record, &spec.cancel_token)
+                .await
+            {
+                Ok(()) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            };
+            outcomes.push(crate::model::RestoreOutcome {
+                original: record.original.clone(),
+                result,
+            });
+        }
+
+        OpResult::Success(SuccessData::TrashRestored(outcomes))
+    }
+
+    /// Execute an empty-trash operation (permanent purge).
+    async fn execute_empty_trash(
+        &self,
+        scope: crate::model::EmptyTrashScope,
+        older_than_days: Option<u32>,
+        fallback_roots: &[std::path::PathBuf],
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+        match self
+            .backend
+            .empty_trash(scope, older_than_days, fallback_roots)
+            .await
+        {
+            Ok(purged) => OpResult::Success(SuccessData::TrashEmptied { purged }),
+            Err(e) => OpResult::Failed(e.to_string()),
+        }
     }
 
     /// Execute a mkdir operation
@@ -2777,5 +2896,157 @@ mod tests {
             event,
             Some(JobEvent::Completed(_, SuccessData::FileTypesDetected(results))) if results.is_empty()
         ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_move_to_trash() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("trash_me.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let spec = JobSpec::new(JobKind::MoveToTrash {
+            targets: vec![Location::Local(file_path.clone())],
+            force_fallback: false,
+        });
+        executor.execute(spec).await;
+
+        assert!(matches!(event_rx.recv().await, Some(JobEvent::Started(_))));
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::TrashMoved(outcomes))) => {
+                assert_eq!(outcomes.len(), 1);
+                assert!(outcomes[0].result.is_ok());
+                assert!(outcomes[0].record.is_some());
+            }
+            other => panic!("expected TrashMoved success, got {other:?}"),
+        }
+        assert!(!file_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_move_to_trash_partial_failure_does_not_fail_fast() {
+        let temp_dir = TempDir::new().unwrap();
+        let ok_path = temp_dir.path().join("exists.txt");
+        std::fs::write(&ok_path, b"x").unwrap();
+        let missing_path = temp_dir.path().join("does_not_exist.txt");
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let spec = JobSpec::new(JobKind::MoveToTrash {
+            targets: vec![
+                Location::Local(ok_path.clone()),
+                Location::Local(missing_path.clone()),
+            ],
+            force_fallback: false,
+        });
+        executor.execute(spec).await;
+
+        let _ = event_rx.recv().await; // Started
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::TrashMoved(outcomes))) => {
+                assert_eq!(
+                    outcomes.len(),
+                    2,
+                    "both targets must be represented, not fail-fast"
+                );
+                assert!(outcomes[0].result.is_ok());
+                assert!(outcomes[1].result.is_err());
+            }
+            other => panic!("expected TrashMoved (partial success), got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_restore_from_trash() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("restore_via_executor.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let cancel_token = CancellationToken::new();
+        let record = backend
+            .move_to_trash(&Location::Local(file_path.clone()), false, &cancel_token)
+            .await
+            .unwrap();
+
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let spec = JobSpec::new(JobKind::RestoreFromTrash {
+            records: vec![record],
+        });
+        executor.execute(spec).await;
+
+        let _ = event_rx.recv().await; // Started
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::TrashRestored(outcomes))) => {
+                assert_eq!(outcomes.len(), 1);
+                assert!(outcomes[0].result.is_ok());
+            }
+            other => panic!("expected TrashRestored success, got {other:?}"),
+        }
+        assert!(file_path.exists());
+    }
+
+    /// Best-effort cleanup of a real `.rwf-trash` directory this test wrote
+    /// to at the true filesystem volume root (not a `TempDir`). Runs on
+    /// `Drop` so it fires even if an assertion in the test body panics.
+    /// Mirrors `RealTrashDirCleanup` in `backend/local.rs`.
+    struct RealTrashDirCleanup(std::path::PathBuf);
+    impl Drop for RealTrashDirCleanup {
+        fn drop(&mut self) {
+            if let Ok(entries) = std::fs::read_dir(&self.0) {
+                for entry in entries.flatten() {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_empty_trash() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("fallback_purge_via_executor.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let cancel_token = CancellationToken::new();
+        // force_fallback: true, so this uses .rwf-trash at the real volume
+        // root, NOT the real OS Recycle Bin. Scope is Fallback-only (NOT
+        // All/OsManaged) so this test never purges the real OS trash.
+        backend
+            .move_to_trash(&Location::Local(file_path.clone()), true, &cancel_token)
+            .await
+            .expect("forced fallback move should succeed");
+        let volume_root = temp_dir.path().ancestors().last().unwrap().to_path_buf();
+        let trash_dir = volume_root.join(".rwf-trash");
+        let _cleanup = RealTrashDirCleanup(trash_dir.clone());
+
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let spec = JobSpec::new(JobKind::EmptyTrash {
+            scope: crate::model::EmptyTrashScope::Fallback,
+            older_than_days: None,
+            fallback_roots: vec![volume_root],
+        });
+        executor.execute(spec).await;
+
+        let _ = event_rx.recv().await; // Started
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::TrashEmptied { purged })) => {
+                assert!(purged >= 1);
+            }
+            other => panic!("expected TrashEmptied, got {other:?}"),
+        }
     }
 }

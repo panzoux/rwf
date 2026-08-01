@@ -351,7 +351,9 @@ pub enum SuccessData {
     TimestampsChanged(Vec<crate::model::FileOpOutcome<crate::model::TimestampChange>>),
     TrashMoved(Vec<crate::model::TrashOutcome>),
     TrashRestored(Vec<crate::model::RestoreOutcome>),
-    TrashEmptied { purged: usize },
+    TrashEmptied {
+        purged: usize,
+    },
     None,
 }
 
