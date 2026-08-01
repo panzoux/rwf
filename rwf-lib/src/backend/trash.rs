@@ -126,6 +126,68 @@ fn restore_os_managed(
     anyhow::bail!("restore from OS trash is not supported on this platform")
 }
 
+/// Purge the OS-managed trash (Windows Recycle Bin / Linux FreeDesktop
+/// trash via the `trash` crate). `older_than_days` restricts the purge to
+/// items trashed longer ago than that (`None` purges everything). Returns
+/// `0` on platforms where `os_limited` isn't available (macOS) rather than
+/// erroring — there's nothing tracked there to purge.
+pub fn purge_os_trash_sync(older_than_days: Option<u32>) -> Result<usize> {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        let cutoff =
+            older_than_days.map(|days| chrono::Utc::now().timestamp() - (days as i64) * 86_400);
+        let items: Vec<_> = trash::os_limited::list()
+            .context("failed to list trash items")?
+            .into_iter()
+            .filter(|item| cutoff.is_none_or(|c| item.time_deleted < c))
+            .collect();
+        let count = items.len();
+        if count > 0 {
+            trash::os_limited::purge_all(items).context("failed to purge trash items")?;
+        }
+        Ok(count)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        let _ = older_than_days;
+        Ok(0)
+    }
+}
+
+/// Purge every `.rwf-trash` fallback directory found directly under each of
+/// `roots` (bounded sweep — no unbounded filesystem scanning). Returns the
+/// number of payload files/dirs removed (metadata sidecars aren't counted
+/// separately).
+pub fn purge_fallback_dirs_sync(roots: &[std::path::PathBuf]) -> Result<usize> {
+    let mut purged = 0usize;
+    for root in roots {
+        let trash_dir = root.join(".rwf-trash");
+        if !trash_dir.exists() {
+            continue;
+        }
+        let entries =
+            std::fs::read_dir(&trash_dir).context("failed to read .rwf-trash directory")?;
+        for entry in entries {
+            let entry = entry.context("failed to read .rwf-trash entry")?;
+            let path = entry.path();
+            let is_meta = path.to_string_lossy().ends_with(".rwf-meta.json");
+            if is_meta {
+                std::fs::remove_file(&path).ok();
+                continue;
+            }
+            let removed = if path.is_dir() {
+                std::fs::remove_dir_all(&path).is_ok()
+            } else {
+                std::fs::remove_file(&path).is_ok()
+            };
+            if removed {
+                purged += 1;
+            }
+        }
+    }
+    Ok(purged)
+}
+
 /// The `.rwf-meta.json` sidecar path for a fallback-trashed item, derived
 /// via `OsString` concatenation (not `format!`/`to_string_lossy`) so it
 /// round-trips non-UTF-8 paths losslessly. Shared by `fallback_move_to_trash`
@@ -359,5 +421,110 @@ mod tests {
 
         let err = restore_from_trash_sync(&record).expect_err("Untracked must not be restorable");
         assert!(err.to_string().contains("manually"));
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    #[ignore = "destructive: purge_os_trash_sync(None) empties the ENTIRE real OS trash, \
+                not just this test's own item — only run deliberately with `cargo test -- \
+                --ignored` in a disposable environment, never as part of routine `cargo test`"]
+    fn test_purge_os_trash_purges_item() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("purge_me.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        move_to_trash_sync(&file_path, false).expect("trash should succeed");
+
+        let purged = purge_os_trash_sync(None).expect("purge should succeed");
+
+        assert!(
+            purged >= 1,
+            "expected at least the item we just trashed to be purged"
+        );
+        let still_present = trash::os_limited::list()
+            .unwrap_or_default()
+            .into_iter()
+            .any(|item| item.original_parent == dir.path() && item.name == "purge_me.txt");
+        assert!(
+            !still_present,
+            "item should no longer be listed after purge"
+        );
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn test_purge_os_trash_respects_age_cutoff() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("too_new_to_purge.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        let record = move_to_trash_sync(&file_path, false).expect("trash should succeed");
+
+        // A huge cutoff (9999 days) means "only purge things older than ~27 years" —
+        // nothing in any real trash could match that, so this is safe to run against
+        // a real, populated OS trash: it should purge nothing at all.
+        let purged = purge_os_trash_sync(Some(9999)).expect("purge should succeed");
+        assert_eq!(purged, 0, "a huge age cutoff should purge nothing");
+
+        // Confirm our freshly-trashed item specifically is still present.
+        let still_present = trash::os_limited::list()
+            .unwrap_or_default()
+            .into_iter()
+            .any(|item| item.original_parent == dir.path() && item.name == "too_new_to_purge.txt");
+        assert!(
+            still_present,
+            "item should NOT have been purged by a huge age cutoff"
+        );
+
+        // Cleanup: purge only this one specific item (same pattern as the existing
+        // test_move_to_trash_is_os_managed_on_windows_and_linux test), not a bulk sweep.
+        if let TrashLocation::OsManaged {
+            id,
+            name,
+            original_parent,
+            time_deleted,
+        } = record.trash_location
+        {
+            let item = trash::TrashItem {
+                id,
+                name,
+                original_parent,
+                time_deleted,
+            };
+            let _ = trash::os_limited::purge_all(std::iter::once(item));
+        }
+    }
+
+    #[test]
+    fn test_purge_fallback_dirs_purges_item() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("fallback_purge_me.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+        fallback_move_to_trash(
+            &file_path,
+            &dir.path().join(".rwf-trash"),
+            1,
+            SystemTime::now(),
+        )
+        .unwrap();
+
+        let trash_dir = dir.path().join(".rwf-trash");
+        assert!(trash_dir.exists());
+        assert!(std::fs::read_dir(&trash_dir).unwrap().next().is_some());
+
+        let purged = purge_fallback_dirs_sync(std::slice::from_ref(&dir.path().to_path_buf()))
+            .expect("purge should succeed");
+
+        assert!(purged >= 1);
+        assert!(
+            std::fs::read_dir(&trash_dir).unwrap().next().is_none(),
+            ".rwf-trash should be empty after purge"
+        );
+    }
+
+    #[test]
+    fn test_purge_fallback_dirs_skips_roots_with_no_trash_dir() {
+        let dir = TempDir::new().unwrap();
+        let purged = purge_fallback_dirs_sync(std::slice::from_ref(&dir.path().to_path_buf()))
+            .expect("purge should succeed even with nothing to purge");
+        assert_eq!(purged, 0);
     }
 }
