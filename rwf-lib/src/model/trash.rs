@@ -24,10 +24,15 @@ pub enum TrashLocation {
     /// moved into a `.rwf-trash` sidecar directory at the volume root
     /// instead, tracked by our own JSON metadata file next to it.
     Fallback { trash_path: PathBuf },
-    /// Deleted successfully via `trash::delete()`, but this platform
-    /// doesn't expose `os_limited::list`/`restore` (macOS) — there is no
-    /// way to restore it from RWF. The user restores it manually from the
-    /// OS's own trash UI (Finder, on macOS).
+    /// Deleted successfully via `trash::delete()`, but RWF has no way to
+    /// restore it from within the app. Two cases land here: (a) this
+    /// platform doesn't expose `os_limited::list`/`restore` at all (macOS),
+    /// or (b) it does (Windows/Linux), but the post-delete lookup in
+    /// `os_trash_entry_for` didn't find a matching `TrashItem` — e.g. the
+    /// `list()` call itself errored, or no parent+name match was found. In
+    /// both cases the file *is* still sitting in the OS trash and can be
+    /// restored manually from the OS's own trash UI (Finder / Recycle Bin);
+    /// RWF just can't drive that restore itself for this record.
     Untracked,
 }
 
