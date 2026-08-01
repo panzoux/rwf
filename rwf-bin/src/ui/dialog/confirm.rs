@@ -103,6 +103,31 @@ pub fn delete_job_name(targets: &[rwf_lib::Location]) -> String {
     }
 }
 
+/// Build a human-readable job name for a move-to-trash operation showing file names.
+// TODO(Phase 7.7 Task 14): called from app.rs once the task-panel label is wired up.
+// rwf-bin has no lib target, so unlike a library crate `pub` alone doesn't exempt an
+// unused item from `dead_code` under `-D warnings` — remove this allow once Task 14
+// adds the real call site.
+#[allow(dead_code)]
+pub fn trash_job_name(targets: &[rwf_lib::Location]) -> String {
+    let file_name = |loc: &rwf_lib::Location| -> String {
+        loc.path()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| loc.display_path())
+    };
+    match targets.len() {
+        0 => "Move to Trash".to_string(),
+        1 => format!("Move '{}' to Trash", file_name(&targets[0])),
+        2 => format!(
+            "Move '{}', '{}' to Trash",
+            file_name(&targets[0]),
+            file_name(&targets[1])
+        ),
+        n => format!("Move {n} files to Trash"),
+    }
+}
+
 /// Process dialog confirmation and create transitions
 /// Returns the job spec if a job was created, so it can be submitted to the worker pool
 pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_lib::job::JobSpec> {
@@ -554,12 +579,23 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
                 return Some(job_spec);
             }
-            DialogContent::DeleteConfirm(DeleteConfirmDialog { targets, .. }) => {
+            DialogContent::DeleteConfirm(DeleteConfirmDialog {
+                targets,
+                to_trash,
+                force_fallback,
+                ..
+            }) => {
                 let locations: Vec<rwf_lib::Location> =
                     targets.iter().map(|(loc, _)| loc.clone()).collect();
-                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Delete {
-                    targets: locations,
-                }));
+                let kind = if *to_trash {
+                    rwf_lib::job::JobKind::MoveToTrash {
+                        targets: locations,
+                        force_fallback: *force_fallback,
+                    }
+                } else {
+                    rwf_lib::job::JobKind::Delete { targets: locations }
+                };
+                return Some(rwf_lib::job::JobSpec::new(kind));
             }
             DialogContent::TypeMismatchWarning(TypeMismatchWarningDialog {
                 command,
@@ -985,6 +1021,42 @@ mod tests {
                 );
             }
             other => panic!("expected CreateFile, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn confirm_delete_dialog_builds_move_to_trash_job_when_to_trash() {
+        let mut state = test_state();
+        let target = Location::Local(PathBuf::from("/test/doomed.txt"));
+        let dialog = Dialog::delete_confirm(vec![(target.clone(), false)], true, true);
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::MoveToTrash {
+                targets,
+                force_fallback,
+            } => {
+                assert_eq!(targets, vec![target]);
+                assert!(force_fallback, "force_fallback must thread through");
+            }
+            other => panic!("expected MoveToTrash, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn confirm_delete_dialog_builds_permanent_delete_job_when_not_to_trash() {
+        let mut state = test_state();
+        let target = Location::Local(PathBuf::from("/test/doomed.txt"));
+        let dialog = Dialog::delete_confirm(vec![(target.clone(), false)], false, false);
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        match job_spec.kind {
+            rwf_lib::job::JobKind::Delete { targets } => {
+                assert_eq!(targets, vec![target]);
+            }
+            other => panic!("expected Delete, got {:?}", other),
         }
     }
 
