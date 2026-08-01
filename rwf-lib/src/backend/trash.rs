@@ -17,8 +17,8 @@ use std::time::SystemTime;
 /// `TrashConfig.force_fallback`). Also falls back automatically if the OS
 /// trash call itself fails.
 pub fn move_to_trash_sync(path: &Path, force_fallback: bool) -> Result<TrashRecord> {
-    let metadata = std::fs::symlink_metadata(path)
-        .context("failed to read metadata before trashing")?;
+    let metadata =
+        std::fs::symlink_metadata(path).context("failed to read metadata before trashing")?;
     let size = metadata.len();
     let modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
     let original = Location::Local(path.to_path_buf());
@@ -80,7 +80,10 @@ mod tests {
 
         let record = move_to_trash_sync(&file_path, false).expect("move to trash should succeed");
 
-        assert!(!file_path.exists(), "source file must be gone after trashing");
+        assert!(
+            !file_path.exists(),
+            "source file must be gone after trashing"
+        );
         assert_eq!(record.original, Location::Local(file_path));
         assert_eq!(record.size, 9);
     }
@@ -102,10 +105,19 @@ mod tests {
 
         // Cleanup: purge it so the test doesn't leave junk in the real
         // Recycle Bin / trash across runs.
-        if let TrashLocation::OsManaged { id, name, original_parent, time_deleted } =
-            record.trash_location
+        if let TrashLocation::OsManaged {
+            id,
+            name,
+            original_parent,
+            time_deleted,
+        } = record.trash_location
         {
-            let item = trash::TrashItem { id, name, original_parent, time_deleted };
+            let item = trash::TrashItem {
+                id,
+                name,
+                original_parent,
+                time_deleted,
+            };
             let _ = trash::os_limited::purge_all(std::iter::once(item));
         }
     }
