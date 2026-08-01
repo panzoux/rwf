@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 pub mod archive;
 pub mod local;
+pub mod trash;
 
 #[cfg(test)]
 mod local_properties;
