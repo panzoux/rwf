@@ -108,6 +108,10 @@ pub struct AppConfig {
     /// only via the `y+m` keybinding without touching this persisted value.
     #[serde(default = "default_magic_byte_detection_enabled")]
     pub magic_byte_detection_enabled: bool,
+
+    /// OS trash integration settings (Phase 7.7).
+    #[serde(default)]
+    pub trash: TrashConfig,
 }
 
 fn default_polling_interval_ms() -> u32 {
@@ -214,6 +218,62 @@ impl Default for JumpNavConfig {
             leap_migemo_min_chars: default_leap_migemo_min_chars(),
             leap_debounce_ms: default_leap_debounce_ms(),
             no_match_feedback: NoMatchFeedback::default(),
+        }
+    }
+}
+
+/// Configuration for OS trash integration (Phase 7.7).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct TrashConfig {
+    /// When true, `Delete` moves to the OS trash instead of deleting
+    /// permanently. `DeleteForce` (`D`, i.e. Shift+d) always deletes
+    /// permanently, regardless of this setting.
+    #[serde(default = "default_trash_enabled")]
+    pub enabled: bool,
+    /// When true, `Delete` still shows the confirmation dialog before
+    /// moving to trash. When false, `Delete` moves to trash immediately
+    /// (skipping the dialog) since trash already protects against
+    /// accidental loss.
+    #[serde(default = "default_trash_confirm_before_move")]
+    pub confirm_before_move: bool,
+    /// Items older than this many days are eligible for a future automatic
+    /// purge sweep, driven by this same phase's `EmptyTrash` job once a
+    /// periodic trigger exists (piggybacking on Phase 7.5's background
+    /// polling infrastructure rather than building a redundant timer —
+    /// see plan/7.7.smart_trash.md §3). Not wired up yet in Phase 7.7; the
+    /// manual `EmptyTrash` action ignores this and always purges
+    /// everything. 0 disables age-based purging.
+    #[serde(default = "default_trash_auto_empty_days")]
+    pub auto_empty_days: u32,
+    /// When true, skip the OS trash entirely and always use the
+    /// `.rwf-trash` fallback directory. Useful on network/virtual drives
+    /// where OS trash integration is unreliable, or when a predictable,
+    /// inspectable trash location is preferred over the OS's own UI.
+    #[serde(default = "default_trash_force_fallback")]
+    pub force_fallback: bool,
+}
+
+fn default_trash_enabled() -> bool {
+    true
+}
+fn default_trash_confirm_before_move() -> bool {
+    true
+}
+fn default_trash_auto_empty_days() -> u32 {
+    30
+}
+fn default_trash_force_fallback() -> bool {
+    false
+}
+
+impl Default for TrashConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_trash_enabled(),
+            confirm_before_move: default_trash_confirm_before_move(),
+            auto_empty_days: default_trash_auto_empty_days(),
+            force_fallback: default_trash_force_fallback(),
         }
     }
 }
@@ -400,6 +460,7 @@ impl Default for AppConfig {
             polling_interval_ms: default_polling_interval_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
+            trash: TrashConfig::default(),
             is_creating_tab: false,
         }
     }
@@ -1641,5 +1702,30 @@ mod tests {
         let json = r#"{"MagicByteDetectionEnabled": false}"#;
         let config: AppConfig = serde_json::from_str(json).unwrap();
         assert!(!config.magic_byte_detection_enabled);
+    }
+
+    #[test]
+    fn test_trash_config_defaults() {
+        let config = TrashConfig::default();
+        assert!(config.enabled);
+        assert!(config.confirm_before_move);
+        assert_eq!(config.auto_empty_days, 30);
+        assert!(!config.force_fallback);
+    }
+
+    #[test]
+    fn test_app_config_default_includes_trash() {
+        let config = AppConfig::default();
+        assert!(config.trash.enabled);
+    }
+
+    #[test]
+    fn test_trash_config_deserializes_from_pascal_case_json() {
+        let json = r#"{"Trash": {"Enabled": false, "ConfirmBeforeMove": false, "AutoEmptyDays": 7, "ForceFallback": true}}"#;
+        let config: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.trash.enabled);
+        assert!(!config.trash.confirm_before_move);
+        assert_eq!(config.trash.auto_empty_days, 7);
+        assert!(config.trash.force_fallback);
     }
 }

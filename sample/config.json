@@ -101,6 +101,12 @@
     "JumpPathMaxResults": 500,
     "JumpPathMaxDepth": 3
   },
+  "Trash": {
+    "Enabled": true,
+    "ConfirmBeforeMove": true,
+    "AutoEmptyDays": 30,
+    "ForceFallback": false
+  },
   "PollingIntervalMs": 1000,
   "ViewerLargeFileThresholdMb": 100
 }
