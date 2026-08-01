@@ -14,6 +14,7 @@ pub mod navigation_cache;
 pub mod pane;
 pub mod search;
 pub mod tab;
+pub mod trash;
 pub mod ui;
 pub mod viewer;
 
@@ -60,5 +61,6 @@ pub use navigation_cache::NavigationStateCache;
 pub use pane::{DisplayMode, PaneModel, SortMode, SortOrder};
 pub use search::SearchModel;
 pub use tab::{TabManager, TabState, TabViewerState};
+pub use trash::{EmptyTrashScope, RestoreOutcome, TrashLocation, TrashOutcome, TrashRecord};
 pub use ui::{ActivePane, UIMode, UIState, ViewerLayout};
 pub use viewer::{FileBytes, LineIndex, TextEncoding, ViewerBuffer, ViewerMode, ViewerState};
