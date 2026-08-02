@@ -92,6 +92,9 @@ mod advanced_marking_integration_tests;
 mod directory_size_integration_tests;
 
 #[cfg(test)]
+mod scan_trash_confirm_integration_tests;
+
+#[cfg(test)]
 mod e2e_workflow_integration_tests;
 
 #[cfg(test)]

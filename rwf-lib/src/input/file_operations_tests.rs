@@ -218,8 +218,14 @@ mod tests {
         }
     }
 
+    /// Phase 7.7 Task 19: `Action::EmptyTrash` no longer runs the destructive
+    /// `EmptyTrash` job directly — it first scans the trash (`ScanTrash`), so a
+    /// confirm dialog with real item count/size can be shown, and so an already-
+    /// empty trash can skip the confirm dialog entirely (see the job-completion
+    /// handler in `state/handlers/job.rs`). The real `EmptyTrash` job now only
+    /// gets built from the confirm dialog's `ConfirmableAction::EmptyTrash` arm.
     #[test]
-    fn test_empty_trash_action_builds_job_with_deduplicated_volume_roots() {
+    fn test_empty_trash_action_builds_scan_job_with_deduplicated_volume_roots() {
         let (mut state, left_dir, right_dir) = crate::test_utils::state_with_temp_dirs();
         // Second tab's panes point at the same two temp dirs as the first
         // tab — on a single-drive dev machine all four panes (2 tabs x
@@ -236,13 +242,7 @@ mod tests {
         let transitions = action_to_transitions(&state, &Action::EmptyTrash);
         match transitions.into_iter().next() {
             Some(Transition::CreateAndStartFileJob { spec, .. }) => match spec.kind {
-                crate::job::JobKind::EmptyTrash {
-                    scope,
-                    older_than_days,
-                    fallback_roots,
-                } => {
-                    assert_eq!(scope, crate::model::EmptyTrashScope::All);
-                    assert_eq!(older_than_days, None);
+                crate::job::JobKind::ScanTrash { fallback_roots } => {
                     assert!(
                         !fallback_roots.is_empty(),
                         "should collect at least one volume root"
@@ -254,9 +254,9 @@ mod tests {
                         "fallback_roots must already be deduplicated, got {fallback_roots:?}"
                     );
                 }
-                other => panic!("expected EmptyTrash, got {other:?}"),
+                other => panic!("expected ScanTrash, got {other:?}"),
             },
-            other => panic!("expected CreateAndStartFileJob(EmptyTrash), got {other:?}"),
+            other => panic!("expected CreateAndStartFileJob(ScanTrash), got {other:?}"),
         }
     }
 

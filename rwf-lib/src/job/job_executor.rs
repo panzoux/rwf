@@ -83,6 +83,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 )
                 .await
             }
+            JobKind::ScanTrash { fallback_roots } => {
+                self.execute_scan_trash(fallback_roots, &spec.cancel_token)
+                    .await
+            }
             JobKind::Mkdir { location } => self.execute_mkdir(location, &spec.cancel_token).await,
             JobKind::CreateFile { location } => {
                 self.execute_create_file(location, &spec.cancel_token).await
@@ -713,6 +717,23 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             .await
         {
             Ok(purged) => OpResult::Success(SuccessData::TrashEmptied { purged }),
+            Err(e) => OpResult::Failed(e.to_string()),
+        }
+    }
+
+    /// Execute a non-destructive trash count/size scan.
+    async fn execute_scan_trash(
+        &self,
+        fallback_roots: &[std::path::PathBuf],
+        cancel_token: &CancellationToken,
+    ) -> OpResult {
+        if cancel_token.is_cancelled() {
+            return OpResult::Cancelled;
+        }
+        match self.backend.scan_trash(fallback_roots, cancel_token).await {
+            Ok((count, total_size)) => {
+                OpResult::Success(SuccessData::TrashScanned { count, total_size })
+            }
             Err(e) => OpResult::Failed(e.to_string()),
         }
     }

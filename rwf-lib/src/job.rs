@@ -130,6 +130,12 @@ pub enum JobKind {
         /// `Fallback`.
         fallback_roots: Vec<std::path::PathBuf>,
     },
+    /// Non-destructive count/size scan of the trash (OS-managed + `.rwf-trash`
+    /// fallback dirs), used to populate the EmptyTrash confirm dialog before
+    /// the real (destructive) `EmptyTrash` job runs.
+    ScanTrash {
+        fallback_roots: Vec<std::path::PathBuf>,
+    },
     Mkdir {
         location: Location,
     },
@@ -353,6 +359,10 @@ pub enum SuccessData {
     TrashRestored(Vec<crate::model::RestoreOutcome>),
     TrashEmptied {
         purged: usize,
+    },
+    TrashScanned {
+        count: usize,
+        total_size: u64,
     },
     None,
 }

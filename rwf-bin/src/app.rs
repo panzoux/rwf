@@ -910,7 +910,7 @@ impl App {
                                 }
                             }
                             if let Some(job_spec) = confirmed_job {
-                                // For Delete/MoveToTrash jobs confirmed via dialog, register background job for task panel logs
+                                // For Delete/MoveToTrash/EmptyTrash jobs confirmed via dialog, register background job for task panel logs
                                 let delete_or_trash_job_name = match &job_spec.kind {
                                     JobKind::Delete { targets } => {
                                         Some(crate::ui::dialog::delete_job_name(targets))
@@ -918,6 +918,7 @@ impl App {
                                     JobKind::MoveToTrash { targets, .. } => {
                                         Some(crate::ui::dialog::trash_job_name(targets))
                                     }
+                                    JobKind::EmptyTrash { .. } => Some("Empty trash".to_string()),
                                     _ => None,
                                 };
                                 if let Some(job_name) = delete_or_trash_job_name {
@@ -2709,5 +2710,48 @@ mod reload_config_confirm_tests {
             "confirming should have run Transition::ReloadConfig and logged its result, got: {:?}",
             logged
         );
+    }
+}
+
+/// Phase 7.7 Task 19: confirming the EmptyTrash confirm dialog (built by the ScanTrash
+/// completion handler) submits a real `JobKind::EmptyTrash` job via `process_dialog_
+/// confirmation`'s `Option<JobSpec>` return — a different code path than DeleteConfirm/
+/// MoveToTrash, which the Task 14 match in this file doesn't cover. Without adding
+/// `JobKind::EmptyTrash` to that match, the job would run silently with no task-panel entry
+/// at all (a UX regression from before this task, when EmptyTrash ran via
+/// `Transition::CreateAndStartFileJob`, which self-registers).
+#[cfg(test)]
+mod empty_trash_job_panel_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::dialog::ConfirmableAction;
+    use rwf_lib::model::Dialog;
+
+    #[tokio::test]
+    async fn confirming_empty_trash_registers_labeled_background_job() {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.dialogs.push(Dialog::action_confirm(
+            "Empty Trash",
+            "Permanently empty 3 items (4.0 KB) from the trash? This cannot be undone.",
+            Some(rwf_lib::model::dialog::ConfirmStats {
+                count: 3,
+                total_size: 4096,
+            }),
+            ConfirmableAction::EmptyTrash {
+                fallback_roots: vec![std::path::PathBuf::from("C:\\")],
+            },
+        ));
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let job = app
+            .state
+            .background_jobs
+            .get_all_jobs()
+            .next()
+            .expect("confirming EmptyTrash should register a background job");
+        assert_eq!(job.name, "Empty trash");
     }
 }

@@ -211,6 +211,7 @@ impl AppState {
                             crate::job::JobKind::MoveToTrash { .. } => "Move to trash",
                             crate::job::JobKind::RestoreFromTrash { .. } => "Restore from trash",
                             crate::job::JobKind::EmptyTrash { .. } => "Empty trash",
+                            crate::job::JobKind::ScanTrash { .. } => "Scan trash",
                             crate::job::JobKind::Mkdir { .. } => "Create directory",
                             crate::job::JobKind::CreateFile { .. } => "Create file",
                             crate::job::JobKind::ChangeAttributes { .. } => "Change attributes",
@@ -1308,6 +1309,37 @@ impl AppState {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        crate::job::JobKind::ScanTrash { fallback_roots } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::TrashScanned { count, total_size },
+                            ) = result
+                            {
+                                if *count == 0 {
+                                    result_obj
+                                        .task_panel_logs
+                                        .push("[Info] Trash is already empty".to_string());
+                                } else {
+                                    let dialog = crate::model::Dialog::action_confirm(
+                                        "Empty Trash",
+                                        format!(
+                                            "Permanently empty {} item{} ({}) from the trash? This cannot be undone.",
+                                            count,
+                                            if *count == 1 { "" } else { "s" },
+                                            crate::model::format_size(*total_size)
+                                        ),
+                                        Some(crate::model::ConfirmStats {
+                                            count: *count,
+                                            total_size: *total_size,
+                                        }),
+                                        crate::model::ConfirmableAction::EmptyTrash {
+                                            fallback_roots: fallback_roots.clone(),
+                                        },
+                                    );
+                                    self.dialogs.push(dialog);
+                                }
+                                result_obj.ui_changed = true;
                             }
                         }
                         _ => {}

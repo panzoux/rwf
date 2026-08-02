@@ -644,6 +644,52 @@ impl FilesystemBackend for LocalFilesystemBackend {
         .context("empty_trash task panicked")?
     }
 
+    async fn scan_trash(
+        &self,
+        fallback_roots: &[std::path::PathBuf],
+        cancel_token: &CancellationToken,
+    ) -> Result<(usize, u64)> {
+        let (os_count, os_size) =
+            tokio::task::spawn_blocking(crate::backend::trash::scan_os_trash_sync)
+                .await
+                .context("scan_trash task panicked")??;
+
+        let mut fallback_count = 0usize;
+        let mut fallback_size = 0u64;
+        for root in fallback_roots {
+            if cancel_token.is_cancelled() {
+                bail!("Operation cancelled");
+            }
+            let trash_dir = root.join(".rwf-trash");
+            if !trash_dir.exists() {
+                continue;
+            }
+            let mut read_dir = tokio::fs::read_dir(&trash_dir)
+                .await
+                .context("failed to read .rwf-trash directory")?;
+            while let Some(entry) = read_dir.next_entry().await? {
+                if cancel_token.is_cancelled() {
+                    bail!("Operation cancelled");
+                }
+                let path = entry.path();
+                if path.to_string_lossy().ends_with(".rwf-meta.json") {
+                    continue;
+                }
+                let metadata = entry.metadata().await?;
+                fallback_size += if metadata.is_dir() {
+                    self.calculate_dir_size_recursive(&path, cancel_token)
+                        .await
+                        .unwrap_or(0)
+                } else {
+                    metadata.len()
+                };
+                fallback_count += 1;
+            }
+        }
+
+        Ok((os_count + fallback_count, os_size + fallback_size))
+    }
+
     async fn calculate_directory_size(
         &self,
         location: &Location,
@@ -1594,6 +1640,65 @@ mod tests {
                 .map(|mut e| e.next().is_none())
                 .unwrap_or(true),
             ".rwf-trash should be empty after purge"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scan_trash_sums_fallback_files_and_recursive_dir_sizes() {
+        let dir = TempDir::new().unwrap();
+        let backend = LocalFilesystemBackend::new();
+
+        let volume_root = dir.path().ancestors().last().unwrap().to_path_buf();
+        let trash_dir = volume_root.join(".rwf-trash");
+        let _cleanup = RealTrashDirCleanup(trash_dir.clone());
+
+        // Baseline before trashing anything — scan_trash also folds in the real
+        // OS-managed trash, which may already hold unrelated items on a dev
+        // machine, so assertions below are deltas, not absolute counts.
+        let (before_count, before_size) = backend
+            .scan_trash(
+                std::slice::from_ref(&volume_root),
+                &CancellationToken::new(),
+            )
+            .await
+            .expect("baseline scan should succeed");
+
+        // A plain file (5 bytes).
+        let file_path = dir.path().join("scan_file.txt");
+        std::fs::write(&file_path, b"12345").unwrap();
+        backend
+            .move_to_trash(&Location::Local(file_path), true, &CancellationToken::new())
+            .await
+            .expect("fallback move of file should succeed");
+
+        // A directory containing a nested file (7 bytes) — exercises the
+        // recursive-size path (calculate_dir_size_recursive reuse), not just
+        // flat file sizes.
+        let subdir = dir.path().join("scan_dir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(subdir.join("nested.txt"), b"1234567").unwrap();
+        backend
+            .move_to_trash(&Location::Local(subdir), true, &CancellationToken::new())
+            .await
+            .expect("fallback move of directory should succeed");
+
+        let (after_count, after_size) = backend
+            .scan_trash(
+                std::slice::from_ref(&volume_root),
+                &CancellationToken::new(),
+            )
+            .await
+            .expect("scan after trashing should succeed");
+
+        assert_eq!(
+            after_count,
+            before_count + 2,
+            "should count both the file and the directory as one item each"
+        );
+        assert_eq!(
+            after_size,
+            before_size + 12,
+            "5 (file) + 7 (nested file inside trashed dir) = 12"
         );
     }
 }

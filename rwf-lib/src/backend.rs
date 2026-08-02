@@ -134,6 +134,17 @@ pub trait FilesystemBackend: Send + Sync {
         fallback_roots: &[std::path::PathBuf],
     ) -> Result<usize>;
 
+    /// Non-destructively count items and sum byte sizes across OS-managed
+    /// trash and every `.rwf-trash` fallback dir under `fallback_roots`.
+    /// Returns `(count, total_size)`. See `backend::trash::scan_os_trash_sync`
+    /// for the one known limitation (directory byte sizes inside OS-managed
+    /// trash are undercounted — the OS trash API doesn't expose them).
+    async fn scan_trash(
+        &self,
+        fallback_roots: &[std::path::PathBuf],
+        cancel_token: &CancellationToken,
+    ) -> Result<(usize, u64)>;
+
     /// Calculate directory size recursively
     async fn calculate_directory_size(
         &self,

@@ -1464,16 +1464,18 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 .into_iter()
                 .collect();
 
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::EmptyTrash {
-                scope: crate::model::EmptyTrashScope::All,
-                older_than_days: None,
-                fallback_roots,
-            });
+            // Scan first rather than purging directly: lets the confirm dialog show
+            // real item count/size (Task 19), and lets an already-empty trash skip
+            // the dialog entirely instead of confirming nothing. The real
+            // JobKind::EmptyTrash job is built from the confirm dialog's
+            // ConfirmableAction::EmptyTrash arm once the scan completes.
+            let job_spec =
+                crate::job::JobSpec::new(crate::job::JobKind::ScanTrash { fallback_roots });
 
             vec![Transition::CreateAndStartFileJob {
                 spec: job_spec,
-                name: "Empty trash".to_string(),
-                description: "Empty trash".to_string(),
+                name: "Scan trash".to_string(),
+                description: "Scan trash".to_string(),
             }]
         }
         Action::Rename => {

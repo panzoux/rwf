@@ -154,6 +154,34 @@ pub fn purge_os_trash_sync(older_than_days: Option<u32>) -> Result<usize> {
     }
 }
 
+/// Non-destructively count items and sum byte sizes in the OS-managed trash.
+/// Returns `(0, 0)` on platforms where `os_limited` isn't available (macOS).
+///
+/// Byte size is only summable for items the `trash` crate reports as
+/// `TrashItemSize::Bytes` (individual files). Directories are reported as
+/// `TrashItemSize::Entries(non_recursive_count)` — the crate has no API for
+/// a directory's true recursive byte size once inside OS-managed trash
+/// storage, so directory items count toward `count` but contribute `0` to
+/// `total_size`. This under-counts total size when the trash holds trashed
+/// directories; it never over-counts.
+pub fn scan_os_trash_sync() -> Result<(usize, u64)> {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        let items = trash::os_limited::list().context("failed to list trash items")?;
+        let count = items.len();
+        let total_size = items
+            .iter()
+            .filter_map(|item| trash::os_limited::metadata(item).ok())
+            .filter_map(|meta| meta.size.size())
+            .sum();
+        Ok((count, total_size))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        Ok((0, 0))
+    }
+}
+
 /// Purge every `.rwf-trash` fallback directory found directly under each of
 /// `roots` (bounded sweep — no unbounded filesystem scanning). Returns the
 /// number of payload files/dirs removed (metadata sidecars aren't counted
@@ -526,5 +554,51 @@ mod tests {
         let purged = purge_fallback_dirs_sync(std::slice::from_ref(&dir.path().to_path_buf()))
             .expect("purge should succeed even with nothing to purge");
         assert_eq!(purged, 0);
+    }
+
+    #[test]
+    fn test_scan_os_trash_sync_counts_and_sums_a_freshly_trashed_file() {
+        // Non-destructive (unlike purge_os_trash_sync), so this is safe to run against
+        // a real, possibly-populated OS trash without #[ignore] — asserted as a delta
+        // rather than an absolute count/size, same reasoning as
+        // test_purge_os_trash_respects_age_cutoff above.
+        let (before_count, before_size) = scan_os_trash_sync().expect("scan should succeed");
+
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("scan_me.txt");
+        let contents = b"twelve bytes";
+        std::fs::write(&file_path, contents).unwrap();
+        let record = move_to_trash_sync(&file_path, false).expect("trash should succeed");
+
+        let (after_count, after_size) = scan_os_trash_sync().expect("scan should succeed");
+
+        assert_eq!(
+            after_count,
+            before_count + 1,
+            "scan should see the freshly trashed item"
+        );
+        assert_eq!(
+            after_size,
+            before_size + contents.len() as u64,
+            "scan should sum the freshly trashed file's real byte size"
+        );
+
+        // Cleanup: purge only this specific item (same pattern as
+        // test_move_to_trash_is_os_managed_on_windows_and_linux).
+        if let TrashLocation::OsManaged {
+            id,
+            name,
+            original_parent,
+            time_deleted,
+        } = record.trash_location
+        {
+            let item = trash::TrashItem {
+                id,
+                name,
+                original_parent,
+                time_deleted,
+            };
+            let _ = trash::os_limited::purge_all(std::iter::once(item));
+        }
     }
 }
