@@ -910,9 +910,17 @@ impl App {
                                 }
                             }
                             if let Some(job_spec) = confirmed_job {
-                                // For Delete jobs confirmed via dialog, register background job for task panel logs
-                                if let JobKind::Delete { ref targets } = job_spec.kind {
-                                    let job_name = crate::ui::dialog::delete_job_name(targets);
+                                // For Delete/MoveToTrash jobs confirmed via dialog, register background job for task panel logs
+                                let delete_or_trash_job_name = match &job_spec.kind {
+                                    JobKind::Delete { targets } => {
+                                        Some(crate::ui::dialog::delete_job_name(targets))
+                                    }
+                                    JobKind::MoveToTrash { targets, .. } => {
+                                        Some(crate::ui::dialog::trash_job_name(targets))
+                                    }
+                                    _ => None,
+                                };
+                                if let Some(job_name) = delete_or_trash_job_name {
                                     let tab_id = self.state.tabs.active_index;
                                     let tab_name = format!(
                                         "{}|{}",
@@ -2589,5 +2597,65 @@ mod leap_investigation {
             Location::Local(root.join("ftest1")),
             "\"ft 1\" (AND of segments \"ft\" and \"1\") should match only ftest1 and auto-enter it"
         );
+    }
+}
+
+/// Phase 7.7 Task 14: confirming a "move to trash" DeleteConfirm dialog must register a
+/// background job with a trash-specific label ("Move '...' to Trash"), same as a real
+/// (non-trash) Delete already does via `delete_job_name`. Before Task 14 this fell through
+/// the `if let JobKind::Delete { .. }` check in app.rs (which only matches the physical-delete
+/// job kind) and the job never appeared in the task panel with any name at all.
+#[cfg(test)]
+mod trash_job_panel_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::{Dialog, Location};
+    use tempfile::TempDir;
+
+    fn test_app_with_delete_confirm_dialog(to_trash: bool) -> App {
+        let tmp = TempDir::new().unwrap();
+        let file_path = tmp.path().join("doomed.txt");
+        std::fs::write(&file_path, b"bye").unwrap();
+
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let targets = vec![(Location::Local(file_path), false)];
+        state
+            .dialogs
+            .push(Dialog::delete_confirm(targets, to_trash, false));
+        // Keep the TempDir alive for the file's lifetime by leaking it — the test only
+        // needs the path to exist long enough for App construction/confirm, not beyond.
+        std::mem::forget(tmp);
+
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    #[tokio::test]
+    async fn confirming_move_to_trash_registers_trash_labeled_background_job() {
+        let mut app = test_app_with_delete_confirm_dialog(true);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let job = app
+            .state
+            .background_jobs
+            .get_all_jobs()
+            .next()
+            .expect("confirming a move-to-trash dialog should register a background job");
+        assert_eq!(job.name, "Move 'doomed.txt' to Trash");
+    }
+
+    #[tokio::test]
+    async fn confirming_physical_delete_still_registers_delete_labeled_background_job() {
+        let mut app = test_app_with_delete_confirm_dialog(false);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let job = app
+            .state
+            .background_jobs
+            .get_all_jobs()
+            .next()
+            .expect("confirming a delete dialog should register a background job");
+        assert_eq!(job.name, "Delete 'doomed.txt'");
     }
 }

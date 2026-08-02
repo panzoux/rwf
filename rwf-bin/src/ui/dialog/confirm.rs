@@ -104,11 +104,6 @@ pub fn delete_job_name(targets: &[rwf_lib::Location]) -> String {
 }
 
 /// Build a human-readable job name for a move-to-trash operation showing file names.
-// TODO(Phase 7.7 Task 14): called from app.rs once the task-panel label is wired up.
-// rwf-bin has no lib target, so unlike a library crate `pub` alone doesn't exempt an
-// unused item from `dead_code` under `-D warnings` — remove this allow once Task 14
-// adds the real call site.
-#[allow(dead_code)]
 pub fn trash_job_name(targets: &[rwf_lib::Location]) -> String {
     let file_name = |loc: &rwf_lib::Location| -> String {
         loc.path()

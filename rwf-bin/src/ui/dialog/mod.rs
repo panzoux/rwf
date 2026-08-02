@@ -60,7 +60,9 @@ use wildcard_mark::render_wildcard_mark_dialog;
 
 use common::{DIALOG_DIM, DIALOG_TEXT};
 
-pub use confirm::{delete_job_name, process_dialog_confirmation, process_dialog_delete};
+pub use confirm::{
+    delete_job_name, process_dialog_confirmation, process_dialog_delete, trash_job_name,
+};
 pub use frame::{centered_rect_abs, render_dialog_buttons, render_dialog_frame};
 pub use job_manager::{
     calculate_job_manager_dialog_min_height, render_job_manager_dialog, JobManagerDialogState,
