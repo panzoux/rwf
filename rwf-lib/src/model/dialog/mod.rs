@@ -44,7 +44,7 @@ pub use attr_timestamp::{AttrTextField, AttrTimestampDialog, TriToggle};
 pub use close_tab_with_active_job::CloseTabWithActiveJobDialog;
 pub use comparison_view::ComparisonViewDialog;
 pub use compression::CompressionDialog;
-pub use confirmation::ConfirmationDialog;
+pub use confirmation::{ActionConfirmDialog, ConfirmStats, ConfirmableAction};
 pub use context_menu::ContextMenuDialog;
 pub use create_link::CreateLinkDialog;
 pub use custom_function_menu::CustomFunctionMenuDialog;
@@ -211,7 +211,7 @@ pub struct Dialog {
 /// Dialog content types
 #[derive(Debug, Clone)]
 pub enum DialogContent {
-    Confirmation(ConfirmationDialog),
+    Confirmation(ActionConfirmDialog),
     Input(InputDialog),
     Progress(ProgressDialog),
     Help(HelpDialog),
@@ -488,11 +488,22 @@ pub enum JobState {
 }
 
 impl Dialog {
-    /// Create a confirmation dialog
-    pub fn confirmation(title: impl Into<String>, message: impl Into<String>) -> Self {
+    /// Create a generic action-confirmation dialog. `stats` is `Some` when
+    /// there's a count/size worth showing the user before an irreversible
+    /// action; `action` is what runs when they confirm.
+    pub fn action_confirm(
+        title: impl Into<String>,
+        message: impl Into<String>,
+        stats: Option<ConfirmStats>,
+        action: ConfirmableAction,
+    ) -> Self {
         Self {
             title: title.into(),
-            content: DialogContent::Confirmation(ConfirmationDialog::new(message.into())),
+            content: DialogContent::Confirmation(ActionConfirmDialog::new(
+                message.into(),
+                stats,
+                action,
+            )),
         }
     }
 

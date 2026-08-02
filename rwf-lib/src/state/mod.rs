@@ -2237,7 +2237,12 @@ mod tests {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
 
-        let dialog = Dialog::confirmation("Title", "Message");
+        let dialog = Dialog::action_confirm(
+            "Title",
+            "Message",
+            None,
+            crate::model::ConfirmableAction::ReloadConfig,
+        );
 
         let result = update_state(&mut state, Transition::ShowDialog { dialog });
         assert!(result.ui_changed);
@@ -2251,7 +2256,12 @@ mod tests {
         let config = AppConfig::default();
         let mut state = AppState::new(config);
 
-        state.dialogs.push(Dialog::confirmation("Title", "Message"));
+        state.dialogs.push(Dialog::action_confirm(
+            "Title",
+            "Message",
+            None,
+            crate::model::ConfirmableAction::ReloadConfig,
+        ));
         assert!(state.dialogs.current().is_some());
 
         let result = update_state(&mut state, Transition::CloseDialog);

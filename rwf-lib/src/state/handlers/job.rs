@@ -738,9 +738,11 @@ impl AppState {
                                     let config_path =
                                         config_manager.config_path().to_string_lossy().to_string();
                                     if command.contains(&config_path) {
-                                        let dialog = crate::model::Dialog::confirmation(
+                                        let dialog = crate::model::Dialog::action_confirm(
                                             "Configuration Editor Closed",
                                             "Reload configuration?",
+                                            None,
+                                            crate::model::ConfirmableAction::ReloadConfig,
                                         );
                                         self.dialogs.push(dialog);
                                     } else {
@@ -763,9 +765,11 @@ impl AppState {
                                 let config_path =
                                     config_manager.config_path().to_string_lossy().to_string();
                                 if args.iter().any(|a| a == &config_path) {
-                                    let dialog = crate::model::Dialog::confirmation(
+                                    let dialog = crate::model::Dialog::action_confirm(
                                         "Configuration Editor Closed",
                                         "Reload configuration?",
+                                        None,
+                                        crate::model::ConfirmableAction::ReloadConfig,
                                     );
                                     self.dialogs.push(dialog);
                                 }

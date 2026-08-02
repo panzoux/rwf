@@ -2659,3 +2659,55 @@ mod trash_job_panel_tests {
         assert_eq!(job.name, "Delete 'doomed.txt'");
     }
 }
+
+/// Phase 7.7 Task 19: confirming the "Configuration Editor Closed / Reload configuration?"
+/// dialog through the real key -> dialog -> confirm pipeline was a no-op — `DialogContent::
+/// Confirmation` had no arm in `process_dialog_confirmation`, so it fell through to the
+/// catch-all `_ => { debug!("Unknown dialog content type"); }` and just closed the dialog.
+/// The matching reload logic only ever ran via `Transition::ConfirmDialog`, which is dead in
+/// production (only `rwf-lib`'s own integration tests call it directly, bypassing real input).
+/// `Transition::ReloadConfig` always pushes "Configuration reloaded:" as its first task-panel
+/// log line regardless of which files it actually finds on disk, so that's used here as an
+/// environment-independent proof the real reload ran (not just that the dialog closed).
+#[cfg(test)]
+mod reload_config_confirm_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::dialog::ConfirmableAction;
+    use rwf_lib::model::Dialog;
+
+    fn test_app_with_reload_confirm_dialog() -> App {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.dialogs.push(Dialog::action_confirm(
+            "Configuration Editor Closed",
+            "Reload configuration?",
+            None,
+            ConfirmableAction::ReloadConfig,
+        ));
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    #[tokio::test]
+    async fn confirming_reload_prompt_actually_reloads_config() {
+        let mut app = test_app_with_reload_confirm_dialog();
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(
+            app.state.dialogs.is_empty(),
+            "dialog should be popped after confirm"
+        );
+        // process_dialog_confirmation stages logs into state.pending_confirmation_logs, but
+        // app.rs's confirm handler drains that straight into task_panel within the same
+        // handle_key_event call — so by the time we get here, task_panel is where to look.
+        let logged: Vec<String> = (0..app.task_panel.log_count())
+            .filter_map(|i| app.task_panel.get_log_entry(i))
+            .map(|e| e.message.clone())
+            .collect();
+        assert!(
+            logged.iter().any(|l| l.contains("Configuration reloaded:")),
+            "confirming should have run Transition::ReloadConfig and logged its result, got: {:?}",
+            logged
+        );
+    }
+}

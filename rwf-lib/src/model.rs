@@ -39,18 +39,18 @@ mod cache_properties;
 pub use attrs::{AttributeChange, FileOpOutcome, LinkCreateKind, TimestampChange};
 pub use cache::{CacheStats, CachedDirectory, DirectoryCache};
 pub use dialog::{
-    AttrTimestampDialog, CloseTabWithActiveJobDialog, ComparisonViewDialog, CompressionDialog,
-    ConfirmationDialog, ContextMenuAction, ContextMenuDialog, ContextMenuOption, CreateLinkDialog,
-    CustomFunction, CustomFunctionMenuDialog, CustomFunctionSelector,
-    CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogStack,
-    DialogUiState, DriveInfo, DriveSelectionDialog, DriveType, ErrorDialog, ErrorType,
-    ExtractionConfirmDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog, HelpDialog,
-    HistoryDialogContent, InputDialog, JobInfo, JobKind, JobManagerContent, JobManagerDialog,
-    JobState, JumpToFileDialog, JumpToPathDialog, OsConfig, PatternRenameContent,
-    PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder, RegisteredFolderManager,
-    RegisteredFolderSelector, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    SplitJoinDialogContent, SplitJoinMode, TabSelector, TabSelectorContent, VersionDialog,
-    WildcardMarkDialog,
+    ActionConfirmDialog, AttrTimestampDialog, CloseTabWithActiveJobDialog, ComparisonViewDialog,
+    CompressionDialog, ConfirmStats, ConfirmableAction, ContextMenuAction, ContextMenuDialog,
+    ContextMenuOption, CreateLinkDialog, CustomFunction, CustomFunctionMenuDialog,
+    CustomFunctionSelector, CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog,
+    DialogContent, DialogStack, DialogUiState, DriveInfo, DriveSelectionDialog, DriveType,
+    ErrorDialog, ErrorType, ExtractionConfirmDialog, FileConflictDialog, FileInfoDialog,
+    FileMaskDialog, HelpDialog, HistoryDialogContent, InputDialog, JobInfo, JobKind,
+    JobManagerContent, JobManagerDialog, JobState, JumpToFileDialog, JumpToPathDialog, OsConfig,
+    PatternRenameContent, PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder,
+    RegisteredFolderManager, RegisteredFolderSelector, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, SplitJoinDialogContent, SplitJoinMode, TabSelector,
+    TabSelectorContent, VersionDialog, WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

@@ -4,11 +4,11 @@
 //! Split from dialog/mod.rs in M3 (move-only).
 
 use rwf_lib::model::dialog::{
-    CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog, CustomFunctionSelectorContent,
-    DeleteConfirmDialog, DialogContent, DriveSelectionDialog, ExtractionConfirmDialog,
-    FileMaskDialog, HistoryDialogContent, InputDialog, OpenWithPickerDialog, PatternRenameContent,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog,
-    WildcardMarkDialog,
+    ActionConfirmDialog, CompressionDialog, ConfirmableAction, ContextMenuDialog,
+    CustomFunctionMenuDialog, CustomFunctionSelectorContent, DeleteConfirmDialog, DialogContent,
+    DriveSelectionDialog, ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent,
+    InputDialog, OpenWithPickerDialog, PatternRenameContent, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -906,6 +906,29 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
+            DialogContent::Confirmation(ActionConfirmDialog { action, .. }) => match action {
+                ConfirmableAction::ReloadConfig => {
+                    let result = rwf_lib::state::update_state(
+                        state,
+                        rwf_lib::state::Transition::ReloadConfig,
+                    );
+                    state
+                        .pending_confirmation_logs
+                        .extend(result.task_panel_logs);
+                    if result.reload_keybindings {
+                        state.confirmation_needs_keybinding_reload = true;
+                    }
+                    return None;
+                }
+                ConfirmableAction::EmptyTrash { fallback_roots } => {
+                    let job_spec = rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::EmptyTrash {
+                        scope: rwf_lib::model::EmptyTrashScope::All,
+                        older_than_days: None,
+                        fallback_roots: fallback_roots.clone(),
+                    });
+                    return Some(job_spec);
+                }
+            },
             _ => {
                 debug!("Unknown dialog content type");
             }
