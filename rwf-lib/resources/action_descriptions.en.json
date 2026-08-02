@@ -29,6 +29,7 @@
           "Move":                   { "description": "Move selected files" },
           "Delete":                 { "description": "Delete selected files" },
           "DeleteForce":            { "description": "Delete without confirmation" },
+          "EmptyTrash":             { "description": "Permanently empty the trash" },
           "Rename":                 { "description": "Rename cursor file" },
           "PatternRename":          { "description": "Pattern rename (regex)" },
           "CreateDirectory":        { "description": "Create directory" },

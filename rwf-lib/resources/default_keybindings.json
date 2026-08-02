@@ -55,6 +55,7 @@
     "D":               "Delete",
     "d":               "Delete",
     "Ctrl+d":          "DeleteForce",
+    "Alt+t":           "EmptyTrash",
     "R":               "PatternRename",
     "r":               "Rename",
     "K":               "CreateDirectory",

@@ -155,6 +155,24 @@ fn test_show_unbound_false_hides_unbound() {
     assert!(entries_with.len() >= entries_without.len());
 }
 
+/// Phase 7.7 Task 15: `EmptyTrash` (added in Task 11) had no default keybinding and no
+/// action description, so it was undiscoverable — invisible in the Help viewer with
+/// show_unbound=false, and unreachable without hand-editing keybindings.json. Both the
+/// keybinding (`resources/default_keybindings.json`) and the English description
+/// (`resources/action_descriptions.en.json`) must be present for it to show up bound here.
+#[test]
+fn test_empty_trash_is_bound_and_discoverable_in_help() {
+    let entries = make_entries(false);
+    let empty_trash = entries
+        .iter()
+        .find(|e| e.action_name == "EmptyTrash")
+        .expect("EmptyTrash should appear in help entries with show_unbound=false, meaning it has a default keybinding and a description");
+    assert!(
+        !empty_trash.keys.is_empty(),
+        "EmptyTrash entry should carry its bound key(s)"
+    );
+}
+
 #[test]
 fn test_show_unbound_true_includes_unbound() {
     let entries = make_entries(true);
