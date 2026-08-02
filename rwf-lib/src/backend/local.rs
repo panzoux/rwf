@@ -690,6 +690,16 @@ impl FilesystemBackend for LocalFilesystemBackend {
         Ok((os_count + fallback_count, os_size + fallback_size))
     }
 
+    async fn list_trash(
+        &self,
+        fallback_roots: &[std::path::PathBuf],
+    ) -> Result<Vec<crate::model::TrashRecord>> {
+        let fallback_roots = fallback_roots.to_vec();
+        tokio::task::spawn_blocking(move || crate::backend::trash::list_trash_sync(&fallback_roots))
+            .await
+            .context("list_trash task panicked")?
+    }
+
     async fn calculate_directory_size(
         &self,
         location: &Location,

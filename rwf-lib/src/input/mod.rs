@@ -391,6 +391,7 @@ pub enum Action {
     Delete,
     DeleteForce,
     EmptyTrash,
+    ShowTrashBrowser,
     Rename,
     PatternRename,
     CreateDirectory,
@@ -898,6 +899,28 @@ fn resolve_extension_association(
             }])
         }
     }
+}
+
+/// Deduplicated volume roots (drive roots on Windows, `/` on Unix) across every
+/// open tab's left/right panes — where a `.rwf-trash` fallback dir could exist.
+/// Shared by `Action::EmptyTrash` and `Action::ShowTrashBrowser` so their
+/// `fallback_roots` computation can't drift apart.
+fn open_tab_volume_roots(state: &AppState) -> Vec<std::path::PathBuf> {
+    state
+        .tabs
+        .tabs
+        .iter()
+        .flat_map(|tab| {
+            [
+                &tab.left_pane.current_location,
+                &tab.right_pane.current_location,
+            ]
+        })
+        .filter_map(|loc| loc.path())
+        .map(crate::backend::trash::volume_root)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// Map an action to state transitions
@@ -1448,34 +1471,34 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }]
         }
         Action::EmptyTrash => {
-            let fallback_roots: Vec<std::path::PathBuf> = state
-                .tabs
-                .tabs
-                .iter()
-                .flat_map(|tab| {
-                    [
-                        &tab.left_pane.current_location,
-                        &tab.right_pane.current_location,
-                    ]
-                })
-                .filter_map(|loc| loc.path())
-                .map(crate::backend::trash::volume_root)
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect();
-
             // Scan first rather than purging directly: lets the confirm dialog show
             // real item count/size (Task 19), and lets an already-empty trash skip
             // the dialog entirely instead of confirming nothing. The real
             // JobKind::EmptyTrash job is built from the confirm dialog's
             // ConfirmableAction::EmptyTrash arm once the scan completes.
-            let job_spec =
-                crate::job::JobSpec::new(crate::job::JobKind::ScanTrash { fallback_roots });
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ScanTrash {
+                fallback_roots: open_tab_volume_roots(state),
+            });
 
             vec![Transition::CreateAndStartFileJob {
                 spec: job_spec,
                 name: "Scan trash".to_string(),
                 description: "Scan trash".to_string(),
+            }]
+        }
+        Action::ShowTrashBrowser => {
+            // List first rather than showing an empty dialog and populating it
+            // later: the browser dialog (Task 16) is only pushed once the job
+            // completes (state/handlers/job.rs), same async-then-show pattern as
+            // EmptyTrash's ScanTrash above — no loading-spinner dialog state needed.
+            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ListTrash {
+                fallback_roots: open_tab_volume_roots(state),
+            });
+
+            vec![Transition::CreateAndStartFileJob {
+                spec: job_spec,
+                name: "List trash".to_string(),
+                description: "List trash".to_string(),
             }]
         }
         Action::Rename => {

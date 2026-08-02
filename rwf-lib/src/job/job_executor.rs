@@ -87,6 +87,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 self.execute_scan_trash(fallback_roots, &spec.cancel_token)
                     .await
             }
+            JobKind::ListTrash { fallback_roots } => self.execute_list_trash(fallback_roots).await,
             JobKind::Mkdir { location } => self.execute_mkdir(location, &spec.cancel_token).await,
             JobKind::CreateFile { location } => {
                 self.execute_create_file(location, &spec.cancel_token).await
@@ -734,6 +735,14 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Ok((count, total_size)) => {
                 OpResult::Success(SuccessData::TrashScanned { count, total_size })
             }
+            Err(e) => OpResult::Failed(e.to_string()),
+        }
+    }
+
+    /// Execute a non-destructive trash listing (for the trash-browser dialog).
+    async fn execute_list_trash(&self, fallback_roots: &[std::path::PathBuf]) -> OpResult {
+        match self.backend.list_trash(fallback_roots).await {
+            Ok(records) => OpResult::Success(SuccessData::TrashListed(records)),
             Err(e) => OpResult::Failed(e.to_string()),
         }
     }

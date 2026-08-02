@@ -136,6 +136,11 @@ pub enum JobKind {
     ScanTrash {
         fallback_roots: Vec<std::path::PathBuf>,
     },
+    /// Non-destructive listing of every trashed item, for the trash-browser
+    /// dialog (Phase 7.7 Task 16).
+    ListTrash {
+        fallback_roots: Vec<std::path::PathBuf>,
+    },
     Mkdir {
         location: Location,
     },
@@ -364,6 +369,7 @@ pub enum SuccessData {
         count: usize,
         total_size: u64,
     },
+    TrashListed(Vec<crate::model::TrashRecord>),
     None,
 }
 

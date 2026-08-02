@@ -35,6 +35,7 @@ mod simple_rename;
 mod sort;
 mod split_join;
 mod tab_selector;
+mod trash_browser;
 mod type_mismatch_warning;
 mod ui_state;
 mod version;
@@ -70,6 +71,7 @@ pub use simple_rename::SimpleRenameDialog;
 pub use sort::SortDialog;
 pub use split_join::SplitJoinDialogContent;
 pub use tab_selector::TabSelectorContent;
+pub use trash_browser::TrashBrowserDialog;
 pub use type_mismatch_warning::TypeMismatchWarningDialog;
 pub use ui_state::DialogUiState;
 pub use version::VersionDialog;
@@ -257,6 +259,9 @@ pub enum DialogContent {
     AttrTimestamp(AttrTimestampDialog),
     /// Create a symlink/hardlink/(Windows) junction (Phase 7.12).
     CreateLink(CreateLinkDialog),
+    /// Browse trashed items and restore one to its original location
+    /// (Phase 7.7 Task 16).
+    TrashBrowser(TrashBrowserDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -653,6 +658,15 @@ impl Dialog {
         Self {
             title: "Create Link".to_string(),
             content: DialogContent::CreateLink(CreateLinkDialog::new(target, dest_dir)),
+        }
+    }
+
+    /// Create a trash browser dialog listing `records` (from a completed
+    /// `JobKind::ListTrash`).
+    pub fn trash_browser(records: Vec<crate::model::TrashRecord>) -> Self {
+        Self {
+            title: "Trash".to_string(),
+            content: DialogContent::TrashBrowser(TrashBrowserDialog::new(records)),
         }
     }
 

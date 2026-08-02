@@ -23,7 +23,13 @@ pub enum TrashLocation {
     /// (e.g. cross-device move on a non-standard mount), and the item was
     /// moved into a `.rwf-trash` sidecar directory at the volume root
     /// instead, tracked by our own JSON metadata file next to it.
-    Fallback { trash_path: PathBuf },
+    Fallback {
+        trash_path: PathBuf,
+        /// Unix timestamp from the `.rwf-meta.json` sidecar's `trashed_at`.
+        /// Mirrors `OsManaged.time_deleted` so both variants can be sorted /
+        /// displayed the same way (e.g. the trash browser, Task 16).
+        trashed_at: i64,
+    },
     /// Deleted successfully via `trash::delete()`, but RWF has no way to
     /// restore it from within the app. Two cases land here: (a) this
     /// platform doesn't expose `os_limited::list`/`restore` at all (macOS),

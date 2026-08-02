@@ -89,7 +89,7 @@ pub fn restore_from_trash_sync(record: &TrashRecord) -> Result<()> {
             original_parent,
             time_deleted,
         } => restore_os_managed(id, name, original_parent, *time_deleted),
-        TrashLocation::Fallback { trash_path } => restore_fallback(trash_path),
+        TrashLocation::Fallback { trash_path, .. } => restore_fallback(trash_path),
         TrashLocation::Untracked => {
             anyhow::bail!(
                 "this item was trashed without restore tracking on this platform; \
@@ -216,6 +216,111 @@ pub fn purge_fallback_dirs_sync(roots: &[std::path::PathBuf]) -> Result<usize> {
     Ok(purged)
 }
 
+/// Non-destructively list every trashed item (OS-managed + every `.rwf-trash`
+/// fallback dir under `roots`), for the trash-browser UI (Phase 7.7 Task 16).
+/// Sorted newest-deleted-first. Directory sizes are recomputed recursively
+/// here rather than trusted from move-time (`move_to_trash_sync` stores a
+/// directory's raw `symlink_metadata().len()`, which is not its recursive
+/// size on any platform).
+pub fn list_trash_sync(fallback_roots: &[std::path::PathBuf]) -> Result<Vec<TrashRecord>> {
+    let mut records = Vec::new();
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        let items = trash::os_limited::list().context("failed to list trash items")?;
+        for item in items {
+            let size = trash::os_limited::metadata(&item)
+                .ok()
+                .and_then(|meta| meta.size.size())
+                .unwrap_or(0);
+            let original = Location::Local(item.original_parent.join(&item.name));
+            records.push(TrashRecord {
+                original,
+                trash_location: TrashLocation::OsManaged {
+                    id: item.id,
+                    name: item.name,
+                    original_parent: item.original_parent,
+                    time_deleted: item.time_deleted,
+                },
+                size,
+                // Original mtime isn't exposed by the OS trash listing API
+                // (`TrashItemMetadata` only has size); unused by
+                // `restore_from_trash_sync`, which restores by
+                // `trash_location` alone.
+                modified: SystemTime::UNIX_EPOCH,
+            });
+        }
+    }
+
+    for root in fallback_roots {
+        let trash_dir = root.join(".rwf-trash");
+        if !trash_dir.exists() {
+            continue;
+        }
+        let entries =
+            std::fs::read_dir(&trash_dir).context("failed to read .rwf-trash directory")?;
+        for entry in entries {
+            let entry = entry.context("failed to read .rwf-trash entry")?;
+            let path = entry.path();
+            if path.to_string_lossy().ends_with(".rwf-meta.json") {
+                continue;
+            }
+            let meta_path = sidecar_meta_path(&path);
+            let Ok(meta_json) = std::fs::read_to_string(&meta_path) else {
+                continue;
+            };
+            let Ok(meta) = serde_json::from_str::<FallbackMeta>(&meta_json) else {
+                continue;
+            };
+            let metadata = entry
+                .metadata()
+                .context("failed to stat .rwf-trash entry")?;
+            let size = if metadata.is_dir() {
+                dir_size_sync(&path).unwrap_or(0)
+            } else {
+                metadata.len()
+            };
+            records.push(TrashRecord {
+                original: Location::Local(meta.original),
+                trash_location: TrashLocation::Fallback {
+                    trash_path: path,
+                    trashed_at: meta.trashed_at,
+                },
+                size,
+                modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            });
+        }
+    }
+
+    records.sort_by_key(|r| {
+        std::cmp::Reverse(match &r.trash_location {
+            TrashLocation::OsManaged { time_deleted, .. } => *time_deleted,
+            TrashLocation::Fallback { trashed_at, .. } => *trashed_at,
+            TrashLocation::Untracked => 0,
+        })
+    });
+
+    Ok(records)
+}
+
+/// Plain recursive directory size (bytes), for `list_trash_sync`'s fallback-dir
+/// sizing. Best-effort: unreadable entries are skipped rather than failing the
+/// whole listing.
+fn dir_size_sync(path: &Path) -> std::io::Result<u64> {
+    let mut total = 0u64;
+    for entry in std::fs::read_dir(path)?.flatten() {
+        let entry_path = entry.path();
+        if let Ok(metadata) = entry.metadata() {
+            total += if metadata.is_dir() {
+                dir_size_sync(&entry_path).unwrap_or(0)
+            } else {
+                metadata.len()
+            };
+        }
+    }
+    Ok(total)
+}
+
 /// The `.rwf-meta.json` sidecar path for a fallback-trashed item, derived
 /// via `OsString` concatenation (not `format!`/`to_string_lossy`) so it
 /// round-trips non-UTF-8 paths losslessly. Shared by `fallback_move_to_trash`
@@ -244,9 +349,10 @@ fn fallback_move_to_trash(
 
     std::fs::rename(path, &trash_path).context("failed to move file into .rwf-trash fallback")?;
 
+    let trashed_at = chrono::Utc::now().timestamp();
     let meta = FallbackMeta {
         original: path.to_path_buf(),
-        trashed_at: chrono::Utc::now().timestamp(),
+        trashed_at,
     };
     let meta_path = sidecar_meta_path(&trash_path);
     std::fs::write(
@@ -257,7 +363,10 @@ fn fallback_move_to_trash(
 
     Ok(TrashRecord {
         original: Location::Local(path.to_path_buf()),
-        trash_location: TrashLocation::Fallback { trash_path },
+        trash_location: TrashLocation::Fallback {
+            trash_path,
+            trashed_at,
+        },
         size,
         modified,
     })
@@ -354,7 +463,7 @@ mod tests {
         // entry point, which computes the true volume root — remove the
         // fallback file + its metadata sidecar so no residue is left on the
         // real drive root across test runs.
-        if let TrashLocation::Fallback { trash_path } = &record.trash_location {
+        if let TrashLocation::Fallback { trash_path, .. } = &record.trash_location {
             let _ = std::fs::remove_file(sidecar_meta_path(trash_path));
             let _ = std::fs::remove_file(trash_path);
         }
@@ -376,7 +485,7 @@ mod tests {
 
         assert!(!file_path.exists());
         let trash_path = match &record.trash_location {
-            TrashLocation::Fallback { trash_path } => trash_path.clone(),
+            TrashLocation::Fallback { trash_path, .. } => trash_path.clone(),
             other => panic!("expected Fallback, got {other:?}"),
         };
         assert!(
@@ -408,7 +517,7 @@ mod tests {
         )
         .unwrap();
         let trash_path = match &record.trash_location {
-            TrashLocation::Fallback { trash_path } => trash_path.clone(),
+            TrashLocation::Fallback { trash_path, .. } => trash_path.clone(),
             other => panic!("expected Fallback, got {other:?}"),
         };
 
@@ -600,5 +709,57 @@ mod tests {
             };
             let _ = trash::os_limited::purge_all(std::iter::once(item));
         }
+    }
+
+    #[test]
+    fn test_list_trash_sync_lists_fallback_file_and_directory_with_sizes_and_original_paths() {
+        let dir = TempDir::new().unwrap();
+        let volume_root = dir.path().ancestors().last().unwrap().to_path_buf();
+        let trash_dir = volume_root.join(".rwf-trash");
+
+        let file_path = dir.path().join("list_me.txt");
+        std::fs::write(&file_path, b"12345").unwrap(); // 5 bytes
+
+        let subdir = dir.path().join("list_dir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(subdir.join("nested.txt"), b"1234567").unwrap(); // 7 bytes
+
+        move_to_trash_sync(&file_path, true).expect("fallback move of file should succeed");
+        move_to_trash_sync(&subdir, true).expect("fallback move of directory should succeed");
+
+        let records =
+            list_trash_sync(std::slice::from_ref(&volume_root)).expect("list should succeed");
+
+        let file_record = records
+            .iter()
+            .find(|r| r.original == Location::Local(file_path.clone()))
+            .expect("listed records should include the trashed file");
+        assert_eq!(file_record.size, 5);
+        assert!(matches!(
+            file_record.trash_location,
+            TrashLocation::Fallback { .. }
+        ));
+
+        let dir_record = records
+            .iter()
+            .find(|r| r.original == Location::Local(subdir.clone()))
+            .expect("listed records should include the trashed directory");
+        assert_eq!(
+            dir_record.size, 7,
+            "directory size should be the recursive sum of its contents"
+        );
+
+        // Cleanup: remove both trashed items + their sidecars from the real volume root.
+        for record in [file_record, dir_record] {
+            if let TrashLocation::Fallback { trash_path, .. } = &record.trash_location {
+                let _ = std::fs::remove_file(sidecar_meta_path(trash_path));
+                if trash_path.is_dir() {
+                    let _ = std::fs::remove_dir_all(trash_path);
+                } else {
+                    let _ = std::fs::remove_file(trash_path);
+                }
+            }
+        }
+        let _ = std::fs::remove_dir(&trash_dir);
     }
 }

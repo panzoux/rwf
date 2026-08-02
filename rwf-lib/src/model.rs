@@ -50,7 +50,7 @@ pub use dialog::{
     PatternRenameContent, PatternRenameDialog, PipeToAction, ProgressDialog, RegisteredFolder,
     RegisteredFolderManager, RegisteredFolderSelector, RegisteredFolderSelectorContent,
     SimpleRenameDialog, SortDialog, SplitJoinDialogContent, SplitJoinMode, TabSelector,
-    TabSelectorContent, VersionDialog, WildcardMarkDialog,
+    TabSelectorContent, TrashBrowserDialog, VersionDialog, WildcardMarkDialog,
 };
 pub use file_entry::{format_size, FileEntry, LinkKind};
 pub use leap::{BackspaceResult, LeapState};

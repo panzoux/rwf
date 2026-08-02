@@ -260,6 +260,40 @@ mod tests {
         }
     }
 
+    /// Phase 7.7 Task 16: `Action::ShowTrashBrowser` starts a non-destructive
+    /// `ListTrash` job (same deduplicated-volume-roots pipeline as EmptyTrash's
+    /// ScanTrash) — the browser dialog itself is pushed once that job completes
+    /// (see the job-completion handler test in state/handlers/job.rs's test suite).
+    #[test]
+    fn test_show_trash_browser_action_builds_list_job_with_deduplicated_volume_roots() {
+        let (mut state, left_dir, right_dir) = crate::test_utils::state_with_temp_dirs();
+        state.tabs.create_tab();
+        state.tabs.tabs[1].left_pane.current_location =
+            Location::Local(left_dir.path().to_path_buf());
+        state.tabs.tabs[1].right_pane.current_location =
+            Location::Local(right_dir.path().to_path_buf());
+
+        let transitions = action_to_transitions(&state, &Action::ShowTrashBrowser);
+        match transitions.into_iter().next() {
+            Some(Transition::CreateAndStartFileJob { spec, .. }) => match spec.kind {
+                crate::job::JobKind::ListTrash { fallback_roots } => {
+                    assert!(
+                        !fallback_roots.is_empty(),
+                        "should collect at least one volume root"
+                    );
+                    let unique: std::collections::BTreeSet<_> = fallback_roots.iter().collect();
+                    assert_eq!(
+                        unique.len(),
+                        fallback_roots.len(),
+                        "fallback_roots must already be deduplicated, got {fallback_roots:?}"
+                    );
+                }
+                other => panic!("expected ListTrash, got {other:?}"),
+            },
+            other => panic!("expected CreateAndStartFileJob(ListTrash), got {other:?}"),
+        }
+    }
+
     #[test]
     fn test_rename_action_shows_input_dialog() {
         let state = create_test_state();

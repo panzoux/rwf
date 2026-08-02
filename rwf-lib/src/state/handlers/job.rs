@@ -212,6 +212,7 @@ impl AppState {
                             crate::job::JobKind::RestoreFromTrash { .. } => "Restore from trash",
                             crate::job::JobKind::EmptyTrash { .. } => "Empty trash",
                             crate::job::JobKind::ScanTrash { .. } => "Scan trash",
+                            crate::job::JobKind::ListTrash { .. } => "List trash",
                             crate::job::JobKind::Mkdir { .. } => "Create directory",
                             crate::job::JobKind::CreateFile { .. } => "Create file",
                             crate::job::JobKind::ChangeAttributes { .. } => "Change attributes",
@@ -1338,6 +1339,22 @@ impl AppState {
                                         },
                                     );
                                     self.dialogs.push(dialog);
+                                }
+                                result_obj.ui_changed = true;
+                            }
+                        }
+                        crate::job::JobKind::ListTrash { .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::TrashListed(records),
+                            ) = result
+                            {
+                                if records.is_empty() {
+                                    result_obj
+                                        .task_panel_logs
+                                        .push("[Info] Trash is already empty".to_string());
+                                } else {
+                                    self.dialogs
+                                        .push(crate::model::Dialog::trash_browser(records.clone()));
                                 }
                                 result_obj.ui_changed = true;
                             }

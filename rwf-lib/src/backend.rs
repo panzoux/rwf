@@ -145,6 +145,14 @@ pub trait FilesystemBackend: Send + Sync {
         cancel_token: &CancellationToken,
     ) -> Result<(usize, u64)>;
 
+    /// Non-destructively list every trashed item (OS-managed + `.rwf-trash`
+    /// fallback dirs under `fallback_roots`), newest-deleted-first, for the
+    /// trash-browser UI (Phase 7.7 Task 16). See `backend::trash::list_trash_sync`.
+    async fn list_trash(
+        &self,
+        fallback_roots: &[std::path::PathBuf],
+    ) -> Result<Vec<crate::model::TrashRecord>>;
+
     /// Calculate directory size recursively
     async fn calculate_directory_size(
         &self,
