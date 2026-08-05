@@ -104,7 +104,7 @@
   "Trash": {
     "Enabled": true,
     "ConfirmBeforeMove": true,
-    "AutoEmptyDays": 30,
+    "AutoEmptyDays": 0,
     "ForceFallback": false
   },
   "PollingIntervalMs": 1000,

@@ -237,13 +237,16 @@ pub struct TrashConfig {
     /// accidental loss.
     #[serde(default = "default_trash_confirm_before_move")]
     pub confirm_before_move: bool,
-    /// Items older than this many days are eligible for a future automatic
-    /// purge sweep, driven by this same phase's `EmptyTrash` job once a
-    /// periodic trigger exists (piggybacking on Phase 7.5's background
-    /// polling infrastructure rather than building a redundant timer —
-    /// see plan/7.7.smart_trash.md §3). Not wired up yet in Phase 7.7; the
-    /// manual `EmptyTrash` action ignores this and always purges
-    /// everything. 0 disables age-based purging.
+    /// Items older than this many days would be eligible for an automatic
+    /// purge sweep — but this is explicitly **deferred out of Phase 7.7**
+    /// (see plan/7.7.smart_trash.md Task 17 and plan/ROADMAP.md): the
+    /// intended trigger piggybacks on Phase 7.5's background polling layer,
+    /// which doesn't exist yet, and whether this feature is worth building
+    /// at all (vs. an external cron/Task Scheduler entry calling out to
+    /// this app) needs its own design pass first. Parsed and stored only;
+    /// nothing consumes it. Defaults to `0` (off) — not merely "0 means no
+    /// age cutoff" but "this whole feature is inert until deliberately
+    /// designed and enabled."
     #[serde(default = "default_trash_auto_empty_days")]
     pub auto_empty_days: u32,
     /// When true, skip the OS trash entirely and always use the
@@ -261,7 +264,7 @@ fn default_trash_confirm_before_move() -> bool {
     true
 }
 fn default_trash_auto_empty_days() -> u32 {
-    30
+    0
 }
 fn default_trash_force_fallback() -> bool {
     false
@@ -1709,7 +1712,12 @@ mod tests {
         let config = TrashConfig::default();
         assert!(config.enabled);
         assert!(config.confirm_before_move);
-        assert_eq!(config.auto_empty_days, 30);
+        // Auto-empty-after-N-days defaults OFF (0). Deferred out of Phase 7.7 —
+        // the sweep trigger this needs (periodic while-running check) depends on
+        // Phase 7.5's background polling layer, which doesn't exist yet; a
+        // user who wants this today can opt in via config once it ships.
+        // See plan/7.7.smart_trash.md Task 17 and plan/ROADMAP.md.
+        assert_eq!(config.auto_empty_days, 0);
         assert!(!config.force_fallback);
     }
 
