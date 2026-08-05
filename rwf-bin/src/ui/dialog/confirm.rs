@@ -124,18 +124,14 @@ pub fn trash_job_name(targets: &[rwf_lib::Location]) -> String {
     }
 }
 
-/// Build a human-readable job name for a restore-from-trash operation.
+/// Build a human-readable job name for a restore-from-trash operation. Shows the full
+/// destination path (not just the filename) for a single record — this label is reused
+/// verbatim for the "[OK]"/"[NG]" completion log, which is the only place a user can
+/// confirm exactly where a restored file landed.
 pub fn restore_job_name(records: &[rwf_lib::model::TrashRecord]) -> String {
-    let file_name = |r: &rwf_lib::model::TrashRecord| -> String {
-        r.original
-            .path()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| r.original.display_path())
-    };
     match records.len() {
         0 => "Restore".to_string(),
-        1 => format!("Restore '{}'", file_name(&records[0])),
+        1 => format!("Restore to '{}'", records[0].original.display_path()),
         n => format!("Restore {n} files"),
     }
 }

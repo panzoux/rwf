@@ -65,13 +65,29 @@ pub(super) fn render_trash_browser_dialog(
     let item_width = area.width.saturating_sub(4) as usize;
     let clamped_sel = selected_index.min(records.len().saturating_sub(1));
 
+    // Row text truncates the path (deleted-time + size prefix leaves limited room), so the
+    // selected item's full restore destination is spelled out here instead — this is where it
+    // will actually land, and it's the one thing a truncated row can hide.
+    let dest_y = area.y + area.height.saturating_sub(2);
+    if let Some(selected) = records.get(clamped_sel) {
+        let dest = smart_truncate(
+            &record_original_path(selected),
+            item_width.saturating_sub("Restore to: ".len()),
+            "…",
+        );
+        frame.render_widget(
+            Paragraph::new(format!("Restore to: {dest}")).style(hint_style),
+            Rect::new(area.x + 2, dest_y, item_width as u16, 1),
+        );
+    }
+
     let hint_y = area.y + area.height.saturating_sub(1);
     frame.render_widget(
         Paragraph::new("Enter: restore  Esc: close  ↑↓: select").style(hint_style),
         Rect::new(area.x + 2, hint_y, item_width as u16, 1),
     );
 
-    let list_height = area.height.saturating_sub(1) as usize;
+    let list_height = area.height.saturating_sub(2) as usize;
     let scroll_start = if clamped_sel >= list_height {
         clamped_sel + 1 - list_height
     } else {

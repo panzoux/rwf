@@ -324,8 +324,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             (drives.len() as u16 + 2).max(6)
         }
         DialogContent::TrashBrowser(TrashBrowserDialog { records, .. }) => {
-            // list + hint(1), no search line
-            (records.len() as u16 + 1).max(5)
+            // list + restore-destination(1) + hint(1)
+            (records.len() as u16 + 2).max(6)
         }
         DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,

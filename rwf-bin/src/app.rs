@@ -2764,6 +2764,9 @@ mod empty_trash_job_panel_tests {
 /// *selected* record specifically — not the first one, not all of them — and, like
 /// every other job submitted via `process_dialog_confirmation`'s return value, register
 /// a labeled background job so the user sees restore progress/success in the task panel.
+/// The label shows the full destination path (not just the filename) — after a restore
+/// completes, the task-panel "[OK]" line reuses this same name, and the filename alone
+/// doesn't tell the user which of possibly many `foo.txt`s across the tree it went to.
 #[cfg(test)]
 mod trash_browser_restore_tests {
     use super::*;
@@ -2807,6 +2810,6 @@ mod trash_browser_restore_tests {
             .get_all_jobs()
             .next()
             .expect("confirming restore should register a background job");
-        assert_eq!(job.name, "Restore 'second.txt'");
+        assert_eq!(job.name, "Restore to 'C:\\second.txt'");
     }
 }
