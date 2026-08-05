@@ -47,7 +47,7 @@ impl AppState {
                 );
                 let tab_id = self.tabs.active_index;
 
-                let bg_job_id = self.background_jobs.start_job(
+                self.background_jobs.start_job(
                     name.clone(),
                     description.clone(),
                     tab_id,
@@ -57,15 +57,10 @@ impl AppState {
 
                 self.jobs.start_job(spec.clone());
 
-                let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-                let log_msg = format!(
-                    "{} [Job {}] [Tab {}] {}: Started",
-                    timestamp,
-                    bg_job_id.short_id,
-                    tab_id + 1,
-                    name
-                );
-
+                // "Started" is logged solely by Transition::JobStarted, fired
+                // when the worker pool actually picks the job up — the one
+                // event path common to every dispatch route (including the
+                // queued-job path). Don't duplicate it here.
                 Some(StateUpdateResult {
                     jobs_to_start: vec![spec.clone()],
                     jobs_to_cancel: Vec::new(),
@@ -73,7 +68,7 @@ impl AppState {
                     failed_jobs: Vec::new(),
                     cancelled_jobs: Vec::new(),
                     started_jobs: Vec::new(),
-                    task_panel_logs: vec![log_msg],
+                    task_panel_logs: Vec::new(),
                     panes_to_refresh: Vec::new(),
                     ui_changed: true,
                     reload_keybindings: false,
@@ -112,5 +107,57 @@ impl AppState {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::job::{JobKind, JobSpec};
+    use crate::state::{update_state, AppConfig, AppState, Transition};
+
+    #[test]
+    fn create_and_start_file_job_does_not_duplicate_started_log() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+
+        let spec = JobSpec::new(JobKind::CountDown {
+            duration_secs: 1,
+            start_value: 1,
+        });
+        let job_id = spec.id;
+
+        let dispatch_result = update_state(
+            &mut state,
+            Transition::CreateAndStartFileJob {
+                spec,
+                name: "Test Job".to_string(),
+                description: "desc".to_string(),
+            },
+        );
+
+        // Dispatching the job must not itself log "Started" — that is the sole
+        // responsibility of Transition::JobStarted, fired once the worker pool
+        // actually picks the job up (the only event path common to every
+        // dispatch route, including the queued-job path).
+        assert!(
+            dispatch_result
+                .task_panel_logs
+                .iter()
+                .all(|l| !l.contains("Started")),
+            "dispatch must not log Started, got: {:?}",
+            dispatch_result.task_panel_logs
+        );
+
+        let started_result = update_state(&mut state, Transition::JobStarted { job_id });
+        let started_count = started_result
+            .task_panel_logs
+            .iter()
+            .filter(|l| l.contains("Started"))
+            .count();
+        assert_eq!(
+            started_count, 1,
+            "expected exactly one Started log across both transitions, got: dispatch={:?} started={:?}",
+            dispatch_result.task_panel_logs, started_result.task_panel_logs
+        );
     }
 }
