@@ -292,13 +292,7 @@ pub fn list_trash_sync(fallback_roots: &[std::path::PathBuf]) -> Result<Vec<Tras
         }
     }
 
-    records.sort_by_key(|r| {
-        std::cmp::Reverse(match &r.trash_location {
-            TrashLocation::OsManaged { time_deleted, .. } => *time_deleted,
-            TrashLocation::Fallback { trashed_at, .. } => *trashed_at,
-            TrashLocation::Untracked => 0,
-        })
-    });
+    records.sort_by_key(|r| std::cmp::Reverse(r.trash_location.deleted_at().unwrap_or(0)));
 
     Ok(records)
 }

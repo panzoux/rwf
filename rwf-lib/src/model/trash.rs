@@ -42,6 +42,20 @@ pub enum TrashLocation {
     Untracked,
 }
 
+impl TrashLocation {
+    /// Unix timestamp the item was deleted, if known (`Untracked` has none —
+    /// it's not something a fresh `list_trash_sync` scan would ever produce
+    /// anyway). Shared by `list_trash_sync`'s newest-first sort and the trash
+    /// browser UI's display (Task 16).
+    pub fn deleted_at(&self) -> Option<i64> {
+        match self {
+            TrashLocation::OsManaged { time_deleted, .. } => Some(*time_deleted),
+            TrashLocation::Fallback { trashed_at, .. } => Some(*trashed_at),
+            TrashLocation::Untracked => None,
+        }
+    }
+}
+
 /// Everything needed to identify a trashed item: for restoring it, and for
 /// Phase 7.6's Operation Report / Undo journal (which wants source,
 /// destination-equivalent, size, and mtime for its pre-flight validation —

@@ -910,7 +910,7 @@ impl App {
                                 }
                             }
                             if let Some(job_spec) = confirmed_job {
-                                // For Delete/MoveToTrash/EmptyTrash jobs confirmed via dialog, register background job for task panel logs
+                                // For Delete/MoveToTrash/EmptyTrash/RestoreFromTrash jobs confirmed via dialog, register background job for task panel logs
                                 let delete_or_trash_job_name = match &job_spec.kind {
                                     JobKind::Delete { targets } => {
                                         Some(crate::ui::dialog::delete_job_name(targets))
@@ -919,6 +919,9 @@ impl App {
                                         Some(crate::ui::dialog::trash_job_name(targets))
                                     }
                                     JobKind::EmptyTrash { .. } => Some("Empty trash".to_string()),
+                                    JobKind::RestoreFromTrash { records } => {
+                                        Some(crate::ui::dialog::restore_job_name(records))
+                                    }
                                     _ => None,
                                 };
                                 if let Some(job_name) = delete_or_trash_job_name {
@@ -2753,5 +2756,57 @@ mod empty_trash_job_panel_tests {
             .next()
             .expect("confirming EmptyTrash should register a background job");
         assert_eq!(job.name, "Empty trash");
+    }
+}
+
+/// Phase 7.7 Task 16: confirming the trash browser dialog (built by the ListTrash
+/// completion handler) must submit a real `JobKind::RestoreFromTrash` job for the
+/// *selected* record specifically — not the first one, not all of them — and, like
+/// every other job submitted via `process_dialog_confirmation`'s return value, register
+/// a labeled background job so the user sees restore progress/success in the task panel.
+#[cfg(test)]
+mod trash_browser_restore_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::{Dialog, Location, TrashLocation, TrashRecord};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn record(name: &str) -> TrashRecord {
+        TrashRecord {
+            original: Location::Local(PathBuf::from(format!("C:\\{name}"))),
+            trash_location: TrashLocation::Fallback {
+                trash_path: PathBuf::from(format!("C:\\.rwf-trash\\{name}")),
+                trashed_at: 0,
+            },
+            size: 1,
+            modified: SystemTime::UNIX_EPOCH,
+        }
+    }
+
+    #[tokio::test]
+    async fn confirming_selected_item_restores_that_item_not_the_first() {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let mut dialog = Dialog::trash_browser(vec![record("first.txt"), record("second.txt")]);
+        if let rwf_lib::model::DialogContent::TrashBrowser(d) = &mut dialog.content {
+            d.selected_index = 1;
+        }
+        state.dialogs.push(dialog);
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(
+            app.state.dialogs.is_empty(),
+            "dialog should be popped after confirm"
+        );
+        let job = app
+            .state
+            .background_jobs
+            .get_all_jobs()
+            .next()
+            .expect("confirming restore should register a background job");
+        assert_eq!(job.name, "Restore 'second.txt'");
     }
 }

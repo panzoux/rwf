@@ -8,7 +8,8 @@ use rwf_lib::model::dialog::{
     CustomFunctionMenuDialog, CustomFunctionSelectorContent, DeleteConfirmDialog, DialogContent,
     DriveSelectionDialog, ExtractionConfirmDialog, FileMaskDialog, HistoryDialogContent,
     InputDialog, OpenWithPickerDialog, PatternRenameContent, RegisteredFolderSelectorContent,
-    SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
+    SimpleRenameDialog, SortDialog, TrashBrowserDialog, TypeMismatchWarningDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -120,6 +121,22 @@ pub fn trash_job_name(targets: &[rwf_lib::Location]) -> String {
             file_name(&targets[1])
         ),
         n => format!("Move {n} files to Trash"),
+    }
+}
+
+/// Build a human-readable job name for a restore-from-trash operation.
+pub fn restore_job_name(records: &[rwf_lib::model::TrashRecord]) -> String {
+    let file_name = |r: &rwf_lib::model::TrashRecord| -> String {
+        r.original
+            .path()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| r.original.display_path())
+    };
+    match records.len() {
+        0 => "Restore".to_string(),
+        1 => format!("Restore '{}'", file_name(&records[0])),
+        n => format!("Restore {n} files"),
     }
 }
 
@@ -892,6 +909,17 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     }
                 }
                 return None;
+            }
+            DialogContent::TrashBrowser(TrashBrowserDialog {
+                records,
+                selected_index,
+            }) => {
+                let record = records.get(*selected_index)?.clone();
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::RestoreFromTrash {
+                        records: vec![record],
+                    },
+                ));
             }
             DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
                 items,

@@ -173,6 +173,21 @@ fn test_empty_trash_is_bound_and_discoverable_in_help() {
     );
 }
 
+/// Phase 7.7 Task 16: same discoverability requirement as Task 15's EmptyTrash test,
+/// for the new ShowTrashBrowser action.
+#[test]
+fn test_show_trash_browser_is_bound_and_discoverable_in_help() {
+    let entries = make_entries(false);
+    let entry = entries
+        .iter()
+        .find(|e| e.action_name == "ShowTrashBrowser")
+        .expect("ShowTrashBrowser should appear in help entries with show_unbound=false, meaning it has a default keybinding and a description");
+    assert!(
+        !entry.keys.is_empty(),
+        "ShowTrashBrowser entry should carry its bound key(s)"
+    );
+}
+
 #[test]
 fn test_show_unbound_true_includes_unbound() {
     let entries = make_entries(true);

@@ -30,6 +30,7 @@
           "Delete":                 { "description": "選択ファイルを削除" },
           "DeleteForce":            { "description": "確認なしで強制削除" },
           "EmptyTrash":             { "description": "ゴミ箱を完全に空にする" },
+          "ShowTrashBrowser":       { "description": "ゴミ箱を閲覧して復元" },
           "Rename":                 { "description": "カーソルファイルを名前変更" },
           "PatternRename":          { "description": "パターン名前変更（正規表現）" },
           "CreateDirectory":        { "description": "ディレクトリ作成" },

@@ -34,6 +34,7 @@ mod snapshot_tests;
 mod sort;
 #[cfg(test)]
 mod test_support;
+mod trash_browser;
 mod type_mismatch_warning;
 mod wildcard_mark;
 
@@ -55,13 +56,15 @@ use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
 use simple_rename::render_simple_rename_dialog;
 use sort::render_sort_dialog;
+use trash_browser::render_trash_browser_dialog;
 use type_mismatch_warning::render_type_mismatch_warning_dialog;
 use wildcard_mark::render_wildcard_mark_dialog;
 
 use common::{DIALOG_DIM, DIALOG_TEXT};
 
 pub use confirm::{
-    delete_job_name, process_dialog_confirmation, process_dialog_delete, trash_job_name,
+    delete_job_name, process_dialog_confirmation, process_dialog_delete, restore_job_name,
+    trash_job_name,
 };
 pub use frame::{centered_rect_abs, render_dialog_buttons, render_dialog_frame};
 pub use job_manager::{
@@ -82,7 +85,8 @@ use rwf_lib::model::dialog::{
     DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
     HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
     OpenWithPickerDialog, PatternRenameContent, RegisteredFolderSelectorContent,
-    SimpleRenameDialog, SortDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
+    SimpleRenameDialog, SortDialog, TrashBrowserDialog, TypeMismatchWarningDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -318,6 +322,10 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::DriveSelection(DriveSelectionDialog { drives, .. }) => {
             // list + hint(1) + search(1)
             (drives.len() as u16 + 2).max(6)
+        }
+        DialogContent::TrashBrowser(TrashBrowserDialog { records, .. }) => {
+            // list + hint(1), no search line
+            (records.len() as u16 + 1).max(5)
         }
         DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,
@@ -761,6 +769,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         }) => {
             render_drive_selection_dialog(frame, content_area, drives, *selected_index, filter);
         }
+        DialogContent::TrashBrowser(TrashBrowserDialog {
+            records,
+            selected_index,
+        }) => {
+            render_trash_browser_dialog(frame, content_area, records, *selected_index);
+        }
         DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,
             selected_index,
@@ -1183,6 +1197,11 @@ pub fn handle_dialog_input(
     // DriveSelection dialog — incremental search + arrow navigation
     if let DialogContent::DriveSelection(d) = &mut dialog.content {
         return drive_selection::handle_input(d, key);
+    }
+
+    // TrashBrowser — Up/Down/Home/End navigate, Enter confirms restore
+    if let DialogContent::TrashBrowser(d) = &mut dialog.content {
+        return trash_browser::handle_input(d, key);
     }
 
     // JumpToPath — text input + AND-filter suggestions + arrow navigation
