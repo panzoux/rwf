@@ -391,7 +391,7 @@ impl App {
                                     }
                                     _ => "File Op".to_string(),
                                 };
-                                let bg_id = self.state.background_jobs.start_job(
+                                self.state.background_jobs.start_job(
                                     job_name.clone(),
                                     job_name.clone(),
                                     self.state.tabs.active_index,
@@ -399,12 +399,9 @@ impl App {
                                     job_spec.clone(),
                                 );
                                 self.state.jobs.start_job(job_spec.clone());
-                                self.task_panel.add_pending_log(format!(
-                                    "{} [Job {}] {}: Started",
-                                    chrono::Local::now().format("[%H:%M:%S]"),
-                                    bg_id.short_id,
-                                    job_name
-                                ));
+                                // "Started" is logged solely by Transition::JobStarted
+                                // once the worker pool picks the job up — don't
+                                // duplicate it here.
                                 pool.submit_job(job_spec);
                             } else {
                                 let job_name = match &job_spec.kind {
@@ -927,22 +924,16 @@ impl App {
                                             .current_location
                                             .display_path()
                                     );
-                                    let bg_id = self.state.background_jobs.start_job(
+                                    self.state.background_jobs.start_job(
                                         job_name.clone(),
                                         job_name.clone(),
                                         tab_id,
                                         tab_name,
                                         job_spec.clone(),
                                     );
-                                    self.task_panel.add_pending_log(format!(
-                                        "{} [Job {}] [Tab {}] {}: Started",
-                                        chrono::Local::now().format("[%H:%M:%S]"),
-                                        bg_id.short_id,
-                                        tab_id + 1,
-                                        job_name
-                                    ));
-                                    let h = self.state.ui.layout.task_panel_height;
-                                    self.task_panel.scroll_to_end(h);
+                                    // "Started" is logged solely by Transition::JobStarted
+                                    // once the worker pool picks the job up — don't
+                                    // duplicate it here.
                                 }
                                 self.state.jobs.start_job(job_spec.clone());
                                 if let Some(ref pool) = self.worker_pool {
