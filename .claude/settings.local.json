@@ -34,7 +34,29 @@
       "Bash(xargs grep -l \"theme\\\\|Theme\\\\|color\\\\|Color\")",
       "WebSearch",
       "Bash(xargs grep -l \"#\\\\[allow\\(dead_code\\)\\\\]\")",
-      "Bash(grep -v \"^--$\")"
+      "Bash(grep -v \"^--$\")",
+      "Bash(git commit -m ' *)",
+      "Bash(cargo fmt *)",
+      "Bash(echo \"---fmt exit: $?---\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(echo \"---exit: $?---\")",
+      "Read(//c/Users/user/.cargo/registry/src/**)",
+      "Read(//c//**)",
+      "Bash(cargo doc *)",
+      "Bash(awk '/self.jobs.complete_job\\\\\\(\\\\*job_id, result.clone\\\\\\(\\\\\\)\\\\\\);/,0' rwf-lib/src/state/handlers/job.rs)",
+      "Bash(grep -n \"Completed\\\\|\\\\\\\\[OK\\\\\\\\]\\\\|BackgroundJobEvent::Completed\" rwf-bin/src/app.rs)",
+      "Bash(awk 'NR==252,NR==252{print NR\": \"$0} NR>252 && NR<252+700' rwf-lib/src/state/handlers/job.rs)",
+      "Bash(awk 'NR>252 && /^                        crate::job::JobKind::/ {print NR\": \"$0}' rwf-lib/src/state/handlers/job.rs)",
+      "Bash(git diff *)",
+      "Bash(git stash *)",
+      "Bash(grep -n \"^    EmptyTrash,\\\\|^    DeleteForce,\\\\|^    Delete,$\" rwf-lib/src/input/mod.rs)",
+      "Bash(grep -n \"JobKind::EmptyTrash { .. } => Some\" rwf-bin/src/app.rs)",
+      "Bash(awk 'NR>=23 && NR<=30' \"rwf-bin/src/ui/dialog/snapshot_tests/snapshots/rwf__ui__dialog__snapshot_tests__trash_browser_two_items_first_80x24.snap.new\")",
+      "Bash(sort -u -t. -k2 -n)",
+      "Bash(gh pr *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)"
     ]
   }
 }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Worker Pool is a core component of the two-pane file manager that enables asynchronous execution of file operations without blocking the UI thread. It follows the Reactive Worker Framework (rwf) pattern with strict FIFO job ordering.
+The Worker Pool is a core component of the two-pane file manager that enables asynchronous execution of file operations without blocking the UI thread. It follows the rwf pattern with strict FIFO job ordering.
 
 ## Architecture
 

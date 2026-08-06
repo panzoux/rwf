@@ -1,6 +1,6 @@
 # rwf_spec.md
 
-## rwf - Reactive Worker Framework
+## rwf
 
 Version: 1.0 (Consolidated Specification) Status: Implementation-ready
 

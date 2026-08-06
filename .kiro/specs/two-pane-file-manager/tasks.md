@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan breaks down the two-pane file manager into 8 phases following the design roadmap. The application is built in Rust using the Reactive Worker Framework (rwf) for asynchronous file operations and the AppState pattern for state management.
+This implementation plan breaks down the two-pane file manager into 8 phases following the design roadmap. The application is built in Rust using rwf for asynchronous file operations and the AppState pattern for state management.
 
 **Key Architecture Principles:**
 - All file I/O operations execute as Jobs in the rwf Worker Pool (never block UI thread)

@@ -1,4 +1,4 @@
-# RWF: Reactive Worker Filemanager - Developer Guide
+# RWF - Developer Guide
 
 ## Table of Contents
 
@@ -282,7 +282,7 @@ Restored on:
 
 ### rwf Worker Pool
 
-The application uses the Reactive Worker Framework (rwf) for asynchronous operations:
+The application uses rwf for asynchronous operations:
 
 ```rust
 use rwf::{WorkerPool, Job, JobSpec};

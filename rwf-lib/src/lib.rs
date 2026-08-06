@@ -1,7 +1,7 @@
 //! Two-Pane File Manager Library
 //!
 //! This library provides the core functionality for a two-pane file manager
-//! built using the Reactive Worker Framework (rwf) pattern.
+//! built using the rwf pattern.
 //!
 //! ## Architecture
 //!

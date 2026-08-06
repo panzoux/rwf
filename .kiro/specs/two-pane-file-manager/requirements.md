@@ -2,12 +2,12 @@
 
 ## Introduction
 
-This document specifies the requirements for cross-platform, two-pane file manager application built in Rust. The file manager provides a terminal-based user interface with dual panes for efficient file navigation and operations. The application leverages the Reactive Worker Framework (rwf) for asynchronous file operations and follows the AppState architectural pattern for state management.
+This document specifies the requirements for cross-platform, two-pane file manager application built in Rust. The file manager provides a terminal-based user interface with dual panes for efficient file navigation and operations. The application leverages rwf for asynchronous file operations and follows the AppState architectural pattern for state management.
 
 The file manager enables users to browse local filesystems, perform file operations (copy, move, delete, rename), search for files, mark multiple files for batch operations, navigate through directory hierarchies with keyboard-driven controls, manage multiple tabs, execute custom functions, browse archives, and access advanced features like pane synchronization, context menus, multi-language help, and shell integration.
 
 The architecture follows these core principles:
-- All file I/O operations execute as Jobs in the rwf Worker Pool (never on UI thread)
+- All file I/O operations execute as Jobs in rwf (never on UI thread)
 - Jobs follow strict FIFO ordering through the queue
 - State changes occur through explicit Transition enum values
 - AppState coordinates all components (FilesystemModel, JobManager, SearchModel, etc.)

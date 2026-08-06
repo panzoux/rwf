@@ -1,6 +1,6 @@
-# RWF: Reactive Worker Filemanager
+# rwf
 
-A high-performance, cross-platform terminal file manager built in Rust, following the Reactive Worker Framework (RWF) pattern.
+A high-performance, cross-platform terminal file manager built in Rust.
 
 ## Overview
 

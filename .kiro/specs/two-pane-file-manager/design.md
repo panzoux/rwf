@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document specifies the detailed design for a cross-platform, two-pane file manager built in Rust. The application provides a terminal-based user interface with dual panes for efficient file navigation and operations, leveraging the Reactive Worker Framework (rwf) for asynchronous file operations and following the AppState architectural pattern for predictable state management.
+This document specifies the detailed design for a cross-platform, two-pane file manager built in Rust. The application provides a terminal-based user interface with dual panes for efficient file navigation and operations, leveraging rwf for asynchronous file operations and following the AppState architectural pattern for predictable state management.
 
 ### Core Design Principles
 
-1. **Never Block the UI Thread**: All file I/O operations execute as Jobs in the rwf Worker Pool
+1. **Never Block the UI Thread**: All file I/O operations execute as Jobs in rwf
 2. **Explicit State Transitions**: All state changes occur through the Transition enum
 3. **Pure State Logic**: State transformations are pure functions returning StateUpdateResult
 4. **Event-Driven Architecture**: JobEvents flow from Worker Pool to UI thread via channels
