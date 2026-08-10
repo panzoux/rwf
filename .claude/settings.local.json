@@ -56,7 +56,11 @@
       "Bash(sort -u -t. -k2 -n)",
       "Bash(gh pr *)",
       "Bash(git fetch *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(git worktree *)",
+      "Bash(tasklist //FI \"IMAGENAME eq cargo.exe\" //FI \"IMAGENAME eq rust-analyzer.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq rwf.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")"
     ]
   }
 }
