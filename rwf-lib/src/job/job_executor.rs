@@ -919,14 +919,33 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         to: &Location,
         cancel_token: &CancellationToken,
     ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
 
-        match self.backend.rename_file(from, to, cancel_token).await {
-            Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(e.to_string()),
-        }
+        let record = match self.backend.rename_file(from, to, cancel_token).await {
+            Ok(()) => OperationRecord {
+                source: Some(from.clone()),
+                destination: Some(to.clone()),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Rename {
+                    from: to.clone(),
+                    to: from.clone(),
+                }),
+            },
+            Err(e) => OperationRecord {
+                source: Some(from.clone()),
+                destination: Some(to.clone()),
+                succeeded: false,
+                failure_reason: Some(e.to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        };
+
+        OpResult::Success(SuccessData::OperationRecords(vec![record]))
     }
 
     /// Execute a calculate size operation
@@ -2911,6 +2930,82 @@ mod tests {
         // The second (valid) source still got moved despite the first failing.
         assert!(!ok_src.exists());
         assert!(dest_dir.join("ok.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_rename_produces_operation_record() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let from = temp_dir.path().join("a.txt");
+        tokio::fs::write(&from, b"x").await.unwrap();
+        let to = temp_dir.path().join("b.txt");
+
+        let spec = JobSpec::new(JobKind::Rename {
+            from: Location::Local(from.clone()),
+            to: Location::Local(to.clone()),
+        });
+
+        executor.execute(spec).await;
+
+        let _started = event_rx.recv().await;
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                let from_location = Location::Local(from.clone());
+                let to_location = Location::Local(to.clone());
+                assert_eq!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Rename {
+                            from: to_location,
+                            to: from_location,
+                        }
+                    )
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(!from.exists());
+        assert!(to.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_rename_failure_is_not_undoable() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let from = temp_dir.path().join("missing.txt"); // never created
+        let to = temp_dir.path().join("b.txt");
+
+        let spec = JobSpec::new(JobKind::Rename {
+            from: Location::Local(from.clone()),
+            to: Location::Local(to.clone()),
+        });
+
+        executor.execute(spec).await;
+
+        let _started = event_rx.recv().await;
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(!records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::NotApplicable
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
     }
 
     #[tokio::test]

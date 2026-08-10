@@ -1492,19 +1492,37 @@ mod tests {
 
         executor.execute(spec).await;
 
-        // Verify we received a failed event
-        let mut received_failed = false;
+        // Verify we received a Completed event carrying a failed OperationRecord
+        // (execute_rename no longer fails the job — it reports per-record failure).
+        let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Failed(_, error) = event {
-                received_failed = true;
+            if let crate::worker_pool::JobEvent::Completed(
+                _,
+                crate::job::SuccessData::OperationRecords(records),
+            ) = event
+            {
+                assert_eq!(records.len(), 1);
+                assert!(!records[0].succeeded);
+                let error = records[0]
+                    .failure_reason
+                    .as_deref()
+                    .expect("failed record should carry a failure_reason");
                 assert!(
                     error.contains("already exists"),
                     "Error should mention file already exists"
                 );
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::NotApplicable
+                ));
+                received_failed_record = true;
             }
         }
 
-        assert!(received_failed, "Should receive Failed event");
+        assert!(
+            received_failed_record,
+            "Should receive Completed event with a failed OperationRecord"
+        );
 
         // Verify original files are unchanged
         assert!(old_path.exists(), "Old file should still exist");
@@ -1555,19 +1573,37 @@ mod tests {
 
         executor.execute(spec).await;
 
-        // Verify we received a failed event
-        let mut received_failed = false;
+        // Verify we received a Completed event carrying a failed OperationRecord
+        // (execute_rename no longer fails the job — it reports per-record failure).
+        let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Failed(_, error) = event {
-                received_failed = true;
+            if let crate::worker_pool::JobEvent::Completed(
+                _,
+                crate::job::SuccessData::OperationRecords(records),
+            ) = event
+            {
+                assert_eq!(records.len(), 1);
+                assert!(!records[0].succeeded);
+                let error = records[0]
+                    .failure_reason
+                    .as_deref()
+                    .expect("failed record should carry a failure_reason");
                 assert!(
                     error.contains("Invalid characters"),
                     "Error should mention invalid characters"
                 );
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::NotApplicable
+                ));
+                received_failed_record = true;
             }
         }
 
-        assert!(received_failed, "Should receive Failed event");
+        assert!(
+            received_failed_record,
+            "Should receive Completed event with a failed OperationRecord"
+        );
 
         // Verify original file is unchanged
         assert!(old_path.exists(), "Old file should still exist");
