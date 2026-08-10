@@ -310,6 +310,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     ) -> OpResult {
         let total_files = sources.len();
         let decisions = spec.conflict_decisions.as_ref();
+        let mut records = Vec::with_capacity(total_files);
 
         for (i, source) in sources.iter().enumerate() {
             // Check cancellation before each file
@@ -349,25 +350,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                         // Copy with new name
                         if let Some(dest_path) = dest.path() {
                             let new_dest = Location::Local(dest_path.join(new_name));
-                            if let Err(e) = self
-                                .backend
-                                .copy_file(source, &new_dest, &spec.cancel_token)
-                                .await
-                            {
-                                return OpResult::Failed(format!(
-                                    "Failed to copy {} as {}: {}",
-                                    self.location_display(source),
-                                    new_name,
-                                    e
-                                ));
-                            }
-                            debug!(
-                                "Renamed and copied file: {} -> {}",
-                                self.location_display(source),
-                                new_name
-                            );
+                            let record = self.copy_one(source, &new_dest, &spec.cancel_token).await;
+                            records.push(record);
 
-                            // Progress update
                             let progress = if total_files > 0 {
                                 (i + 1) as f64 / total_files as f64
                             } else {
@@ -414,18 +399,10 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 dest.clone()
             };
 
-            // Copy the file
-            if let Err(e) = self
-                .backend
-                .copy_file(source, &dest_location, &spec.cancel_token)
-                .await
-            {
-                return OpResult::Failed(format!(
-                    "Failed to copy {}: {}",
-                    self.location_display(source),
-                    e
-                ));
-            }
+            let record = self
+                .copy_one(source, &dest_location, &spec.cancel_token)
+                .await;
+            records.push(record);
         }
 
         // Send final progress
@@ -437,7 +414,43 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             );
         }
 
-        OpResult::Success(SuccessData::None)
+        OpResult::Success(SuccessData::OperationRecords(records))
+    }
+
+    /// Copy one file and build its `OperationRecord`, including the
+    /// `ReversalAction` a future Undo would run (`Delete` of the copy, with
+    /// `recreate` set to this same `Copy` so a subsequent Redo can recreate
+    /// it — see `ReversalAction::Delete` docs).
+    async fn copy_one(
+        &self,
+        source: &Location,
+        dest: &Location,
+        cancel_token: &CancellationToken,
+    ) -> crate::model::OperationRecord {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
+        match self.backend.copy_file(source, dest, cancel_token).await {
+            Ok(()) => OperationRecord {
+                source: Some(source.clone()),
+                destination: Some(dest.clone()),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: dest.clone(),
+                    recreate: Some(Box::new(ReversalAction::Copy {
+                        from: source.clone(),
+                        to: dest.clone(),
+                    })),
+                }),
+            },
+            Err(e) => OperationRecord {
+                source: Some(source.clone()),
+                destination: Some(dest.clone()),
+                succeeded: false,
+                failure_reason: Some(e.to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        }
     }
 
     /// Execute a move operation
@@ -2688,6 +2701,98 @@ mod tests {
         // Destination file should exist
         let dest_file = dest_dir.join("source.txt");
         assert!(dest_file.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_copy_produces_operation_records() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let src = temp_dir.path().join("a.txt");
+        tokio::fs::write(&src, b"x").await.unwrap();
+        let dest_dir = temp_dir.path().join("dest");
+        tokio::fs::create_dir(&dest_dir).await.unwrap();
+
+        let spec = JobSpec::new(JobKind::Copy {
+            sources: vec![Location::Local(src.clone())],
+            dest: Location::Local(dest_dir.clone()),
+        });
+
+        executor.execute(spec).await;
+
+        // execute_copy sends Started, per-file Progress, then Completed —
+        // skip everything but the terminal event.
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Delete { .. }
+                    )
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(dest_dir.join("a.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_copy_records_per_file_failure_without_aborting_batch() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let ok_src = temp_dir.path().join("ok.txt");
+        tokio::fs::write(&ok_src, b"x").await.unwrap();
+        let missing_src = temp_dir.path().join("missing.txt"); // never created
+        let dest_dir = temp_dir.path().join("dest");
+        tokio::fs::create_dir(&dest_dir).await.unwrap();
+
+        let spec = JobSpec::new(JobKind::Copy {
+            sources: vec![
+                Location::Local(missing_src),
+                Location::Local(ok_src.clone()),
+            ],
+            dest: Location::Local(dest_dir.clone()),
+        });
+
+        executor.execute(spec).await;
+
+        // execute_copy sends Started, per-file Progress, then Completed —
+        // skip everything but the terminal event.
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 2);
+                assert!(!records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::NotApplicable
+                ));
+                assert!(records[1].succeeded);
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        // The second (valid) source still got copied despite the first failing.
+        assert!(dest_dir.join("ok.txt").exists());
     }
 
     #[tokio::test]

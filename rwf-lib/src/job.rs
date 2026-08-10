@@ -370,6 +370,9 @@ pub enum SuccessData {
         total_size: u64,
     },
     TrashListed(Vec<crate::model::TrashRecord>),
+    /// Per-file breakdown for a completed Copy/Move/Rename/Delete/Mkdir/
+    /// CreateFile/CreateLink/CreateArchive/ExecuteReversal job (Phase 7.6).
+    OperationRecords(Vec<crate::model::OperationRecord>),
     None,
 }
 
