@@ -1,6 +1,5 @@
 ---
 source: rwf-bin/src/ui/dialog/snapshot_tests/mod.rs
-assertion_line: 94
 expression: "render_dialog_to_string(dialog, state, width, height)"
 ---
 Buffer {
@@ -13,8 +12,8 @@ Buffer {
         "                                                                                                                        ",
         "                                                                                                                        ",
         "                        ┌Trash─────────────────────────────────────────────────────────────────┐                        ",
-        "                        │   2023-11-15 07:13    43.95 KB  C:\Users\test\report.docx            │                        ",
-        "                        │   2023-11-03 17:26     2.38 MB  C:\Users\test\old_photo.png          │                        ",
+        "                        │   [TIMESTAMP]    43.95 KB  C:\Users\test\report.docx            │                        ",
+        "                        │   [TIMESTAMP]     2.38 MB  C:\Users\test\old_photo.png          │                        ",
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
