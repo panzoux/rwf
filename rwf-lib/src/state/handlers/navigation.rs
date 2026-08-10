@@ -112,11 +112,13 @@ impl AppState {
                     }
                     Some(StateUpdateResult::with_ui_change())
                 } else {
-                    // Clear current entries and set loading state
+                    // Clear current entries and set loading state. cursor/scroll_offset
+                    // were already set above (restored from navigation_cache, or 0 for a
+                    // fresh location) — keep that value; CompleteJob's ReadDirectory
+                    // handler clamps it via update_scroll() once entries arrive, instead
+                    // of resetting it here and losing the restored position.
                     pane_model.entries.clear();
                     pane_model.is_loading = true;
-                    pane_model.cursor = 0;
-                    pane_model.scroll_offset = 0;
 
                     let job_spec = JobSpec::new(crate::job::JobKind::ReadDirectory {
                         location: location.clone(),
@@ -130,15 +132,44 @@ impl AppState {
             Transition::NavigateUp { pane } => {
                 let tab = self.current_tab();
                 let current_location = match pane {
-                    crate::model::ActivePane::Left => &tab.left_pane.current_location,
-                    crate::model::ActivePane::Right => &tab.right_pane.current_location,
+                    crate::model::ActivePane::Left => tab.left_pane.current_location.clone(),
+                    crate::model::ActivePane::Right => tab.right_pane.current_location.clone(),
                 };
 
                 if let Some(parent) = current_location.parent() {
-                    self.handle_navigation_transition(&Transition::ChangeLocation {
+                    // No navigation_cache entry for `parent` means we've never left it
+                    // this session (e.g. it's the app's startup directory) — restored_position
+                    // will be None, so ChangeLocation's cursor defaults to 0. Fall back to
+                    // selecting the child we're coming from by name, same lookup CompleteJob
+                    // already does for `pending_cursor_name` (JumpToFile).
+                    let had_cached_position = self.navigation_cache.restore(&parent).is_some();
+                    let child_name = current_location.file_name();
+
+                    let result = self.handle_navigation_transition(&Transition::ChangeLocation {
                         pane: *pane,
                         location: parent,
-                    })
+                    });
+
+                    if !had_cached_position {
+                        if let Some(name) = child_name {
+                            let visible_height = self.ui.layout.pane_height;
+                            let scroll_margin = self.config.ui.scroll_offset;
+                            let tab_mut = self.current_tab_mut();
+                            let pane_model = match pane {
+                                crate::model::ActivePane::Left => &mut tab_mut.left_pane,
+                                crate::model::ActivePane::Right => &mut tab_mut.right_pane,
+                            };
+                            if let Some(pos) =
+                                pane_model.entries.iter().position(|e| e.name == name)
+                            {
+                                pane_model.cursor = pos;
+                                pane_model.update_scroll(visible_height, scroll_margin);
+                            } else {
+                                pane_model.pending_cursor_name = Some(name);
+                            }
+                        }
+                    }
+                    result
                 } else {
                     Some(StateUpdateResult::none())
                 }

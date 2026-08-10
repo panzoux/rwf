@@ -1806,3 +1806,106 @@ mod symlink_tests {
         );
     }
 }
+
+// Windows equivalent of the `unix` symlink_tests above (Phase M gap: navigability was
+// only regression-tested on Unix). Directory symlinks require Developer Mode or admin
+// privileges to create, so those tests skip (not fail) when unavailable; junctions never
+// require elevation, so that test always runs.
+#[cfg(all(test, windows))]
+mod windows_symlink_tests {
+    use super::*;
+    use crate::backend::FilesystemBackend;
+    use crate::model::Location;
+    use tokio_util::sync::CancellationToken;
+
+    #[tokio::test]
+    async fn test_symlink_to_dir_is_navigable_windows() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let real = dir.path().join("real_dir");
+        std::fs::create_dir(&real).unwrap();
+        if std::os::windows::fs::symlink_dir(&real, dir.path().join("link_dir")).is_err() {
+            eprintln!(
+                "skipping: creating a directory symlink requires Developer Mode or admin privileges"
+            );
+            return;
+        }
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(
+                &Location::Local(dir.path().to_path_buf()),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "link_dir").unwrap();
+        assert!(e.is_symlink);
+        assert!(
+            e.is_dir,
+            "symlink to directory must have is_dir=true for navigation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_junction_to_dir_is_navigable() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let real = dir.path().join("real_dir");
+        std::fs::create_dir(&real).unwrap();
+        let link = dir.path().join("junction_link");
+
+        // /D disables AutoRun so Clink (or similar shell extensions) can't inject and
+        // pollute the exit code — same workaround as the Create Link job (line ~568).
+        let status = std::process::Command::new("cmd")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&real)
+            .status()
+            .expect("failed to invoke mklink");
+        assert!(
+            status.success(),
+            "mklink /J should not require elevated privileges"
+        );
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(
+                &Location::Local(dir.path().to_path_buf()),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "junction_link").unwrap();
+        assert!(
+            e.is_symlink,
+            "Windows reparse points (junctions) are reported via is_symlink"
+        );
+        assert!(
+            e.is_dir,
+            "junction to directory must have is_dir=true for navigation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_broken_symlink_not_navigable_windows() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let missing = dir.path().join("does_not_exist");
+        if std::os::windows::fs::symlink_dir(&missing, dir.path().join("broken")).is_err() {
+            eprintln!(
+                "skipping: creating a directory symlink requires Developer Mode or admin privileges"
+            );
+            return;
+        }
+
+        let entries = LocalFilesystemBackend::new()
+            .read_directory(
+                &Location::Local(dir.path().to_path_buf()),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let e = entries.iter().find(|e| e.name == "broken").unwrap();
+        assert!(e.is_symlink);
+        assert!(!e.is_dir, "broken symlink must not be navigable");
+    }
+}

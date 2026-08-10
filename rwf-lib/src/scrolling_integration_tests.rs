@@ -103,6 +103,116 @@ mod tests {
         );
     }
 
+    /// Regression test: NavigateUp must restore the cursor to the child directory
+    /// it came from even when the parent's DirectoryCache entry is missing (e.g.
+    /// its 30s TTL expired), not just when the parent's entries are still cached.
+    /// The navigation_cache position was previously computed correctly but then
+    /// clobbered back to 0 by the ReadDirectory-job branch of ChangeLocation.
+    #[test]
+    fn test_navigate_up_restores_cursor_after_cache_miss() {
+        let mut state = test_state();
+
+        let parent = Location::Local(PathBuf::from("/test/dir1"));
+        let child = parent.join("sub");
+
+        // Start in parent with the cursor on the "sub" entry (index 3).
+        state.current_tab_mut().left_pane.current_location = parent.clone();
+        state.current_tab_mut().left_pane.cursor = 3;
+        let parent_entries = (0..10)
+            .map(|i| create_test_entry(&format!("file{}.txt", i), 100, false, &parent))
+            .collect::<Vec<_>>();
+        state.current_tab_mut().left_pane.entries = parent_entries.clone();
+
+        // Enter the child directory — this saves (parent, cursor=3) into navigation_cache.
+        update_state(
+            &mut state,
+            Transition::ChangeLocation {
+                pane: ActivePane::Left,
+                location: child.clone(),
+            },
+        );
+
+        // Do NOT populate state.cache for `parent`, simulating its DirectoryCache
+        // entry having expired (or never been warmed) — the ReadDirectory job path.
+        let result = update_state(
+            &mut state,
+            Transition::NavigateUp {
+                pane: ActivePane::Left,
+            },
+        );
+
+        // The restored position must survive even while the job is still in flight.
+        assert_eq!(state.current_tab().left_pane.cursor, 3);
+        assert_eq!(result.jobs_to_start.len(), 1);
+
+        // Complete the ReadDirectory job for `parent` and verify the cursor is still
+        // on the "sub" entry rather than having been reset to the top.
+        let job_spec = result.jobs_to_start[0].clone();
+        state.jobs.enqueue(job_spec.clone());
+        state.jobs.start_job(job_spec.clone());
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: job_spec.id,
+                result: crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(
+                    parent_entries,
+                )),
+            },
+        );
+
+        assert_eq!(state.current_tab().left_pane.current_location, parent);
+        assert_eq!(state.current_tab().left_pane.cursor, 3);
+    }
+
+    /// Regression test: on a cold start (e.g. launched inside
+    /// `.../rwf/plan`), navigation_cache has no entry for the parent yet —
+    /// we've never "left" it this session. NavigateUp must still land the
+    /// cursor on the directory we started in ("plan") instead of the top,
+    /// by falling back to a name lookup once the parent's entries load.
+    #[test]
+    fn test_navigate_up_first_visit_selects_child_by_name() {
+        let mut state = test_state();
+
+        let parent = Location::Local(PathBuf::from("C:/Users/user/source/repos/panzoux/rwf"));
+        let start_dir = parent.join("plan");
+        state.current_tab_mut().left_pane.current_location = start_dir;
+        state.current_tab_mut().left_pane.cursor = 0;
+
+        // navigation_cache is empty — this is the very first navigation of the session.
+        let result = update_state(
+            &mut state,
+            Transition::NavigateUp {
+                pane: ActivePane::Left,
+            },
+        );
+
+        // Cache miss for `parent` (never read before) — a ReadDirectory job is required.
+        assert_eq!(result.jobs_to_start.len(), 1);
+        let job_spec = result.jobs_to_start[0].clone();
+
+        // Parent has several siblings; "plan" isn't first alphabetically among them.
+        let entries = vec!["docs", "plan", "rwf-bin", "rwf-lib", "target"]
+            .into_iter()
+            .map(|name| create_test_entry(name, 0, true, &parent))
+            .collect::<Vec<_>>();
+
+        state.jobs.enqueue(job_spec.clone());
+        state.jobs.start_job(job_spec.clone());
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: job_spec.id,
+                result: crate::job::OpResult::Success(crate::job::SuccessData::DirectoryRead(
+                    entries,
+                )),
+            },
+        );
+
+        let pane = &state.current_tab().left_pane;
+        assert_eq!(pane.current_location, parent);
+        assert_eq!(pane.entries[pane.cursor].name, "plan");
+    }
+
     /// Test that scroll_offset is 0 when PaneModel is initialized
     /// Requirement 2A.7: On startup, scroll_offset should be 0
     #[test]

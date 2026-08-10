@@ -54,6 +54,20 @@ impl Location {
         }
     }
 
+    /// Final path component (base name) of this location, if any. Used to
+    /// reselect a directory by name once its parent's entries load, when no
+    /// navigation_cache position exists yet for the parent (see NavigateUp's
+    /// first-visit fallback).
+    pub fn file_name(&self) -> Option<String> {
+        let path = match self {
+            Location::Local(path) => path,
+            Location::Ssh { path, .. } => path,
+            Location::Cloud { path, .. } => path,
+            Location::Archive { inner_path, .. } => inner_path,
+        };
+        path.file_name().map(|n| n.to_string_lossy().into_owned())
+    }
+
     /// Get parent location
     pub fn parent(&self) -> Option<Location> {
         match self {
