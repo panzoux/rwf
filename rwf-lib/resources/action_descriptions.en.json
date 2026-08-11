@@ -28,7 +28,7 @@
           "Copy":                   { "description": "Copy selected files" },
           "Move":                   { "description": "Move selected files" },
           "Delete":                 { "description": "Delete selected files" },
-          "DeleteForce":            { "description": "Delete without confirmation" },
+          "DeleteForce":            { "description": "Delete permanently, bypassing trash and confirmation" },
           "EmptyTrash":             { "description": "Permanently empty the trash" },
           "ShowTrashBrowser":       { "description": "Browse trash and restore an item" },
           "Rename":                 { "description": "Rename cursor file" },
