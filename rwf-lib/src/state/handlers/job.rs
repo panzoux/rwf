@@ -542,8 +542,22 @@ impl AppState {
                             self.unmark_all_panes();
                         }
                         crate::job::JobKind::Rename { from, to } => {
-                            // In-memory update: no ReadDirectory needed for a single rename
-                            if let crate::job::OpResult::Success(_) = result {
+                            // In-memory update: no ReadDirectory needed for a single rename.
+                            // Guard on the record's own `succeeded` flag, not the outer
+                            // OpResult variant — execute_rename (Phase 7.6) always returns
+                            // OpResult::Success now, even when the rename itself failed (the
+                            // failure is recorded per-record instead of failing the whole
+                            // job), so checking the raw OpResult variant here would patch
+                            // the pane even on a failed rename.
+                            let renamed_ok = if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::OperationRecords(records),
+                            ) = result
+                            {
+                                records.first().is_some_and(|r| r.succeeded)
+                            } else {
+                                false
+                            };
+                            if renamed_ok {
                                 let new_name = to
                                     .path()
                                     .and_then(|p| p.file_name())

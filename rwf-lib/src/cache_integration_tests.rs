@@ -415,11 +415,23 @@ mod tests {
         });
         let job_id = state.jobs.enqueue(job_spec.clone());
         state.jobs.start_job(job_spec);
+        // Mirrors what execute_rename (Phase 7.6) actually returns on success:
+        // a single OperationRecord with succeeded: true, not SuccessData::None.
+        let record = crate::model::OperationRecord {
+            source: Some(ftest2.clone()),
+            destination: Some(gftest2.clone()),
+            succeeded: true,
+            failure_reason: None,
+            undo: crate::model::UndoAvailability::Available(crate::model::ReversalAction::Rename {
+                from: gftest2.clone(),
+                to: ftest2.clone(),
+            }),
+        };
         update_state(
             &mut state,
             Transition::CompleteJob {
                 job_id,
-                result: OpResult::Success(SuccessData::None),
+                result: OpResult::Success(SuccessData::OperationRecords(vec![record])),
             },
         );
 

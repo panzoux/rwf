@@ -2152,6 +2152,73 @@ mod tests {
         assert_eq!(state.jobs.completed.len(), 1);
     }
 
+    /// Regression test for the Task 4 (`42e07ad`) data-corruption bug: since
+    /// `execute_rename` (Phase 7.6) always returns `OpResult::Success` — even
+    /// when the rename failed on disk, recording the failure in the
+    /// `OperationRecord` instead — the in-memory pane patch must key off the
+    /// record's own `succeeded` flag, not the outer `OpResult` variant.
+    /// A failed rename must leave the pane entry at its original name/location.
+    #[test]
+    fn test_complete_job_rename_failure_does_not_patch_pane() {
+        use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+        use crate::model::{Location, OperationRecord, UndoAvailability};
+        use std::path::PathBuf;
+
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+
+        let from = Location::Local(PathBuf::from("/test/old.txt"));
+        let to = Location::Local(PathBuf::from("/test/new.txt"));
+
+        let mut original_entry = crate::test_utils::entry("old.txt");
+        original_entry.location = from.clone();
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.raw_entries = vec![original_entry.clone()];
+            tab.left_pane.entries = vec![original_entry.clone()];
+        }
+
+        let spec = JobSpec::new(JobKind::Rename {
+            from: from.clone(),
+            to: to.clone(),
+        });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let failed_record = OperationRecord {
+            source: Some(from.clone()),
+            destination: Some(to.clone()),
+            succeeded: false,
+            failure_reason: Some("name conflict".to_string()),
+            undo: UndoAvailability::NotApplicable,
+        };
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(vec![failed_record])),
+            },
+        );
+
+        let tab = state.current_tab();
+        assert!(
+            tab.left_pane
+                .raw_entries
+                .iter()
+                .any(|e| e.location == from && e.name == "old.txt"),
+            "entry must remain at its original location/name after a failed rename"
+        );
+        assert!(
+            !tab.left_pane.raw_entries.iter().any(|e| e.location == to),
+            "entry must not be patched to the new location on a failed rename"
+        );
+        // Sanity: this is still a valid CompleteJob transition.
+        assert_eq!(state.jobs.active.len(), 0);
+        assert_eq!(state.jobs.completed.len(), 1);
+        let _ = result;
+    }
+
     #[test]
     fn test_cancel_job_transition() {
         use crate::job::{JobKind, JobSpec};
