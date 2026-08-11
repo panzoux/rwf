@@ -71,6 +71,34 @@ decides *how it looks*, it belongs in rwf-bin. Dialog *data* lives in
 `rwf-bin/src/ui/dialog/` (shared chrome: `common.rs` styles + `frame.rs`
 frame/buttons).
 
+## Diagnostics: the observer tier (7.15)
+
+`rwf-lib/src/diagnostics/` records a session — events, logs, screen/state snapshots — into one
+folder. Bundle format and analysis: [DIAGNOSTIC_BUNDLES.md](DIAGNOSTIC_BUNDLES.md).
+
+Two properties matter when touching anything it observes:
+
+**It is an observer, never part of the control path.** The collector is reached through a
+process-global handle and holds no reference to `AppState`, so it *cannot* influence a
+transition even by accident. That is structural, not conventional — do not "improve" it by
+passing state in.
+
+**It is invisible when off.** `observe()` takes a closure; with no session running the cost is
+one `OnceLock` read plus one relaxed atomic load, and the payload is never built. Anything
+that would make an observation point pay a cost while inactive breaks the property that lets
+this ship in release builds.
+
+Observation points, deliberately few:
+
+| Site | Captures |
+|---|---|
+| `state::update_state` | every `Transition` — and so every `JobEvent`, since `process_pending_events` maps job events into transitions first |
+| `job::JobManager::start_job` | every job submission; all `pool.submit_job` paths route through it |
+| `App::handle_key_event` | keypresses, including ones that map to nothing |
+| `App::render` | frames, and the screen buffer for snapshots (inside the `draw` closure — `Backend::buffer()` is `TestBackend`-only) |
+| `App::run` adaptive sleep | `Wake`, the computed poll timeout |
+| `DiagnosticLogLayer` | `tracing` events, via the subscriber — no call sites involved |
+
 ## AppState responsibility boundaries (M5)
 
 `AppState` itself (`rwf-lib/src/state/mod.rs`) is deliberately a single

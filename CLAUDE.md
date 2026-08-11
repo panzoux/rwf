@@ -8,6 +8,9 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 - Roadmap / phase status: `plan/ROADMAP.md` (Japanese) is the source of truth.
 - Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 - Testing guide: [docs/TESTING.md](docs/TESTING.md)
+- Diagnostic bundles: [docs/DIAGNOSTIC_BUNDLES.md](docs/DIAGNOSTIC_BUNDLES.md) — `F12` records a
+  session (events, logs, screen/state snapshots) into one folder. **If the user hands you a
+  `diagnostics/<session>/` folder, read that document first.**
 - Recipes: [docs/recipes/](docs/recipes/) — [add-a-dialog.md](docs/recipes/add-a-dialog.md), [add-a-transition.md](docs/recipes/add-a-transition.md)
 
 ## Build / Test / Verify
