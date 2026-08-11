@@ -83,6 +83,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub jump_nav: JumpNavConfig,
 
+    /// Diagnostic report configuration (Phase 7.15)
+    #[serde(default)]
+    pub diagnostics: DiagnosticsConfig,
+
     /// Background polling interval in milliseconds for detecting external filesystem changes.
     /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
     #[serde(default = "default_polling_interval_ms")]
@@ -141,6 +145,36 @@ pub enum NoMatchFeedback {
     TaskPanel,
     /// Keep buffer; show "(no match)" dim label in LEAP bar; no task panel message.
     Inline,
+}
+
+/// Configuration for the diagnostic report feature (Phase 7.15)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+#[serde(default)]
+pub struct DiagnosticsConfig {
+    /// Whether the diagnostic session keys do anything.
+    ///
+    /// Off does not merely hide the UI — [`crate::diagnostics::start_session`]
+    /// is never called, so no collector thread is spawned and every
+    /// observation point stays on its one-atomic-load path.
+    pub enabled: bool,
+    /// Directory bundles are written to. Empty means
+    /// [`crate::diagnostics::default_diagnostics_dir`].
+    pub output_directory: String,
+    /// Prompt for a description when a session ends.
+    ///
+    /// With this off the bundle is still written, with a placeholder report.
+    pub prompt_for_report: bool,
+}
+
+impl Default for DiagnosticsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            output_directory: String::new(),
+            prompt_for_report: true,
+        }
+    }
 }
 
 /// Configuration for Jump to File / Jump to Directory dialogs
@@ -460,6 +494,7 @@ impl Default for AppConfig {
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
             jump_nav: JumpNavConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),

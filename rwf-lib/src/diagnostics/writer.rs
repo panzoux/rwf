@@ -58,6 +58,11 @@ impl SessionPaths {
         self.dir.join("logs.jsonl")
     }
 
+    /// `config_effective.json` — resolved config, keybindings and load results.
+    pub fn config(&self) -> PathBuf {
+        self.dir.join("config_effective.json")
+    }
+
     /// `snapshots/` — paired `.txt` / `.json` screen and state captures.
     pub fn snapshots(&self) -> PathBuf {
         self.dir.join("snapshots")
@@ -89,6 +94,8 @@ pub(crate) enum WriterMessage {
     Snapshot(Box<SnapshotPayload>),
     /// Append one mirrored `tracing` event to `logs.jsonl`.
     Log(Box<LogRecord>),
+    /// Write `config_effective.json`, pre-serialized by the caller.
+    Config(String),
     /// Flush, write `metadata.json` and `report.txt`, close the session.
     EndSession {
         /// User-supplied description, or `None` if the prompt was cancelled.
@@ -146,6 +153,13 @@ fn run(mut rx: UnboundedReceiver<WriterMessage>) {
             WriterMessage::Log(record) => {
                 if let Some(active) = session.as_mut() {
                     active.write_log(&record);
+                }
+            }
+            WriterMessage::Config(json) => {
+                if let Some(active) = session.as_ref() {
+                    if let Err(e) = fs::write(active.paths.config(), json) {
+                        tracing::warn!("diagnostics: config_effective.json write failed: {e}");
+                    }
                 }
             }
             WriterMessage::EndSession { report, ack } => {

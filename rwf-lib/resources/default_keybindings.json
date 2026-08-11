@@ -110,6 +110,8 @@
     "F2":              "ShowVersionInfo",
     "Shift+F2":        "ShowVersionInfoVerbose",
     "F3":              "EnterLeap",
+    "F12":             "ToggleDiagnosticSession",
+    "F11":             "DiagnosticSnapshot",
     "t":               "ToggleTaskPanel",
     "Ctrl+Up":         "IncreaseTaskPanelHeight",
     "Ctrl+Down":       "DecreaseTaskPanelHeight",
@@ -155,7 +157,9 @@
     "Shift+Left":      "ViewerFastScrollLeft",
     "Shift+Right":     "ViewerFastScrollRight",
     "Shift+Up":        "ViewerFastScrollUp",
-    "Shift+Down":      "ViewerFastScrollDown"
+    "Shift+Down":      "ViewerFastScrollDown",
+    "F12":             "ToggleDiagnosticSession",
+    "F11":             "DiagnosticSnapshot"
   },
   "LeapMode": {
     "F3":              "LeapConfirm",
@@ -170,6 +174,8 @@
     "Ctrl+k":          "LeapClearAll",
     "Enter":           "LeapOpenFile",
     "Ctrl+Enter":      "LeapConfirm",
-    "/":               "LeapGoDeeperOrOpen"
+    "/":               "LeapGoDeeperOrOpen",
+    "F12":             "ToggleDiagnosticSession",
+    "F11":             "DiagnosticSnapshot"
   }
 }

@@ -58,18 +58,6 @@ async fn main() -> Result<()> {
 
     info!("Two-Pane File Manager starting...");
 
-    // Phase 7.15 stages 1-2: start a diagnostic session for the whole run when
-    // RWF_DIAGNOSTICS is set. The interactive F12 toggle arrives in stage 5;
-    // this makes event capture usable (and the §1.5 wake-timing hypothesis
-    // testable) before any UI exists for it.
-    if std::env::var("RWF_DIAGNOSTICS").is_ok_and(|v| v != "0" && !v.is_empty()) {
-        let root = rwf_lib::diagnostics::default_diagnostics_dir();
-        match rwf_lib::diagnostics::start_session(root, "env") {
-            Some(paths) => info!("Diagnostic session recording to {:?}", paths.dir),
-            None => info!("Diagnostic session could not be started"),
-        }
-    }
-
     // Initialize terminal
     let mut terminal_manager = TerminalManager::new()?;
     info!("Terminal initialized");
@@ -98,6 +86,26 @@ async fn main() -> Result<()> {
 
     let mut state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
+
+    // Phase 7.15: `RWF_DIAGNOSTICS=1` records the whole run, for cases where the
+    // problem happens before you can reach a keybinding (startup, first paint).
+    // `F12` is the normal way in. Placed after config load so it honours
+    // Diagnostics.Enabled and Diagnostics.OutputDirectory; App::run picks the
+    // running session up and writes the start snapshot and effective config.
+    if state.config.diagnostics.enabled
+        && std::env::var("RWF_DIAGNOSTICS").is_ok_and(|v| v != "0" && !v.is_empty())
+    {
+        let configured = state.config.diagnostics.output_directory.clone();
+        let root = if configured.is_empty() {
+            rwf_lib::diagnostics::default_diagnostics_dir()
+        } else {
+            std::path::PathBuf::from(state.registered_folders.expand_env_vars(&configured))
+        };
+        match rwf_lib::diagnostics::start_session(root, "env") {
+            Some(paths) => info!("Diagnostic session recording to {:?}", paths.dir),
+            None => info!("Diagnostic session could not be started"),
+        }
+    }
 
     // Load key bindings from keybindings.json (merges over defaults; falls back entirely on parse error)
     let kb_path = config_manager.keybindings_path().to_path_buf();

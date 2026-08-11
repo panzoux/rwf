@@ -128,6 +128,13 @@
           "ScrollTaskPanelUp":          { "description": "Scroll task panel up" },
           "ScrollTaskPanelDown":        { "description": "Scroll task panel down" }
         }
+      },
+      {
+        "name": "Diagnostics",
+        "actions": {
+          "ToggleDiagnosticSession":    { "description": "Start / stop recording a diagnostic report bundle" },
+          "DiagnosticSnapshot":         { "description": "Capture the current screen into the running diagnostic session" }
+        }
       }
     ]
   },
@@ -156,6 +163,13 @@
         "actions": {
           "LeapConfirm":         { "description": "Exit leap, keep cursor on current item" },
           "LeapCancel":          { "description": "Cancel leap, restore pre-leap cursor and directory" }
+        }
+      },
+      {
+        "name": "Diagnostics",
+        "actions": {
+          "ToggleDiagnosticSession": { "description": "Start / stop recording a diagnostic report bundle" },
+          "DiagnosticSnapshot":      { "description": "Capture the current screen into the running diagnostic session" }
         }
       }
     ]
@@ -196,6 +210,13 @@
           "ViewerClose":            { "description": "Close viewer" },
           "ViewerToggleHexMode":    { "description": "Toggle hex / text mode" },
           "ViewerCycleEncoding":    { "description": "Cycle text encoding (UTF-8, Shift-JIS, EUC-JP…)" }
+        }
+      },
+      {
+        "name": "Diagnostics",
+        "actions": {
+          "ToggleDiagnosticSession": { "description": "Start / stop recording a diagnostic report bundle" },
+          "DiagnosticSnapshot":      { "description": "Capture the current screen into the running diagnostic session" }
         }
       }
     ]

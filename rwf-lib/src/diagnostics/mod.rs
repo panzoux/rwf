@@ -155,6 +155,26 @@ pub(crate) fn next_seq() -> u64 {
         .map_or(0, |h| h.seq.fetch_add(1, Ordering::Relaxed))
 }
 
+/// Write `config_effective.json` into the running session.
+///
+/// `json` is built by the caller because the collector has no access to
+/// `AppState` — the observer contract in this module's docs. No-op when idle.
+///
+/// Serializing the resolved config is deliberately preferred over copying
+/// `config.json`: every field carries `#[serde(default)]`, so the file says
+/// what the user *wrote* while the struct says what the program *ran with*.
+/// Only the latter reproduces a bug, or survives a default changing between
+/// versions.
+pub fn record_effective_config(json: String) {
+    let Some(handle) = HANDLE.get() else {
+        return;
+    };
+    if !handle.active.load(Ordering::Relaxed) {
+        return;
+    }
+    let _ = handle.tx.send(WriterMessage::Config(json));
+}
+
 /// Forward a mirrored `tracing` event to the writer.
 ///
 /// Called only from [`log_layer::DiagnosticLogLayer`], which has already
@@ -425,5 +445,120 @@ mod tests {
     #[test]
     fn default_diagnostics_dir_ends_with_diagnostics() {
         assert!(default_diagnostics_dir().ends_with("diagnostics"));
+    }
+}
+
+#[cfg(test)]
+mod keybinding_tests {
+    use crate::input::{Action, KeyBindings};
+
+    /// The diagnostic keys must be bound in **all three** keymaps.
+    ///
+    /// Viewer and Leap swallow nearly every key, so a NormalMode-only binding
+    /// would make viewer rendering bugs and Leap filter stalls impossible to
+    /// capture — a large slice of the problems this feature targets.
+    #[test]
+    fn diagnostic_keys_are_bound_in_every_mode() {
+        let kb = KeyBindings::embedded_defaults();
+
+        for (mode, map) in [
+            ("NormalMode", &kb.normal_mode),
+            ("ViewerMode", &kb.viewer_mode),
+            ("LeapMode", &kb.leap_mode),
+        ] {
+            assert_eq!(
+                map.get("F12"),
+                Some(&Action::ToggleDiagnosticSession),
+                "F12 must toggle a diagnostic session in {mode}"
+            );
+            assert_eq!(
+                map.get("F11"),
+                Some(&Action::DiagnosticSnapshot),
+                "F11 must take a diagnostic snapshot in {mode}"
+            );
+        }
+    }
+
+    /// F11/F12 were chosen because nothing else used them. If a later feature
+    /// claims one, the duplicate checker would flag it — this pins the intent.
+    #[test]
+    fn diagnostic_keys_are_not_shared_with_another_action() {
+        let kb = KeyBindings::embedded_defaults();
+
+        for (mode, map) in [
+            ("NormalMode", &kb.normal_mode),
+            ("ViewerMode", &kb.viewer_mode),
+            ("LeapMode", &kb.leap_mode),
+        ] {
+            let diag_keys: Vec<&String> = map
+                .iter()
+                .filter(|(_, a)| {
+                    matches!(
+                        a,
+                        Action::ToggleDiagnosticSession | Action::DiagnosticSnapshot
+                    )
+                })
+                .map(|(k, _)| k)
+                .collect();
+            assert_eq!(
+                diag_keys.len(),
+                2,
+                "{mode} should bind exactly the two diagnostic actions, got {diag_keys:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use crate::config::{AppConfig, DiagnosticsConfig};
+
+    #[test]
+    fn diagnostics_config_defaults_to_enabled_with_a_prompt() {
+        let cfg = DiagnosticsConfig::default();
+        assert!(cfg.enabled);
+        assert!(cfg.prompt_for_report);
+        assert!(
+            cfg.output_directory.is_empty(),
+            "empty means default_diagnostics_dir()"
+        );
+    }
+
+    /// Config JSON is PascalCase for TWF compatibility (see CLAUDE.md).
+    #[test]
+    fn diagnostics_config_serialises_as_pascal_case() {
+        let json = serde_json::to_value(DiagnosticsConfig::default()).expect("serialize");
+        assert!(json.get("Enabled").is_some(), "got: {json}");
+        assert!(json.get("OutputDirectory").is_some(), "got: {json}");
+        assert!(json.get("PromptForReport").is_some(), "got: {json}");
+    }
+
+    /// Every field needs `#[serde(default)]` so older config files still load.
+    #[test]
+    fn diagnostics_section_tolerates_missing_and_partial_config() {
+        let absent: AppConfig = serde_json::from_str("{}").expect("empty config loads");
+        assert!(absent.diagnostics.enabled);
+
+        let partial: AppConfig =
+            serde_json::from_str(r#"{"Diagnostics":{"Enabled":false}}"#).expect("partial loads");
+        assert!(!partial.diagnostics.enabled);
+        assert!(
+            partial.diagnostics.prompt_for_report,
+            "unspecified fields must fall back to defaults"
+        );
+    }
+
+    /// `key_bindings` carries `#[serde(skip)]`, so a bundle that serialises only
+    /// `AppConfig` would silently omit the keymap — which is what makes a
+    /// no-action `Key` event interpretable. Pinning the fact the capture code
+    /// depends on.
+    #[test]
+    fn app_config_json_does_not_carry_keybindings() {
+        let json = serde_json::to_value(AppConfig::default()).expect("serialize");
+        assert!(
+            json.get("KeyBindings").is_none() && json.get("key_bindings").is_none(),
+            "AppConfig unexpectedly serialises keybindings; \
+             App::record_effective_config adds them separately and would now duplicate them"
+        );
     }
 }

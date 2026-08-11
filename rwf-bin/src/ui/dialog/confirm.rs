@@ -158,6 +158,23 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
     if let Some((title, input)) = input_dialog_info {
         match title.as_str() {
+            // Phase 7.15. An empty description still finalises the session:
+            // the user already did the work of reproducing the problem, and
+            // discarding the bundle over a blank field would be hostile.
+            crate::app::DIAGNOSTIC_REPORT_DIALOG_TITLE => {
+                let report = if input.trim().is_empty() {
+                    None
+                } else {
+                    Some(format!("{input}\n"))
+                };
+                if let Some(paths) = rwf_lib::diagnostics::stop_session(report) {
+                    state.pending_confirmation_logs.push(format!(
+                        "[DIAG] Session written to {} — contains file paths and screen \
+                         contents, review before sharing",
+                        paths.dir.display()
+                    ));
+                }
+            }
             "Register Folder" if !input.is_empty() => {
                 let path = state.active_pane().current_location.display_path();
                 rwf_lib::state::update_state(
