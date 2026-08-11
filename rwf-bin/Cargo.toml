@@ -37,3 +37,7 @@ assert_fs = { workspace = true }
 predicates = { workspace = true }
 insta = { version = "1", features = ["filters"] }
 encoding_rs = "0.8"
+# Real gitignore semantics for the .gitignore contract guard in
+# tests/repo_contracts.rs. Hand-rolling the matcher would be the one thing a
+# guard must not be: approximately right.
+ignore = "0.4"

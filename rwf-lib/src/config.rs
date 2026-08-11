@@ -282,18 +282,23 @@ impl Default for TrashConfig {
 }
 
 /// Archive configuration for compression operations
+///
+/// The `alias`es accept the snake_case names this struct emitted before it grew a
+/// `rename_all` (it was the odd one out among the config structs), so a config.json
+/// written by an older rwf still loads its Archive settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct ArchiveConfig {
     /// Default archive format (default: ZIP)
-    #[serde(default = "default_archive_format")]
+    #[serde(default = "default_archive_format", alias = "default_format")]
     pub default_format: crate::input::ArchiveFormat,
 
     /// Compression level (1-9, default: 6)
-    #[serde(default = "default_compression_level")]
+    #[serde(default = "default_compression_level", alias = "compression_level")]
     pub compression_level: u32,
 
     /// Last used archive name for quick access
-    #[serde(default)]
+    #[serde(default, alias = "last_archive_name")]
     pub last_archive_name: String,
 }
 
@@ -419,10 +424,13 @@ fn default_edit_mode() -> EditMode {
 }
 
 /// Text input configuration
+///
+/// See `ArchiveConfig` for why the snake_case `alias` is kept.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct TextInputConfig {
     /// Edit mode (default: Emacs)
-    #[serde(default = "default_edit_mode")]
+    #[serde(default = "default_edit_mode", alias = "edit_mode")]
     pub edit_mode: EditMode,
 }
 
@@ -470,8 +478,13 @@ impl Default for AppConfig {
 }
 
 /// Display configuration
+///
+/// Container-level `#[serde(default)]`: a config.json that predates any field here
+/// must still load. Without it, one missing key fails the *whole* AppConfig parse
+/// and the user silently drops to stock defaults for everything.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct DisplayConfig {
     /// Show hidden files
     #[serde(rename = "ShowHiddenFiles")]
@@ -852,6 +865,7 @@ pub enum Action {
 /// File operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct FileOpConfig {
     /// Confirm before deleting files
     pub confirm_delete: bool,
@@ -877,6 +891,7 @@ impl Default for FileOpConfig {
 /// Search configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct SearchConfig {
     /// Case-sensitive search by default
     pub case_sensitive: bool,
@@ -924,6 +939,7 @@ impl Default for SearchConfig {
 /// UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct UIConfig {
     /// UI refresh rate (Hz)
     pub refresh_rate: u64,
