@@ -56,8 +56,16 @@ struct DiagnosticHandle {
     active: AtomicBool,
     seq: AtomicU64,
     tx: UnboundedSender<WriterMessage>,
-    /// Locked only on session start/stop, never per event.
-    current: Mutex<Option<SessionPaths>>,
+    /// Locked on session start/stop and by the UI badge once per frame — never
+    /// per observed event, so it stays off the path that must not contend.
+    current: Mutex<Option<ActiveSession>>,
+}
+
+/// Bookkeeping for the running session, used by the UI indicator.
+#[derive(Debug, Clone)]
+struct ActiveSession {
+    paths: SessionPaths,
+    started: std::time::Instant,
 }
 
 fn init_handle() -> DiagnosticHandle {
@@ -86,7 +94,17 @@ pub fn is_active() -> bool {
 /// Directory of the running session, if any.
 pub fn current_session() -> Option<SessionPaths> {
     let handle = HANDLE.get()?;
-    handle.current.lock().ok()?.clone()
+    let guard = handle.current.lock().ok()?;
+    guard.as_ref().map(|s| s.paths.clone())
+}
+
+/// How long the running session has been recording.
+///
+/// Drives the `● DIAG mm:ss` indicator. Returns `None` when idle.
+pub fn session_elapsed() -> Option<std::time::Duration> {
+    let handle = HANDLE.get()?;
+    let guard = handle.current.lock().ok()?;
+    guard.as_ref().map(|s| s.started.elapsed())
 }
 
 /// Record an event, if a session is running.
@@ -167,7 +185,10 @@ pub fn start_session(root: PathBuf, trigger: &str) -> Option<SessionPaths> {
     }
 
     if let Ok(mut current) = handle.current.lock() {
-        *current = Some(paths.clone());
+        *current = Some(ActiveSession {
+            paths: paths.clone(),
+            started: std::time::Instant::now(),
+        });
     }
     handle.active.store(true, Ordering::Relaxed);
 
@@ -214,7 +235,12 @@ pub fn stop_session(report: Option<String>) -> Option<SessionPaths> {
         tracing::warn!("diagnostics: writer did not finish within the drain timeout");
     }
 
-    handle.current.lock().ok().and_then(|mut c| c.take())
+    handle
+        .current
+        .lock()
+        .ok()
+        .and_then(|mut c| c.take())
+        .map(|s| s.paths)
 }
 
 /// Default location for diagnostic bundles.

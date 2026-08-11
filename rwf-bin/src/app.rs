@@ -266,6 +266,16 @@ impl App {
     }
 
     pub async fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+        // Phase 7.15: announce an already-running session (currently only the
+        // RWF_DIAGNOSTICS env trigger, which fires before the App exists) so the
+        // task panel carries a record of it alongside the persistent badge.
+        if let Some(paths) = rwf_lib::diagnostics::current_session() {
+            self.task_panel.add_pending_log(format!(
+                "[DIAG] Recording diagnostic session to {}",
+                paths.dir.display()
+            ));
+        }
+
         self.trigger_initial_directory_reads();
 
         // Initial render
