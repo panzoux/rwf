@@ -79,11 +79,13 @@ pub fn render_dialog_to_string(
 
 /// Snapshot `dialog` at both standard sizes as `<name>_<size>`.
 ///
-/// Locally-rendered wall-clock timestamps (YYYY-MM-DD HH:MM:SS) are redacted
-/// so snapshots are timezone-independent (CI runs UTC, dev machines may not).
+/// Locally-rendered wall-clock timestamps (YYYY-MM-DD HH:MM:SS or the
+/// no-seconds YYYY-MM-DD HH:MM list format) are redacted so snapshots are
+/// timezone-independent (CI runs UTC, dev machines may not).
 pub fn snapshot_dialog(name: &str, dialog: &Dialog, state: &AppState) {
     insta::with_settings!({filters => vec![
         (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "[TIMESTAMP]"),
+        (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "[TIMESTAMP]"),
         (r"\d{2}:\d{2}:\d{2}", "[TIME]"),
         (
             r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",

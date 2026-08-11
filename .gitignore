@@ -1,9 +1,14 @@
-target/
-debug/
+# Directory patterns are anchored with a leading slash on purpose. An unanchored
+# `foo/` matches at EVERY depth, so it also swallows `rwf-lib/src/foo/` — a new
+# source module would vanish from `git status` and never get committed, silently.
+# Guarded by rwf-bin/tests/repo_contracts.rs; see docs/IMPLICIT_CONTRACTS.md.
+/target/
+/debug/
 qwen-code-export-*
-logs/
-sample/
-.superpowers/
-docs/superpowers/
+/logs/
+/diagnostics/
+/sample/
+/.superpowers/
+/docs/superpowers/
 *.bak
-.worktrees/
+/.worktrees/

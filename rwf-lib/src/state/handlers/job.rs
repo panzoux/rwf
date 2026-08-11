@@ -268,7 +268,12 @@ impl AppState {
                         | crate::job::JobKind::ExtractArchive { dest, .. } => {
                             self.cache.invalidate(dest);
                         }
-                        crate::job::JobKind::Delete { targets } => {
+                        // MoveToTrash removes entries from their directory exactly as
+                        // Delete does — only the destination differs — so it must
+                        // invalidate the same caches. It previously fell through to the
+                        // catch-all and invalidated nothing.
+                        crate::job::JobKind::Delete { targets }
+                        | crate::job::JobKind::MoveToTrash { targets, .. } => {
                             for target in targets {
                                 if let Some(parent) = target.parent() {
                                     self.cache.invalidate(&parent);
@@ -488,6 +493,46 @@ impl AppState {
                                 }
                             }
                         }
+                        // Restore is the inverse of MoveToTrash, but it *adds* entries
+                        // back rather than removing them, so the in-memory path used by
+                        // Delete/MoveToTrash does not apply — the restored files are not
+                        // in any pane's list to begin with. Refresh whichever panes are
+                        // showing a destination directory instead.
+                        //
+                        // Locations come from the outcomes, not the job spec: only
+                        // targets that actually succeeded should trigger a re-read.
+                        crate::job::JobKind::RestoreFromTrash { .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::TrashRestored(outcomes),
+                            ) = result
+                            {
+                                let restored_dirs: Vec<_> = outcomes
+                                    .iter()
+                                    .filter(|o| o.result.is_ok())
+                                    .filter_map(|o| o.original.parent())
+                                    .collect();
+
+                                for dir in &restored_dirs {
+                                    self.cache.invalidate(dir);
+                                    self.navigation_cache.invalidate_prefix(dir);
+                                }
+
+                                for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                    if restored_dirs.contains(&tab.left_pane.current_location) {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Left,
+                                        });
+                                    }
+                                    if restored_dirs.contains(&tab.right_pane.current_location) {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Right,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                         crate::job::JobKind::JoinFiles { dest, .. } => {
                             if let Some(parent) = dest.parent() {
                                 for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
@@ -585,7 +630,13 @@ impl AppState {
                                 }
                             }
                         }
-                        crate::job::JobKind::Delete { targets } => {
+                        // MoveToTrash shares this arm with Delete: from the pane's point
+                        // of view both simply remove the targets from their directory.
+                        // Without it a successful trash move left the entries listed and
+                        // still marked until something else forced a refresh — the Layer 1
+                        // refresh contract in plan/ROADMAP.md was not being met.
+                        crate::job::JobKind::Delete { targets }
+                        | crate::job::JobKind::MoveToTrash { targets, .. } => {
                             if let crate::job::OpResult::Success(_) = result {
                                 // In-memory removal: remove deleted entries from all panes without
                                 // triggering a full ReadDirectory (same approach as Rename).
@@ -1597,5 +1648,209 @@ mod group_by_kind_and_ext_tests {
             vec![PathBuf::from("/a.png"), PathBuf::from("/c.png")]
         );
         assert_eq!(groups[1].0, (DetectedKind::Pdf, "pdf".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod trash_refresh_tests {
+    use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::model::{Location, TrashOutcome};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{test_state, FileEntryBuilder};
+    use std::path::PathBuf;
+
+    fn loc(name: &str) -> Location {
+        Location::Local(PathBuf::from(format!("/work/{name}")))
+    }
+
+    /// Regression: a successful `MoveToTrash` left the trashed entries listed and
+    /// still marked, because the completion handler had no arm for that JobKind and
+    /// fell through to the catch-all. Found by a diagnostic bundle on 2026-08-11 —
+    /// `CompleteJob { kind: MoveToTrash, result: Success(TrashMoved(..)) }` was the
+    /// last transition of the session, with no refresh after it.
+    #[test]
+    fn move_to_trash_completion_removes_entries_from_panes() {
+        let mut state = test_state();
+        let doomed = loc("doomed.txt");
+        let kept = loc("kept.txt");
+
+        {
+            let pane = &mut state.current_tab_mut().left_pane;
+            pane.current_location = Location::Local(PathBuf::from("/work"));
+            pane.raw_entries = vec![
+                FileEntryBuilder::new("doomed.txt")
+                    .location(doomed.clone())
+                    .build(),
+                FileEntryBuilder::new("kept.txt")
+                    .location(kept.clone())
+                    .build(),
+            ];
+            pane.entries = pane.raw_entries.clone();
+            pane.marking.mark(doomed.clone());
+        }
+
+        let spec = JobSpec::new(JobKind::MoveToTrash {
+            targets: vec![doomed.clone()],
+            force_fallback: false,
+        });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::TrashMoved(vec![TrashOutcome {
+                    target: doomed.clone(),
+                    record: None,
+                    result: Ok(()),
+                }])),
+            },
+        );
+
+        let pane = &state.current_tab().left_pane;
+        let names: Vec<&str> = pane.entries.iter().map(|e| e.name.as_str()).collect();
+
+        assert_eq!(
+            names,
+            vec!["kept.txt"],
+            "trashed entry must leave the pane listing"
+        );
+        assert_eq!(
+            pane.marking.count(),
+            0,
+            "trashed entry must not stay marked"
+        );
+        assert!(result.ui_changed, "removing an entry must signal a redraw");
+    }
+
+    /// The same completion must invalidate the caches, or navigating away and back
+    /// re-serves the stale listing.
+    #[test]
+    fn move_to_trash_completion_invalidates_caches() {
+        let mut state = test_state();
+        let dir = Location::Local(PathBuf::from("/work"));
+        let doomed = loc("doomed.txt");
+
+        state.cache.insert(
+            dir.clone(),
+            vec![FileEntryBuilder::new("doomed.txt")
+                .location(doomed.clone())
+                .build()],
+        );
+        assert!(state.cache.get(&dir).is_some(), "precondition: cached");
+
+        let spec = JobSpec::new(JobKind::MoveToTrash {
+            targets: vec![doomed.clone()],
+            force_fallback: false,
+        });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::TrashMoved(vec![TrashOutcome {
+                    target: doomed,
+                    record: None,
+                    result: Ok(()),
+                }])),
+            },
+        );
+
+        assert!(
+            state.cache.get(&dir).is_none(),
+            "parent directory cache must be invalidated after a trash move"
+        );
+    }
+}
+
+#[cfg(test)]
+mod restore_refresh_tests {
+    use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::model::{Location, RestoreOutcome, TrashRecord};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
+    use std::path::PathBuf;
+
+    fn dir(p: &str) -> Location {
+        Location::Local(PathBuf::from(p))
+    }
+
+    fn restore_job() -> JobSpec {
+        // The records themselves are not read by the completion handler — the
+        // restored locations come from the outcomes — so an empty list is fine.
+        JobSpec::new(JobKind::RestoreFromTrash {
+            records: Vec::<TrashRecord>::new(),
+        })
+    }
+
+    /// Regression: restoring from trash put files back on disk but left every pane
+    /// showing the old listing, because the completion handler had no arm for
+    /// `RestoreFromTrash`. Same class as the `MoveToTrash` bug, opposite direction.
+    #[test]
+    fn restore_completion_refreshes_panes_showing_the_destination() {
+        let mut state = test_state();
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.current_location = dir("/work");
+            tab.right_pane.current_location = dir("/elsewhere");
+        }
+
+        let spec = restore_job();
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::TrashRestored(vec![RestoreOutcome {
+                    original: dir("/work/back.txt"),
+                    result: Ok(()),
+                }])),
+            },
+        );
+
+        assert_eq!(
+            result.panes_to_refresh.len(),
+            1,
+            "only the pane showing the restore destination should refresh, got {:?}",
+            result.panes_to_refresh
+        );
+        assert_eq!(
+            result.panes_to_refresh[0].pane,
+            crate::model::ActivePane::Left
+        );
+    }
+
+    /// A restore that failed must not trigger a re-read: nothing changed on disk,
+    /// and a spurious ReadDirectory would mask the failure with a normal-looking
+    /// refresh.
+    #[test]
+    fn failed_restore_does_not_refresh() {
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location = dir("/work");
+
+        let spec = restore_job();
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::TrashRestored(vec![RestoreOutcome {
+                    original: dir("/work/back.txt"),
+                    result: Err("permission denied".to_string()),
+                }])),
+            },
+        );
+
+        assert!(
+            result.panes_to_refresh.is_empty(),
+            "a failed restore must not refresh"
+        );
     }
 }

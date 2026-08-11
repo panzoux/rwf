@@ -8,7 +8,14 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 - Roadmap / phase status: `plan/ROADMAP.md` (Japanese) is the source of truth.
 - Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 - Testing guide: [docs/TESTING.md](docs/TESTING.md)
+- Diagnostic bundles: [docs/DIAGNOSTIC_BUNDLES.md](docs/DIAGNOSTIC_BUNDLES.md) — `F12` records a
+  session (events, logs, screen/state snapshots) into one folder. **If the user hands you a
+  `diagnostics/<session>/` folder, read that document first.**
 - Recipes: [docs/recipes/](docs/recipes/) — [add-a-dialog.md](docs/recipes/add-a-dialog.md), [add-a-transition.md](docs/recipes/add-a-transition.md)
+- **Cross-cutting rules a new feature can silently break**:
+  [docs/IMPLICIT_CONTRACTS.md](docs/IMPLICIT_CONTRACTS.md) — read this before adding a
+  CLI flag, a `.gitignore` entry, a config field, an external-process spawn, or anything
+  that writes to stdout or touches terminal mode.
 
 ## Build / Test / Verify
 
@@ -16,7 +23,7 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 cargo build                                        # build
 cargo fmt --all -- --check                         # formatting (CI-enforced)
 cargo clippy --all-targets -- -D warnings          # lints (CI-enforced)
-cargo test -p rwf -- --test-threads=1              # rwf-bin tests (51, fast)
+cargo test -p rwf -- --test-threads=1              # rwf-bin tests (251, ~75s) — incl. repo-wide contract guards
 cargo test -p rwf-lib -- --test-threads=1          # rwf-lib tests (1043, ~37 min)
 cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during development
 ```
@@ -30,8 +37,8 @@ cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during deve
 ## Quality rules (enforced since Phase M)
 
 1. **No `unwrap()` in non-test code.** `clippy::unwrap_used` is `deny` workspace-wide
-   (tests are exempt via `clippy.toml`). Modules carrying
-   `#![allow(clippy::unwrap_used)] // TODO(M6): ratchet` are legacy — do not add new ones.
+   (tests are exempt via `clippy.toml`). The M6 ratchet finished: there are **zero**
+   `#![allow(clippy::unwrap_used)]` escapes left in the tree — do not add one.
 2. **`unsafe_code` is `deny`** (`rwf-lib/src/volume_info.rs` is the only scoped allow; every
    unsafe block needs a `// SAFETY:` comment).
 3. **Tests use shared fixtures** from `rwf-lib/src/test_utils.rs`
@@ -56,16 +63,24 @@ cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during deve
   causes a permanent `is_loading` state.
 - **Serialization**: config JSON uses **PascalCase** (TWF compatibility). Use
   `#[serde(rename = "FieldName")]` and always provide `#[serde(default)]`.
+  Both are guarded by `rwf-bin/tests/config_contracts.rs`.
 - **CJK/Unicode**: never slice strings by byte index; use the width-aware utilities in
   `rwf-bin/src/ui/unicode_utils.rs`.
 - **External commands**: spawn binaries directly with args (no `cmd /C` wrappers unless
-  required). In config macros prefer `${VAR}`/`$env:VAR` — bare `$VAR` collides with
-  single-letter RWF macros ($P, $O, $R, …).
+  required); when cmd.exe *is* required it must be `cmd /D /C`. In config macros prefer
+  `${VAR}`/`$env:VAR` — bare `$VAR` collides with single-letter RWF macros ($P, $O, $R, …).
+- **stdout is reserved** for the exit directory the shell `cd` wrappers capture. Use
+  `eprintln!`/`tracing` for everything else. See
+  [docs/IMPLICIT_CONTRACTS.md](docs/IMPLICIT_CONTRACTS.md).
 
 ## Repo conventions
 
-- Line endings are **LF** with `autocrlf=false`. On Windows, edit files with tools that
-  preserve LF (PowerShell `Set-Content`/`Out-File` rewrite whole files as CRLF).
+- Line endings are **LF**. `*.rs`/`*.toml` are pinned by `.gitattributes` and guarded by
+  `rwf-bin/tests/repo_contracts.rs`; other file types still rely on `autocrlf=false`.
+  On Windows, edit files with tools that preserve LF (PowerShell `Set-Content`/`Out-File`
+  rewrite whole files as CRLF).
+- `.gitignore` directory patterns must be **anchored** (`/logs/`, not `logs/`) — an
+  unanchored pattern also matches `rwf-lib/src/logs/` and silently hides a source module.
 - Phase M (quality overhaul) is complete as of 2026-07-13 — feature development is unfrozen.
   See `plan/quality_overhaul.md` for the completion summary and `plan/ROADMAP.md` for current phase status.
 - Machine-specific notes (real config paths, local pitfalls) live in `.claude/CLAUDE.local.md`.

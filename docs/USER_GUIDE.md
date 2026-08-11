@@ -673,6 +673,42 @@ The UI should never block. If it does:
 3. Ensure sufficient permissions
 4. Review logs for detailed error messages
 
+### Recording a Problem for Diagnosis
+
+When something misbehaves in a way that is hard to describe — a brief freeze, a pane that
+shows the wrong thing, a key that seems to do nothing — record a **diagnostic session**
+instead of trying to write it up from memory.
+
+1. Press `F12`. `● DIAG mm:ss` appears in the top-right corner and the task panel shows where
+   the bundle is being written.
+2. Reproduce the problem.
+3. Press `F11` at any moment worth a screenshot. As many times as you like.
+4. Press `F12` again. Describe what happened when prompted.
+
+The result is one folder containing the keys you pressed, the state changes they caused, the
+background jobs involved, the logs, and pictures of the screen — enough for someone (or an AI)
+to reconstruct the sequence afterwards.
+
+Both keys also work inside the viewer, in leap mode, and while a dialog is open.
+
+If the problem happens during startup, before you can press a key:
+
+```bash
+RWF_DIAGNOSTICS=1 rwf
+```
+
+**Before sharing a bundle, look at it.** It contains the file paths and screen contents from
+your session verbatim, and `config_effective.json` includes your custom function command
+lines.
+
+To turn the feature off entirely:
+
+```json
+"Diagnostics": { "Enabled": false }
+```
+
+Format details and analysis guidance: [DIAGNOSTIC_BUNDLES.md](DIAGNOSTIC_BUNDLES.md).
+
 ## Performance Tips
 
 1. **Adjust worker pool size**: Increase for faster parallel operations on systems with many cores
@@ -695,9 +731,11 @@ View:              V(iew), F8(hex), W(compare)
 Panes:             O(sync), Shift+O(swap)
 App:               Q(uit), ?(help), Shift+Z(reload)
 Jobs:              Ctrl+J (job manager)
+Diagnostics:       F12 (record session), F11 (snapshot)
 ```
 
 ---
 
 For developer documentation, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 For API documentation, see [API_REFERENCE.md](API_REFERENCE.md).
+For diagnostic bundle format, see [DIAGNOSTIC_BUNDLES.md](DIAGNOSTIC_BUNDLES.md).

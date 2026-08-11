@@ -83,6 +83,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub jump_nav: JumpNavConfig,
 
+    /// Diagnostic report configuration (Phase 7.15)
+    #[serde(default)]
+    pub diagnostics: DiagnosticsConfig,
+
     /// Background polling interval in milliseconds for detecting external filesystem changes.
     /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
     #[serde(default = "default_polling_interval_ms")]
@@ -141,6 +145,36 @@ pub enum NoMatchFeedback {
     TaskPanel,
     /// Keep buffer; show "(no match)" dim label in LEAP bar; no task panel message.
     Inline,
+}
+
+/// Configuration for the diagnostic report feature (Phase 7.15)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+#[serde(default)]
+pub struct DiagnosticsConfig {
+    /// Whether the diagnostic session keys do anything.
+    ///
+    /// Off does not merely hide the UI — [`crate::diagnostics::start_session`]
+    /// is never called, so no collector thread is spawned and every
+    /// observation point stays on its one-atomic-load path.
+    pub enabled: bool,
+    /// Directory bundles are written to. Empty means
+    /// [`crate::diagnostics::default_diagnostics_dir`].
+    pub output_directory: String,
+    /// Prompt for a description when a session ends.
+    ///
+    /// With this off the bundle is still written, with a placeholder report.
+    pub prompt_for_report: bool,
+}
+
+impl Default for DiagnosticsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            output_directory: String::new(),
+            prompt_for_report: true,
+        }
+    }
 }
 
 /// Configuration for Jump to File / Jump to Directory dialogs
@@ -282,18 +316,23 @@ impl Default for TrashConfig {
 }
 
 /// Archive configuration for compression operations
+///
+/// The `alias`es accept the snake_case names this struct emitted before it grew a
+/// `rename_all` (it was the odd one out among the config structs), so a config.json
+/// written by an older rwf still loads its Archive settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct ArchiveConfig {
     /// Default archive format (default: ZIP)
-    #[serde(default = "default_archive_format")]
+    #[serde(default = "default_archive_format", alias = "default_format")]
     pub default_format: crate::input::ArchiveFormat,
 
     /// Compression level (1-9, default: 6)
-    #[serde(default = "default_compression_level")]
+    #[serde(default = "default_compression_level", alias = "compression_level")]
     pub compression_level: u32,
 
     /// Last used archive name for quick access
-    #[serde(default)]
+    #[serde(default, alias = "last_archive_name")]
     pub last_archive_name: String,
 }
 
@@ -419,10 +458,13 @@ fn default_edit_mode() -> EditMode {
 }
 
 /// Text input configuration
+///
+/// See `ArchiveConfig` for why the snake_case `alias` is kept.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct TextInputConfig {
     /// Edit mode (default: Emacs)
-    #[serde(default = "default_edit_mode")]
+    #[serde(default = "default_edit_mode", alias = "edit_mode")]
     pub edit_mode: EditMode,
 }
 
@@ -460,6 +502,7 @@ impl Default for AppConfig {
             job_manager: JobManagerConfig::default(),
             text_input: TextInputConfig::default(),
             jump_nav: JumpNavConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
@@ -470,8 +513,13 @@ impl Default for AppConfig {
 }
 
 /// Display configuration
+///
+/// Container-level `#[serde(default)]`: a config.json that predates any field here
+/// must still load. Without it, one missing key fails the *whole* AppConfig parse
+/// and the user silently drops to stock defaults for everything.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct DisplayConfig {
     /// Show hidden files
     #[serde(rename = "ShowHiddenFiles")]
@@ -852,6 +900,7 @@ pub enum Action {
 /// File operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct FileOpConfig {
     /// Confirm before deleting files
     pub confirm_delete: bool,
@@ -877,6 +926,7 @@ impl Default for FileOpConfig {
 /// Search configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct SearchConfig {
     /// Case-sensitive search by default
     pub case_sensitive: bool,
@@ -924,6 +974,7 @@ impl Default for SearchConfig {
 /// UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[serde(default)]
 pub struct UIConfig {
     /// UI refresh rate (Hz)
     pub refresh_rate: u64,

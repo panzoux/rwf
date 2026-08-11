@@ -17,9 +17,9 @@
 //! 3. Pure state functions return StateUpdateResult with side effects
 //! 4. FIFO job ordering with cooperative cancellation
 
-pub mod app_event;
 pub mod backend;
 pub mod config;
+pub mod diagnostics;
 pub mod event_receiver;
 pub mod help_content;
 pub mod input;

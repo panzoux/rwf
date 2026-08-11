@@ -1042,6 +1042,18 @@ pub struct PaneRefresh {
 
 /// Pure function to update state based on transition
 pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdateResult {
+    // Phase 7.15: the single choke point for diagnostics. Job events reach here
+    // too — `event_receiver::process_pending_events` maps every `JobEvent` to a
+    // `Transition` before applying it — so one observation covers both.
+    // Costs one atomic load when no diagnostic session is running.
+    crate::diagnostics::observe(|| {
+        let debug = format!("{transition:?}");
+        crate::diagnostics::DiagnosticEvent::Transition {
+            name: crate::diagnostics::variant_name(&debug).to_string(),
+            detail: crate::diagnostics::truncate_detail(&debug),
+        }
+    });
+
     if let Some(result) = state.handle_navigation_transition(&transition) {
         return result;
     }

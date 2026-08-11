@@ -545,6 +545,16 @@ impl JobManager {
 
     /// Mark a job as started
     pub fn start_job(&mut self, spec: JobSpec) {
+        // Phase 7.15: single observation point for job submission — every
+        // `pool.submit_job` path in rwf-bin routes through here first.
+        // Recorded on entry, so submissions dropped by the deduplication below
+        // still appear; the drop itself is visible via the `tracing::info!`
+        // that stage 4 mirrors into `logs.jsonl`.
+        crate::diagnostics::observe(|| crate::diagnostics::DiagnosticEvent::JobSubmit {
+            job_id: format!("{:?}", spec.id),
+            kind: crate::diagnostics::variant_name(&format!("{:?}", spec.kind)).to_string(),
+        });
+
         // Deduplication: Avoid duplicate ReadDirectory jobs for the same pane.
         if let JobKind::ReadDirectory { .. } = &spec.kind {
             if self

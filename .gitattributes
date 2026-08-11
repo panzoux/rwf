@@ -1,0 +1,18 @@
+# Rust sources and Cargo/tool manifests are LF in the index *and* in the working
+# tree on every platform.
+#
+# Why this file exists: the LF rule was previously carried only by each developer's
+# local `core.autocrlf=false` and a line in CLAUDE.md. Nothing enforced it, and a
+# single Windows tool that rewrites whole files (PowerShell's Set-Content and
+# Out-File both do) turns a one-line edit into a whole-file diff, hiding the real
+# change in review. Three .rs files and one Cargo.toml had already drifted.
+#
+# `eol=lf` also makes rwf-bin/tests/repo_contracts.rs deterministic: the checkout is
+# LF regardless of the cloner's autocrlf setting, so the guard tests the repo rather
+# than the machine.
+#
+# Scope is deliberately narrow. The ~100 CRLF .md/.json files under docs/ and
+# specs/twf/ are left alone: renormalising them would produce a large, merge-hostile
+# diff for no build-level benefit. See docs/IMPLICIT_CONTRACTS.md.
+*.rs   text eol=lf
+*.toml text eol=lf

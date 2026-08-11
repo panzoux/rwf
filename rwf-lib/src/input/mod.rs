@@ -512,6 +512,17 @@ pub enum Action {
     SaveLog,
     EditConfigFile,
 
+    // Diagnostics (Phase 7.15)
+    //
+    // Handled directly in `App::handle_key_event`, not via
+    // `action_to_transitions` — a diagnostic session is app-level state, not
+    // `AppState`, so it produces no `Transition`. They fall through to the
+    // wildcard arm there, which is correct.
+    /// Start or stop a diagnostic recording session.
+    ToggleDiagnosticSession,
+    /// Capture the current screen and state into the running session.
+    DiagnosticSnapshot,
+
     // Task panel operations
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,
@@ -590,6 +601,14 @@ pub fn format_key_event(event: &KeyEvent) -> String {
         KeyCode::End => "End".to_string(),
         KeyCode::PageUp => "PageUp".to_string(),
         KeyCode::PageDown => "PageDown".to_string(),
+        // Delete and Insert were missing until 2026-08-11 and so fell to the
+        // catch-all below, which returns an empty string. An empty string matches
+        // no binding, which made these keys impossible to bind *at all* — writing
+        // "Delete" or "Shift+Delete" in keybindings.json simply had no effect, with
+        // no error to explain why. (Dialogs were unaffected: they match on
+        // `KeyCode` directly rather than going through this function.)
+        KeyCode::Delete => "Delete".to_string(),
+        KeyCode::Insert => "Insert".to_string(),
         KeyCode::F(n) => format!("F{}", n),
         _ => return String::new(),
     };
@@ -1445,12 +1464,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 .entries
                 .iter()
                 .filter(|e| pane.marking.is_marked(&e.location))
-                .map(|e| e.location.clone())
+                .map(|e| (e.location.clone(), e.is_dir))
                 .collect();
             let targets = if !active_marked.is_empty() {
                 active_marked
             } else if let Some(entry) = pane.current_entry() {
-                vec![entry.location.clone()]
+                vec![(entry.location.clone(), entry.is_dir)]
             } else {
                 vec![]
             };
@@ -1459,15 +1478,16 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 return vec![];
             }
 
-            let name = delete_job_name(&targets);
-            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::Delete {
-                targets: targets.clone(),
-            });
-
-            vec![Transition::CreateAndStartFileJob {
-                spec: job_spec,
-                name: name.clone(),
-                description: name,
+            // Always confirm. This action bypasses the trash entirely, so there is
+            // no undo behind it — and its keys (`D`, `Shift+Delete`) sit one
+            // modifier away from the ordinary trash delete, where a slip would be
+            // unrecoverable. Windows prompts for Shift+Delete for the same reason.
+            //
+            // `to_trash = false` is what makes the confirmation build a
+            // `JobKind::Delete` rather than a `MoveToTrash`; see
+            // `process_dialog_confirmation`.
+            vec![Transition::ShowDialog {
+                dialog: crate::model::Dialog::delete_confirm(targets, false, false),
             }]
         }
         Action::EmptyTrash => {
@@ -1922,6 +1942,42 @@ mod tests {
         assert_eq!(format_key_event(&event), "Shift+F1");
     }
 
+    /// Delete and Insert used to fall to the catch-all and format as "", which
+    /// silently made them unbindable — a `"Delete"` entry in keybindings.json
+    /// simply never matched, with no error to say why.
+    #[test]
+    fn delete_and_insert_are_formattable() {
+        let event = KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE);
+        assert_eq!(format_key_event(&event), "Delete");
+
+        let event = KeyEvent::new(KeyCode::Delete, KeyModifiers::SHIFT);
+        assert_eq!(format_key_event(&event), "Shift+Delete");
+
+        let event = KeyEvent::new(KeyCode::Insert, KeyModifiers::NONE);
+        assert_eq!(format_key_event(&event), "Insert");
+    }
+
+    /// A formatted key is only useful if it round-trips to an action through the
+    /// same lookup the app uses. This is the end-to-end guard for the bug above.
+    #[test]
+    fn shift_delete_maps_to_permanent_delete() {
+        let mut bindings = KeyBindings::default();
+
+        let event = KeyEvent::new(KeyCode::Delete, KeyModifiers::SHIFT);
+        assert_eq!(
+            bindings.map_key(&event),
+            Some(Action::DeleteForce),
+            "Shift+Delete must delete permanently (JobKind::Delete), not to trash"
+        );
+
+        let event = KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE);
+        assert_eq!(
+            bindings.map_key(&event),
+            Some(Action::Delete),
+            "plain Delete must take the ordinary (trash) path"
+        );
+    }
+
     #[test]
     fn test_multi_key_sequence() {
         let mut bindings = KeyBindings::default();
@@ -2316,3 +2372,85 @@ mod tab_management_tests;
 
 #[cfg(test)]
 mod miscellaneous_tests;
+
+#[cfg(test)]
+mod destructive_delete_tests {
+    use super::*;
+    use crate::model::dialog::DialogContent;
+    use crate::test_utils::{test_state, FileEntryBuilder};
+
+    fn state_with_cursor_file() -> crate::AppState {
+        let mut state = test_state();
+        let pane = &mut state.current_tab_mut().left_pane;
+        pane.entries = vec![FileEntryBuilder::new("victim.txt").build()];
+        pane.raw_entries = pane.entries.clone();
+        pane.cursor = 0;
+        state
+    }
+
+    /// DeleteForce bypasses the trash entirely, so there is no undo behind it. It
+    /// must never start a job straight off a keypress.
+    #[test]
+    fn delete_force_asks_before_deleting() {
+        let state = state_with_cursor_file();
+        let transitions = action_to_transitions(&state, &Action::DeleteForce);
+
+        assert_eq!(transitions.len(), 1, "expected exactly one transition");
+        match &transitions[0] {
+            Transition::ShowDialog { dialog } => {
+                assert!(
+                    matches!(dialog.content, DialogContent::DeleteConfirm(_)),
+                    "DeleteForce must raise a confirmation, got {:?}",
+                    dialog.title
+                );
+                // `to_trash = false` is what makes the confirmation build a permanent
+                // JobKind::Delete instead of a MoveToTrash.
+                if let DialogContent::DeleteConfirm(d) = &dialog.content {
+                    assert!(!d.to_trash, "DeleteForce must not route to the trash");
+                }
+            }
+            other => panic!("DeleteForce must not start a job directly: {other:?}"),
+        }
+    }
+
+    /// The ordinary delete keeps its own path (trash when enabled) and is unaffected
+    /// by the DeleteForce change.
+    #[test]
+    fn plain_delete_still_offers_the_trash_path() {
+        let state = state_with_cursor_file();
+        let transitions = action_to_transitions(&state, &Action::Delete);
+
+        match &transitions[0] {
+            Transition::ShowDialog { dialog } => {
+                assert!(matches!(dialog.content, DialogContent::DeleteConfirm(_)));
+            }
+            Transition::CreateAndStartFileJob { .. } => {
+                // Reached only when trash is enabled and confirm_before_move is off.
+            }
+            other => panic!("unexpected transition for Delete: {other:?}"),
+        }
+    }
+
+    /// The delete keys, as bound by default. `D` is permanent (the user's request);
+    /// lowercase `d` and bare `Delete` stay on the ordinary trash path, so a missed
+    /// shift is recoverable.
+    #[test]
+    fn delete_keybindings_split_permanent_from_trash() {
+        let kb = KeyBindings::default();
+
+        for key in ["D", "Ctrl+d", "Shift+Delete"] {
+            assert_eq!(
+                kb.normal_mode.get(key),
+                Some(&Action::DeleteForce),
+                "{key} should delete permanently"
+            );
+        }
+        for key in ["d", "Delete"] {
+            assert_eq!(
+                kb.normal_mode.get(key),
+                Some(&Action::Delete),
+                "{key} should take the ordinary trash path"
+            );
+        }
+    }
+}
