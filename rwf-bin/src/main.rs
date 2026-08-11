@@ -143,9 +143,16 @@ async fn main() -> Result<()> {
 
     // Phase 7.15 stages 1-2: finalise an env-triggered session. Stage 5 replaces
     // the placeholder report with the user's description from the exit prompt.
+    //
+    // MUST be stderr, never stdout. Stdout is a data channel here: the shell
+    // integration documented in docs/USER_GUIDE.md captures it with
+    // `local output=$(rwf -cwd)` and feeds the result straight to `cd`, so any
+    // extra stdout line silently breaks directory-on-exit whenever a diagnostic
+    // session is running. stderr is not captured by that substitution and is
+    // still shown to the user once the TUI has been torn down.
     if let Some(paths) = rwf_lib::diagnostics::stop_session(None) {
-        println!("Diagnostic session written to {}", paths.dir.display());
-        println!("It contains file paths and screen contents — review before sharing.");
+        eprintln!("Diagnostic session written to {}", paths.dir.display());
+        eprintln!("It contains file paths and screen contents — review before sharing.");
     }
 
     // Output directory to stdout if -cwd flag was provided or Shift+Q was pressed

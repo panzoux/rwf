@@ -29,9 +29,20 @@ pub fn format_elapsed(elapsed: std::time::Duration) -> String {
 
 /// Overlay `● DIAG mm:ss` in the top-right corner while a session records.
 ///
-/// No-op when idle. The elapsed value refreshes on whatever frames the app
-/// already draws — deliberately *not* forcing a periodic redraw, which would
-/// perturb the very main-loop timing this feature exists to measure.
+/// No-op when idle.
+///
+/// # The on-screen clock is indicative, not authoritative
+///
+/// It refreshes only on frames the app already draws. Forcing a periodic redraw
+/// to keep it ticking is **deliberately rejected** (decided 2026-08-11): it
+/// would perturb the main-loop timing this feature exists to measure, and would
+/// buy nothing, because timing analysis reads `events.jsonl` and never the
+/// screen. Every record's `ts` and `seq` are stamped in
+/// [`rwf_lib::diagnostics::observe`], entirely independent of rendering, so log
+/// accuracy does not depend on this widget refreshing at all.
+///
+/// The badge's job is only to answer "is a session running?" — and it does that
+/// even with a stale clock, since the marker persists in the last drawn frame.
 pub fn render_diag_badge(frame: &mut Frame, area: Rect) {
     let Some(elapsed) = rwf_lib::diagnostics::session_elapsed() else {
         return;
