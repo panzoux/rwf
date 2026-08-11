@@ -93,11 +93,16 @@ fn render_pane(
 
     // If loading, show fetching message
     if pane.is_loading {
-        tracing::error!(
-            "[UI::render_pane] STUCK: is_loading=true for pane={:?} at location={} address={:p}",
+        // `debug!`, not `error!`: a pane observed mid-`ReadDirectory` is the
+        // normal transient state, not a fault. Every tab creation used to emit
+        // four ERROR lines here and clear ~14 ms later, which buried real
+        // errors when grepping session.log. A genuinely stuck pane shows up as
+        // `is_loading` true with no `active_job_id` — see the pane fields in a
+        // diagnostic bundle (docs/DIAGNOSTIC_BUNDLES.md), not as a log level.
+        tracing::debug!(
+            "[UI::render_pane] loading: is_loading=true for pane={:?} at location={}",
             pane.display_mode,
             pane.current_location.display_path(),
-            pane as *const _
         );
         let loading_msg = Paragraph::new("(fetching file entries...)")
             .style(Style::default().fg(parse_color(&colors.foreground_color)));
@@ -105,7 +110,13 @@ fn render_pane(
         return;
     }
 
-    tracing::info!("[UI::render_pane] OK: is_loading=false for pane at location={}, entries.len()={} address={:p}", pane.current_location.display_path(), pane.entries.len(), pane as *const _);
+    // Also `debug!`: this fires on every render of every pane — ~180 lines in a
+    // 78-second session — and says nothing when things are working.
+    tracing::debug!(
+        "[UI::render_pane] loaded: location={}, entries.len()={}",
+        pane.current_location.display_path(),
+        pane.entries.len()
+    );
 
     // If no entries, show empty message
     if pane.entries.is_empty() {
