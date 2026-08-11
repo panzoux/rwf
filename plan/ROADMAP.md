@@ -236,6 +236,8 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | 7.9 | **シンタックスハイライト（ビューア）** | `[ ]` | `syntect`クレートによるコードハイライト（twfにない）。テキストビューア拡張（旧7.6） | ⭐⭐⭐ | 2週間 |
 | 7.10 | **SSH/SFTP対応**（将来） | `[ ]` | リモートファイルシステム（大規模追加）（旧7.8） | ⭐⭐ | TBD |
 | 7.13 | **ゴミ箱の自動削除（期限切れアイテムの定期パージ）** | `[ ]` | **2026-08-05: 7.7 Task 17 からスコープアウト**。`TrashConfig.auto_empty_days` は設定項目として存在（デフォルト `0`=オフ）だが未消費。当初案は Phase 7.5（バックグラウンドポーリング）にトリガーを相乗りさせる想定だったが 7.5 が未着手のため保留。**着手前に検討すべき問題**: (1) トリガー設計（起動時1回 vs 7.5 相乗りの真の定期実行）、(2) `.rwf-trash` fallback 側の age-filter 未実装（`purge_fallback_dirs_sync` は現状 `older_than_days` を一切見ない — `OsManaged` 側の `purge_os_trash_sync` とは非対称）、(3) **この機能が本当に必要か**（外部の cron / タスクスケジューラから本アプリを呼び出す形でも代替可能なため、内蔵機能化する価値があるか要検討）。7.5 完了後、または (3) の結論が出てから着手 | ⭐⭐ | 未見積 |
+| 7.16 | **診断: JobProgress の記録（オプトイン）** | `[ ]` | 7.15 の積み残し（plan §4.4 で設計したが未実装）。`event_receiver` が `JobEvent::Progress`/`ProgressWithDetail` を `Transition::UpdateJobProgress`/`UpdateJobProgressWithDetail` にマップするため、これらは他の Transition と同様 `update_state` を通り **無制限に** `events.jsonl` へ記録される。大きなコピー1回で数千レコードになりうる。**方針（2026-08-12 決定）: 常時記録はリソース過多につき採用しない。必要なときだけ有効化するオプトインとする。** 設定 `Diagnostics.CaptureJobProgress`（デフォルト `false`）を追加し、無効時は該当 Transition の記録をスキップする。**実装上の注意**: job_id ごとのスロットリングは `Mutex<HashMap>` を観測パス（設計上ロックフリーを維持する箇所）に持ち込むため不可。`is_active()` ガードの後段でグローバルな `AtomicU64`（最終記録時刻）1個で間引くこと。判定は `format!("{:?}")` の**前**に安価な discriminant 比較で行い、無効セッション時のコストをゼロに保つ。詳細は [7.15.diagnostic_report.md](7.15.diagnostic_report.md) §4.4 および「Findings」節 | ⭐⭐ | 小規模 |
+| 7.17 | **複数行テキスト入力ダイアログ（診断レポート記述欄ほか）** | `[ ]` | 7.15 の既知の制約。現状の `InputDialog`（`rwf-bin/src/ui/text_input.rs`）は**単一行のみ**で、コードベースに複数行入力は存在しない。7.15 の終了時レポート入力は汎用 `Input` ダイアログ（タイトルでディスパッチ）を再利用しており、「何が起きたか／期待した動作／改善案」を1行で書かせている。実測ドッグフーディング（2026-08-11）でユーザーは 76 バイト・1行での記述を強いられた。複数行入力ウィジェット（改行・カーソル上下移動・スクロール・CJK幅対応）を追加し、まず診断レポート欄に適用する。7.14（fish 風インライン補完）と同じ `text_input.rs` を触るため、着手順を調整すること | ⭐⭐⭐ | 未見積 |
 | 7.14 | **fish シェル風インライン自動補完（ダイアログ内テキスト入力）** | `[ ]` | rwf 内の各種ダイアログのテキスト入力（ディレクトリ作成 `Create Directory`、シンプルリネーム等、`Dialog::input()` を使う汎用 `InputDialog`）に、fish シェルのような「入力中に薄字で候補を先読み表示し、Tab/→/End 等で確定」インライン補完を追加。候補ソースはカレントディレクトリのファイル/フォルダ名一致（パス系入力）や履歴（HistoryDialog は既存）を想定。Jump to Path（Phase 2.1）は既に非同期パス補完を持つが専用ダイアログ限定。本タスクは汎用 `InputDialog` 側への一般化が主眼。CLI補完（bash/zsh/fish 等のシェル統合スクリプト生成）とは別物 — 混同しないこと | ⭐⭐⭐ | 未見積 |
 
 ---
@@ -307,18 +309,20 @@ Phase 7 (再開)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-08-11（7.15 デバッグレポート機能 Stage 1〜6 実装完了・main へマージ待ち。7.6 の直前に配置し、
-7.6 と並列開発して main へ先行マージする方針。ソース調査により `AppEvent` が死にコードであることが判明し、
-観測点を `update_state()`/`handle_events()`/`render()` の3箇所に確定）
+最終更新: 2026-08-12（**7.15 デバッグレポート機能 全 Stage 完了 → `main` へマージ・push 済み**（`aba6d39`）。
+併せて implicit-contracts 監査ブランチもマージ（`docs/IMPLICIT_CONTRACTS.md` + ガードテスト9件 + 実在違反5件の修正）。
+7.6 worktree へ `git merge main` 済み（`5e4291a`、コンフリクトなし）。
+7.15 の積み残しを **7.16**（JobProgress 記録のオプトイン化）・**7.17**（複数行テキスト入力）として起票）
 現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation・7.3 スマート・ファイルオープナー・
 7.7 スマート・トラッシュ・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
 Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md) の「Phase M 完了サマリ」）
 次の作業候補（優先順。実行順の一次情報は上の Phase 7 表の行順）:
-1. **7.6 Undo/Redo** — killer feature、**2026-07-28 設計改訂済み**（Operation Report 中心。UI/UX の正は 7.6.operation_report_ui.md、力学は 7.6.transactional_rollback.md）。前提操作（7.7 Trash・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File）は全て完了済み。**着手済み**: worktree `worktree-phase-7.6-undo-redo`（4コミット、Operation Record 化を copy/move/rename まで完了）
-2. **7.15 デバッグレポート機能** — 1 と並列開発。独立 worktree `worktree-phase-7.15-diagnostics` で **Stage 1〜6 実装完了（2026-08-11）**。**次の作業は `main` へのマージ**。マージ後、7.6 worktree 側で `git merge main` して取り込む（7.6 の非同期トランザクション実装が生むタイミング/状態不整合バグの調査に 7.15 自身を使えるようにするため）。7.6 との衝突は `state/mod.rs`・`app.rs`・`job.rs` の追記的な変更のみで小さい
+1. **7.6 Undo/Redo** — killer feature、**2026-07-28 設計改訂済み**（Operation Report 中心。UI/UX の正は 7.6.operation_report_ui.md、力学は 7.6.transactional_rollback.md）。前提操作（7.7 Trash・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File）は全て完了済み。**着手済み**: worktree `worktree-phase-7.6-undo-redo`（`5e4291a`、Operation Record 化を copy/move/rename まで完了 + rename 失敗時のペイン誤更新バグ修正 + main マージ済み）。**7.15 の `F12` が同 worktree で使用可能** — 非同期トランザクションが生むタイミング/状態不整合バグの調査に使うこと
+2. **7.17 複数行テキスト入力** — 7.15 のドッグフーディングで判明した実制約。`text_input.rs` を触るため 7.14 と着手順を調整
 3. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
-4. **7.14 fish シェル風インライン自動補完** — 独立タスク。空き時間に着手可能
+4. **7.14 fish シェル風インライン自動補完** — 独立タスク。7.17 と同じ `text_input.rs` を触る
+5. **7.16 JobProgress オプトイン記録** — 小規模。7.15 の積み残し
 
 ## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
 
