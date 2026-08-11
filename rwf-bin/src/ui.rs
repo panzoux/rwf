@@ -10,6 +10,7 @@ mod leap_bar;
 mod pane_info_line;
 mod panes;
 mod path_line;
+pub mod screen_text;
 pub mod smart_text;
 mod spinner;
 mod tab_bar;

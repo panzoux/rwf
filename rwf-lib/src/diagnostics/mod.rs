@@ -27,10 +27,18 @@
 //! so payload formatting is not paid for. This is what makes the feature
 //! viable in release builds.
 
+pub mod log_layer;
 mod record;
+mod state_snapshot;
 mod writer;
 
+pub use log_layer::{DiagnosticLogLayer, LogRecord};
 pub use record::{truncate_detail, variant_name, DiagnosticEvent, DiagnosticRecord, DETAIL_MAX};
+pub use state_snapshot::{
+    ActiveJobSnapshot, BackgroundJobSnapshot, DiagnosticStateSnapshot, JobsSnapshot,
+    LayoutSnapshot, LeapSnapshot, PaneSnapshot, SearchSnapshot, TabSnapshot, TabsSnapshot,
+    UiSnapshot, ViewerSnapshot,
+};
 pub use writer::SessionPaths;
 
 use std::path::{Path, PathBuf};
@@ -39,7 +47,7 @@ use std::sync::{Mutex, OnceLock};
 
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-use writer::WriterMessage;
+use writer::{WriterMessage, WRITER_THREAD_NAME};
 
 static HANDLE: OnceLock<DiagnosticHandle> = OnceLock::new();
 
@@ -137,6 +145,119 @@ pub fn observe(build: impl FnOnce() -> DiagnosticEvent) {
     let _ = handle.tx.send(WriterMessage::Record(Box::new(record)));
 }
 
+/// Take the next sequence number.
+///
+/// Shared by [`observe`] and the log layer so `events.jsonl` and `logs.jsonl`
+/// merge into one totally ordered timeline.
+pub(crate) fn next_seq() -> u64 {
+    HANDLE
+        .get()
+        .map_or(0, |h| h.seq.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Forward a mirrored `tracing` event to the writer.
+///
+/// Called only from [`log_layer::DiagnosticLogLayer`], which has already
+/// checked that a session is active and that the event did not originate on the
+/// writer thread.
+pub(crate) fn send_log(record: LogRecord) {
+    if let Some(handle) = HANDLE.get() {
+        let _ = handle.tx.send(WriterMessage::Log(Box::new(record)));
+    }
+}
+
+/// Why a snapshot was taken. Becomes part of the filename.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotTrigger {
+    /// Automatic, at session start.
+    Start,
+    /// User pressed the snapshot key.
+    Manual,
+    /// Automatic, at session end.
+    Final,
+}
+
+impl SnapshotTrigger {
+    /// Filename-safe label.
+    pub fn label(self) -> &'static str {
+        match self {
+            SnapshotTrigger::Start => "start",
+            SnapshotTrigger::Manual => "manual",
+            SnapshotTrigger::Final => "final",
+        }
+    }
+}
+
+/// Upper bound on snapshots per session.
+///
+/// Bounds a runaway session (a key stuck on auto-repeat, a script hammering
+/// the binding) rather than any expected usage.
+pub const MAX_SNAPSHOTS_PER_SESSION: usize = 200;
+
+/// Snapshots taken in the running session, used to enforce
+/// [`MAX_SNAPSHOTS_PER_SESSION`].
+static SNAPSHOT_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Record a screen/state capture pair.
+///
+/// `screen` is the rendered text (see `rwf-bin`'s `screen_text::buffer_to_text`)
+/// and `state` the semantic projection. Both are produced on the main loop,
+/// which owns render state; this function only forwards them.
+///
+/// Emits a [`DiagnosticEvent::Snapshot`] into `events.jsonl` so the capture is
+/// positioned on the same timeline as everything else.
+pub fn observe_snapshot(trigger: SnapshotTrigger, screen: String, state: &DiagnosticStateSnapshot) {
+    let Some(handle) = HANDLE.get() else {
+        return;
+    };
+    if !handle.active.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let taken = SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed);
+    if taken >= MAX_SNAPSHOTS_PER_SESSION as u64 {
+        // Log once, on the transition past the cap, then stay quiet.
+        if taken == MAX_SNAPSHOTS_PER_SESSION as u64 {
+            tracing::warn!(
+                "diagnostics: snapshot cap ({MAX_SNAPSHOTS_PER_SESSION}) reached, \
+                 further snapshots in this session are dropped"
+            );
+        }
+        return;
+    }
+
+    let state_json = match serde_json::to_string_pretty(state) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            tracing::warn!("diagnostics: state snapshot not serializable: {e}");
+            None
+        }
+    };
+
+    let label = trigger.label();
+    observe(|| DiagnosticEvent::Snapshot {
+        trigger: label.to_string(),
+        rows: screen.lines().count(),
+    });
+
+    let _ = handle
+        .tx
+        .send(WriterMessage::Snapshot(Box::new(writer::SnapshotPayload {
+            seq: handle.seq.load(Ordering::Relaxed).saturating_sub(1),
+            trigger: label,
+            screen,
+            state_json,
+        })));
+}
+
+/// Sequence number the next observed event will receive.
+///
+/// Lets the caller stamp a [`DiagnosticStateSnapshot`] with the same `seq` the
+/// accompanying `Snapshot` event will carry.
+pub fn peek_seq() -> u64 {
+    HANDLE.get().map_or(0, |h| h.seq.load(Ordering::Relaxed))
+}
+
 /// Build a session id that does not collide with an existing directory.
 ///
 /// The id is second-resolution, so two sessions started within the same second
@@ -190,6 +311,7 @@ pub fn start_session(root: PathBuf, trigger: &str) -> Option<SessionPaths> {
             started: std::time::Instant::now(),
         });
     }
+    SNAPSHOT_COUNT.store(0, Ordering::Relaxed);
     handle.active.store(true, Ordering::Relaxed);
 
     let trigger = trigger.to_string();

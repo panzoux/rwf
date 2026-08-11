@@ -50,6 +50,13 @@ pub struct App {
     /// external process (e.g. a stray console message), since nothing in RWF's own state
     /// changed. `clear()` resets that internal buffer so the next draw repaints every cell.
     force_full_redraw: bool,
+    /// Phase 7.15: pending diagnostic screen capture, consumed by the next `render()`.
+    ///
+    /// A request is a flag rather than an immediate capture because the screen
+    /// only exists after `terminal.draw()`. Keeping the capture inside
+    /// `render()` is also what preserves main-loop ownership of render state —
+    /// no other thread ever reads the buffer.
+    snapshot_request: Option<rwf_lib::diagnostics::SnapshotTrigger>,
 }
 
 impl App {
@@ -121,6 +128,7 @@ impl App {
             leap_dirty: false,
             last_leap_input_time: None,
             force_full_redraw: false,
+            snapshot_request: None,
         };
         app.state.config.key_bindings = app.key_bindings.clone();
         app
@@ -274,6 +282,10 @@ impl App {
                 "[DIAG] Recording diagnostic session to {}",
                 paths.dir.display()
             ));
+            // Capture the starting screen and state. The event stream is a
+            // sequence of deltas, so without this the transitions that follow
+            // cannot be resolved to absolute state.
+            self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Start);
         }
 
         self.trigger_initial_directory_reads();
@@ -616,6 +628,16 @@ impl App {
             }
 
             if self.should_quit {
+                // Phase 7.15: capture the final screen before teardown. Must
+                // render once more — `snapshot_request` is only consumed inside
+                // `render()`, and the loop is about to break.
+                if rwf_lib::diagnostics::is_active() {
+                    self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Final);
+                    if let Err(e) = self.render(terminal) {
+                        tracing::warn!("[DIAG] final snapshot render failed: {e}");
+                    }
+                }
+
                 if let Err(e) = self.state.save_session() {
                     error!("Save session failed: {}", e);
                 }
@@ -2019,8 +2041,44 @@ impl App {
                 Transition::UpdatePaneWidth { width: pane_w },
             );
         }
-        terminal.draw(|f| render_ui(f, &self.state, &self.task_panel))?;
+        // Phase 7.15: a snapshot is taken here and nowhere else.
+        //
+        // The capture happens *inside* the draw closure rather than after it:
+        // `Backend::buffer()` exists only on `TestBackend`, so with the real
+        // `CrosstermBackend` the rendered cells are reachable only through
+        // `Frame::buffer_mut()` while the frame is alive. That also keeps
+        // render-state ownership intact — no other thread ever reads it.
+        let trigger = self.snapshot_request.take();
+        let mut screen: Option<String> = None;
+        terminal.draw(|f| {
+            render_ui(f, &self.state, &self.task_panel);
+            if trigger.is_some() {
+                screen = Some(crate::ui::screen_text::buffer_to_text(f.buffer_mut()));
+            }
+        })?;
+
+        if let (Some(trigger), Some(screen)) = (trigger, screen) {
+            let state = rwf_lib::diagnostics::DiagnosticStateSnapshot::capture(
+                &self.state,
+                rwf_lib::diagnostics::peek_seq(),
+                trigger.label(),
+            );
+            rwf_lib::diagnostics::observe_snapshot(trigger, screen, &state);
+        }
+
         Ok(())
+    }
+
+    /// Queue a diagnostic screen capture for the next frame.
+    ///
+    /// No-op when no session is recording, so callers need not check first.
+    /// A request already queued is not replaced — the earlier trigger wins,
+    /// which matters when `Final` is requested during a frame that already had
+    /// a `Manual` pending.
+    fn request_snapshot(&mut self, trigger: rwf_lib::diagnostics::SnapshotTrigger) {
+        if rwf_lib::diagnostics::is_active() && self.snapshot_request.is_none() {
+            self.snapshot_request = Some(trigger);
+        }
     }
 
     /// Called whenever the cursor might have moved in SideBySide file-pane mode.

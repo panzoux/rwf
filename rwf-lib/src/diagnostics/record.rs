@@ -86,6 +86,16 @@ pub enum DiagnosticEvent {
         /// `UIMode` at draw time.
         mode: String,
     },
+    /// A screen/state capture pair was written to `snapshots/`.
+    ///
+    /// Positions the capture on the same timeline as everything else; the files
+    /// themselves share this record's `seq`.
+    Snapshot {
+        /// `start`, `manual` or `final`.
+        trigger: String,
+        /// Terminal rows captured — a cheap sanity check on the `.txt`.
+        rows: usize,
+    },
     /// Free-form marker, for tests and for recording diagnostics-internal problems.
     Note {
         /// Human-readable message.

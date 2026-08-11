@@ -13,7 +13,14 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use super::log_layer::LogRecord;
 use super::record::DiagnosticRecord;
+
+/// Thread name of the writer.
+///
+/// The log layer drops events raised on this thread; see
+/// [`super::log_layer`] for why.
+pub(crate) const WRITER_THREAD_NAME: &str = "rwf-diagnostics";
 
 /// Filesystem layout of one diagnostic session.
 #[derive(Debug, Clone)]
@@ -46,10 +53,30 @@ impl SessionPaths {
         self.dir.join("report.txt")
     }
 
+    /// `logs.jsonl` — `tracing` output mirrored for this session.
+    pub fn logs(&self) -> PathBuf {
+        self.dir.join("logs.jsonl")
+    }
+
     /// `snapshots/` — paired `.txt` / `.json` screen and state captures.
     pub fn snapshots(&self) -> PathBuf {
         self.dir.join("snapshots")
     }
+}
+
+/// One screen/state capture, ready to write.
+///
+/// Both halves share `seq` and a filename stem so the event stream, the pixels
+/// and the semantic state line up on one timeline.
+pub(crate) struct SnapshotPayload {
+    /// Sequence number of the corresponding `Snapshot` event.
+    pub seq: u64,
+    /// `start`, `manual` or `final` — becomes part of the filename.
+    pub trigger: &'static str,
+    /// Rendered screen as plain text.
+    pub screen: String,
+    /// Serialized `DiagnosticStateSnapshot`, or `None` if it failed to build.
+    pub state_json: Option<String>,
 }
 
 /// Messages accepted by the writer thread.
@@ -58,6 +85,10 @@ pub(crate) enum WriterMessage {
     StartSession(Box<SessionPaths>),
     /// Append one record to `events.jsonl`.
     Record(Box<DiagnosticRecord>),
+    /// Write a paired screen/state capture into `snapshots/`.
+    Snapshot(Box<SnapshotPayload>),
+    /// Append one mirrored `tracing` event to `logs.jsonl`.
+    Log(Box<LogRecord>),
     /// Flush, write `metadata.json` and `report.txt`, close the session.
     EndSession {
         /// User-supplied description, or `None` if the prompt was cancelled.
@@ -82,7 +113,7 @@ pub(crate) enum WriterMessage {
 /// the application is otherwise unaffected.
 pub(crate) fn spawn(rx: UnboundedReceiver<WriterMessage>) {
     let spawned = std::thread::Builder::new()
-        .name("rwf-diagnostics".to_string())
+        .name(WRITER_THREAD_NAME.to_string())
         .spawn(move || run(rx));
 
     if let Err(e) = spawned {
@@ -105,6 +136,16 @@ fn run(mut rx: UnboundedReceiver<WriterMessage>) {
             WriterMessage::Record(record) => {
                 if let Some(active) = session.as_mut() {
                     active.write_record(&record);
+                }
+            }
+            WriterMessage::Snapshot(payload) => {
+                if let Some(active) = session.as_mut() {
+                    active.write_snapshot(&payload);
+                }
+            }
+            WriterMessage::Log(record) => {
+                if let Some(active) = session.as_mut() {
+                    active.write_log(&record);
                 }
             }
             WriterMessage::EndSession { report, ack } => {
@@ -130,6 +171,15 @@ struct ActiveSession {
     started_at: String,
     /// Set after the first write error so the log records it once, not per record.
     write_failed: bool,
+    /// Per-session snapshot counter, used for the filename index.
+    snapshot_count: usize,
+    /// `logs.jsonl`, opened alongside `events.jsonl`.
+    logs: Option<BufWriter<File>>,
+    /// Independent failure latch for `logs.jsonl`.
+    ///
+    /// Separate from `write_failed` on purpose: losing the mirrored log must not
+    /// silence the event stream, which is the more important of the two.
+    log_write_failed: bool,
 }
 
 impl ActiveSession {
@@ -154,6 +204,14 @@ impl ActiveSession {
             }
         };
 
+        let logs = match File::create(paths.logs()) {
+            Ok(f) => Some(BufWriter::new(f)),
+            Err(e) => {
+                tracing::warn!("diagnostics: cannot open logs.jsonl: {e}");
+                None
+            }
+        };
+
         tracing::info!("diagnostics: session started at {}", paths.dir.display());
 
         Some(Self {
@@ -161,6 +219,9 @@ impl ActiveSession {
             events: BufWriter::new(file),
             started_at: super::now_timestamp(),
             write_failed: false,
+            snapshot_count: 0,
+            logs,
+            log_write_failed: false,
         })
     }
 
@@ -187,9 +248,63 @@ impl ActiveSession {
         }
     }
 
+    /// Append one mirrored `tracing` event to `logs.jsonl`.
+    ///
+    /// Failures here are latched separately and **must not** be reported with
+    /// `tracing::warn!` beyond the first occurrence: the log layer drops events
+    /// from this thread, but keeping the noise bounded is cheap insurance.
+    fn write_log(&mut self, record: &LogRecord) {
+        if self.log_write_failed {
+            return;
+        }
+        let Some(logs) = self.logs.as_mut() else {
+            return;
+        };
+
+        let line = match serde_json::to_string(record) {
+            Ok(line) => line,
+            Err(_) => return,
+        };
+
+        if writeln!(logs, "{line}")
+            .and_then(|()| logs.flush())
+            .is_err()
+        {
+            self.log_write_failed = true;
+        }
+    }
+
+    /// Write the `.txt` / `.json` pair for one snapshot.
+    ///
+    /// Files are named `<index>-<trigger>.{txt,json}` with a zero-padded,
+    /// per-session index, so a directory listing reads in capture order rather
+    /// than lexicographic `seq` order.
+    fn write_snapshot(&mut self, payload: &SnapshotPayload) {
+        let stem = format!("{:03}-{}", self.snapshot_count, payload.trigger);
+        self.snapshot_count += 1;
+
+        let dir = self.paths.snapshots();
+        let text_path = dir.join(format!("{stem}.txt"));
+        if let Err(e) = fs::write(&text_path, &payload.screen) {
+            tracing::warn!("diagnostics: {} write failed: {e}", text_path.display());
+        }
+
+        if let Some(json) = &payload.state_json {
+            let state_path = dir.join(format!("{stem}.json"));
+            if let Err(e) = fs::write(&state_path, json) {
+                tracing::warn!("diagnostics: {} write failed: {e}", state_path.display());
+            }
+        }
+
+        tracing::debug!("diagnostics: snapshot {stem} (seq {})", payload.seq);
+    }
+
     fn finish(mut self, report: Option<String>) {
         if let Err(e) = self.events.flush() {
             tracing::warn!("diagnostics: final flush failed: {e}");
+        }
+        if let Some(logs) = self.logs.as_mut() {
+            let _ = logs.flush();
         }
 
         self.write_metadata();
