@@ -585,6 +585,21 @@ impl App {
                 next_wakeup.as_millis()
             );
 
+            // Phase 7.15: the highest-value event in the feature. Recorded only
+            // when the loop is actually about to sleep — while `ui_needs_update`
+            // is set the timeout is zero and the loop spins, which would flood
+            // the stream without saying anything. An oversized `next_wakeup_ms`
+            // here is the signature of a job completion that failed to shorten
+            // the poll (see plan/7.15.diagnostic_report.md §1.5).
+            if !next_wakeup.is_zero() {
+                let active_jobs = self.state.jobs.active.len();
+                rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Wake {
+                    next_wakeup_ms: next_wakeup.as_millis() as u64,
+                    any_pane_loading,
+                    active_jobs,
+                });
+            }
+
             // Wait for events OR timeout
             if self.handle_events(next_wakeup)? {
                 ui_needs_update = true;
@@ -748,6 +763,16 @@ impl App {
         if !self.should_process_key_repeat(&key_string, key.kind, now) {
             return false;
         }
+
+        // Phase 7.15: recorded after debounce so the stream contains only keys
+        // that were actually acted on. A `Key` with no `Transition` following it
+        // before the next event is exactly the "I pressed X and nothing
+        // happened" report this feature exists to capture.
+        rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Key {
+            key: key_string.clone(),
+            mode: format!("{:?}", self.state.ui.mode),
+            dialog: self.state.dialogs.current().map(|d| d.title.clone()),
+        });
 
         // 1. Dialog handling
         if let Some(dialog) = self.state.dialogs.current_mut() {
@@ -1950,6 +1975,15 @@ impl App {
             self.force_full_redraw = false;
         }
         let size = terminal.size()?;
+
+        // Phase 7.15: pairs with `Wake` — together they show whether a frame was
+        // drawn between a job completing and the user seeing it.
+        rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Render {
+            width: size.width,
+            height: size.height,
+            mode: format!("{:?}", self.state.ui.mode),
+        });
+
         let tab_h = if self.state.ui.layout.show_tab_bar {
             1
         } else {

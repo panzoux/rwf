@@ -58,6 +58,18 @@ async fn main() -> Result<()> {
 
     info!("Two-Pane File Manager starting...");
 
+    // Phase 7.15 stages 1-2: start a diagnostic session for the whole run when
+    // RWF_DIAGNOSTICS is set. The interactive F12 toggle arrives in stage 5;
+    // this makes event capture usable (and the §1.5 wake-timing hypothesis
+    // testable) before any UI exists for it.
+    if std::env::var("RWF_DIAGNOSTICS").is_ok_and(|v| v != "0" && !v.is_empty()) {
+        let root = rwf_lib::diagnostics::default_diagnostics_dir();
+        match rwf_lib::diagnostics::start_session(root, "env") {
+            Some(paths) => info!("Diagnostic session recording to {:?}", paths.dir),
+            None => info!("Diagnostic session could not be started"),
+        }
+    }
+
     // Initialize terminal
     let mut terminal_manager = TerminalManager::new()?;
     info!("Terminal initialized");
@@ -128,6 +140,13 @@ async fn main() -> Result<()> {
     // Restore terminal state
     terminal_manager.restore()?;
     info!("Terminal restored");
+
+    // Phase 7.15 stages 1-2: finalise an env-triggered session. Stage 5 replaces
+    // the placeholder report with the user's description from the exit prompt.
+    if let Some(paths) = rwf_lib::diagnostics::stop_session(None) {
+        println!("Diagnostic session written to {}", paths.dir.display());
+        println!("It contains file paths and screen contents — review before sharing.");
+    }
 
     // Output directory to stdout if -cwd flag was provided or Shift+Q was pressed
     if args.cwd || app.should_output_directory() {

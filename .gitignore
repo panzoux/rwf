@@ -2,6 +2,9 @@ target/
 debug/
 qwen-code-export-*
 logs/
+# Anchored to the repo root: an unanchored `diagnostics/` would also swallow
+# rwf-lib/src/diagnostics/, which is source.
+/diagnostics/
 sample/
 .superpowers/
 docs/superpowers/
