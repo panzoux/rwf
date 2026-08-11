@@ -87,6 +87,26 @@ async fn main() -> Result<()> {
     let mut state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
 
+    // Phase 7.15: `RWF_DIAGNOSTICS=1` records the whole run, for cases where the
+    // problem happens before you can reach a keybinding (startup, first paint).
+    // `F12` is the normal way in. Placed after config load so it honours
+    // Diagnostics.Enabled and Diagnostics.OutputDirectory; App::run picks the
+    // running session up and writes the start snapshot and effective config.
+    if state.config.diagnostics.enabled
+        && std::env::var("RWF_DIAGNOSTICS").is_ok_and(|v| v != "0" && !v.is_empty())
+    {
+        let configured = state.config.diagnostics.output_directory.clone();
+        let root = if configured.is_empty() {
+            rwf_lib::diagnostics::default_diagnostics_dir()
+        } else {
+            std::path::PathBuf::from(state.registered_folders.expand_env_vars(&configured))
+        };
+        match rwf_lib::diagnostics::start_session(root, "env") {
+            Some(paths) => info!("Diagnostic session recording to {:?}", paths.dir),
+            None => info!("Diagnostic session could not be started"),
+        }
+    }
+
     // Load key bindings from keybindings.json (merges over defaults; falls back entirely on parse error)
     let kb_path = config_manager.keybindings_path().to_path_buf();
     let kb_exists = kb_path.exists();
@@ -128,6 +148,20 @@ async fn main() -> Result<()> {
     // Restore terminal state
     terminal_manager.restore()?;
     info!("Terminal restored");
+
+    // Phase 7.15 stages 1-2: finalise an env-triggered session. Stage 5 replaces
+    // the placeholder report with the user's description from the exit prompt.
+    //
+    // MUST be stderr, never stdout. Stdout is a data channel here: the shell
+    // integration documented in docs/USER_GUIDE.md captures it with
+    // `local output=$(rwf -cwd)` and feeds the result straight to `cd`, so any
+    // extra stdout line silently breaks directory-on-exit whenever a diagnostic
+    // session is running. stderr is not captured by that substitution and is
+    // still shown to the user once the TUI has been torn down.
+    if let Some(paths) = rwf_lib::diagnostics::stop_session(None) {
+        eprintln!("Diagnostic session written to {}", paths.dir.display());
+        eprintln!("It contains file paths and screen contents — review before sharing.");
+    }
 
     // Output directory to stdout if -cwd flag was provided or Shift+Q was pressed
     if args.cwd || app.should_output_directory() {

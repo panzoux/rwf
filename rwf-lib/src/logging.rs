@@ -180,9 +180,21 @@ pub fn init_logging(log_level: LogLevel, log_dir: &Path) -> anyhow::Result<()> {
         .with_line_number(true);
 
     // Initialize subscriber
+    //
+    // Phase 7.15: the diagnostic layer is installed unconditionally and gates
+    // itself on whether a session is recording — `.init()` runs once at
+    // startup, so a layer added later is not an option.
+    //
+    // It deliberately sits under the same `filter` as the file layer rather
+    // than getting a wider per-layer filter of its own. Widening it would make
+    // every `debug!` call site format its arguments on every main-loop
+    // iteration even with diagnostics switched off, which would break the
+    // "invisible when inactive" property the feature depends on. To capture
+    // debug-level detail in a bundle, run with `RUST_LOG=debug`.
     tracing_subscriber::registry()
         .with(filter)
         .with(file_layer)
+        .with(crate::diagnostics::DiagnosticLogLayer)
         .init();
 
     tracing::info!("Logging initialized at level: {:?}", log_level);

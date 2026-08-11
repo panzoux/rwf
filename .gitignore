@@ -6,6 +6,7 @@
 /debug/
 qwen-code-export-*
 /logs/
+/diagnostics/
 /sample/
 /.superpowers/
 /docs/superpowers/

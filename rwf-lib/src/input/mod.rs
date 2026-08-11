@@ -512,6 +512,17 @@ pub enum Action {
     SaveLog,
     EditConfigFile,
 
+    // Diagnostics (Phase 7.15)
+    //
+    // Handled directly in `App::handle_key_event`, not via
+    // `action_to_transitions` — a diagnostic session is app-level state, not
+    // `AppState`, so it produces no `Transition`. They fall through to the
+    // wildcard arm there, which is correct.
+    /// Start or stop a diagnostic recording session.
+    ToggleDiagnosticSession,
+    /// Capture the current screen and state into the running session.
+    DiagnosticSnapshot,
+
     // Task panel operations
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,

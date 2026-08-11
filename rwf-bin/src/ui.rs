@@ -3,12 +3,14 @@
 //! This module handles all UI rendering using ratatui.
 
 mod colors;
+mod diag_badge;
 pub mod dialog;
 mod filename_line;
 mod leap_bar;
 mod pane_info_line;
 mod panes;
 mod path_line;
+pub mod screen_text;
 pub mod smart_text;
 mod spinner;
 mod tab_bar;
@@ -46,6 +48,15 @@ const FILE_PANE_MIN: u16 = 3;
 const CONTENT_FIXED_LINES: u16 = 4;
 
 pub fn render_ui(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
+    render_ui_inner(frame, state, task_panel);
+
+    // Drawn last, over whatever layout was chosen. `render_ui_inner` returns
+    // early for the full-screen viewer, so anything that must appear in every
+    // mode has to live out here rather than inside it.
+    diag_badge::render_diag_badge(frame, frame.area());
+}
+
+fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) {
     let size = frame.area();
 
     let tab_bar_h = if state.ui.layout.show_tab_bar {

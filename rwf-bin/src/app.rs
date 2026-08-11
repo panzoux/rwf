@@ -17,6 +17,14 @@ use tracing::error;
 use crate::ui::render_ui;
 use crate::ui::task_panel::TaskPanel;
 
+/// Title of the end-of-session report prompt.
+///
+/// The generic `Input` dialog dispatches on title, so this string is the link
+/// between pushing the prompt here and handling its confirmation in
+/// `ui::dialog::confirm::process_dialog_confirmation`. Keep the two in sync via
+/// this constant rather than duplicating the literal.
+pub const DIAGNOSTIC_REPORT_DIALOG_TITLE: &str = "Diagnostic Report";
+
 /// Application runner
 pub struct App {
     state: AppState,
@@ -50,6 +58,19 @@ pub struct App {
     /// external process (e.g. a stray console message), since nothing in RWF's own state
     /// changed. `clear()` resets that internal buffer so the next draw repaints every cell.
     force_full_redraw: bool,
+    /// Phase 7.15: pending diagnostic screen capture, consumed by the next `render()`.
+    ///
+    /// A request is a flag rather than an immediate capture because the screen
+    /// only exists after `terminal.draw()`. Keeping the capture inside
+    /// `render()` is also what preserves main-loop ownership of render state —
+    /// no other thread ever reads the buffer.
+    snapshot_request: Option<rwf_lib::diagnostics::SnapshotTrigger>,
+    /// Phase 7.15: a stop was requested and the final snapshot is still pending.
+    ///
+    /// Stopping is two-step so the final capture shows the screen the user was
+    /// looking at, not the report prompt that replaces it. The main loop pushes
+    /// the prompt only once `snapshot_request` has been consumed by a render.
+    pending_diag_report: bool,
 }
 
 impl App {
@@ -121,6 +142,8 @@ impl App {
             leap_dirty: false,
             last_leap_input_time: None,
             force_full_redraw: false,
+            snapshot_request: None,
+            pending_diag_report: false,
         };
         app.state.config.key_bindings = app.key_bindings.clone();
         app
@@ -266,6 +289,24 @@ impl App {
     }
 
     pub async fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+        // Phase 7.15: announce an already-running session (currently only the
+        // RWF_DIAGNOSTICS env trigger, which fires before the App exists) so the
+        // task panel carries a record of it alongside the persistent badge.
+        // A session may already be running: the RWF_DIAGNOSTICS env trigger
+        // fires in main() before the App exists. Key-triggered sessions do this
+        // same work in `toggle_diagnostic_session`.
+        if let Some(paths) = rwf_lib::diagnostics::current_session() {
+            self.task_panel.add_pending_log(format!(
+                "[DIAG] Recording diagnostic session to {}",
+                paths.dir.display()
+            ));
+            self.record_effective_config();
+            // Capture the starting screen and state. The event stream is a
+            // sequence of deltas, so without this the transitions that follow
+            // cannot be resolved to absolute state.
+            self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Start);
+        }
+
         self.trigger_initial_directory_reads();
 
         // Initial render
@@ -275,6 +316,24 @@ impl App {
             if ui_needs_update {
                 self.render(terminal)?;
                 ui_needs_update = false;
+            }
+
+            // Phase 7.15: the final snapshot has now been consumed by a render,
+            // so the capture shows the pre-prompt screen. Only now put the
+            // report prompt up.
+            if self.pending_diag_report && self.snapshot_request.is_none() {
+                self.pending_diag_report = false;
+                if self.state.config.diagnostics.prompt_for_report {
+                    self.state.dialogs.push(rwf_lib::model::Dialog::input(
+                        DIAGNOSTIC_REPORT_DIALOG_TITLE,
+                        "What happened? (problem / expected behaviour)",
+                        "",
+                    ));
+                    ui_needs_update = true;
+                } else {
+                    self.finish_diagnostic_session(None);
+                    ui_needs_update = true;
+                }
             }
 
             // 1. Process background events from workers
@@ -585,12 +644,37 @@ impl App {
                 next_wakeup.as_millis()
             );
 
+            // Phase 7.15: the highest-value event in the feature. Recorded only
+            // when the loop is actually about to sleep — while `ui_needs_update`
+            // is set the timeout is zero and the loop spins, which would flood
+            // the stream without saying anything. An oversized `next_wakeup_ms`
+            // here is the signature of a job completion that failed to shorten
+            // the poll (see plan/7.15.diagnostic_report.md §1.5).
+            if !next_wakeup.is_zero() {
+                let active_jobs = self.state.jobs.active.len();
+                rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Wake {
+                    next_wakeup_ms: next_wakeup.as_millis() as u64,
+                    any_pane_loading,
+                    active_jobs,
+                });
+            }
+
             // Wait for events OR timeout
             if self.handle_events(next_wakeup)? {
                 ui_needs_update = true;
             }
 
             if self.should_quit {
+                // Phase 7.15: capture the final screen before teardown. Must
+                // render once more — `snapshot_request` is only consumed inside
+                // `render()`, and the loop is about to break.
+                if rwf_lib::diagnostics::is_active() {
+                    self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Final);
+                    if let Err(e) = self.render(terminal) {
+                        tracing::warn!("[DIAG] final snapshot render failed: {e}");
+                    }
+                }
+
                 if let Err(e) = self.state.save_session() {
                     error!("Save session failed: {}", e);
                 }
@@ -749,11 +833,33 @@ impl App {
             return false;
         }
 
+        // Phase 7.15: recorded after debounce so the stream contains only keys
+        // that were actually acted on. A `Key` with no `Transition` following it
+        // before the next event is exactly the "I pressed X and nothing
+        // happened" report this feature exists to capture.
+        rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Key {
+            key: key_string.clone(),
+            mode: format!("{:?}", self.state.ui.mode),
+            dialog: self.state.dialogs.current().map(|d| d.title.clone()),
+        });
+
+        // Diagnostic keys are global: checked before dialog input so a snapshot
+        // can be taken while a dialog is up. See `handle_diagnostic_key`.
+        if self.handle_diagnostic_key(&key_string) {
+            return true;
+        }
+
         // 1. Dialog handling
         if let Some(dialog) = self.state.dialogs.current_mut() {
             tracing::info!("[KEY] consumed by dialog: {:?}", dialog.title);
             match crate::ui::dialog::handle_dialog_input(dialog, key, Some(&self.state.search)) {
                 crate::ui::dialog::DialogAction::Cancel => {
+                    // Phase 7.15: dismissing the report prompt must still close
+                    // the session. The bundle is already largely on disk and the
+                    // user has done the reproduction work; leaving the session
+                    // silently recording would be the worst of both.
+                    let is_diag_report = dialog.title == DIAGNOSTIC_REPORT_DIALOG_TITLE;
+
                     if let rwf_lib::model::dialog::DialogContent::FileConflict { .. } =
                         &dialog.content
                     {
@@ -793,6 +899,9 @@ impl App {
                                 self.state.dialogs.pop();
                             }
                         }
+                    }
+                    if is_diag_report {
+                        self.finish_diagnostic_session(None);
                     }
                     return true;
                 }
@@ -1950,6 +2059,15 @@ impl App {
             self.force_full_redraw = false;
         }
         let size = terminal.size()?;
+
+        // Phase 7.15: pairs with `Wake` — together they show whether a frame was
+        // drawn between a job completing and the user seeing it.
+        rwf_lib::diagnostics::observe(|| rwf_lib::diagnostics::DiagnosticEvent::Render {
+            width: size.width,
+            height: size.height,
+            mode: format!("{:?}", self.state.ui.mode),
+        });
+
         let tab_h = if self.state.ui.layout.show_tab_bar {
             1
         } else {
@@ -1975,8 +2093,176 @@ impl App {
                 Transition::UpdatePaneWidth { width: pane_w },
             );
         }
-        terminal.draw(|f| render_ui(f, &self.state, &self.task_panel))?;
+        // Phase 7.15: a snapshot is taken here and nowhere else.
+        //
+        // The capture happens *inside* the draw closure rather than after it:
+        // `Backend::buffer()` exists only on `TestBackend`, so with the real
+        // `CrosstermBackend` the rendered cells are reachable only through
+        // `Frame::buffer_mut()` while the frame is alive. That also keeps
+        // render-state ownership intact — no other thread ever reads it.
+        let trigger = self.snapshot_request.take();
+        let mut screen: Option<String> = None;
+        terminal.draw(|f| {
+            render_ui(f, &self.state, &self.task_panel);
+            if trigger.is_some() {
+                screen = Some(crate::ui::screen_text::buffer_to_text(f.buffer_mut()));
+            }
+        })?;
+
+        if let (Some(trigger), Some(screen)) = (trigger, screen) {
+            let state = rwf_lib::diagnostics::DiagnosticStateSnapshot::capture(
+                &self.state,
+                rwf_lib::diagnostics::peek_seq(),
+                trigger.label(),
+            );
+            rwf_lib::diagnostics::observe_snapshot(trigger, screen, &state);
+        }
+
         Ok(())
+    }
+
+    /// Handle `F12` / `F11` (or whatever they are rebound to) before anything else.
+    ///
+    /// Returns `true` if the key was a diagnostic key and was consumed.
+    ///
+    /// Checked **ahead of dialog input** so a snapshot can be taken while a
+    /// dialog is up — a dialog rendering bug is exactly the kind of thing worth
+    /// capturing, and it would be unreachable otherwise. The defaults are
+    /// function keys no dialog consumes; a user who rebinds these to printable
+    /// characters will shadow them everywhere, which is the documented cost of
+    /// making them global.
+    ///
+    /// The keymap is selected by current mode, so a binding present only in
+    /// `ViewerMode` does not fire in `NormalMode`.
+    fn handle_diagnostic_key(&mut self, key_string: &str) -> bool {
+        use rwf_lib::input::Action;
+        use rwf_lib::model::UIMode;
+
+        if !self.state.config.diagnostics.enabled {
+            return false;
+        }
+
+        let action = match self.state.ui.mode {
+            UIMode::Viewer | UIMode::ViewerSearch | UIMode::ViewerCommand => {
+                self.key_bindings.viewer_mode.get(key_string).cloned()
+            }
+            UIMode::Leap => self.key_bindings.lookup_leap_action(key_string),
+            _ => self.key_bindings.normal_mode.get(key_string).cloned(),
+        };
+
+        match action {
+            Some(Action::ToggleDiagnosticSession) => {
+                self.toggle_diagnostic_session();
+                true
+            }
+            Some(Action::DiagnosticSnapshot) => {
+                if rwf_lib::diagnostics::is_active() {
+                    self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Manual);
+                    self.task_panel
+                        .add_pending_log("[DIAG] Snapshot captured".to_string());
+                } else {
+                    self.task_panel.add_pending_log(
+                        "[DIAG] No diagnostic session running (press the toggle key first)"
+                            .to_string(),
+                    );
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Start a session, or begin the two-step stop.
+    ///
+    /// Stopping is deferred rather than immediate: the final snapshot must
+    /// capture the screen *before* the report prompt covers it. See
+    /// `pending_diag_report`.
+    fn toggle_diagnostic_session(&mut self) {
+        if rwf_lib::diagnostics::is_active() {
+            self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Final);
+            self.pending_diag_report = true;
+            return;
+        }
+
+        let configured = self.state.config.diagnostics.output_directory.clone();
+        let root = if configured.is_empty() {
+            rwf_lib::diagnostics::default_diagnostics_dir()
+        } else {
+            // Reuse the project's canonical expansion (it lives on
+            // RegisteredFolderManager) so `%APPDATA%` / `${HOME}` / `$env:VAR`
+            // behave here exactly as they do everywhere else in the config.
+            std::path::PathBuf::from(self.state.registered_folders.expand_env_vars(&configured))
+        };
+
+        match rwf_lib::diagnostics::start_session(root, "key") {
+            Some(paths) => {
+                self.task_panel.add_pending_log(format!(
+                    "[DIAG] Recording diagnostic session to {}",
+                    paths.dir.display()
+                ));
+                self.record_effective_config();
+                self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Start);
+            }
+            None => {
+                self.task_panel
+                    .add_pending_log("[DIAG] Could not start diagnostic session".to_string());
+            }
+        }
+    }
+
+    /// Write `config_effective.json` into the running session.
+    ///
+    /// Keybindings are serialised **separately** from `AppConfig`: the
+    /// `key_bindings` field carries `#[serde(skip)]` (`config.rs:16`), so it is
+    /// absent from the config JSON. Without them a `Key` event that resolved to
+    /// no action is ambiguous — an unbound key and a remapped one look
+    /// identical.
+    fn record_effective_config(&self) {
+        let load_results: Vec<_> = self
+            .state
+            .config_load_results
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "path": r.path.display().to_string(),
+                    "status": format!("{:?}", r.status),
+                })
+            })
+            .collect();
+
+        let payload = serde_json::json!({
+            "config": self.state.config,
+            "keybindings": self.key_bindings,
+            "load_results": load_results,
+        });
+
+        match serde_json::to_string_pretty(&payload) {
+            Ok(json) => rwf_lib::diagnostics::record_effective_config(json),
+            Err(e) => tracing::warn!("[DIAG] effective config not serializable: {e}"),
+        }
+    }
+
+    /// Finish a session once the user has answered (or dismissed) the prompt.
+    fn finish_diagnostic_session(&mut self, report: Option<String>) {
+        if let Some(paths) = rwf_lib::diagnostics::stop_session(report) {
+            self.task_panel.add_pending_log(format!(
+                "[DIAG] Session written to {} — contains file paths and screen contents, \
+                 review before sharing",
+                paths.dir.display()
+            ));
+        }
+    }
+
+    /// Queue a diagnostic screen capture for the next frame.
+    ///
+    /// No-op when no session is recording, so callers need not check first.
+    /// A request already queued is not replaced — the earlier trigger wins,
+    /// which matters when `Final` is requested during a frame that already had
+    /// a `Manual` pending.
+    fn request_snapshot(&mut self, trigger: rwf_lib::diagnostics::SnapshotTrigger) {
+        if rwf_lib::diagnostics::is_active() && self.snapshot_request.is_none() {
+            self.snapshot_request = Some(trigger);
+        }
     }
 
     /// Called whenever the cursor might have moved in SideBySide file-pane mode.

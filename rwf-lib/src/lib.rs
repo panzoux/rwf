@@ -19,6 +19,7 @@
 
 pub mod backend;
 pub mod config;
+pub mod diagnostics;
 pub mod event_receiver;
 pub mod help_content;
 pub mod input;
