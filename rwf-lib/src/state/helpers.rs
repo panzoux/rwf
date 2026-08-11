@@ -29,10 +29,14 @@ impl AppState {
     ) -> crate::job::JobKind {
         if let Some(ref cmd) = config.terminal_editor {
             // Terminal editor: suspend rwf, run synchronously, then resume.
-            // On Windows use cmd /c so .bat/.cmd wrappers (e.g. vim.bat) work.
+            // On Windows use cmd /D /C so .bat/.cmd wrappers (e.g. vim.bat) work.
+            // /D must precede /C: it skips the user's Command Processor AutoRun hook
+            // (Clink and friends), which would otherwise run inside this transient
+            // shell and print into the terminal we just handed to the editor.
+            // See docs/IMPLICIT_CONTRACTS.md.
             #[cfg(target_os = "windows")]
             {
-                let mut args = vec!["/c".to_string()];
+                let mut args = vec!["/D".to_string(), "/C".to_string()];
                 args.extend(cmd.split_whitespace().map(str::to_string));
                 args.push(file_path);
                 return crate::job::JobKind::SuspendAndRun {
@@ -50,10 +54,11 @@ impl AppState {
             }
         }
         // GUI editor: launch via cmd (Windows) / directly (Unix), no shell string parsing.
+        // /D /C — see the AutoRun note above.
         let cmd = Self::resolve_editor(config);
         #[cfg(target_os = "windows")]
         {
-            let mut args = vec!["/c".to_string()];
+            let mut args = vec!["/D".to_string(), "/C".to_string()];
             args.extend(cmd.split_whitespace().map(str::to_string));
             args.push(file_path);
             crate::job::JobKind::SpawnProcess {
@@ -112,10 +117,12 @@ impl AppState {
     pub(crate) fn system_open_job(file_path: String) -> crate::job::JobKind {
         #[cfg(target_os = "windows")]
         {
+            // /D /C — see the AutoRun note on `editor_job`.
             crate::job::JobKind::SpawnProcess {
                 program: "cmd".to_string(),
                 args: vec![
-                    "/c".to_string(),
+                    "/D".to_string(),
+                    "/C".to_string(),
                     "start".to_string(),
                     "".to_string(),
                     file_path,
@@ -160,7 +167,8 @@ mod tests {
                 assert_eq!(
                     args,
                     vec![
-                        "/c".to_string(),
+                        "/D".to_string(),
+                        "/C".to_string(),
                         "start".to_string(),
                         "".to_string(),
                         "C:\\videos\\clip.mp4".to_string()
@@ -191,5 +199,67 @@ mod tests {
             #[allow(unreachable_patterns)]
             other => panic!("unexpected job kind: {:?}", other),
         }
+    }
+
+    /// Contract guard: every cmd.exe invocation rwf builds must start with `/D /C`.
+    ///
+    /// `/D` skips the user's `HKCU\Software\Microsoft\Command Processor\AutoRun`
+    /// hook. Without it that hook (Clink, a corporate login script, anything) runs
+    /// inside our transient shell and writes to the console it inherited — which is
+    /// rwf's own TUI for `system_open_job`, and the editor's terminal for the
+    /// `SuspendAndRun` path. Nothing else in the build notices a missing `/D`; it
+    /// only shows up as garbled output on the machines that happen to have a hook.
+    /// See docs/IMPLICIT_CONTRACTS.md and the file-level allowlist in
+    /// rwf-bin/tests/repo_contracts.rs.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cmd_invocations_pass_slash_d_before_slash_c() {
+        fn assert_slash_d_c(label: &str, job: &crate::job::JobKind) {
+            let (program, args) = match job {
+                crate::job::JobKind::SpawnProcess { program, args, .. }
+                | crate::job::JobKind::SuspendAndRun { program, args } => (program, args),
+                other => panic!("{}: unexpected job kind: {:?}", label, other),
+            };
+            assert_eq!(program, "cmd", "{}: expected a cmd.exe invocation", label);
+            assert_eq!(
+                args.first().map(String::as_str),
+                Some("/D"),
+                "{}: cmd.exe must get /D first (skip AutoRun), got {:?}",
+                label,
+                args
+            );
+            assert_eq!(
+                args.get(1).map(String::as_str),
+                Some("/C"),
+                "{}: /C must immediately follow /D, got {:?}",
+                label,
+                args
+            );
+        }
+
+        assert_slash_d_c(
+            "system_open_job",
+            &AppState::system_open_job("C:\\videos\\clip.mp4".to_string()),
+        );
+
+        let gui = AppConfig {
+            editor_command: Some("notepad".to_string()),
+            terminal_editor: None,
+            ..AppConfig::default()
+        };
+        assert_slash_d_c(
+            "editor_job (GUI editor)",
+            &AppState::editor_job(&gui, "C:\\tmp\\a.txt".to_string(), false),
+        );
+
+        let terminal = AppConfig {
+            editor_command: None,
+            terminal_editor: Some("vim".to_string()),
+            ..AppConfig::default()
+        };
+        assert_slash_d_c(
+            "editor_job (terminal editor)",
+            &AppState::editor_job(&terminal, "C:\\tmp\\a.txt".to_string(), false),
+        );
     }
 }

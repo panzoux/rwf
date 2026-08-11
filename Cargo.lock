@@ -1431,6 +1431,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "encoding_rs",
+ "ignore",
  "insta",
  "predicates",
  "proptest",
