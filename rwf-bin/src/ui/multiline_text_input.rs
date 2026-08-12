@@ -9,26 +9,38 @@
 //!
 //! ## Design notes
 //!
-//! - **No soft line-wrap.** Each logical line (split on `\n`) is exactly one
-//!   row. Long lines are clipped to the widget width rather than wrapped; only
-//!   *vertical* scrolling is required by the spec this widget was built for
-//!   (see `plan/7.17...`). This keeps rendering and input handling from ever
-//!   needing to agree on an exact pixel width, unlike a wrapping design where
-//!   Up/Down would have to replicate the renderer's wrap boundaries exactly.
+//! - **Soft line-wrap with a `↵` marker.** A logical line too wide for the box
+//!   continues on the next row. The rightmost column is reserved: `↵` there
+//!   means a real newline ends that row, and its absence means the row wrapped.
+//!   Without that distinction a reader cannot tell an entered line break from a
+//!   wrapped one — which matters when the text is a bug report someone else
+//!   reads.
+//!
+//!   The first implementation scrolled long lines horizontally instead. Dogfooding
+//!   on 2026-08-12 rejected it: a single line sliding sideways under the cursor
+//!   fights what a text box is expected to do, and nothing indicated that content
+//!   existed beyond the edge. Wrapping removes the hidden-content problem
+//!   entirely rather than signposting it.
+//!
+//!   The cost is that Up/Down must walk **visual** rows, so navigation and
+//!   rendering have to agree on the wrap boundaries. They do, because both call
+//!   [`MultiLineTextInput::visual_rows`] — the boundaries are computed once, in
+//!   one place, rather than derived independently on each side.
 //! - **CJK width awareness.** All cursor positioning — including the
-//!   sticky-column behaviour of Up/Down between lines of different content —
-//!   is computed from `unicode_width` display columns, never character counts
-//!   or byte offsets. A double-width character is never split.
-//! - **No persisted horizontal scroll.** Only the cursor's own line ever needs
-//!   horizontal scrolling, and it's cheap to recompute from scratch on every
-//!   render (unlike the vertical scroll, which must remember the previous
-//!   position to avoid re-snapping the viewport on every keystroke).
+//!   sticky-column behaviour of Up/Down between rows of different content, and
+//!   the wrap points themselves — is computed from `unicode_width` display
+//!   columns, never character counts or byte offsets. A double-width character
+//!   is never split across rows.
+//! - **Vertical scroll is persisted, wrapping is not.** The viewport position
+//!   must be remembered so it does not re-snap on every keystroke; the wrap
+//!   layout is cheap to recompute and cannot go stale if it never persists.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
+    widgets::Paragraph,
     Frame,
 };
 use unicode_width::UnicodeWidthChar;
@@ -165,14 +177,115 @@ impl MultiLineTextInput {
     }
 }
 
+/// One rendered row: the slice of a logical line that fits the wrap width.
+///
+/// A logical line always produces at least one row, so an empty line still
+/// occupies a row and can hold the cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct VisualRow {
+    /// Index into `lines`.
+    pub line: usize,
+    /// First character index of this slice.
+    pub start: usize,
+    /// One past the last character index of this slice.
+    pub end: usize,
+    /// Whether this is the final slice of its logical line — i.e. whether a real
+    /// newline follows. Drives the `↵` marker.
+    pub last_of_line: bool,
+}
+
+// Soft wrapping
+impl MultiLineTextInput {
+    /// Columns available for text. The rightmost column is reserved for the `↵`
+    /// marker so it never collides with content.
+    fn wrap_width(&self) -> usize {
+        (self.width as usize).saturating_sub(1).max(1)
+    }
+
+    /// Split one logical line into character ranges that each fit `width`
+    /// display columns.
+    ///
+    /// Greedy by display width, never splitting a double-width glyph: a wide
+    /// character that would straddle the boundary starts the next row instead.
+    fn wrap_line(line: &str, width: usize) -> Vec<(usize, usize)> {
+        let width = width.max(1);
+        let mut rows = Vec::new();
+        let mut start = 0usize;
+        let mut used = 0usize;
+        let mut idx = 0usize;
+
+        for c in line.chars() {
+            let cw = Self::char_width(c);
+            if used + cw > width && idx > start {
+                rows.push((start, idx));
+                start = idx;
+                used = 0;
+            }
+            used += cw;
+            idx += 1;
+        }
+        // Always emit a final row, including for an empty line.
+        rows.push((start, idx));
+        rows
+    }
+
+    /// Every visual row of the whole buffer, in order.
+    pub(crate) fn visual_rows(&self) -> Vec<VisualRow> {
+        let width = self.wrap_width();
+        let last_line = self.lines.len().saturating_sub(1);
+        let mut rows = Vec::new();
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            let segments = Self::wrap_line(line, width);
+            let last_seg = segments.len() - 1;
+            for (seg_idx, (start, end)) in segments.into_iter().enumerate() {
+                rows.push(VisualRow {
+                    line: line_idx,
+                    start,
+                    end,
+                    // The final logical line has no newline after it, so it never
+                    // shows the marker.
+                    last_of_line: seg_idx == last_seg && line_idx < last_line,
+                });
+            }
+        }
+        rows
+    }
+
+    /// Index into [`visual_rows`] holding the cursor.
+    ///
+    /// When the cursor sits exactly at a wrap boundary it belongs to the row that
+    /// *ends* there, which is where it is drawn.
+    pub(crate) fn cursor_visual_row(&self, rows: &[VisualRow]) -> usize {
+        let mut fallback = 0;
+        for (i, r) in rows.iter().enumerate() {
+            if r.line != self.cursor_line {
+                continue;
+            }
+            fallback = i;
+            if self.cursor_col >= r.start && self.cursor_col < r.end {
+                return i;
+            }
+        }
+        // Cursor at end-of-line: the last row of that line.
+        fallback
+    }
+}
+
 // Vertical scroll
 impl MultiLineTextInput {
+    /// Keep the cursor's *visual* row inside the viewport.
+    ///
+    /// Scrolling counts wrapped rows, not logical lines: with wrapping enabled a
+    /// single long line can fill the box on its own, and a logical-line scroll
+    /// would leave the cursor off-screen.
     fn update_scroll(&mut self) {
         let h = self.height.max(1) as usize;
-        if self.cursor_line < self.scroll_row {
-            self.scroll_row = self.cursor_line;
-        } else if self.cursor_line >= self.scroll_row + h {
-            self.scroll_row = self.cursor_line + 1 - h;
+        let rows = self.visual_rows();
+        let cursor_row = self.cursor_visual_row(&rows);
+        if cursor_row < self.scroll_row {
+            self.scroll_row = cursor_row;
+        } else if cursor_row >= self.scroll_row + h {
+            self.scroll_row = cursor_row + 1 - h;
         }
     }
 }
@@ -262,15 +375,37 @@ impl MultiLineTextInput {
     /// Up (`delta = -1`) / Down (`delta = 1`) by one logical line, preserving
     /// the cursor's visual (width-based) column rather than its character
     /// index — see `col_for_width`.
+    /// Move the cursor one **visual** row up or down.
+    ///
+    /// With soft wrapping, Up/Down must step through wrapped rows rather than
+    /// logical lines — otherwise a long wrapped paragraph would be skipped in a
+    /// single keypress and the cursor would appear to jump several rows.
+    ///
+    /// The target column is chosen by display width offset *within the row*, so
+    /// the cursor keeps its visual column across rows of differing content —
+    /// including between an ASCII row and a CJK one.
     fn move_vertical(&mut self, delta: isize) {
-        let target = self.cursor_line as isize + delta;
-        if target < 0 || target as usize >= self.lines.len() {
+        let rows = self.visual_rows();
+        let current = self.cursor_visual_row(&rows);
+        let target = current as isize + delta;
+        if target < 0 || target as usize >= rows.len() {
             return;
         }
         let target = target as usize;
-        let target_width = Self::width_upto(&self.lines[self.cursor_line], self.cursor_col);
-        self.cursor_line = target;
-        self.cursor_col = Self::col_for_width(&self.lines[target], target_width);
+
+        let cur_row = rows[current];
+        let cur_line = &self.lines[cur_row.line];
+        // Offset from the start of the current row, in display columns.
+        let offset = Self::width_upto(cur_line, self.cursor_col)
+            .saturating_sub(Self::width_upto(cur_line, cur_row.start));
+
+        let dst = rows[target];
+        let dst_line = &self.lines[dst.line];
+        let dst_row_start_width = Self::width_upto(dst_line, dst.start);
+        let col = Self::col_for_width(dst_line, dst_row_start_width + offset);
+
+        self.cursor_line = dst.line;
+        self.cursor_col = col.clamp(dst.start, dst.end);
         self.update_scroll();
     }
 }
@@ -367,86 +502,74 @@ impl MultiLineTextInput {
             .bg(Color::Cyan)
             .fg(Color::Black)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        // Dim so it reads as structure rather than as typed content.
+        let mark_style = base_style.add_modifier(Modifier::DIM);
 
-        let visible_width = area.width as usize;
-        let rows = area.height as usize;
+        let total_width = area.width as usize;
+        let wrap_width = self.wrap_width();
+        let rows = self.visual_rows();
+        let cursor_row = if is_focused {
+            Some(self.cursor_visual_row(&rows))
+        } else {
+            None
+        };
 
-        for row in 0..rows {
-            let y = area.y + row as u16;
-            let line_idx = self.scroll_row + row;
-            if line_idx >= self.lines.len() {
+        for screen_row in 0..area.height as usize {
+            let y = area.y + screen_row as u16;
+            let row_idx = self.scroll_row + screen_row;
+
+            let Some(row) = rows.get(row_idx) else {
                 frame.render_widget(
-                    Span::styled(" ".repeat(visible_width), base_style),
+                    Span::styled(" ".repeat(total_width), base_style),
                     Rect::new(area.x, y, area.width, 1),
                 );
                 continue;
-            }
-
-            let line = &self.lines[line_idx];
-            let is_cursor_line = is_focused && line_idx == self.cursor_line;
-
-            // Horizontal scroll: only the cursor's own line needs it, and it's
-            // cheap enough to recompute from scratch every render (see module
-            // doc comment for why this is fine to not persist).
-            let hscroll = if is_cursor_line {
-                let cursor_x = Self::width_upto(line, self.cursor_col);
-                let visible = visible_width.saturating_sub(1).max(1);
-                cursor_x.saturating_sub(visible.saturating_sub(1))
-            } else {
-                0
             };
 
+            let line = &self.lines[row.line];
             let mut spans: Vec<Span> = Vec::new();
-            let mut col_width = 0usize; // display width consumed so far, from hscroll
-            let mut rendered_width = 0usize;
-            let mut char_idx = 0usize;
-            let mut cursor_drawn = false;
+            let mut used = 0usize;
 
-            for c in line.chars() {
-                let cw = Self::char_width(c);
-                let abs_width_before = col_width;
-                col_width += cw;
-
-                if abs_width_before < hscroll {
-                    char_idx += 1;
-                    continue;
-                }
-                // Check-before-add (not check-after): a double-width char
-                // that would push past `visible_width` must be dropped
-                // whole, never split across the row boundary.
-                if rendered_width + cw > visible_width {
-                    break;
-                }
-
-                let is_cursor_char = is_cursor_line && char_idx == self.cursor_col;
-                if is_cursor_char {
-                    spans.push(Span::styled(c.to_string(), cursor_style));
-                    cursor_drawn = true;
-                } else {
-                    spans.push(Span::styled(c.to_string(), base_style));
-                }
-                rendered_width += cw;
-                char_idx += 1;
+            for (i, c) in line.chars().enumerate().take(row.end).skip(row.start) {
+                let is_cursor = cursor_row == Some(row_idx) && i == self.cursor_col;
+                let style = if is_cursor { cursor_style } else { base_style };
+                used += Self::char_width(c);
+                spans.push(Span::styled(c.to_string(), style));
             }
 
-            let line_char_count = line.chars().count();
-            if is_cursor_line
-                && !cursor_drawn
-                && self.cursor_col >= line_char_count
-                && rendered_width < visible_width
-            {
-                spans.push(Span::styled("\u{2588}", cursor_style));
-                rendered_width += 1;
+            // Cursor resting at the end of this row (end of line, or at a wrap
+            // boundary that this row terminates) is drawn as a block after the
+            // text — otherwise it would be invisible.
+            let cursor_at_row_end =
+                cursor_row == Some(row_idx) && self.cursor_col >= row.end && used < wrap_width;
+            if cursor_at_row_end {
+                // A block glyph rather than a styled space: a space would rely
+                // entirely on background colour, which is invisible in the
+                // text-only snapshot dumps the dialog tests compare against.
+                spans.push(Span::styled("█", cursor_style));
+                used += 1;
             }
 
-            if rendered_width < visible_width {
-                spans.push(Span::styled(
-                    " ".repeat(visible_width - rendered_width),
-                    base_style,
-                ));
+            if used < wrap_width {
+                spans.push(Span::styled(" ".repeat(wrap_width - used), base_style));
+                used = wrap_width;
             }
 
-            frame.render_widget(Line::from(spans), Rect::new(area.x, y, area.width, 1));
+            // Reserved rightmost column: `↵` marks a real newline, so a wrapped
+            // row (no marker) is distinguishable from an entered one. This is the
+            // whole reason the column is reserved.
+            let marker = if row.last_of_line { "↵" } else { " " };
+            spans.push(Span::styled(marker, mark_style));
+            used += 1;
+
+            if used < total_width {
+                spans.push(Span::styled(" ".repeat(total_width - used), base_style));
+            }
+
+            frame.render_widget(
+                Paragraph::new(Line::from(spans)),
+                Rect::new(area.x, y, area.width, 1),
+            );
         }
     }
 }
@@ -715,36 +838,104 @@ mod tests {
     /// scroll must be computed in display columns (2 per CJK char), not
     /// character counts, or it lands on the wrong slice of the line. Checked
     /// against actual rendered `Buffer` content, not internal fields, so a
-    /// regression here is a real visible-output failure.
+    /// Replaces an earlier `render_horizontal_scroll_on_cjk_line_is_width_based`
+    /// test: horizontal scrolling was removed in favour of soft wrapping after
+    /// dogfooding on 2026-08-12 found a single line sliding sideways under the
+    /// cursor to be the wrong behaviour for a text box.
     #[test]
-    fn render_horizontal_scroll_on_cjk_line_is_width_based() {
-        use crate::ui::screen_text::buffer_to_text;
-        use ratatui::{backend::TestBackend, Terminal};
+    fn long_line_wraps_instead_of_scrolling_horizontally() {
+        let mut ti = MultiLineTextInput::new(Some("ABCDEFGH".to_string()));
+        ti.set_width(5); // 4 text columns + 1 reserved for the marker
+        ti.set_height(4);
 
-        // "日本" = width 4, "ABCDEF" = width 6, total width 10.
-        let mut ti = MultiLineTextInput::new(Some("日本ABCDEF".to_string()));
-        ti.set_width(4);
-        ti.set_height(1);
-        let backend = TestBackend::new(4, 1);
-        let mut terminal = Terminal::new(backend).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let area = frame.area();
-                ti.render(frame, area, true);
-            })
-            .expect("draw");
-        let text = buffer_to_text(terminal.backend().buffer());
-        // Cursor (at the end, after 'F') pushes the scroll window forward.
-        // A char-count-based (rather than width-based) scroll calculation
-        // would compute a different offset and show a different slice —
-        // e.g. still including "日本" instead of having scrolled past it.
+        let rows = ti.visual_rows();
+        assert_eq!(rows.len(), 2, "8 chars over 4 columns must occupy 2 rows");
+        assert_eq!((rows[0].start, rows[0].end), (0, 4));
+        assert_eq!((rows[1].start, rows[1].end), (4, 8));
         assert!(
-            text.starts_with("EF"),
-            "expected the width-based scroll window to start at 'EF', got {text:?}"
+            rows.iter().all(|r| r.line == 0),
+            "both rows belong to the same logical line"
         );
+    }
+
+    /// A double-width glyph must move to the next row whole rather than being
+    /// split across the boundary — the failure mode that makes CJK text unreadable.
+    #[test]
+    fn wide_glyph_is_never_split_across_wrapped_rows() {
+        // 4 text columns; "A" (1) + "日" (2) = 3, so the next "日" cannot fit.
+        let mut ti = MultiLineTextInput::new(Some("A日日".to_string()));
+        ti.set_width(5);
+        ti.set_height(4);
+
+        let rows = ti.visual_rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            (rows[0].start, rows[0].end),
+            (0, 2),
+            "row 1 holds 'A日' (3 columns); a 4th column cannot hold half of '日'"
+        );
+        assert_eq!((rows[1].start, rows[1].end), (2, 3));
+    }
+
+    /// The `↵` marker is the whole point of reserving a column: it is what
+    /// distinguishes a line the user ended from one the box wrapped.
+    #[test]
+    fn newline_marker_marks_entered_lines_not_wrapped_ones() {
+        // "hi" fits one row; "ABCDEFGH" needs two at 4 text columns.
+        let mut ti = MultiLineTextInput::new(Some("ABCDEFGH\nhi".to_string()));
+        ti.set_width(5);
+        ti.set_height(6);
+
+        let rows = ti.visual_rows();
+        assert_eq!(rows.len(), 3, "2 wrapped rows + 1 for the second line");
+        assert!(!rows[0].last_of_line, "wrapped row: no newline follows it");
+        assert!(rows[1].last_of_line, "a real newline ends the first line");
         assert!(
-            !text.contains('日') && !text.contains('本'),
-            "CJK prefix should have scrolled out of view, got {text:?}"
+            !rows[2].last_of_line,
+            "the final line has no newline after it"
+        );
+    }
+
+    /// Up/Down must step one *visual* row. Stepping logical lines would jump the
+    /// cursor over an entire wrapped paragraph in a single keypress.
+    #[test]
+    fn up_down_walk_visual_rows_inside_one_wrapped_line() {
+        let mut ti = MultiLineTextInput::new(Some("ABCDEFGH".to_string()));
+        ti.set_width(5);
+        ti.set_height(4);
+        ti.set_cursor(0, 1); // row 0, one column in
+
+        ti.handle_input(&key(KeyCode::Down));
+        assert_eq!(ti.cursor_line(), 0, "still the same logical line");
+        assert_eq!(
+            ti.cursor_col(),
+            5,
+            "moved to the second visual row, keeping the visual column"
+        );
+
+        ti.handle_input(&key(KeyCode::Up));
+        assert_eq!(ti.cursor_col(), 1, "and back again");
+    }
+
+    /// Scrolling counts visual rows: one long line can fill the box by itself,
+    /// and a logical-line scroll would leave the cursor off-screen.
+    #[test]
+    fn scroll_counts_visual_rows_not_logical_lines() {
+        let mut ti = MultiLineTextInput::new(Some("A".repeat(20)));
+        ti.set_width(5); // 4 text columns => 5 visual rows
+        ti.set_height(2);
+        ti.set_cursor(0, 0);
+        ti.set_scroll(0);
+
+        for _ in 0..4 {
+            ti.handle_input(&key(KeyCode::Down));
+        }
+
+        assert!(
+            ti.scroll() > 0,
+            "cursor moved past the 2-row viewport within one logical line, so the \
+             view must have scrolled; got scroll={}",
+            ti.scroll()
         );
     }
 }
