@@ -206,19 +206,74 @@ pub fn save_session(
     }
 }
 
-/// Restore tab states from SessionState
-pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
+/// Substitute the nearest existing ancestor for a saved location that has since
+/// been deleted, returning the fallback and a message naming what vanished.
+///
+/// A saved path can disappear between runs for entirely ordinary reasons — a
+/// removed git worktree, an unmounted drive, a cleaned build directory. Before
+/// this, restore kept the dead path and the startup `ReadDirectory` failed,
+/// producing a generic "Operation Failed" dialog that named neither the path nor
+/// the reason. Reported from a diagnostic bundle on 2026-08-12, where the user
+/// had to *infer* that a pane's directory no longer existed.
+///
+/// The nearest existing ancestor is used rather than the home directory because
+/// it keeps the user near where they were: a deleted `…/worktrees/foo` lands in
+/// `…/worktrees`, one step from the intent.
+fn resolve_restored_location(saved: Location) -> (Location, Option<String>) {
+    let Some(path) = saved.path() else {
+        // Non-local (archive) locations are not checkable here; leave as-is.
+        return (saved, None);
+    };
+    if path.exists() {
+        return (saved, None);
+    }
+
+    let original = path.display().to_string();
+    let mut candidate = path.parent();
+    while let Some(dir) = candidate {
+        if dir.exists() {
+            let note = format!(
+                "Saved path no longer exists: {original} — opened {} instead",
+                dir.display()
+            );
+            return (Location::Local(dir.to_path_buf()), Some(note));
+        }
+        candidate = dir.parent();
+    }
+
+    // Nothing in the chain survives (an unmounted drive, say). Leave the saved
+    // location in place so the pane reports the real error for the real path
+    // rather than silently landing somewhere unrelated.
+    (
+        saved,
+        Some(format!("Saved path no longer exists: {original}")),
+    )
+}
+
+/// Restore tab states from SessionState.
+///
+/// Returns the tabs together with one message per saved path that no longer
+/// exists, for the caller to surface (see [`resolve_restored_location`]).
+pub fn restore_tabs(session: &SessionState) -> (Vec<TabState>, Vec<String>) {
+    let mut notes = Vec::new();
+
     if session.tabs.is_empty() {
         // If no saved tabs, create a default tab
-        vec![TabState::new(0)]
+        (vec![TabState::new(0)], notes)
     } else {
-        session
+        let tabs = session
             .tabs
             .iter()
             .map(|saved_tab| {
                 let mut tab = TabState::new(saved_tab.id);
-                tab.left_pane.current_location = saved_tab.left_location.clone().into();
-                tab.right_pane.current_location = saved_tab.right_location.clone().into();
+                let (left, left_note) =
+                    resolve_restored_location(saved_tab.left_location.clone().into());
+                let (right, right_note) =
+                    resolve_restored_location(saved_tab.right_location.clone().into());
+                notes.extend(left_note);
+                notes.extend(right_note);
+                tab.left_pane.current_location = left;
+                tab.right_pane.current_location = right;
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
 
@@ -228,7 +283,8 @@ pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
 
                 tab
             })
-            .collect()
+            .collect();
+        (tabs, notes)
     }
 }
 
@@ -331,7 +387,7 @@ mod tests {
     #[test]
     fn test_restore_tabs_empty_session() {
         let session = SessionState::new();
-        let tabs = restore_tabs(&session);
+        let (tabs, _) = restore_tabs(&session);
 
         // Should create a default tab
         assert_eq!(tabs.len(), 1);
@@ -356,7 +412,7 @@ mod tests {
             right_cursor: 0,
         });
 
-        let tabs = restore_tabs(&session);
+        let (tabs, _) = restore_tabs(&session);
 
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].id, 0);
@@ -468,7 +524,7 @@ mod tests {
         assert_eq!(loaded.marked_locations.len(), 2);
 
         // Restore tabs
-        let tabs = restore_tabs(&loaded);
+        let (tabs, _) = restore_tabs(&loaded);
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].left_pane.cursor, 5);
         assert_eq!(tabs[0].right_pane.cursor, 10);
@@ -537,7 +593,7 @@ mod tests {
         assert_eq!(session.tabs[0].left_cursor, 42);
         assert_eq!(session.tabs[0].right_cursor, 99);
 
-        let restored_tabs = restore_tabs(&session);
+        let (restored_tabs, _) = restore_tabs(&session);
         assert_eq!(restored_tabs[0].left_pane.cursor, 42);
         assert_eq!(restored_tabs[0].right_pane.cursor, 99);
     }
@@ -585,7 +641,7 @@ mod tests {
         assert_eq!(session.tabs.len(), 5);
         assert_eq!(session.active_tab_index, 2);
 
-        let restored_tabs = restore_tabs(&session);
+        let (restored_tabs, _) = restore_tabs(&session);
         assert_eq!(restored_tabs.len(), 5);
 
         for (i, tab) in restored_tabs.iter().enumerate().take(5) {
@@ -593,5 +649,69 @@ mod tests {
             assert_eq!(tab.left_pane.cursor, i * 2);
             assert_eq!(tab.right_pane.cursor, i * 3);
         }
+    }
+}
+
+#[cfg(test)]
+mod restore_missing_path_tests {
+    use super::*;
+
+    fn saved_tab(left: PathBuf, right: PathBuf) -> SavedTabState {
+        SavedTabState {
+            id: 0,
+            left_location: SavedLocation::Local(left),
+            right_location: SavedLocation::Local(right),
+            left_cursor: 0,
+            right_cursor: 0,
+        }
+    }
+
+    /// Regression: a saved path that no longer exists used to be restored as-is,
+    /// so startup failed with a generic "Operation Failed" dialog naming neither
+    /// the path nor the reason. Reported from a diagnostic bundle on 2026-08-12
+    /// after a git worktree was deleted between runs.
+    #[test]
+    fn missing_saved_path_falls_back_to_nearest_existing_ancestor() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let existing = temp.path().to_path_buf();
+        let vanished = existing.join("worktrees").join("deleted-one");
+
+        let mut session = SessionState::new();
+        session.tabs = vec![saved_tab(existing.clone(), vanished.clone())];
+
+        let (tabs, notes) = restore_tabs(&session);
+
+        assert_eq!(
+            tabs[0].left_pane.current_location,
+            Location::Local(existing.clone()),
+            "an existing path must be restored untouched"
+        );
+        assert_eq!(
+            tabs[0].right_pane.current_location,
+            Location::Local(existing),
+            "a vanished path must fall back to its nearest existing ancestor"
+        );
+
+        assert_eq!(notes.len(), 1, "exactly one note, for the vanished path");
+        assert!(
+            notes[0].contains("deleted-one"),
+            "the note must name what vanished, got: {}",
+            notes[0]
+        );
+    }
+
+    #[test]
+    fn existing_paths_produce_no_notes() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let p = temp.path().to_path_buf();
+
+        let mut session = SessionState::new();
+        session.tabs = vec![saved_tab(p.clone(), p)];
+
+        let (_, notes) = restore_tabs(&session);
+        assert!(
+            notes.is_empty(),
+            "no notes when every path exists: {notes:?}"
+        );
     }
 }

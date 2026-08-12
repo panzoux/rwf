@@ -324,7 +324,7 @@ mod tests {
         // Create new state and restore
         let mut state2 = test_state();
         let loaded_session = crate::session::SessionState::load_from_file(&session_path).unwrap();
-        state2.tabs.tabs = crate::session::restore_tabs(&loaded_session);
+        state2.tabs.tabs = crate::session::restore_tabs(&loaded_session).0;
         state2.tabs.active_index = loaded_session.active_tab_index;
         // Marks are per-pane and not persisted across sessions
 
