@@ -1114,24 +1114,47 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         dest: &Location,
         spec: &JobSpec,
     ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
         if spec.cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
 
-        match self
+        let record = match self
             .archive_handler
             .create_archive(sources, dest, &spec.cancel_token)
             .await
         {
-            Ok(()) => OpResult::Success(SuccessData::None),
+            Ok(()) => OperationRecord {
+                source: None,
+                destination: Some(dest.clone()),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: dest.clone(),
+                    recreate: Some(Box::new(ReversalAction::CreateArchive {
+                        sources: sources.to_vec(),
+                        dest: dest.clone(),
+                    })),
+                }),
+            },
             Err(e) => {
                 if spec.cancel_token.is_cancelled() {
-                    OpResult::Cancelled
-                } else {
-                    OpResult::Failed(format!("{e:#}"))
+                    return OpResult::Cancelled;
+                }
+                OperationRecord {
+                    source: None,
+                    destination: Some(dest.clone()),
+                    succeeded: false,
+                    // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                    // only the outermost context and drops the underlying io::Error.
+                    failure_reason: Some(format!("{e:#}")),
+                    undo: UndoAvailability::NotApplicable,
                 }
             }
-        }
+        };
+
+        OpResult::Success(SuccessData::OperationRecords(vec![record]))
     }
 
     /// Execute a custom function
@@ -2786,6 +2809,62 @@ mod tests {
         }
 
         assert!(link.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_archive() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file1 = temp_dir.path().join("a.txt");
+        let file2 = temp_dir.path().join("b.txt");
+        tokio::fs::write(&file1, b"x").await.unwrap();
+        tokio::fs::write(&file2, b"y").await.unwrap();
+        let archive = temp_dir.path().join("archive.zip");
+
+        let sources = vec![
+            Location::Local(file1.clone()),
+            Location::Local(file2.clone()),
+        ];
+        let dest = Location::Local(archive.clone());
+
+        let spec = JobSpec::new(JobKind::CreateArchive {
+            sources: sources.clone(),
+            dest: dest.clone(),
+            original_size: 0,
+        });
+
+        executor.execute(spec).await;
+
+        let event = event_rx.recv().await;
+        assert!(matches!(event, Some(JobEvent::Started(_))));
+
+        let event = event_rx.recv().await;
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert_eq!(records[0].source, None);
+                assert_eq!(records[0].destination, Some(dest.clone()));
+                assert_eq!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Delete {
+                            target: dest.clone(),
+                            recreate: Some(Box::new(crate::model::ReversalAction::CreateArchive {
+                                sources: sources.clone(),
+                                dest: dest.clone(),
+                            })),
+                        }
+                    )
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
     }
 
     #[tokio::test]
