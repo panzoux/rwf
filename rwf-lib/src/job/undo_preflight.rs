@@ -73,7 +73,15 @@ fn check_one(action: &ReversalAction) -> PreflightOutcome {
 }
 
 fn check_destination_not_occupied(loc: &crate::model::Location) -> PreflightOutcome {
-    if exists(loc) {
+    // Non-local Location: can't check synchronously here — don't block on
+    // something we can't verify (the opposite of `exists()`'s "assume it
+    // exists" fallback below, which is right for the *must-still-exist*
+    // family but would wrongly report every non-local destination as
+    // already-occupied here if reused as-is).
+    let Some(path) = loc.path() else {
+        return PreflightOutcome::Ready;
+    };
+    if path.exists() {
         PreflightOutcome::Blocked(format!("{} already exists", display(loc)))
     } else {
         PreflightOutcome::Ready
@@ -145,6 +153,27 @@ mod tests {
         assert!(ready.is_empty());
         assert_eq!(blocked.len(), 1);
         assert!(blocked[0].1.contains("already exists"));
+    }
+
+    #[test]
+    fn non_local_destination_is_ready_not_blocked() {
+        // check_destination_not_occupied's `exists()` fallback for a
+        // non-local Location returns `true` ("assume it exists" — correct
+        // for the *must-still-exist* family, e.g. Delete/RestoreAttributes).
+        // Reusing that same fallback here would make every non-local
+        // destination report as "already exists" and always be Blocked,
+        // contradicting this module's own documented contract that
+        // unverifiable Locations pass through as Ready.
+        let action = ReversalAction::Mkdir {
+            location: Location::Ssh {
+                host: "example.com".to_string(),
+                port: 22,
+                path: "/remote/new_dir".into(),
+            },
+        };
+        let (ready, blocked) = preflight_check(&[action]);
+        assert_eq!(ready.len(), 1);
+        assert!(blocked.is_empty());
     }
 
     #[test]
