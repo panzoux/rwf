@@ -10,11 +10,20 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
 
 use rwf_lib::model::dialog::OperationReportDialogContent;
 use rwf_lib::model::{Location, OperationRecord, OperationReport, UndoAvailability};
 
-use crate::ui::smart_truncate;
+use crate::ui::{pad_to_width, smart_truncate};
+
+/// Width (in terminal columns) of the "[x] "/"[ ] " mark field, including
+/// its own trailing space plus one more column of gap before Source — see
+/// `render_row_list`. Must stay in sync between the header and data rows.
+const MARK_WIDTH: usize = 5;
+
+/// Width of the "OK"/"Fail" result column.
+const RESULT_WIDTH: usize = 6;
 
 fn undo_symbol(undo: &UndoAvailability) -> &'static str {
     match undo {
@@ -39,11 +48,16 @@ fn location_text(loc: &Option<Location>) -> String {
 }
 
 /// Constraints: [0]=list, [1]=detail-label, [2]=detail-view, [3]=hint.
+///
+/// The detail view is 7 rows: 2 for its own top/bottom border plus 5 content
+/// lines (Source/Destination/Result/Reason-or-blank/Undo — see
+/// `render_detail`). 6 would clip the last line (Undo/Redo status) off the
+/// bottom, which is the most important field in the dialog.
 fn constraints() -> Vec<Constraint> {
     vec![
         Constraint::Min(4),
         Constraint::Length(1),
-        Constraint::Length(6),
+        Constraint::Length(7),
         Constraint::Length(1),
     ]
 }
@@ -53,7 +67,7 @@ fn constraints() -> Vec<Constraint> {
 /// border pair.
 pub fn calculate_operation_report_dialog_min_height(report: &OperationReport) -> u16 {
     let list_rows = (report.records.len() as u16 + 1).clamp(4, 15); // +1 header row
-    list_rows + 1 + 6 + 1 + 2 // detail-label + detail-view + hint + borders
+    list_rows + 1 + 7 + 1 + 2 // detail-label + detail-view + hint + borders
 }
 
 pub fn render_operation_report_dialog(
@@ -111,12 +125,31 @@ fn render_row_list(
 ) {
     let item_width = area.width.saturating_sub(2) as usize;
 
+    // Fixed-width columns (leading space, Mark, Result, and the trailing
+    // Undo/Redo symbol column, which is exactly as wide as its header label)
+    // leave whatever's left of `item_width` for Source/Destination, split
+    // evenly between them. Each field is truncated and padded to an *exact*
+    // display width via width-aware helpers (`smart_truncate`/`pad_to_width`,
+    // not `{:<N}` char-count padding, which misaligns CJK content) before
+    // the row string is assembled — so a narrow terminal clips within a
+    // column instead of a whole column silently vanishing from the middle
+    // of the line the way whole-line truncation with an empty ellipsis did.
+    let action_width = action_label.width();
+    let fixed_width = 1 /* leading space */ + MARK_WIDTH + RESULT_WIDTH + action_width;
+    let path_budget = item_width.saturating_sub(fixed_width);
+    let source_width = path_budget / 2;
+    let dest_width = path_budget - source_width;
+
     let header = format!(
-        " {:<4}{:<28}{:<28}{:<6}{}",
-        "Mark", "Source", "Destination", "Res.", action_label
+        " {}{}{}{}{}",
+        pad_to_width("Mark", MARK_WIDTH),
+        pad_to_width("Source", source_width),
+        pad_to_width("Destination", dest_width),
+        pad_to_width("Res.", RESULT_WIDTH),
+        action_label,
     );
     frame.render_widget(
-        Paragraph::new(smart_truncate(&header, item_width, "")).style(base_style),
+        Paragraph::new(header).style(base_style),
         Rect::new(area.x, area.y, area.width, 1),
     );
 
@@ -148,15 +181,15 @@ fn render_row_list(
         } else {
             "[ ] "
         };
-        let source = smart_truncate(&location_text(&record.source), 26, "\u{2026}");
-        let dest = smart_truncate(&location_text(&record.destination), 26, "\u{2026}");
+        let source = smart_truncate(&location_text(&record.source), source_width, "\u{2026}");
+        let dest = smart_truncate(&location_text(&record.destination), dest_width, "\u{2026}");
         let line = format!(
-            " {:<4}{:<28}{:<28}{:<6}{}",
-            mark,
-            source,
-            dest,
-            result_symbol(record),
-            undo_symbol(&record.undo)
+            " {}{}{}{}{}",
+            pad_to_width(mark, MARK_WIDTH),
+            pad_to_width(&source, source_width),
+            pad_to_width(&dest, dest_width),
+            pad_to_width(result_symbol(record), RESULT_WIDTH),
+            undo_symbol(&record.undo),
         );
         let style = if idx == clamped_cursor {
             selected_style
@@ -164,7 +197,7 @@ fn render_row_list(
             base_style
         };
         frame.render_widget(
-            Paragraph::new(smart_truncate(&line, item_width, "")).style(style),
+            Paragraph::new(line).style(style),
             Rect::new(area.x, area.y + 1 + row as u16, area.width, 1),
         );
     }

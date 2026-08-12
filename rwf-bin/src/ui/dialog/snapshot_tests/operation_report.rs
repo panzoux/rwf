@@ -57,3 +57,35 @@ fn operation_report_undo_report_shows_redo_column() {
         &state,
     );
 }
+
+/// CJK filenames are double-width per character — proves the Source/
+/// Destination columns are padded and truncated by display width
+/// (`pad_to_width`/`smart_truncate`), not by Rust `char` count
+/// (`{:<28}`-style formatting), so a long CJK name doesn't push the
+/// Result/Undo columns out of alignment.
+#[test]
+fn operation_report_cjk_filenames_stay_aligned() {
+    let state = test_state();
+    let report = OperationReport {
+        id: 1,
+        operation_name: "Copy".to_string(),
+        records: vec![OperationRecord {
+            source: Some(Location::Local("日本語ファイル名前.txt".into())),
+            destination: Some(Location::Local("コピー先フォルダ\\日本語.txt".into())),
+            succeeded: true,
+            failure_reason: None,
+            undo: UndoAvailability::Available(ReversalAction::Delete {
+                target: Location::Local("コピー先フォルダ\\日本語.txt".into()),
+                recreate: None,
+            }),
+        }],
+        finished_at: std::time::SystemTime::UNIX_EPOCH,
+        is_undo: false,
+    };
+    let dialog = Dialog::operation_report_view(report);
+    snapshot_dialog(
+        "operation_report_cjk_filenames_stay_aligned",
+        &dialog,
+        &state,
+    );
+}
