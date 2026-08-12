@@ -718,6 +718,7 @@ pub struct JobManagerStats {
 
 pub mod background_job_manager;
 pub mod job_executor;
+pub mod report_builder;
 
 #[cfg(test)]
 mod job_properties;
@@ -725,3 +726,4 @@ mod job_properties;
 pub use background_job_manager::{BackgroundJobEvent, BackgroundJobManager, BackgroundJobStats};
 pub use job_executor::detect_conflicts;
 pub use job_executor::JobExecutor;
+pub use report_builder::build_operation_report;
