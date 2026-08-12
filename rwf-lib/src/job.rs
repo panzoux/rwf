@@ -264,6 +264,16 @@ pub enum JobKind {
     DetectFileTypesBatch {
         paths: Vec<std::path::PathBuf>,
     },
+    /// Runs a batch of `ReversalAction`s — the mechanism behind both Undo
+    /// and Redo (Phase 7.6). `operation_name` is the *base* name to carry
+    /// into the resulting report's title (e.g. "Copy", never "Undo Copy" —
+    /// the "Undo"/"Redo" prefix is derived from `resulting_is_undo` at
+    /// display time, see `OperationReport::title`).
+    ExecuteReversal {
+        actions: Vec<crate::model::ReversalAction>,
+        operation_name: String,
+        resulting_is_undo: bool,
+    },
 }
 
 /// Why a `JobKind::DetectFileType` job was started — tells the job-completion

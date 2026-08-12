@@ -256,6 +256,7 @@ impl AppState {
                             // completion routing lands in a later task.
                             crate::job::JobKind::DetectFileType { .. } => "Detect file type",
                             crate::job::JobKind::DetectFileTypesBatch { .. } => "Detect file types",
+                            crate::job::JobKind::ExecuteReversal { .. } => "Execute reversal",
                         };
                         if !skip_dialog {
                             let error_dialog =

@@ -13,6 +13,24 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
+/// Builds a failed `OperationRecord` for `execute_reversal`'s per-action
+/// match arms — every `Err` branch there is `NotApplicable` (a reversal
+/// action that failed didn't change anything, so there's nothing further to
+/// undo/redo about it).
+fn failed_record(
+    source: Option<Location>,
+    destination: Option<Location>,
+    reason: String,
+) -> crate::model::OperationRecord {
+    crate::model::OperationRecord {
+        source,
+        destination,
+        succeeded: false,
+        failure_reason: Some(reason),
+        undo: crate::model::UndoAvailability::NotApplicable,
+    }
+}
+
 /// Executor for processing job specifications
 pub struct JobExecutor<B: FilesystemBackend, A: ArchiveHandler> {
     backend: Arc<B>,
@@ -251,6 +269,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             JobKind::DetectFileTypesBatch { paths } => {
                 self.execute_detect_file_types_batch(paths, &spec).await
             }
+            JobKind::ExecuteReversal { actions, .. } => self.execute_reversal(actions, &spec).await,
         };
 
         // Send completion event based on result
@@ -1157,6 +1176,268 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         };
 
         OpResult::Success(SuccessData::OperationRecords(vec![record]))
+    }
+
+    /// Execute a batch of `ReversalAction`s (Undo or Redo — see
+    /// `JobKind::ExecuteReversal` docs). Each action reuses the same backend
+    /// call its forward-executor counterpart uses, so `next_action` for the
+    /// resulting record is derived the identical way — Move/Rename/
+    /// RestoreAttributes/RestoreTimestamps/RestoreFromTrash/MoveToTrash all
+    /// mechanically self-flip (no data destroyed); Copy/Mkdir/CreateFile/
+    /// CreateLink/CreateArchive undo to `Delete{recreate: Some(self)}`
+    /// exactly like their forward executors do; and `Delete` replays its
+    /// carried `recreate` (the one case nothing else can derive).
+    async fn execute_reversal(
+        &self,
+        actions: &[crate::model::ReversalAction],
+        spec: &JobSpec,
+    ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
+        let total = actions.len();
+        let mut records = Vec::with_capacity(total);
+
+        for (i, action) in actions.iter().enumerate() {
+            if spec.cancel_token.is_cancelled() {
+                return OpResult::Cancelled;
+            }
+
+            let progress = if total > 0 {
+                (i as f64) / (total as f64)
+            } else {
+                0.0
+            };
+            if let Err(e) = self
+                .event_sender
+                .send(JobEvent::Progress(spec.id, progress))
+            {
+                tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
+            }
+
+            let record = match action.clone() {
+                ReversalAction::Copy { from, to } => {
+                    match self.backend.copy_file(&from, &to, &spec.cancel_token).await {
+                        Ok(()) => OperationRecord {
+                            source: Some(from.clone()),
+                            destination: Some(to.clone()),
+                            succeeded: true,
+                            failure_reason: None,
+                            undo: UndoAvailability::Available(ReversalAction::Delete {
+                                target: to.clone(),
+                                recreate: Some(Box::new(ReversalAction::Copy { from, to })),
+                            }),
+                        },
+                        Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                    }
+                }
+                ReversalAction::Move { from, to } => {
+                    match self.backend.move_file(&from, &to, &spec.cancel_token).await {
+                        Ok(()) => OperationRecord {
+                            source: Some(from.clone()),
+                            destination: Some(to.clone()),
+                            succeeded: true,
+                            failure_reason: None,
+                            undo: UndoAvailability::Available(ReversalAction::Move {
+                                from: to,
+                                to: from,
+                            }),
+                        },
+                        Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                    }
+                }
+                ReversalAction::Rename { from, to } => match self
+                    .backend
+                    .rename_file(&from, &to, &spec.cancel_token)
+                    .await
+                {
+                    Ok(()) => OperationRecord {
+                        source: Some(from.clone()),
+                        destination: Some(to.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::Rename {
+                            from: to,
+                            to: from,
+                        }),
+                    },
+                    Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                },
+                ReversalAction::Delete { target, recreate } => {
+                    match self.backend.delete_file(&target, &spec.cancel_token).await {
+                        Ok(()) => OperationRecord {
+                            source: Some(target.clone()),
+                            destination: None,
+                            succeeded: true,
+                            failure_reason: None,
+                            undo: match recreate {
+                                Some(action) => UndoAvailability::Available(*action),
+                                None => UndoAvailability::NotApplicable,
+                            },
+                        },
+                        Err(e) => failed_record(Some(target), None, e.to_string()),
+                    }
+                }
+                ReversalAction::Mkdir { location } => match self
+                    .backend
+                    .create_directory(&location, &spec.cancel_token)
+                    .await
+                {
+                    Ok(()) => OperationRecord {
+                        source: None,
+                        destination: Some(location.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::Delete {
+                            target: location.clone(),
+                            recreate: Some(Box::new(ReversalAction::Mkdir { location })),
+                        }),
+                    },
+                    Err(e) => failed_record(None, Some(location), e.to_string()),
+                },
+                ReversalAction::CreateFile { location } => match self
+                    .backend
+                    .create_file(&location, &spec.cancel_token)
+                    .await
+                {
+                    Ok(()) => OperationRecord {
+                        source: None,
+                        destination: Some(location.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::Delete {
+                            target: location.clone(),
+                            recreate: Some(Box::new(ReversalAction::CreateFile { location })),
+                        }),
+                    },
+                    Err(e) => failed_record(None, Some(location), e.to_string()),
+                },
+                ReversalAction::CreateLink {
+                    target,
+                    link_path,
+                    kind,
+                } => match self
+                    .backend
+                    .create_link(&target, &link_path, kind, &spec.cancel_token)
+                    .await
+                {
+                    Ok(()) => OperationRecord {
+                        source: Some(target.clone()),
+                        destination: Some(link_path.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::Delete {
+                            target: link_path.clone(),
+                            recreate: Some(Box::new(ReversalAction::CreateLink {
+                                target,
+                                link_path,
+                                kind,
+                            })),
+                        }),
+                    },
+                    Err(e) => failed_record(Some(target), Some(link_path), e.to_string()),
+                },
+                ReversalAction::RestoreAttributes { target, attrs } => match self
+                    .backend
+                    .set_attributes(&target, &attrs, &spec.cancel_token)
+                    .await
+                {
+                    Ok(previous) => OperationRecord {
+                        source: None,
+                        destination: Some(target.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::RestoreAttributes {
+                            target,
+                            attrs: previous,
+                        }),
+                    },
+                    Err(e) => failed_record(None, Some(target), e.to_string()),
+                },
+                ReversalAction::RestoreTimestamps { target, times } => match self
+                    .backend
+                    .set_timestamps(&target, &times, &spec.cancel_token)
+                    .await
+                {
+                    Ok(previous) => OperationRecord {
+                        source: None,
+                        destination: Some(target.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::RestoreTimestamps {
+                            target,
+                            times: previous,
+                        }),
+                    },
+                    Err(e) => failed_record(None, Some(target), e.to_string()),
+                },
+                ReversalAction::MoveToTrash { target } => match self
+                    .backend
+                    .move_to_trash(&target, false, &spec.cancel_token)
+                    .await
+                {
+                    Ok(new_record) => OperationRecord {
+                        source: Some(target.clone()),
+                        destination: None,
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::RestoreFromTrash {
+                            record: new_record,
+                        }),
+                    },
+                    Err(e) => failed_record(Some(target), None, e.to_string()),
+                },
+                ReversalAction::RestoreFromTrash { record } => {
+                    let original = record.original.clone();
+                    match self
+                        .backend
+                        .restore_from_trash(&record, &spec.cancel_token)
+                        .await
+                    {
+                        Ok(()) => OperationRecord {
+                            source: None,
+                            destination: Some(original.clone()),
+                            succeeded: true,
+                            failure_reason: None,
+                            undo: UndoAvailability::Available(ReversalAction::MoveToTrash {
+                                target: original,
+                            }),
+                        },
+                        Err(e) => failed_record(None, Some(original), e.to_string()),
+                    }
+                }
+                ReversalAction::CreateArchive { sources, dest } => match self
+                    .archive_handler
+                    .create_archive(&sources, &dest, &spec.cancel_token)
+                    .await
+                {
+                    Ok(()) => OperationRecord {
+                        source: None,
+                        destination: Some(dest.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: UndoAvailability::Available(ReversalAction::Delete {
+                            target: dest.clone(),
+                            recreate: Some(Box::new(ReversalAction::CreateArchive {
+                                sources,
+                                dest,
+                            })),
+                        }),
+                    },
+                    Err(e) => failed_record(None, Some(dest), e.to_string()),
+                },
+            };
+            records.push(record);
+        }
+
+        if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
+            tracing::error!(
+                "Failed to send job progress event (1.0) for {:?}: {}",
+                spec.id,
+                e
+            );
+        }
+
+        OpResult::Success(SuccessData::OperationRecords(records))
     }
 
     /// Execute a custom function
@@ -3651,5 +3932,107 @@ mod tests {
             }
             other => panic!("expected TrashEmptied, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_deletes_a_copy_and_carries_recreate() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let src = temp_dir.path().join("a.txt");
+        let copy = temp_dir.path().join("b.txt");
+        tokio::fs::write(&src, b"x").await.unwrap();
+        tokio::fs::write(&copy, b"x").await.unwrap(); // simulates the prior Copy's result
+
+        let action = crate::model::ReversalAction::Delete {
+            target: Location::Local(copy.clone()),
+            recreate: Some(Box::new(crate::model::ReversalAction::Copy {
+                from: Location::Local(src.clone()),
+                to: Location::Local(copy.clone()),
+            })),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        // execute_reversal sends Started, per-action Progress, then Completed —
+        // skip everything but the terminal event.
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Copy { .. }
+                    )
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(!copy.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_move_self_flips() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let at_b = temp_dir.path().join("b.txt");
+        let at_a = temp_dir.path().join("a.txt");
+        tokio::fs::write(&at_b, b"x").await.unwrap();
+
+        let action = crate::model::ReversalAction::Move {
+            from: Location::Local(at_b.clone()),
+            to: Location::Local(at_a.clone()),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Move".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        // execute_reversal sends Started, per-action Progress, then Completed —
+        // skip everything but the terminal event.
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                match &records[0].undo {
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Move { from, to },
+                    ) => {
+                        assert_eq!(from, &Location::Local(at_a.clone()));
+                        assert_eq!(to, &Location::Local(at_b.clone()));
+                    }
+                    other => panic!("expected Move undo, got {other:?}"),
+                }
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(at_a.exists());
+        assert!(!at_b.exists());
     }
 }

@@ -12,7 +12,14 @@ pub fn build_operation_report(
     result: &OpResult,
     id: u64,
 ) -> Option<OperationReport> {
-    let operation_name = operation_name_for(&spec.kind)?;
+    let (operation_name, is_undo) = match &spec.kind {
+        JobKind::ExecuteReversal {
+            operation_name,
+            resulting_is_undo,
+            ..
+        } => (operation_name.clone(), *resulting_is_undo),
+        other => (operation_name_for(other)?, false),
+    };
 
     let records = match result {
         OpResult::Success(SuccessData::OperationRecords(records)) => records.clone(),
@@ -120,7 +127,7 @@ pub fn build_operation_report(
         operation_name,
         records,
         finished_at: std::time::SystemTime::now(),
-        is_undo: false,
+        is_undo,
     })
 }
 
@@ -141,6 +148,7 @@ fn operation_name_for(kind: &JobKind) -> Option<String> {
         JobKind::MoveToTrash { .. } => "Move to Trash",
         JobKind::RestoreFromTrash { .. } => "Restore from Trash",
         JobKind::ExtractArchive { .. } => "Extract Archive",
+        JobKind::ExecuteReversal { .. } => return None, // handled by the caller before this fn runs
         _ => return None,
     };
     Some(name.to_string())
@@ -171,6 +179,10 @@ fn single_failure_record(kind: &JobKind, reason: String) -> Option<OperationReco
             (None, records.first().map(|r| r.original.clone()))
         }
         JobKind::ExtractArchive { archive, dest } => (Some(archive.clone()), Some(dest.clone())),
+        JobKind::ExecuteReversal { actions, .. } => actions
+            .first()
+            .map(reversal_action_locations)
+            .unwrap_or((None, None)),
         _ => return None,
     };
     Some(OperationRecord {
@@ -180,6 +192,38 @@ fn single_failure_record(kind: &JobKind, reason: String) -> Option<OperationReco
         failure_reason: Some(reason),
         undo: UndoAvailability::NotApplicable,
     })
+}
+
+/// Best-effort (source, destination) for a single `ReversalAction`, used by
+/// `single_failure_record` when a whole `ExecuteReversal` job fails outright
+/// (not per-action) — there's no single obvious source/destination for a
+/// heterogeneous batch, so this just reports the first action's locations,
+/// mirroring the shape each variant's own successful `OperationRecord` would
+/// have used (see `JobExecutor::execute_reversal`).
+fn reversal_action_locations(
+    action: &ReversalAction,
+) -> (
+    Option<crate::model::Location>,
+    Option<crate::model::Location>,
+) {
+    match action {
+        ReversalAction::Copy { from, to } | ReversalAction::Move { from, to } => {
+            (Some(from.clone()), Some(to.clone()))
+        }
+        ReversalAction::Rename { from, to } => (Some(from.clone()), Some(to.clone())),
+        ReversalAction::Delete { target, .. } => (Some(target.clone()), None),
+        ReversalAction::Mkdir { location } | ReversalAction::CreateFile { location } => {
+            (None, Some(location.clone()))
+        }
+        ReversalAction::CreateLink {
+            target, link_path, ..
+        } => (Some(target.clone()), Some(link_path.clone())),
+        ReversalAction::RestoreAttributes { target, .. }
+        | ReversalAction::RestoreTimestamps { target, .. } => (None, Some(target.clone())),
+        ReversalAction::MoveToTrash { target } => (Some(target.clone()), None),
+        ReversalAction::RestoreFromTrash { record } => (None, Some(record.original.clone())),
+        ReversalAction::CreateArchive { dest, .. } => (None, Some(dest.clone())),
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +277,138 @@ mod tests {
             report.records[0].undo,
             UndoAvailability::Available(ReversalAction::RestoreAttributes { .. })
         ));
+    }
+
+    #[test]
+    fn timestamp_change_translates_old_value_into_restore_action() {
+        let spec = JobSpec::new(JobKind::ChangeTimestamps {
+            targets: vec![Location::Local("a.txt".into())],
+            times: crate::model::TimestampChange::default(),
+        });
+        let outcome = FileOpOutcome {
+            target: Location::Local("a.txt".into()),
+            old: Some(crate::model::TimestampChange::default()),
+            new: crate::model::TimestampChange::default(),
+            result: Ok(()),
+        };
+        let result = OpResult::Success(SuccessData::TimestampsChanged(vec![outcome]));
+
+        let report = build_operation_report(&spec, &result, 8).expect("report");
+        assert_eq!(report.operation_name, "Change Timestamps");
+        assert_eq!(report.records.len(), 1);
+        assert!(matches!(
+            report.records[0].undo,
+            UndoAvailability::Available(ReversalAction::RestoreTimestamps { .. })
+        ));
+    }
+
+    #[test]
+    fn attribute_change_error_branch_is_not_applicable() {
+        let spec = JobSpec::new(JobKind::ChangeAttributes {
+            targets: vec![Location::Local("a.txt".into())],
+            attrs: crate::model::AttributeChange::default(),
+        });
+        let outcome = FileOpOutcome {
+            target: Location::Local("a.txt".into()),
+            old: Some(crate::model::AttributeChange::default()),
+            new: crate::model::AttributeChange::default(),
+            result: Err("access denied".to_string()),
+        };
+        let result = OpResult::Success(SuccessData::AttributesChanged(vec![outcome]));
+
+        let report = build_operation_report(&spec, &result, 9).expect("report");
+        assert_eq!(report.records.len(), 1);
+        assert!(!report.records[0].succeeded);
+        assert_eq!(
+            report.records[0].failure_reason.as_deref(),
+            Some("access denied")
+        );
+        assert!(matches!(
+            report.records[0].undo,
+            UndoAvailability::NotApplicable
+        ));
+    }
+
+    #[test]
+    fn trash_restored_translates_into_move_to_trash_action() {
+        let spec = JobSpec::new(JobKind::RestoreFromTrash { records: vec![] });
+        let outcome = crate::model::RestoreOutcome {
+            original: Location::Local("a.txt".into()),
+            result: Ok(()),
+        };
+        let result = OpResult::Success(SuccessData::TrashRestored(vec![outcome]));
+
+        let report = build_operation_report(&spec, &result, 10).expect("report");
+        assert_eq!(report.operation_name, "Restore from Trash");
+        assert_eq!(report.records.len(), 1);
+        assert!(report.records[0].succeeded);
+        assert_eq!(
+            report.records[0].destination,
+            Some(Location::Local("a.txt".into()))
+        );
+        assert!(matches!(
+            &report.records[0].undo,
+            UndoAvailability::Available(ReversalAction::MoveToTrash { target })
+                if *target == Location::Local("a.txt".into())
+        ));
+    }
+
+    #[test]
+    fn trash_restored_error_branch_is_not_applicable() {
+        let spec = JobSpec::new(JobKind::RestoreFromTrash { records: vec![] });
+        let outcome = crate::model::RestoreOutcome {
+            original: Location::Local("a.txt".into()),
+            result: Err("target already exists".to_string()),
+        };
+        let result = OpResult::Success(SuccessData::TrashRestored(vec![outcome]));
+
+        let report = build_operation_report(&spec, &result, 11).expect("report");
+        assert_eq!(report.records.len(), 1);
+        assert!(!report.records[0].succeeded);
+        assert!(matches!(
+            report.records[0].undo,
+            UndoAvailability::NotApplicable
+        ));
+    }
+
+    #[test]
+    fn execute_reversal_flips_is_undo_and_keeps_base_operation_name() {
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: true,
+        });
+        let result = OpResult::Success(SuccessData::OperationRecords(vec![]));
+        let report = build_operation_report(&spec, &result, 12).expect("report");
+        assert_eq!(report.operation_name, "Copy");
+        assert!(report.is_undo);
+        assert_eq!(report.title(), "Undo Copy Report");
+    }
+
+    #[test]
+    fn execute_reversal_whole_job_failure_extracts_first_action_locations() {
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![ReversalAction::Move {
+                from: Location::Local("b.txt".into()),
+                to: Location::Local("a.txt".into()),
+            }],
+            operation_name: "Move".to_string(),
+            resulting_is_undo: true,
+        });
+        let result = OpResult::Failed("disk full".to_string());
+        let report = build_operation_report(&spec, &result, 13).expect("report");
+        assert_eq!(report.operation_name, "Move");
+        assert!(report.is_undo);
+        assert_eq!(report.records.len(), 1);
+        assert!(!report.records[0].succeeded);
+        assert_eq!(
+            report.records[0].source,
+            Some(Location::Local("b.txt".into()))
+        );
+        assert_eq!(
+            report.records[0].destination,
+            Some(Location::Local("a.txt".into()))
+        );
     }
 
     #[test]
