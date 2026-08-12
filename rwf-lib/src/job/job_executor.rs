@@ -1227,7 +1227,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                                 recreate: Some(Box::new(ReversalAction::Copy { from, to })),
                             }),
                         },
-                        Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                        Err(e) => failed_record(Some(from), Some(to), format!("{e:#}")),
                     }
                 }
                 ReversalAction::Move { from, to } => {
@@ -1242,7 +1242,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                                 to: from,
                             }),
                         },
-                        Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                        Err(e) => failed_record(Some(from), Some(to), format!("{e:#}")),
                     }
                 }
                 ReversalAction::Rename { from, to } => match self
@@ -1260,7 +1260,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             to: from,
                         }),
                     },
-                    Err(e) => failed_record(Some(from), Some(to), e.to_string()),
+                    Err(e) => failed_record(Some(from), Some(to), format!("{e:#}")),
                 },
                 ReversalAction::Delete { target, recreate } => {
                     match self.backend.delete_file(&target, &spec.cancel_token).await {
@@ -1274,7 +1274,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                                 None => UndoAvailability::NotApplicable,
                             },
                         },
-                        Err(e) => failed_record(Some(target), None, e.to_string()),
+                        Err(e) => failed_record(Some(target), None, format!("{e:#}")),
                     }
                 }
                 ReversalAction::Mkdir { location } => match self
@@ -1292,7 +1292,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             recreate: Some(Box::new(ReversalAction::Mkdir { location })),
                         }),
                     },
-                    Err(e) => failed_record(None, Some(location), e.to_string()),
+                    Err(e) => failed_record(None, Some(location), format!("{e:#}")),
                 },
                 ReversalAction::CreateFile { location } => match self
                     .backend
@@ -1309,7 +1309,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             recreate: Some(Box::new(ReversalAction::CreateFile { location })),
                         }),
                     },
-                    Err(e) => failed_record(None, Some(location), e.to_string()),
+                    Err(e) => failed_record(None, Some(location), format!("{e:#}")),
                 },
                 ReversalAction::CreateLink {
                     target,
@@ -1334,7 +1334,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             })),
                         }),
                     },
-                    Err(e) => failed_record(Some(target), Some(link_path), e.to_string()),
+                    Err(e) => failed_record(Some(target), Some(link_path), format!("{e:#}")),
                 },
                 ReversalAction::RestoreAttributes { target, attrs } => match self
                     .backend
@@ -1423,7 +1423,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                             })),
                         }),
                     },
-                    Err(e) => failed_record(None, Some(dest), e.to_string()),
+                    Err(e) => failed_record(None, Some(dest), format!("{e:#}")),
                 },
             };
             records.push(record);
