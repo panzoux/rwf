@@ -743,6 +743,26 @@ impl AppState {
                 self.dialogs.pop();
                 Some(StateUpdateResult::with_job(job_spec))
             }
+            Transition::ShowOperationReport => {
+                if let Some(report) = self.operation_reports.back() {
+                    self.dialogs
+                        .push(crate::model::Dialog::operation_report_view(report.clone()));
+                    Some(StateUpdateResult::with_ui_change())
+                } else {
+                    Some(StateUpdateResult {
+                        jobs_to_start: Vec::new(),
+                        jobs_to_cancel: Vec::new(),
+                        completed_jobs: Vec::new(),
+                        failed_jobs: Vec::new(),
+                        cancelled_jobs: Vec::new(),
+                        started_jobs: Vec::new(),
+                        task_panel_logs: vec!["[Info] No operations recorded yet".to_string()],
+                        panes_to_refresh: Vec::new(),
+                        ui_changed: true,
+                        reload_keybindings: false,
+                    })
+                }
+            }
             Transition::CycleFileInfoHeaderEncoding => {
                 // Pure UI-state flip (Phase 7.3b, Task 12) — cycle whichever
                 // FileInfo dialog is currently on top of the stack through

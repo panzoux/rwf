@@ -59,6 +59,7 @@
     "Shift+Delete":    "DeleteForce",
     "Alt+t":           "EmptyTrash",
     "Alt+r":           "ShowTrashBrowser",
+    "Alt+o":           "ShowOperationReport",
     "R":               "PatternRename",
     "r":               "Rename",
     "K":               "CreateDirectory",

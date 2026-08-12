@@ -844,6 +844,9 @@ pub enum Transition {
     /// Enqueue the CreateLink Job for the currently-edited dialog state,
     /// closing the dialog.
     ConfirmCreateLinkDialog,
+    /// Open the Operation Report dialog for the most recent report in
+    /// history (Phase 7.6). No-op with an info log if history is empty.
+    ShowOperationReport,
 
     // Pattern rename operations
     ShowPatternRenameDialog,
@@ -2430,5 +2433,37 @@ mod tests {
         let result = update_state(&mut state, Transition::CloseDialog);
         assert!(result.ui_changed);
         assert!(state.dialogs.current().is_none());
+    }
+
+    #[test]
+    fn show_operation_report_opens_the_most_recent_report() {
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(crate::model::OperationReport {
+                id: 1,
+                operation_name: "Copy".to_string(),
+                records: vec![],
+                finished_at: std::time::SystemTime::now(),
+                is_undo: false,
+            });
+
+        update_state(&mut state, Transition::ShowOperationReport);
+
+        assert!(matches!(
+            state.dialogs.current().map(|d| &d.content),
+            Some(crate::model::dialog::DialogContent::OperationReportView(_))
+        ));
+    }
+
+    #[test]
+    fn show_operation_report_logs_info_when_history_empty() {
+        let mut state = crate::test_utils::test_state();
+        let result = update_state(&mut state, Transition::ShowOperationReport);
+        assert!(state.dialogs.is_empty());
+        assert!(result
+            .task_panel_logs
+            .iter()
+            .any(|l| l.contains("No operations recorded")));
     }
 }

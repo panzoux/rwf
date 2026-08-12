@@ -398,6 +398,7 @@ pub enum Action {
     CreateFile,
     ShowAttrTimestampDialog,
     ShowCreateLinkDialog,
+    ShowOperationReport,
 
     // Marking
     ToggleMark,
@@ -1550,6 +1551,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::ShowCreateLinkDialog => {
             vec![Transition::ShowCreateLinkDialog]
+        }
+        Action::ShowOperationReport => {
+            vec![Transition::ShowOperationReport]
         }
         Action::StartSearch => {
             // Enter search mode (integrated in pane info area)
