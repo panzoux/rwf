@@ -615,22 +615,21 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
     /// Execute a delete operation
     async fn execute_delete(&self, targets: &[Location], spec: &JobSpec) -> OpResult {
+        use crate::model::{OperationRecord, UndoAvailability};
+
         let total_files = targets.len();
+        let mut records = Vec::with_capacity(total_files);
 
         for (i, target) in targets.iter().enumerate() {
-            // Check cancellation before each file
             if spec.cancel_token.is_cancelled() {
                 return OpResult::Cancelled;
             }
 
-            // Calculate progress
             let progress = if total_files > 0 {
                 (i as f64) / (total_files as f64)
             } else {
                 0.0
             };
-
-            // Send progress update
             if let Err(e) = self
                 .event_sender
                 .send(JobEvent::Progress(spec.id, progress))
@@ -638,17 +637,25 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 tracing::error!("Failed to send job progress event for {:?}: {}", spec.id, e);
             }
 
-            // Delete the file
-            if let Err(e) = self.backend.delete_file(target, &spec.cancel_token).await {
-                return OpResult::Failed(format!(
-                    "Failed to delete {}: {}",
-                    self.location_display(target),
-                    e
-                ));
-            }
+            let record = match self.backend.delete_file(target, &spec.cancel_token).await {
+                Ok(()) => OperationRecord {
+                    source: Some(target.clone()),
+                    destination: None,
+                    succeeded: true,
+                    failure_reason: None,
+                    undo: UndoAvailability::NotApplicable,
+                },
+                Err(e) => OperationRecord {
+                    source: Some(target.clone()),
+                    destination: None,
+                    succeeded: false,
+                    failure_reason: Some(e.to_string()),
+                    undo: UndoAvailability::NotApplicable,
+                },
+            };
+            records.push(record);
         }
 
-        // Send final progress
         if let Err(e) = self.event_sender.send(JobEvent::Progress(spec.id, 1.0)) {
             tracing::error!(
                 "Failed to send job progress event (1.0) for {:?}: {}",
@@ -657,7 +664,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             );
         }
 
-        OpResult::Success(SuccessData::None)
+        OpResult::Success(SuccessData::OperationRecords(records))
     }
 
     /// Execute a move-to-trash operation. Loops per-target (not fail-fast)
@@ -3011,6 +3018,46 @@ mod tests {
             }
             other => panic!("Expected OperationRecords success, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_delete_records_are_never_undoable() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file = temp_dir.path().join("a.txt");
+        tokio::fs::write(&file, b"x").await.unwrap();
+
+        let spec = JobSpec::new(JobKind::Delete {
+            targets: vec![Location::Local(file.clone())],
+        });
+
+        executor.execute(spec).await;
+
+        // execute_delete sends Started, per-file Progress, then Completed —
+        // skip everything but the terminal event (same pattern as the Copy
+        // test above).
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::NotApplicable
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(!file.exists());
     }
 
     #[tokio::test]
