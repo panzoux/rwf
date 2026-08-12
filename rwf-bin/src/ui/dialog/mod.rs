@@ -27,6 +27,7 @@ mod jump_to_file;
 mod jump_to_path;
 mod multiline_input;
 mod open_with_picker;
+mod operation_report;
 mod pattern_rename;
 mod registered_folder;
 mod simple_rename;
@@ -54,6 +55,9 @@ use jump_to_file::render_jump_to_file_dialog;
 use jump_to_path::render_jump_to_path_dialog;
 use multiline_input::render_multiline_input_dialog;
 use open_with_picker::{candidate_label, render_open_with_picker};
+use operation_report::{
+    calculate_operation_report_dialog_min_height, render_operation_report_dialog,
+};
 use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
 use simple_rename::render_simple_rename_dialog;
@@ -86,9 +90,9 @@ use rwf_lib::model::dialog::{
     CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
     DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
     HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
-    OpenWithPickerDialog, PatternRenameContent, RegisteredFolderSelectorContent,
-    SimpleRenameDialog, SortDialog, TrashBrowserDialog, TypeMismatchWarningDialog,
-    WildcardMarkDialog,
+    OpenWithPickerDialog, OperationReportDialogContent, PatternRenameContent,
+    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, TrashBrowserDialog,
+    TypeMismatchWarningDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -328,6 +332,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::TrashBrowser(TrashBrowserDialog { records, .. }) => {
             // list + restore-destination(1) + hint(1)
             (records.len() as u16 + 2).max(6)
+        }
+        DialogContent::OperationReportView(OperationReportDialogContent { report, .. }) => {
+            calculate_operation_report_dialog_min_height(report)
         }
         DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,
@@ -789,6 +796,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             selected_index,
         }) => {
             render_trash_browser_dialog(frame, content_area, records, *selected_index);
+        }
+        DialogContent::OperationReportView(content) => {
+            render_operation_report_dialog(frame, content_area, content);
         }
         DialogContent::RegisteredFolderSelector(RegisteredFolderSelectorContent {
             folders,

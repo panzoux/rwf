@@ -42,6 +42,7 @@ mod jump_to_file;
 mod jump_to_path;
 mod multiline_input;
 mod open_with_picker;
+mod operation_report;
 mod pattern_rename;
 mod progress;
 mod registered_folder_selector;
