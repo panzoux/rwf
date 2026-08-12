@@ -1246,6 +1246,12 @@ pub fn handle_dialog_input(
         return trash_browser::handle_input(d, key);
     }
 
+    // OperationReportView — Up/Down navigate, Space toggle, a select-all/none,
+    // Enter triggers Undo/Redo on the selection, Esc closes.
+    if let DialogContent::OperationReportView(d) = &mut dialog.content {
+        return operation_report::handle_input(d, key);
+    }
+
     // JumpToPath — text input + AND-filter suggestions + arrow navigation
     if let DialogContent::JumpToPath(d) = &mut dialog.content {
         return jump_to_path::handle_input(d, key, search);

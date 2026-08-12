@@ -261,3 +261,139 @@ fn render_detail(
 
     frame.render_widget(detail, area);
 }
+
+use crossterm::event::{KeyCode, KeyEvent};
+
+use super::DialogAction;
+
+/// Up/Down/j/k navigate the cursor; Space toggles the current row's
+/// selection; `a` toggles all rows on/off together; Enter triggers
+/// Undo/Redo on the current selection (handled by `process_dialog_confirmation`
+/// in Task 17, which reads `selected_reversal_actions()`); Esc closes.
+pub(super) fn handle_input(
+    content: &mut OperationReportDialogContent,
+    key: KeyEvent,
+) -> DialogAction {
+    let len = content.report.records.len();
+    match key.code {
+        KeyCode::Esc => return DialogAction::Cancel,
+        KeyCode::Enter if !content.selected_reversal_actions().is_empty() => {
+            return DialogAction::Confirm
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if content.cursor > 0 {
+                content.cursor -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if content.cursor + 1 < len {
+                content.cursor += 1;
+            }
+        }
+        KeyCode::Home => content.cursor = 0,
+        KeyCode::End => content.cursor = len.saturating_sub(1),
+        KeyCode::Char(' ') => {
+            if let Some(sel) = content.selected.get_mut(content.cursor) {
+                *sel = !*sel;
+            }
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            let all_selected = content.selected.iter().all(|s| *s);
+            content.selected.iter_mut().for_each(|s| *s = !all_selected);
+        }
+        _ => {}
+    }
+    DialogAction::None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+    use rwf_lib::model::{OperationRecord, OperationReport, ReversalAction, UndoAvailability};
+
+    fn two_row_content() -> OperationReportDialogContent {
+        let report = OperationReport {
+            id: 1,
+            operation_name: "Copy".to_string(),
+            records: vec![
+                OperationRecord {
+                    source: Some(Location::Local("a.txt".into())),
+                    destination: Some(Location::Local("b.txt".into())),
+                    succeeded: true,
+                    failure_reason: None,
+                    undo: UndoAvailability::Available(ReversalAction::Delete {
+                        target: Location::Local("b.txt".into()),
+                        recreate: None,
+                    }),
+                },
+                OperationRecord {
+                    source: Some(Location::Local("c.txt".into())),
+                    destination: Some(Location::Local("d.txt".into())),
+                    succeeded: false,
+                    failure_reason: Some("Access denied".to_string()),
+                    undo: UndoAvailability::NotApplicable,
+                },
+            ],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        OperationReportDialogContent::new(report)
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn space_toggles_current_row_selection() {
+        let mut content = two_row_content();
+        assert_eq!(content.selected, vec![true, true]);
+        handle_input(&mut content, key(KeyCode::Char(' ')));
+        assert_eq!(content.selected, vec![false, true]);
+    }
+
+    #[test]
+    fn down_moves_cursor_and_space_toggles_second_row() {
+        let mut content = two_row_content();
+        handle_input(&mut content, key(KeyCode::Down));
+        assert_eq!(content.cursor, 1);
+        handle_input(&mut content, key(KeyCode::Char(' ')));
+        assert_eq!(content.selected, vec![true, false]);
+    }
+
+    #[test]
+    fn a_toggles_all_rows_together() {
+        let mut content = two_row_content();
+        handle_input(&mut content, key(KeyCode::Char('a')));
+        assert_eq!(content.selected, vec![false, false]);
+        handle_input(&mut content, key(KeyCode::Char('a')));
+        assert_eq!(content.selected, vec![true, true]);
+    }
+
+    #[test]
+    fn enter_confirms_only_when_a_row_is_actionable() {
+        let mut content = two_row_content();
+        // Row 0 is Available and selected by default -> Enter confirms.
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Enter)),
+            DialogAction::Confirm
+        );
+
+        // Deselect the only actionable row -> Enter does nothing.
+        content.selected[0] = false;
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Enter)),
+            DialogAction::None
+        );
+    }
+
+    #[test]
+    fn esc_cancels() {
+        let mut content = two_row_content();
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Esc)),
+            DialogAction::Cancel
+        );
+    }
+}
