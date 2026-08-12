@@ -874,18 +874,44 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         kind: crate::model::LinkCreateKind,
         cancel_token: &CancellationToken,
     ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
 
-        match self
+        let record = match self
             .backend
             .create_link(target, link_path, kind, cancel_token)
             .await
         {
-            Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(format!("{e:#}")),
-        }
+            Ok(()) => OperationRecord {
+                source: Some(target.clone()),
+                destination: Some(link_path.clone()),
+                succeeded: true,
+                failure_reason: None,
+                // Undo deletes the LINK, never the target it points to.
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: link_path.clone(),
+                    recreate: Some(Box::new(ReversalAction::CreateLink {
+                        target: target.clone(),
+                        link_path: link_path.clone(),
+                        kind,
+                    })),
+                }),
+            },
+            Err(e) => OperationRecord {
+                source: Some(target.clone()),
+                destination: Some(link_path.clone()),
+                succeeded: false,
+                // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                // only the outermost context and drops the underlying io::Error.
+                failure_reason: Some(format!("{e:#}")),
+                undo: UndoAvailability::NotApplicable,
+            },
+        };
+
+        OpResult::Success(SuccessData::OperationRecords(vec![record]))
     }
 
     /// Execute an attribute-change operation across one or more targets.
@@ -2723,7 +2749,7 @@ mod tests {
         tokio::fs::write(&target, b"content").await.unwrap();
 
         let spec = JobSpec::new(JobKind::CreateLink {
-            target: Location::Local(target),
+            target: Location::Local(target.clone()),
             link_path: Location::Local(link.clone()),
             kind: crate::model::LinkCreateKind::Hardlink,
         });
@@ -2734,10 +2760,30 @@ mod tests {
         assert!(matches!(event, Some(JobEvent::Started(_))));
 
         let event = event_rx.recv().await;
-        assert!(matches!(
-            event,
-            Some(JobEvent::Completed(_, SuccessData::None))
-        ));
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                let target_location = Location::Local(target.clone());
+                let link_location = Location::Local(link.clone());
+                assert_eq!(records[0].source, Some(target_location.clone()));
+                assert_eq!(records[0].destination, Some(link_location.clone()));
+                assert_eq!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Delete {
+                            target: link_location.clone(),
+                            recreate: Some(Box::new(crate::model::ReversalAction::CreateLink {
+                                target: target_location,
+                                link_path: link_location,
+                                kind: crate::model::LinkCreateKind::Hardlink,
+                            })),
+                        }
+                    )
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
 
         assert!(link.exists());
     }
