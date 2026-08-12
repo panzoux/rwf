@@ -2240,6 +2240,74 @@ mod tests {
     }
 
     #[test]
+    fn test_complete_job_delete_partial_failure_only_removes_succeeded_entries() {
+        use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+        use crate::model::{Location, OperationRecord, UndoAvailability};
+        use std::path::PathBuf;
+
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+
+        let gone = Location::Local(PathBuf::from("/test/gone.txt"));
+        let kept = Location::Local(PathBuf::from("/test/kept.txt"));
+
+        let mut gone_entry = crate::test_utils::entry("gone.txt");
+        gone_entry.location = gone.clone();
+        let mut kept_entry = crate::test_utils::entry("kept.txt");
+        kept_entry.location = kept.clone();
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.raw_entries = vec![gone_entry.clone(), kept_entry.clone()];
+            tab.left_pane.entries = vec![gone_entry.clone(), kept_entry.clone()];
+        }
+
+        let spec = JobSpec::new(JobKind::Delete {
+            targets: vec![gone.clone(), kept.clone()],
+        });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let records = vec![
+            OperationRecord {
+                source: Some(gone.clone()),
+                destination: None,
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::NotApplicable,
+            },
+            OperationRecord {
+                source: Some(kept.clone()),
+                destination: None,
+                succeeded: false,
+                failure_reason: Some("permission denied".to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        ];
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(records)),
+            },
+        );
+
+        let tab = state.current_tab();
+        assert!(
+            !tab.left_pane.raw_entries.iter().any(|e| e.location == gone),
+            "the successfully deleted entry must be removed from the pane"
+        );
+        assert!(
+            tab.left_pane.raw_entries.iter().any(|e| e.location == kept),
+            "the entry whose delete failed must remain in the pane"
+        );
+        // Sanity: this is still a valid CompleteJob transition.
+        assert_eq!(state.jobs.active.len(), 0);
+        assert_eq!(state.jobs.completed.len(), 1);
+        let _ = result;
+    }
+
+    #[test]
     fn test_cancel_job_transition() {
         use crate::job::{JobKind, JobSpec};
         let config = AppConfig::default();

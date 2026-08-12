@@ -630,13 +630,77 @@ impl AppState {
                                 }
                             }
                         }
-                        // MoveToTrash shares this arm with Delete: from the pane's point
-                        // of view both simply remove the targets from their directory.
-                        // Without it a successful trash move left the entries listed and
-                        // still marked until something else forced a refresh — the Layer 1
-                        // refresh contract in plan/ROADMAP.md was not being met.
-                        crate::job::JobKind::Delete { targets }
-                        | crate::job::JobKind::MoveToTrash { targets, .. } => {
+                        // Delete: in-memory removal, but only for targets whose
+                        // OperationRecord actually succeeded. execute_delete
+                        // (Phase 7.6) always returns OpResult::Success now, even
+                        // when some/all deletes failed (the failure is recorded
+                        // per-record instead of failing the whole job), so
+                        // guarding on the outer OpResult variant — as this arm
+                        // used to, and as the MoveToTrash arm below still does —
+                        // would retain-filter every target out of the pane,
+                        // including ones that failed to delete and are still on
+                        // disk. Build the set of Locations that actually got
+                        // deleted from the records themselves instead.
+                        crate::job::JobKind::Delete { .. } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::OperationRecords(records),
+                            ) = result
+                            {
+                                let succeeded: std::collections::HashSet<_> = records
+                                    .iter()
+                                    .filter(|r| r.succeeded)
+                                    .filter_map(|r| r.source.clone())
+                                    .collect();
+                                let pane_height = self.ui.layout.pane_height;
+                                let scroll_offset = self.config.ui.scroll_offset;
+                                let mut any_changed = false;
+                                for tab in self.tabs.tabs.iter_mut() {
+                                    for pane in [&mut tab.left_pane, &mut tab.right_pane] {
+                                        let before = pane.raw_entries.len();
+                                        pane.raw_entries
+                                            .retain(|e| !succeeded.contains(&e.location));
+                                        if pane.raw_entries.len() != before {
+                                            pane.apply_current_filter();
+                                            pane.apply_sort();
+                                            if pane.entries.is_empty() {
+                                                pane.cursor = 0;
+                                            } else {
+                                                pane.cursor =
+                                                    pane.cursor.min(pane.entries.len() - 1);
+                                            }
+                                            pane.update_scroll(pane_height, scroll_offset);
+                                            any_changed = true;
+                                        }
+                                    }
+                                }
+                                if any_changed {
+                                    result_obj.ui_changed = true;
+                                }
+                            } else {
+                                // Cancelled or some other non-record outcome: we
+                                // don't know which targets (if any) were actually
+                                // deleted before stopping, so force a full refresh
+                                // instead of guessing.
+                                result_obj.panes_to_refresh.push(PaneRefresh {
+                                    tab_id: self.tabs.active_index,
+                                    pane: self.ui.active_pane,
+                                });
+                            }
+                            self.unmark_all_panes();
+                        }
+                        // MoveToTrash: from the pane's point of view it simply
+                        // removes the targets from their directory. Without it a
+                        // successful trash move left the entries listed and still
+                        // marked until something else forced a refresh — the
+                        // Layer 1 refresh contract in plan/ROADMAP.md was not
+                        // being met.
+                        //
+                        // Unlike Delete above, execute_move_to_trash's SuccessData
+                        // shape (TrashMoved) predates the Phase 7.6 Operation
+                        // Report conversion and isn't migrated by this plan (see
+                        // Task 5 follow-up notes), so this arm is left on its
+                        // original outer-OpResult gate.
+                        crate::job::JobKind::MoveToTrash { targets, .. } => {
                             if let crate::job::OpResult::Success(_) = result {
                                 // In-memory removal: remove deleted entries from all panes without
                                 // triggering a full ReadDirectory (same approach as Rename).
