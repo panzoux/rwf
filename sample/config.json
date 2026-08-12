@@ -107,6 +107,9 @@
     "AutoEmptyDays": 0,
     "ForceFallback": false
   },
+  "Undo": {
+    "HistorySize": 10
+  },
   "PollingIntervalMs": 1000,
   "ViewerLargeFileThresholdMb": 100
 }

@@ -12,6 +12,7 @@ use crate::model::{
     DialogStack, DirectoryCache, NavigationStateCache, SearchModel, TabManager, UIState,
     ViewerState,
 };
+use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Central application state coordinating all components
@@ -79,6 +80,11 @@ pub struct AppState {
     pub suppress_next_dialog_pop: bool,
     /// Leap Navigation state; Some while UIMode::Leap is active.
     pub leap: Option<crate::model::LeapState>,
+    /// Bounded history of recent Operation Reports (Phase 7.6). Newest last.
+    /// Capacity is `config.undo.history_size`, enforced in `handle_job_transition`.
+    pub operation_reports: VecDeque<crate::model::OperationReport>,
+    /// Monotonically increasing ID source for `OperationReport::id`.
+    pub next_operation_report_id: u64,
 }
 
 impl AppState {
@@ -220,6 +226,8 @@ impl AppState {
             pending_custom_function_input: None,
             suppress_next_dialog_pop: false,
             leap: None,
+            operation_reports: VecDeque::new(),
+            next_operation_report_id: 0,
         }
     }
 

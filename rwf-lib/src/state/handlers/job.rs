@@ -95,6 +95,20 @@ impl AppState {
                     job_id
                 );
                 let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                if let Some(spec) = &job_spec {
+                    if let Some(report) = crate::job::build_operation_report(
+                        spec,
+                        result,
+                        self.next_operation_report_id,
+                    ) {
+                        self.next_operation_report_id += 1;
+                        self.operation_reports.push_back(report);
+                        let cap = self.config.undo.history_size.max(1);
+                        while self.operation_reports.len() > cap {
+                            self.operation_reports.pop_front();
+                        }
+                    }
+                }
                 tracing::debug!(
                     "[CompleteJob] Processing job_id={:?}, has_spec={}, result_type={}",
                     job_id,
@@ -1916,5 +1930,44 @@ mod restore_refresh_tests {
             result.panes_to_refresh.is_empty(),
             "a failed restore must not refresh"
         );
+    }
+}
+
+#[cfg(test)]
+mod operation_report_history_tests {
+    use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::model::{Location, OperationRecord, UndoAvailability};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
+
+    #[test]
+    fn complete_job_pushes_a_bounded_operation_report_history() {
+        let mut state = test_state();
+        state.config.undo.history_size = 2;
+
+        for i in 0..3u32 {
+            let spec = JobSpec::new(JobKind::Mkdir {
+                location: Location::Local(format!("dir{i}").into()),
+            });
+            let job_id = spec.id;
+            state.jobs.start_job(spec);
+            let record = OperationRecord {
+                source: None,
+                destination: Some(Location::Local(format!("dir{i}").into())),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::NotApplicable,
+            };
+            let result = OpResult::Success(SuccessData::OperationRecords(vec![record]));
+            update_state(&mut state, Transition::CompleteJob { job_id, result });
+        }
+
+        assert_eq!(state.operation_reports.len(), 2);
+        // Oldest (dir0) was evicted; dir1 and dir2 remain, newest last.
+        assert_eq!(
+            state.operation_reports[0].operation_name,
+            "Create Directory"
+        );
+        assert_eq!(state.next_operation_report_id, 3);
     }
 }

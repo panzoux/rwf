@@ -116,6 +116,10 @@ pub struct AppConfig {
     /// OS trash integration settings (Phase 7.7).
     #[serde(default)]
     pub trash: TrashConfig,
+
+    /// Operation Report / Undo history settings (Phase 7.6).
+    #[serde(default)]
+    pub undo: UndoConfig,
 }
 
 fn default_polling_interval_ms() -> u32 {
@@ -315,6 +319,28 @@ impl Default for TrashConfig {
     }
 }
 
+/// Configuration for the Operation Report / Undo history (Phase 7.6).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct UndoConfig {
+    /// How many recent Operation Reports to keep. Older ones are dropped
+    /// (design doc: "比較的少数（例: 10件程度）").
+    #[serde(default = "default_undo_history_size")]
+    pub history_size: usize,
+}
+
+fn default_undo_history_size() -> usize {
+    10
+}
+
+impl Default for UndoConfig {
+    fn default() -> Self {
+        Self {
+            history_size: default_undo_history_size(),
+        }
+    }
+}
+
 /// Archive configuration for compression operations
 ///
 /// The `alias`es accept the snake_case names this struct emitted before it grew a
@@ -507,6 +533,7 @@ impl Default for AppConfig {
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
             trash: TrashConfig::default(),
+            undo: UndoConfig::default(),
             is_creating_tab: false,
         }
     }
