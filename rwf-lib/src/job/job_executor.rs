@@ -817,7 +817,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 source: None,
                 destination: Some(location.clone()),
                 succeeded: false,
-                failure_reason: Some(e.to_string()),
+                // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                // only the outermost context and drops the underlying io::Error.
+                failure_reason: Some(format!("{e:#}")),
                 undo: UndoAvailability::NotApplicable,
             },
         };
@@ -854,7 +856,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 source: None,
                 destination: Some(location.clone()),
                 succeeded: false,
-                failure_reason: Some(e.to_string()),
+                // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                // only the outermost context and drops the underlying io::Error.
+                failure_reason: Some(format!("{e:#}")),
                 undo: UndoAvailability::NotApplicable,
             },
         };
@@ -2544,12 +2548,18 @@ mod tests {
             Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
                 assert_eq!(records.len(), 1);
                 assert!(records[0].succeeded);
-                assert!(matches!(
+                let dir_location = Location::Local(new_dir.clone());
+                assert_eq!(
                     records[0].undo,
                     crate::model::UndoAvailability::Available(
-                        crate::model::ReversalAction::Delete { .. }
+                        crate::model::ReversalAction::Delete {
+                            target: dir_location.clone(),
+                            recreate: Some(Box::new(crate::model::ReversalAction::Mkdir {
+                                location: dir_location,
+                            })),
+                        }
                     )
-                ));
+                );
             }
             other => panic!("Expected OperationRecords success, got {other:?}"),
         }
@@ -2584,12 +2594,18 @@ mod tests {
             Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
                 assert_eq!(records.len(), 1);
                 assert!(records[0].succeeded);
-                assert!(matches!(
+                let file_location = Location::Local(new_file.clone());
+                assert_eq!(
                     records[0].undo,
                     crate::model::UndoAvailability::Available(
-                        crate::model::ReversalAction::Delete { .. }
+                        crate::model::ReversalAction::Delete {
+                            target: file_location.clone(),
+                            recreate: Some(Box::new(crate::model::ReversalAction::CreateFile {
+                                location: file_location,
+                            })),
+                        }
                     )
-                ));
+                );
             }
             other => panic!("Expected OperationRecords success, got {other:?}"),
         }
