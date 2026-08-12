@@ -13,7 +13,7 @@ Buffer {
         "                                                                                                                        ",
         "                        ┌Copy Report───────────────────────────────────────────────────────────┐                        ",
         "                        │ Mark Source                    Destination               Res.  Undo  │                        ",
-        "                        │ [x]  日本語ファイル名前.txt    コピー先フォルダ\…本語.txtOK    ✓     │                        ", // hidden by multi-width symbols: [(32, " "), (34, " "), (36, " "), (38, " "), (40, " "), (42, " "), (44, " "), (46, " "), (48, " "), (58, " "), (60, " "), (62, " "), (64, " "), (66, " "), (68, " "), (70, " "), (72, " "), (76, " "), (78, " ")]
+        "                        │ [x]  日本語ファイル名前.txt    コピー先フォルダ…本語.txt OK    ✓     │                        ", // hidden by multi-width symbols: [(32, " "), (34, " "), (36, " "), (38, " "), (40, " "), (42, " "), (44, " "), (46, " "), (48, " "), (58, " "), (60, " "), (62, " "), (64, " "), (66, " "), (68, " "), (70, " "), (72, " "), (75, " "), (77, " ")]
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
         "                        │                                                                      │                        ",
@@ -90,10 +90,10 @@ Buffer {
         x: 71, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
         x: 72, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 73, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
-        x: 76, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 77, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
-        x: 78, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 79, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
+        x: 75, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 76, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
+        x: 77, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 78, y: 8, fg: Black, bg: White, underline: Reset, modifier: BOLD,
         x: 95, y: 8, fg: Black, bg: Gray, underline: Reset, modifier: NONE,
         x: 96, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 24, y: 9, fg: Black, bg: Gray, underline: Reset, modifier: NONE,

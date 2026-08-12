@@ -134,17 +134,32 @@ fn render_row_list(
     // the row string is assembled — so a narrow terminal clips within a
     // column instead of a whole column silently vanishing from the middle
     // of the line the way whole-line truncation with an empty ellipsis did.
+    //
+    // `GAP` columns of blank space are reserved between Source/Destination
+    // and between Destination/Res. — without this, a Source/Destination
+    // value that fills its budget exactly (a real case for long-but-not-too-
+    // long ASCII paths, since `smart_truncate`/`pad_to_width` both produce
+    // an *exact*-width result) would butt directly against the next column
+    // with no visible separator, the same collision class MARK_WIDTH/
+    // RESULT_WIDTH already avoid by reserving slack beyond their max content
+    // width.
+    const GAP: usize = 1;
     let action_width = action_label.width();
-    let fixed_width = 1 /* leading space */ + MARK_WIDTH + RESULT_WIDTH + action_width;
+    let fixed_width = 1 /* leading space */ + MARK_WIDTH + RESULT_WIDTH + action_width + GAP * 2;
     let path_budget = item_width.saturating_sub(fixed_width);
     let source_width = path_budget / 2;
     let dest_width = path_budget - source_width;
+    let gap = " ".repeat(GAP);
 
     let header = format!(
-        " {}{}{}{}{}",
+        " {}{}{gap}{}{gap}{}{}",
         pad_to_width("Mark", MARK_WIDTH),
-        pad_to_width("Source", source_width),
-        pad_to_width("Destination", dest_width),
+        // Header labels are truncated too, not just padded: on an
+        // extremely narrow terminal `source_width`/`dest_width` can shrink
+        // below the label's own width ("Source"=6, "Destination"=11),
+        // which would otherwise overflow the label into the next column.
+        pad_to_width(&smart_truncate("Source", source_width, ""), source_width),
+        pad_to_width(&smart_truncate("Destination", dest_width, ""), dest_width),
         pad_to_width("Res.", RESULT_WIDTH),
         action_label,
     );
@@ -184,7 +199,7 @@ fn render_row_list(
         let source = smart_truncate(&location_text(&record.source), source_width, "\u{2026}");
         let dest = smart_truncate(&location_text(&record.destination), dest_width, "\u{2026}");
         let line = format!(
-            " {}{}{}{}{}",
+            " {}{}{gap}{}{gap}{}{}",
             pad_to_width(mark, MARK_WIDTH),
             pad_to_width(&source, source_width),
             pad_to_width(&dest, dest_width),
