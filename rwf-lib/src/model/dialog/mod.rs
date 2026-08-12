@@ -29,6 +29,7 @@ mod jump_to_file;
 mod jump_to_path;
 mod multiline_input;
 mod open_with_picker;
+mod operation_report;
 mod pattern_rename;
 mod progress;
 mod registered_folder_selector;
@@ -66,6 +67,7 @@ pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
 pub use multiline_input::MultiLineInputDialog;
 pub use open_with_picker::OpenWithPickerDialog;
+pub use operation_report::OperationReportDialogContent;
 pub use pattern_rename::PatternRenameContent;
 pub use progress::ProgressDialog;
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
@@ -267,6 +269,8 @@ pub enum DialogContent {
     /// Multi-line free-form text entry (Phase 7.17). Distinct from `Input`
     /// (single-line) — see `MultiLineInputDialog`'s doc comment for why.
     MultiLineInput(MultiLineInputDialog),
+    /// Operation Report viewer/Undo-Redo trigger (Phase 7.6).
+    OperationReportView(OperationReportDialogContent),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -689,6 +693,15 @@ impl Dialog {
         Self {
             title: "Trash".to_string(),
             content: DialogContent::TrashBrowser(TrashBrowserDialog::new(records)),
+        }
+    }
+
+    /// Create an Operation Report viewer dialog (Phase 7.6) for `report`.
+    pub fn operation_report_view(report: crate::model::OperationReport) -> Self {
+        let title = report.title();
+        Self {
+            title,
+            content: DialogContent::OperationReportView(OperationReportDialogContent::new(report)),
         }
     }
 
