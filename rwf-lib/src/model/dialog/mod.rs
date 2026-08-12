@@ -27,6 +27,7 @@ mod input;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod multiline_input;
 mod open_with_picker;
 mod pattern_rename;
 mod progress;
@@ -63,6 +64,7 @@ pub use input::InputDialog;
 pub use job_manager::JobManagerContent;
 pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
+pub use multiline_input::MultiLineInputDialog;
 pub use open_with_picker::OpenWithPickerDialog;
 pub use pattern_rename::PatternRenameContent;
 pub use progress::ProgressDialog;
@@ -262,6 +264,9 @@ pub enum DialogContent {
     /// Browse trashed items and restore one to its original location
     /// (Phase 7.7 Task 16).
     TrashBrowser(TrashBrowserDialog),
+    /// Multi-line free-form text entry (Phase 7.17). Distinct from `Input`
+    /// (single-line) — see `MultiLineInputDialog`'s doc comment for why.
+    MultiLineInput(MultiLineInputDialog),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -522,6 +527,23 @@ impl Dialog {
         Self {
             title: title.into(),
             content: DialogContent::Input(InputDialog::new(prompt.into(), dv)),
+        }
+    }
+
+    /// Create a multi-line input dialog (Phase 7.17). Confirm key is
+    /// Ctrl+Enter (plain Enter inserts a newline); see
+    /// `rwf-bin/src/ui/multiline_text_input.rs` for the widget itself.
+    pub fn multiline_input(
+        title: impl Into<String>,
+        prompt: impl Into<String>,
+        default_value: impl Into<String>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            content: DialogContent::MultiLineInput(MultiLineInputDialog::new(
+                prompt,
+                default_value,
+            )),
         }
     }
 
@@ -1156,6 +1178,7 @@ impl DialogContent {
         matches!(
             self,
             DialogContent::Input { .. }
+                | DialogContent::MultiLineInput { .. }
                 | DialogContent::CustomFunctionSelector(_)
                 | DialogContent::RegisteredFolderSelector(_)
                 | DialogContent::TabSelector(_)
