@@ -7,6 +7,7 @@ mod diag_badge;
 pub mod dialog;
 mod filename_line;
 mod leap_bar;
+pub mod multiline_text_input;
 mod pane_info_line;
 mod panes;
 mod path_line;

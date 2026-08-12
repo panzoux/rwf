@@ -324,11 +324,18 @@ impl App {
             if self.pending_diag_report && self.snapshot_request.is_none() {
                 self.pending_diag_report = false;
                 if self.state.config.diagnostics.prompt_for_report {
-                    self.state.dialogs.push(rwf_lib::model::Dialog::input(
-                        DIAGNOSTIC_REPORT_DIALOG_TITLE,
-                        "What happened? (problem / expected behaviour)",
-                        "",
-                    ));
+                    // Phase 7.17: multi-line so a report isn't squeezed onto
+                    // one line (dogfooding on 2026-08-11 produced a 76-byte
+                    // one-line report with a mid-sentence backspace visible
+                    // in the recorded event stream — the box invited far
+                    // less than the reporter had to say).
+                    self.state
+                        .dialogs
+                        .push(rwf_lib::model::Dialog::multiline_input(
+                            DIAGNOSTIC_REPORT_DIALOG_TITLE,
+                            "What happened? (problem / expected behaviour)",
+                            "",
+                        ));
                     ui_needs_update = true;
                 } else {
                     self.finish_diagnostic_session(None);

@@ -25,6 +25,7 @@ mod history;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod multiline_input;
 mod open_with_picker;
 mod pattern_rename;
 mod registered_folder;
@@ -51,6 +52,7 @@ use help::render_help_dialog;
 use history::render_history_dialog;
 use jump_to_file::render_jump_to_file_dialog;
 use jump_to_path::render_jump_to_path_dialog;
+use multiline_input::render_multiline_input_dialog;
 use open_with_picker::{candidate_label, render_open_with_picker};
 use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
@@ -1090,6 +1092,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // No separate button row; Enter/Esc are the controls
             render_dialog_content(frame, &dialog.content, content_area, true);
         }
+        DialogContent::MultiLineInput(d) => {
+            // No separate button row; Ctrl+Enter/Enter/Esc are the controls
+            // (Enter inserts a newline instead of confirming — see the
+            // exclusion in `handle_dialog_input`'s Enter interception).
+            render_multiline_input_dialog(frame, content_area, d);
+        }
         _ => {
             // Split content area for buttons (generic layout)
             let chunks = Layout::default()
@@ -1141,6 +1149,10 @@ pub fn handle_dialog_input(
         } else if let DialogContent::FileConflict { .. } = &dialog.content {
             // FileConflict dialog handles Enter internally (for buttons and textbox)
             // Don't return here, let it be handled below
+        } else if let DialogContent::MultiLineInput { .. } = &dialog.content {
+            // Phase 7.17: Enter inserts a newline here, not confirm — the
+            // dedicated handler below owns Enter/Ctrl+Enter/Esc. Don't return
+            // here, let it be handled below.
         } else {
             return DialogAction::Confirm;
         }
@@ -1164,6 +1176,13 @@ pub fn handle_dialog_input(
     // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
     if let DialogContent::Input(d) = &mut dialog.content {
         return basic::handle_input(d, key);
+    }
+
+    // MultiLineInput dialog (Phase 7.17) — free-form multi-line text entry
+    // (currently the diagnostic report prompt). Owns Enter/Ctrl+Enter/Esc
+    // itself; see the exclusion above in the Enter interception.
+    if let DialogContent::MultiLineInput(d) = &mut dialog.content {
+        return multiline_input::handle_input(d, key);
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask
