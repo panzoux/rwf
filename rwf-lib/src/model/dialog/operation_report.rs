@@ -86,4 +86,23 @@ mod tests {
         content.selected[0] = false;
         assert!(content.selected_reversal_actions().is_empty());
     }
+
+    #[test]
+    fn deselecting_an_available_row_excludes_it() {
+        // Unlike the NotApplicable case above, this row IS actionable
+        // (`Available`) — so this is the one scenario that actually exercises
+        // the `selected` filter rather than the `undo` filter. Deleting the
+        // `.filter(|(_, sel)| **sel)` step in `selected_reversal_actions`
+        // would leave this test failing where the others would still pass.
+        let mut content = OperationReportDialogContent::new(report_with(
+            UndoAvailability::Available(ReversalAction::Delete {
+                target: Location::Local("b.txt".into()),
+                recreate: None,
+            }),
+        ));
+        assert_eq!(content.selected_reversal_actions().len(), 1);
+
+        content.selected[0] = false;
+        assert!(content.selected_reversal_actions().is_empty());
+    }
 }
