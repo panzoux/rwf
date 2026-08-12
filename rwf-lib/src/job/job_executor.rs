@@ -288,14 +288,14 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     .await
                 {
                     Ok(entries) => OpResult::Success(SuccessData::DirectoryRead(entries)),
-                    Err(e) => OpResult::Failed(e.to_string()),
+                    Err(e) => OpResult::Failed(format!("{e:#}")),
                 }
             }
             _ => {
                 // Use regular backend for other locations
                 match self.backend.read_directory(location, cancel_token).await {
                     Ok(entries) => OpResult::Success(SuccessData::DirectoryRead(entries)),
-                    Err(e) => OpResult::Failed(e.to_string()),
+                    Err(e) => OpResult::Failed(format!("{e:#}")),
                 }
             }
         }
@@ -447,7 +447,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 source: Some(source.clone()),
                 destination: Some(dest.clone()),
                 succeeded: false,
-                failure_reason: Some(e.to_string()),
+                failure_reason: Some(format!("{e:#}")),
                 undo: UndoAvailability::NotApplicable,
             },
         }
@@ -606,7 +606,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     source: Some(source.clone()),
                     destination: Some(dest.clone()),
                     succeeded: false,
-                    failure_reason: Some(e.to_string()),
+                    failure_reason: Some(format!("{e:#}")),
                     undo: UndoAvailability::NotApplicable,
                 }
             }
@@ -752,7 +752,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             .await
         {
             Ok(purged) => OpResult::Success(SuccessData::TrashEmptied { purged }),
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -769,7 +769,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             Ok((count, total_size)) => {
                 OpResult::Success(SuccessData::TrashScanned { count, total_size })
             }
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -777,7 +777,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     async fn execute_list_trash(&self, fallback_roots: &[std::path::PathBuf]) -> OpResult {
         match self.backend.list_trash(fallback_roots).await {
             Ok(records) => OpResult::Success(SuccessData::TrashListed(records)),
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -793,7 +793,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
         match self.backend.create_directory(location, cancel_token).await {
             Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -809,7 +809,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
         match self.backend.create_file(location, cancel_token).await {
             Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -831,7 +831,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             .await
         {
             Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 
@@ -940,7 +940,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 source: Some(from.clone()),
                 destination: Some(to.clone()),
                 succeeded: false,
-                failure_reason: Some(e.to_string()),
+                // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                // only the outermost context and drops the underlying io::Error.
+                // Merged from main, where the same change was made across the
+                // OpResult::Failed sites — it matters more here, because this
+                // record is now the *only* place the reason survives.
+                failure_reason: Some(format!("{e:#}")),
                 undo: UndoAvailability::NotApplicable,
             },
         };
@@ -990,7 +995,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 if spec.cancel_token.is_cancelled() {
                     OpResult::Cancelled
                 } else {
-                    OpResult::Failed(e.to_string())
+                    OpResult::Failed(format!("{e:#}"))
                 }
             }
         }
@@ -1017,7 +1022,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 if spec.cancel_token.is_cancelled() {
                     OpResult::Cancelled
                 } else {
-                    OpResult::Failed(e.to_string())
+                    OpResult::Failed(format!("{e:#}"))
                 }
             }
         }
@@ -1044,7 +1049,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 if spec.cancel_token.is_cancelled() {
                     OpResult::Cancelled
                 } else {
-                    OpResult::Failed(e.to_string())
+                    OpResult::Failed(format!("{e:#}"))
                 }
             }
         }
@@ -1144,7 +1149,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     OpResult::Failed(stderr)
                 }
             }
-            Err(e) => OpResult::Failed(e.to_string()),
+            Err(e) => OpResult::Failed(format!("{e:#}")),
         }
     }
 

@@ -12,3 +12,6 @@ qwen-code-export-*
 /docs/superpowers/
 *.bak
 /.worktrees/
+# Build output from the TWF C# prototype kept under specs/ for reference.
+/specs/twf/obj/
+/specs/twf/bin/

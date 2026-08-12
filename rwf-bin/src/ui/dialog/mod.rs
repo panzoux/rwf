@@ -25,6 +25,7 @@ mod history;
 mod job_manager;
 mod jump_to_file;
 mod jump_to_path;
+mod multiline_input;
 mod open_with_picker;
 mod pattern_rename;
 mod registered_folder;
@@ -51,6 +52,7 @@ use help::render_help_dialog;
 use history::render_history_dialog;
 use jump_to_file::render_jump_to_file_dialog;
 use jump_to_path::render_jump_to_path_dialog;
+use multiline_input::render_multiline_input_dialog;
 use open_with_picker::{candidate_label, render_open_with_picker};
 use pattern_rename::render_pattern_rename_dialog;
 use registered_folder::render_registered_folder_selector;
@@ -411,9 +413,22 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // tab bar(1) + search(1) + entries + hint(1), min 8
             20u16
         }
-        DialogContent::Error(ErrorDialog { message, .. }) => {
-            // message lines + blank(1) + buttons(3), min 5
-            (message.lines().count() as u16 + 4).max(5)
+        DialogContent::Error(ErrorDialog {
+            message, details, ..
+        }) => {
+            // The generic render path splits this interior into
+            // `Constraint::Min(5)` for content and `Constraint::Length(3)` for
+            // the button row, so it needs **8** rows however short the message
+            // is. The old formula gave `(lines + 4).max(5)` — 5 for a one-line
+            // message — and the button row was pushed past the bottom border and
+            // drawn outside the box. Reported from a diagnostic bundle on
+            // 2026-08-12, where "[*OK*]" sat on the row below `└────┘`.
+            //
+            // `details`, when present, renders as a blank line plus its own
+            // lines (see `basic.rs`) and must be counted too — otherwise a long
+            // detail string overflows the same way.
+            let detail_rows = details.as_ref().map_or(0, |d| d.lines().count() as u16 + 1);
+            (message.lines().count() as u16 + detail_rows + 3).max(8)
         }
         DialogContent::Input { .. } => {
             // prompt(1) + textbox(1) + hint(1) = 3
@@ -1090,6 +1105,12 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // No separate button row; Enter/Esc are the controls
             render_dialog_content(frame, &dialog.content, content_area, true);
         }
+        DialogContent::MultiLineInput(d) => {
+            // No separate button row; Ctrl+Enter/Enter/Esc are the controls
+            // (Enter inserts a newline instead of confirming — see the
+            // exclusion in `handle_dialog_input`'s Enter interception).
+            render_multiline_input_dialog(frame, content_area, d);
+        }
         _ => {
             // Split content area for buttons (generic layout)
             let chunks = Layout::default()
@@ -1141,6 +1162,10 @@ pub fn handle_dialog_input(
         } else if let DialogContent::FileConflict { .. } = &dialog.content {
             // FileConflict dialog handles Enter internally (for buttons and textbox)
             // Don't return here, let it be handled below
+        } else if let DialogContent::MultiLineInput { .. } = &dialog.content {
+            // Phase 7.17: Enter inserts a newline here, not confirm — the
+            // dedicated handler below owns Enter/Ctrl+Enter/Esc. Don't return
+            // here, let it be handled below.
         } else {
             return DialogAction::Confirm;
         }
@@ -1164,6 +1189,13 @@ pub fn handle_dialog_input(
     // Input dialog — generic text input (Create Directory, Register Folder, Custom Function Input, etc.)
     if let DialogContent::Input(d) = &mut dialog.content {
         return basic::handle_input(d, key);
+    }
+
+    // MultiLineInput dialog (Phase 7.17) — free-form multi-line text entry
+    // (currently the diagnostic report prompt). Owns Enter/Ctrl+Enter/Esc
+    // itself; see the exclusion above in the Enter interception.
+    if let DialogContent::MultiLineInput(d) = &mut dialog.content {
+        return multiline_input::handle_input(d, key);
     }
 
     // SimpleRename dialog — identical Tab/Enter/Esc/TextInput logic as FileMask

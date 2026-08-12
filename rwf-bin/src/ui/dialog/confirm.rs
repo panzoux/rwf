@@ -142,16 +142,26 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
     debug!("process_dialog_confirmation called");
 
     // Input dialogs: extract title and embedded input first so the borrow on state.dialogs ends
-    // before we call update_state.
+    // before we call update_state. Covers both the single-line `Input` dialog
+    // (Register Folder, Create Directory, ...) and the Phase 7.17
+    // `MultiLineInput` dialog (currently only the diagnostic report prompt) —
+    // the `match title.as_str()` below dispatches on title regardless of
+    // which variant produced the text, so existing single-line callers are
+    // unaffected.
     let input_dialog_info: Option<(String, String)> = state
         .dialogs
         .current()
-        .filter(|d| matches!(d.content, DialogContent::Input { .. }))
+        .filter(|d| {
+            matches!(
+                d.content,
+                DialogContent::Input { .. } | DialogContent::MultiLineInput { .. }
+            )
+        })
         .map(|d| {
-            let embedded = if let DialogContent::Input(InputDialog { input, .. }) = &d.content {
-                input.clone()
-            } else {
-                String::new()
+            let embedded = match &d.content {
+                DialogContent::Input(InputDialog { input, .. }) => input.clone(),
+                DialogContent::MultiLineInput(dlg) => dlg.text(),
+                _ => String::new(),
             };
             (d.title.clone(), embedded)
         });

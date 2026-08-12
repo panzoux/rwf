@@ -416,8 +416,16 @@ impl AppState {
         let path = crate::session::SessionState::default_path();
         let session = crate::session::SessionState::load_from_file(&path)?;
 
-        // Restore tabs
-        self.tabs.tabs = crate::session::restore_tabs(&session);
+        // Restore tabs. Saved paths that no longer exist are replaced with their
+        // nearest surviving ancestor; the notes name what vanished so the user is
+        // told rather than left to infer it from a failed directory read.
+        let (tabs, notes) = crate::session::restore_tabs(&session);
+        self.tabs.tabs = tabs;
+        for note in notes {
+            tracing::warn!("[Session] {note}");
+            self.pending_confirmation_logs
+                .push(format!("[Session] {note}"));
+        }
 
         // Prevent duplicate IDs: next_tab_id must be greater than all restored IDs
         self.tabs.update_next_id_after_restore();

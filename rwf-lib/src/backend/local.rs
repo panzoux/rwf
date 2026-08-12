@@ -59,7 +59,7 @@ impl FilesystemBackend for LocalFilesystemBackend {
         let mut entries = Vec::new();
         let mut read_dir = tokio::fs::read_dir(path)
             .await
-            .context("Failed to read directory")?;
+            .with_context(|| format!("Failed to read directory {}", path.display()))?;
 
         while let Some(entry) = read_dir.next_entry().await? {
             // Check cancellation periodically
@@ -908,7 +908,7 @@ impl LocalFilesystemBackend {
 
             let mut read_dir = tokio::fs::read_dir(path)
                 .await
-                .context("Failed to read directory")?;
+                .with_context(|| format!("Failed to read directory {}", path.display()))?;
 
             while let Some(entry) = read_dir.next_entry().await? {
                 // Check cancellation periodically
@@ -945,7 +945,7 @@ impl LocalFilesystemBackend {
 
             let mut read_dir = tokio::fs::read_dir(path)
                 .await
-                .context("Failed to read directory")?;
+                .with_context(|| format!("Failed to read directory {}", path.display()))?;
 
             while let Some(entry) = read_dir.next_entry().await? {
                 // Check cancellation periodically
