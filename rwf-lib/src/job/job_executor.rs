@@ -649,7 +649,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     source: Some(target.clone()),
                     destination: None,
                     succeeded: false,
-                    failure_reason: Some(e.to_string()),
+                    // `{:#}` renders anyhow's whole source chain; `to_string()` shows
+                    // only the outermost context and drops the underlying io::Error.
+                    failure_reason: Some(format!("{e:#}")),
                     undo: UndoAvailability::NotApplicable,
                 },
             };
