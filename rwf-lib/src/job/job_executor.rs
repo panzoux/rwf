@@ -794,14 +794,35 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
 
-        match self.backend.create_directory(location, cancel_token).await {
-            Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(format!("{e:#}")),
-        }
+        let record = match self.backend.create_directory(location, cancel_token).await {
+            Ok(()) => OperationRecord {
+                source: None,
+                destination: Some(location.clone()),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: location.clone(),
+                    recreate: Some(Box::new(ReversalAction::Mkdir {
+                        location: location.clone(),
+                    })),
+                }),
+            },
+            Err(e) => OperationRecord {
+                source: None,
+                destination: Some(location.clone()),
+                succeeded: false,
+                failure_reason: Some(e.to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        };
+
+        OpResult::Success(SuccessData::OperationRecords(vec![record]))
     }
 
     /// Execute a create-file operation
@@ -810,14 +831,35 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> OpResult {
+        use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
+
         if cancel_token.is_cancelled() {
             return OpResult::Cancelled;
         }
 
-        match self.backend.create_file(location, cancel_token).await {
-            Ok(_) => OpResult::Success(SuccessData::None),
-            Err(e) => OpResult::Failed(format!("{e:#}")),
-        }
+        let record = match self.backend.create_file(location, cancel_token).await {
+            Ok(()) => OperationRecord {
+                source: None,
+                destination: Some(location.clone()),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: location.clone(),
+                    recreate: Some(Box::new(ReversalAction::CreateFile {
+                        location: location.clone(),
+                    })),
+                }),
+            },
+            Err(e) => OperationRecord {
+                source: None,
+                destination: Some(location.clone()),
+                succeeded: false,
+                failure_reason: Some(e.to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        };
+
+        OpResult::Success(SuccessData::OperationRecords(vec![record]))
     }
 
     /// Execute a create-link operation (symlink/hardlink/junction).
@@ -2498,10 +2540,19 @@ mod tests {
 
         // Then a completed event
         let event = event_rx.recv().await;
-        assert!(matches!(
-            event,
-            Some(JobEvent::Completed(_, SuccessData::None))
-        ));
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Delete { .. }
+                    )
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
 
         // Directory should exist
         assert!(new_dir.exists());
@@ -2529,10 +2580,19 @@ mod tests {
 
         // Then a completed event
         let event = event_rx.recv().await;
-        assert!(matches!(
-            event,
-            Some(JobEvent::Completed(_, SuccessData::None))
-        ));
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].succeeded);
+                assert!(matches!(
+                    records[0].undo,
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::Delete { .. }
+                    )
+                ));
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
 
         // File should exist
         assert!(new_file.exists());
