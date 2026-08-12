@@ -413,9 +413,22 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // tab bar(1) + search(1) + entries + hint(1), min 8
             20u16
         }
-        DialogContent::Error(ErrorDialog { message, .. }) => {
-            // message lines + blank(1) + buttons(3), min 5
-            (message.lines().count() as u16 + 4).max(5)
+        DialogContent::Error(ErrorDialog {
+            message, details, ..
+        }) => {
+            // The generic render path splits this interior into
+            // `Constraint::Min(5)` for content and `Constraint::Length(3)` for
+            // the button row, so it needs **8** rows however short the message
+            // is. The old formula gave `(lines + 4).max(5)` — 5 for a one-line
+            // message — and the button row was pushed past the bottom border and
+            // drawn outside the box. Reported from a diagnostic bundle on
+            // 2026-08-12, where "[*OK*]" sat on the row below `└────┘`.
+            //
+            // `details`, when present, renders as a blank line plus its own
+            // lines (see `basic.rs`) and must be counted too — otherwise a long
+            // detail string overflows the same way.
+            let detail_rows = details.as_ref().map_or(0, |d| d.lines().count() as u16 + 1);
+            (message.lines().count() as u16 + detail_rows + 3).max(8)
         }
         DialogContent::Input { .. } => {
             // prompt(1) + textbox(1) + hint(1) = 3
