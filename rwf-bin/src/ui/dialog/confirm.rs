@@ -1043,13 +1043,30 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     if actions.is_empty() {
                         return None;
                     }
-                    return Some(rwf_lib::job::JobSpec::new(
-                        rwf_lib::job::JobKind::ExecuteReversal {
+                    // Clone out of `action` (borrowed from `state.dialogs`'
+                    // current entry) before mutating the stack below — the
+                    // borrow checker won't allow `pop_below_top()` while
+                    // `action`'s fields are still borrowed.
+                    let job_spec =
+                        rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteReversal {
                             actions: actions.clone(),
                             operation_name: operation_name.clone(),
                             resulting_is_undo: *resulting_is_undo,
-                        },
-                    ));
+                        });
+                    // This summary dialog was pushed ON TOP of the
+                    // OperationReportView it was confirmed from (see the
+                    // `blocked.is_empty()` branch above), which set
+                    // `suppress_next_dialog_pop` so the report dialog stayed
+                    // underneath rather than being popped there. The generic
+                    // post-confirm path pops only the current (summary)
+                    // dialog, so without this the stale report dialog would
+                    // be left open underneath after the job starts — pop it
+                    // explicitly to match the "pop all related dialogs"
+                    // dialog-stack-hygiene rule the direct-submit path
+                    // already satisfies for free (no summary dialog means
+                    // only the report dialog itself gets popped there).
+                    state.dialogs.pop_below_top();
+                    return Some(job_spec);
                 }
             },
             _ => {

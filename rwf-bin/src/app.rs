@@ -3277,10 +3277,11 @@ mod operation_report_confirm_tests {
         app.handle_key_event(release);
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        assert_eq!(
-            app.state.dialogs.stack.len(),
-            1,
-            "confirming the summary should pop it, leaving only the report dialog underneath"
+        assert!(
+            app.state.dialogs.is_empty(),
+            "confirming the summary should pop both it and the underlying report dialog \
+             (dialog-stack hygiene — no stale dialog left behind), got: {:?}",
+            app.state.dialogs
         );
         let job = app
             .state
