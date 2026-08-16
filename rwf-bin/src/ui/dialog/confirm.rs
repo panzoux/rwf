@@ -933,6 +933,62 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
+            DialogContent::OperationReportView(content) => {
+                let actions = content.selected_reversal_actions();
+                if actions.is_empty() {
+                    return None;
+                }
+                let operation_name = content.report.operation_name.clone();
+                let resulting_is_undo = !content.report.is_undo;
+
+                let (ready, blocked) = rwf_lib::job::preflight_check(&actions);
+                if blocked.is_empty() {
+                    return Some(rwf_lib::job::JobSpec::new(
+                        rwf_lib::job::JobKind::ExecuteReversal {
+                            actions: ready,
+                            operation_name,
+                            resulting_is_undo,
+                        },
+                    ));
+                }
+
+                // Some rows are currently blocked — show the pre-flight
+                // summary and let the user decide whether to proceed with
+                // just the ready ones.
+                let mut message = format!(
+                    "{} of {} rows can be {}.\n{} blocked:\n",
+                    ready.len(),
+                    actions.len(),
+                    if resulting_is_undo {
+                        "undone"
+                    } else {
+                        "redone"
+                    },
+                    blocked.len()
+                );
+                for (_, reason) in &blocked {
+                    message.push_str("  - ");
+                    message.push_str(reason);
+                    message.push('\n');
+                }
+
+                state.dialogs.push(rwf_lib::model::Dialog::action_confirm(
+                    format!(
+                        "{} {}",
+                        if resulting_is_undo { "Undo" } else { "Redo" },
+                        operation_name
+                    ),
+                    message,
+                    None,
+                    ConfirmableAction::ExecuteReversal {
+                        actions: ready,
+                        operation_name,
+                        resulting_is_undo,
+                    },
+                ));
+                state.suppress_next_dialog_pop = true;
+                return None;
+            }
             DialogContent::TrashBrowser(TrashBrowserDialog {
                 records,
                 selected_index,
@@ -978,6 +1034,22 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         fallback_roots: fallback_roots.clone(),
                     });
                     return Some(job_spec);
+                }
+                ConfirmableAction::ExecuteReversal {
+                    actions,
+                    operation_name,
+                    resulting_is_undo,
+                } => {
+                    if actions.is_empty() {
+                        return None;
+                    }
+                    return Some(rwf_lib::job::JobSpec::new(
+                        rwf_lib::job::JobKind::ExecuteReversal {
+                            actions: actions.clone(),
+                            operation_name: operation_name.clone(),
+                            resulting_is_undo: *resulting_is_undo,
+                        },
+                    ));
                 }
             },
             _ => {

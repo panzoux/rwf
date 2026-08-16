@@ -1035,6 +1035,15 @@ impl App {
                                     JobKind::RestoreFromTrash { records } => {
                                         Some(crate::ui::dialog::restore_job_name(records))
                                     }
+                                    JobKind::ExecuteReversal {
+                                        operation_name,
+                                        resulting_is_undo,
+                                        ..
+                                    } => Some(format!(
+                                        "{} {}",
+                                        if *resulting_is_undo { "Undo" } else { "Redo" },
+                                        operation_name
+                                    )),
                                     _ => None,
                                 };
                                 if let Some(job_name) = delete_or_trash_job_name {
@@ -3095,5 +3104,210 @@ mod trash_browser_restore_tests {
             .next()
             .expect("confirming restore should register a background job");
         assert_eq!(job.name, "Restore to 'C:\\second.txt'");
+    }
+}
+
+/// Phase 7.6 Task 17: pressing Enter on the Operation Report dialog is the trigger that
+/// actually makes Undo/Redo run. `process_dialog_confirmation`'s new `OperationReportView`
+/// arm pre-flight-checks the selected rows' `ReversalAction`s and either (a) submits a
+/// `JobKind::ExecuteReversal` job directly when nothing is blocked, or (b) pushes a summary
+/// `ActionConfirmDialog` carrying `ConfirmableAction::ExecuteReversal { actions: ready, .. }`
+/// when some rows are currently blocked, so the user can choose to proceed with just the
+/// ready ones. Before this task neither path existed — Enter fell through to the catch-all
+/// and just closed the dialog with no job ever starting.
+#[cfg(test)]
+mod operation_report_confirm_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::dialog::ConfirmableAction;
+    use rwf_lib::model::{
+        Dialog, DialogContent, Location, OperationRecord, OperationReport, ReversalAction,
+        UndoAvailability,
+    };
+    use tempfile::TempDir;
+
+    fn test_app_with_operation_report_dialog(report: OperationReport) -> App {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.dialogs.push(Dialog::operation_report_view(report));
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    #[tokio::test]
+    async fn confirming_operation_report_with_all_rows_ready_starts_reversal_job_directly() {
+        let dir = TempDir::new().unwrap();
+        let copy = dir.path().join("b.txt");
+        std::fs::write(&copy, b"x").unwrap();
+
+        let report = OperationReport {
+            id: 1,
+            operation_name: "Copy".to_string(),
+            records: vec![OperationRecord {
+                source: Some(Location::Local(dir.path().join("a.txt"))),
+                destination: Some(Location::Local(copy.clone())),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: Location::Local(copy.clone()),
+                    recreate: None,
+                }),
+            }],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        let mut app = test_app_with_operation_report_dialog(report);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        // No pre-flight blockers, so the job should start immediately — no
+        // intermediate summary/confirm dialog left on the stack.
+        assert!(
+            app.state.dialogs.is_empty(),
+            "no blockers means no summary dialog should remain: {:?}",
+            app.state.dialogs
+        );
+        let job = app
+            .state
+            .jobs
+            .active
+            .values()
+            .next()
+            .expect("a job should have been started");
+        match &job.spec.kind {
+            JobKind::ExecuteReversal {
+                actions,
+                operation_name,
+                resulting_is_undo,
+            } => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(operation_name, "Copy");
+                // report.is_undo was false, so the resulting action must be
+                // labeled as the Undo (the flip, not a hardcoded value).
+                assert!(*resulting_is_undo);
+            }
+            other => panic!("expected JobKind::ExecuteReversal, got {other:?}"),
+        }
+        let bg_job = app
+            .state
+            .background_jobs
+            .get_all_jobs()
+            .next()
+            .expect("confirming should register a labeled background job");
+        assert_eq!(bg_job.name, "Undo Copy");
+    }
+
+    #[tokio::test]
+    async fn confirming_operation_report_with_some_rows_blocked_shows_summary_first() {
+        let dir = TempDir::new().unwrap();
+        let ok_target = dir.path().join("ok.txt");
+        std::fs::write(&ok_target, b"x").unwrap();
+        let missing_target = dir.path().join("missing.txt");
+
+        let report = OperationReport {
+            id: 1,
+            operation_name: "Delete".to_string(),
+            records: vec![
+                OperationRecord {
+                    source: Some(Location::Local(ok_target.clone())),
+                    destination: None,
+                    succeeded: true,
+                    failure_reason: None,
+                    undo: UndoAvailability::Available(ReversalAction::Delete {
+                        target: Location::Local(ok_target.clone()),
+                        recreate: None,
+                    }),
+                },
+                OperationRecord {
+                    source: Some(Location::Local(missing_target.clone())),
+                    destination: None,
+                    succeeded: true,
+                    failure_reason: None,
+                    undo: UndoAvailability::Available(ReversalAction::Delete {
+                        target: Location::Local(missing_target.clone()),
+                        recreate: None,
+                    }),
+                },
+            ],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        let mut app = test_app_with_operation_report_dialog(report);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        // One row is blocked (target no longer exists) — no job should have
+        // started yet, and a summary confirm dialog should now sit on top of
+        // the (not-popped) Operation Report dialog.
+        assert!(
+            app.state.jobs.active.is_empty(),
+            "a blocked row must not start a job before the user confirms the summary"
+        );
+        assert_eq!(
+            app.state.dialogs.stack.len(),
+            2,
+            "the original dialog should still be underneath the new summary dialog: {:?}",
+            app.state.dialogs
+        );
+        let summary = app.state.dialogs.current().expect("summary dialog");
+        match &summary.content {
+            DialogContent::Confirmation(d) => {
+                assert!(
+                    d.message.contains("1 of 2 rows can be undone"),
+                    "unexpected summary message: {}",
+                    d.message
+                );
+                match &d.action {
+                    ConfirmableAction::ExecuteReversal { actions, .. } => {
+                        assert_eq!(actions.len(), 1);
+                    }
+                    other => panic!("expected ConfirmableAction::ExecuteReversal, got {other:?}"),
+                }
+            }
+            other => panic!("expected DialogContent::Confirmation, got {other:?}"),
+        }
+
+        // Confirming the summary should now submit the job with only the
+        // ready action (not the originally-selected pair, which includes the
+        // blocked one). A Release must be delivered between the two Enter
+        // presses first — `should_process_key_repeat`'s debounce treats a
+        // second Press of the still-"held" same key as an OS auto-repeat
+        // burst and swallows it, exactly like a real terminal would send
+        // Press-then-Release for each physical keystroke.
+        let mut release = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        release.kind = crossterm::event::KeyEventKind::Release;
+        app.handle_key_event(release);
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            app.state.dialogs.stack.len(),
+            1,
+            "confirming the summary should pop it, leaving only the report dialog underneath"
+        );
+        let job = app
+            .state
+            .jobs
+            .active
+            .values()
+            .next()
+            .expect("confirming the summary should start a job");
+        match &job.spec.kind {
+            JobKind::ExecuteReversal {
+                actions,
+                operation_name,
+                resulting_is_undo,
+            } => {
+                assert_eq!(
+                    actions.len(),
+                    1,
+                    "only the ready action should be submitted"
+                );
+                assert!(matches!(
+                    &actions[0],
+                    ReversalAction::Delete { target, .. } if target == &Location::Local(ok_target.clone())
+                ));
+                assert_eq!(operation_name, "Delete");
+                assert!(*resulting_is_undo);
+            }
+            other => panic!("expected JobKind::ExecuteReversal, got {other:?}"),
+        }
     }
 }

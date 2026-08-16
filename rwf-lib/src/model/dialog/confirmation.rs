@@ -25,6 +25,13 @@ pub enum ConfirmableAction {
     EmptyTrash {
         fallback_roots: Vec<std::path::PathBuf>,
     },
+    /// Run a reversal batch after pre-flight found some rows blocked — the
+    /// user confirmed "proceed with the N that are ready" (Phase 7.6).
+    ExecuteReversal {
+        actions: Vec<crate::model::ReversalAction>,
+        operation_name: String,
+        resulting_is_undo: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
