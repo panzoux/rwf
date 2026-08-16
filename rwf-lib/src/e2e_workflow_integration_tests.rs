@@ -801,4 +801,110 @@ mod tests {
             crate::model::ActivePane::Right
         );
     }
+
+    /// End-to-end Undo/Redo round trip (Phase 7.6): Copy a real file via a
+    /// real `JobExecutor` + `LocalFilesystemBackend` (no mocking of I/O),
+    /// Undo it (the copy is deleted), then Redo it (the copy comes back) —
+    /// verifying both on-disk filesystem state and the `OperationRecord`
+    /// shapes at each step. Exercises the full chain: `execute_copy` ->
+    /// `execute_reversal`'s `Delete{recreate}` arm (undo) ->
+    /// `execute_reversal`'s `Copy` arm (redo).
+    #[tokio::test]
+    async fn copy_undo_redo_round_trip() {
+        use crate::backend::{LocalFilesystemBackend, MockArchiveHandler};
+        use crate::job::JobExecutor;
+        use crate::model::UndoAvailability;
+        use crate::worker_pool::JobEvent;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let backend = std::sync::Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = std::sync::Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let src = temp_dir.path().join("a.txt");
+        tokio::fs::write(&src, b"hello").await.unwrap();
+        let dest_dir = temp_dir.path().join("dest");
+        tokio::fs::create_dir(&dest_dir).await.unwrap();
+        let copied = dest_dir.join("a.txt");
+
+        // Skip Started/Progress events, return the terminal event.
+        async fn next_terminal_event(
+            event_rx: &mut tokio::sync::mpsc::UnboundedReceiver<JobEvent>,
+        ) -> Option<JobEvent> {
+            loop {
+                match event_rx.recv().await {
+                    Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                    other => return other,
+                }
+            }
+        }
+
+        // 1. Copy.
+        let copy_spec = JobSpec::new(JobKind::Copy {
+            sources: vec![Location::Local(src.clone())],
+            dest: Location::Local(dest_dir.clone()),
+        });
+        executor.execute(copy_spec).await;
+        let copy_records = match next_terminal_event(&mut event_rx).await {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(r))) => r,
+            other => panic!("expected OperationRecords, got {other:?}"),
+        };
+        assert_eq!(copy_records.len(), 1);
+        assert!(copy_records[0].succeeded);
+        assert_eq!(copy_records[0].source, Some(Location::Local(src.clone())));
+        assert_eq!(
+            copy_records[0].destination,
+            Some(Location::Local(copied.clone()))
+        );
+        assert!(copied.exists());
+        assert_eq!(tokio::fs::read(&copied).await.unwrap(), b"hello");
+        let undo_action = match &copy_records[0].undo {
+            UndoAvailability::Available(action) => action.clone(),
+            other => panic!("expected Available undo, got {other:?}"),
+        };
+
+        // 2. Undo (delete the copy).
+        let undo_spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![undo_action],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: true,
+        });
+        executor.execute(undo_spec).await;
+        let undo_records = match next_terminal_event(&mut event_rx).await {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(r))) => r,
+            other => panic!("expected OperationRecords, got {other:?}"),
+        };
+        assert_eq!(undo_records.len(), 1);
+        assert!(undo_records[0].succeeded);
+        assert_eq!(
+            undo_records[0].source,
+            Some(Location::Local(copied.clone()))
+        );
+        assert!(!copied.exists());
+        let redo_action = match &undo_records[0].undo {
+            UndoAvailability::Available(action) => action.clone(),
+            other => panic!("expected Available redo (recreate), got {other:?}"),
+        };
+
+        // 3. Redo (recreate the copy).
+        let redo_spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![redo_action],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: false,
+        });
+        executor.execute(redo_spec).await;
+        let redo_records = match next_terminal_event(&mut event_rx).await {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(r))) => r,
+            other => panic!("expected OperationRecords, got {other:?}"),
+        };
+        assert_eq!(redo_records.len(), 1);
+        assert!(redo_records[0].succeeded);
+        assert!(copied.exists());
+        assert_eq!(tokio::fs::read(&copied).await.unwrap(), b"hello");
+        assert!(matches!(
+            redo_records[0].undo,
+            UndoAvailability::Available(_)
+        ));
+    }
 }
