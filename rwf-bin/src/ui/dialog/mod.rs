@@ -41,7 +41,7 @@ mod type_mismatch_warning;
 mod wildcard_mark;
 
 use attr_timestamp::render_attr_timestamp_dialog;
-use basic::{handle_content_input, render_dialog_content};
+use basic::{handle_content_input, render_dialog_content, CONFIRMATION_MESSAGE_MAX_LINES};
 use context_menu::render_context_menu_dialog;
 use create_link::render_create_link_dialog;
 use custom_function::{render_custom_function_menu, render_custom_function_selector};
@@ -86,13 +86,13 @@ use ratatui::{
     Frame,
 };
 use rwf_lib::model::dialog::{
-    CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog, CustomFunctionMenuDialog,
-    CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog, DialogContent, DialogUiState,
-    DriveSelectionDialog, ErrorDialog, FileConflictDialog, FileInfoDialog, FileMaskDialog,
-    HelpDialog, HistoryDialogContent, JobManagerContent, JumpToFileDialog, JumpToPathDialog,
-    OpenWithPickerDialog, OperationReportDialogContent, PatternRenameContent,
-    RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog, TrashBrowserDialog,
-    TypeMismatchWarningDialog, WildcardMarkDialog,
+    ActionConfirmDialog, CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog,
+    CustomFunctionMenuDialog, CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog,
+    DialogContent, DialogUiState, DriveSelectionDialog, ErrorDialog, FileConflictDialog,
+    FileInfoDialog, FileMaskDialog, HelpDialog, HistoryDialogContent, JobManagerContent,
+    JumpToFileDialog, JumpToPathDialog, OpenWithPickerDialog, OperationReportDialogContent,
+    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
+    TrashBrowserDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -441,6 +441,27 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // prompt(1) + textbox(1) + hint(1) = 3
             3u16
         }
+        DialogContent::Confirmation(ActionConfirmDialog { message, stats, .. }) => {
+            // Same shape as the Error arm above: generic render path splits
+            // the interior into Constraint::Min(5) content + Constraint::
+            // Length(3) buttons, so it needs the message's rendered line
+            // count + 3. The message is open-ended (Phase 7.6's Undo/Redo
+            // blocked-rows summary adds one line per blocked row) so it's
+            // capped at CONFIRMATION_MESSAGE_MAX_LINES, +1 for a "... N more"
+            // indicator when truncated — this must track what
+            // `render_dialog_content`'s Confirmation arm (basic.rs) actually
+            // draws, or the dialog either wastes space or clips content.
+            let msg_lines = message.lines().count() as u16;
+            let visible_lines = msg_lines.min(CONFIRMATION_MESSAGE_MAX_LINES);
+            let truncated_indicator = if msg_lines > CONFIRMATION_MESSAGE_MAX_LINES {
+                1
+            } else {
+                0
+            };
+            // stats renders as a blank separator line + one summary line.
+            let stats_lines = if stats.is_some() { 2 } else { 0 };
+            (visible_lines + truncated_indicator + stats_lines + 3).max(8)
+        }
         _ => 8u16, // Default
     };
 
@@ -493,6 +514,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::ExtractionConfirm(_)
         | DialogContent::Error(_)
         | DialogContent::TypeMismatchWarning(_)
+        | DialogContent::Confirmation(_)
         | DialogContent::Input { .. } => {
             // Use exact minimum height for compact dialogs
             min_dialog_height.min(screen_height.saturating_sub(2))

@@ -13,15 +13,26 @@ use ratatui::{
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
 use rwf_lib::model::dialog::{
-    CompressionDialog, DeleteConfirmDialog, DialogContent, ErrorDialog,
+    ActionConfirmDialog, CompressionDialog, DeleteConfirmDialog, DialogContent, ErrorDialog,
     ExtractionConfirmDialog as RwfExtractionConfirmDialog, FileInfoDialog, InputDialog,
     JobManagerContent, SortDialog,
 };
+use rwf_lib::model::format_size;
 
 use super::compression::{render_compression_dialog, CompressionDialogState};
 use super::extract_confirm::ExtractionConfirmDialog;
 use super::DialogAction;
 use super::{archive_ext_for_format, compression};
+
+/// Cap on how many lines of `ActionConfirmDialog::message` are actually
+/// drawn. `Confirmation` messages are open-ended (Phase 7.6's Undo/Redo
+/// blocked-rows summary grows by one `  - reason` line per blocked row,
+/// uncapped) — without a ceiling here a large batch would blow the dialog
+/// past the screen. Mirrors `DeleteConfirmDialog`'s `.min(12)` list cap
+/// (see the height-calc arm in `mod.rs`); kept in sync with
+/// `render_dialog`'s `DialogContent::Confirmation` min-height arm, which
+/// must size the dialog to match what this function actually renders.
+pub(super) const CONFIRMATION_MESSAGE_MAX_LINES: u16 = 12;
 
 pub(super) fn render_dialog_content(
     frame: &mut Frame,
@@ -73,6 +84,42 @@ pub(super) fn render_dialog_content(
         }
         DialogContent::DeleteConfirm(_) => {
             // Rendered by the dedicated arm in render_dialog — not reached via render_dialog_content.
+        }
+        DialogContent::Confirmation(ActionConfirmDialog { message, stats, .. }) => {
+            use ratatui::text::{Line, Span};
+            use ratatui::widgets::Wrap;
+            let all_lines: Vec<&str> = message.lines().collect();
+            let total = all_lines.len();
+            let truncated = total > CONFIRMATION_MESSAGE_MAX_LINES as usize;
+            let visible = if truncated {
+                &all_lines[..CONFIRMATION_MESSAGE_MAX_LINES as usize]
+            } else {
+                &all_lines[..]
+            };
+            let mut lines: Vec<Line> = visible
+                .iter()
+                .map(|l| Line::from(Span::raw(l.to_string())))
+                .collect();
+            if truncated {
+                let more = total - CONFIRMATION_MESSAGE_MAX_LINES as usize;
+                lines.push(Line::from(Span::styled(
+                    format!("... {more} more"),
+                    Style::default().add_modifier(ratatui::style::Modifier::DIM),
+                )));
+            }
+            if let Some(stats) = stats {
+                let plural = if stats.count == 1 { "" } else { "s" };
+                lines.push(Line::default());
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "{} item{plural}, {}",
+                        stats.count,
+                        format_size(stats.total_size)
+                    ),
+                    Style::default().add_modifier(ratatui::style::Modifier::DIM),
+                )));
+            }
+            frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         }
         DialogContent::Error(ErrorDialog {
             message, details, ..
