@@ -147,7 +147,8 @@ mod tests {
 
     #[test]
     fn new_defaults_to_latest() {
-        let content = OperationReportDialogContent::new(report_with(UndoAvailability::NotApplicable));
+        let content =
+            OperationReportDialogContent::new(report_with(UndoAvailability::NotApplicable));
         assert_eq!(content.history_position, 0);
         assert_eq!(content.history_total, 1);
         assert!(content.is_latest());
