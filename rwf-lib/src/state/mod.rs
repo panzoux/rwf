@@ -847,6 +847,13 @@ pub enum Transition {
     /// Open the Operation Report dialog for the most recent report in
     /// history (Phase 7.6). No-op with an info log if history is empty.
     ShowOperationReport,
+    /// Move the Operation Report dialog's view to an older (`older: true`)
+    /// or newer (`older: false`) report in `AppState.operation_reports`.
+    /// No-op (clamped, doesn't wrap) at either end of history, and a no-op
+    /// if the current dialog isn't `OperationReportView`.
+    NavigateOperationReportHistory {
+        older: bool,
+    },
 
     // Pattern rename operations
     ShowPatternRenameDialog,
@@ -2536,5 +2543,122 @@ mod tests {
             .task_panel_logs
             .iter()
             .any(|l| l.contains("No operations recorded")));
+    }
+
+    fn sample_operation_report(id: u64, name: &str) -> crate::model::OperationReport {
+        crate::model::OperationReport {
+            id,
+            operation_name: name.to_string(),
+            records: vec![],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        }
+    }
+
+    #[test]
+    fn navigate_older_moves_to_the_previous_report() {
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(sample_operation_report(1, "Copy"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(2, "Move"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(3, "Delete"));
+        update_state(&mut state, Transition::ShowOperationReport);
+
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.operation_name, "Move");
+                assert_eq!(content.history_position, 1);
+                assert_eq!(content.history_total, 3);
+                assert!(!content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_older_clamps_at_the_oldest_report() {
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(sample_operation_report(1, "Copy"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(2, "Move"));
+        update_state(&mut state, Transition::ShowOperationReport);
+
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.operation_name, "Copy");
+                assert_eq!(content.history_position, 0);
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_newer_returns_toward_the_latest_report() {
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(sample_operation_report(1, "Copy"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(2, "Move"));
+        update_state(&mut state, Transition::ShowOperationReport);
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: false },
+        );
+
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.operation_name, "Move");
+                assert!(content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_history_on_a_different_dialog_is_a_noop() {
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(sample_operation_report(1, "Copy"));
+        // No dialog open at all — must not panic.
+        let result = update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+        assert!(!result.ui_changed);
+        assert!(state.dialogs.is_empty());
     }
 }

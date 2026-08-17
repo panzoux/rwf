@@ -768,6 +768,47 @@ impl AppState {
                     })
                 }
             }
+            Transition::NavigateOperationReportHistory { older } => {
+                let Some(dialog) = self.dialogs.current() else {
+                    return Some(StateUpdateResult::none());
+                };
+                let crate::model::dialog::DialogContent::OperationReportView(content) =
+                    &dialog.content
+                else {
+                    return Some(StateUpdateResult::none());
+                };
+
+                // Re-derive against the live list rather than trusting the
+                // dialog's own (possibly stale, if reports were pushed
+                // while browsing) history_total.
+                let live_total = self.operation_reports.len();
+                if live_total == 0 {
+                    return Some(StateUpdateResult::none());
+                }
+                let current_position = content.history_position.min(live_total - 1);
+                let new_position = if *older {
+                    current_position.saturating_sub(1)
+                } else {
+                    (current_position + 1).min(live_total - 1)
+                };
+                if new_position == current_position {
+                    // Already at the boundary in the requested direction.
+                    return Some(StateUpdateResult::none());
+                }
+                let Some(new_report) = self.operation_reports.get(new_position) else {
+                    return Some(StateUpdateResult::none());
+                };
+                let new_report = new_report.clone();
+
+                if let Some(dialog) = self.dialogs.current_mut() {
+                    *dialog = crate::model::Dialog::operation_report_view_at(
+                        new_report,
+                        new_position,
+                        live_total,
+                    );
+                }
+                Some(StateUpdateResult::with_ui_change())
+            }
             Transition::CycleFileInfoHeaderEncoding => {
                 // Pure UI-state flip (Phase 7.3b, Task 12) — cycle whichever
                 // FileInfo dialog is currently on top of the stack through
