@@ -277,9 +277,13 @@ pub(super) fn handle_input(
     let len = content.report.records.len();
     match key.code {
         KeyCode::Esc => return DialogAction::Cancel,
-        KeyCode::Enter if !content.selected_reversal_actions().is_empty() => {
+        KeyCode::Enter
+            if content.is_latest() && !content.selected_reversal_actions().is_empty() =>
+        {
             return DialogAction::Confirm
         }
+        KeyCode::Left => return DialogAction::NavigateReportHistory { older: true },
+        KeyCode::Right => return DialogAction::NavigateReportHistory { older: false },
         KeyCode::Up | KeyCode::Char('k') => {
             if content.cursor > 0 {
                 content.cursor -= 1;
@@ -385,6 +389,33 @@ mod tests {
         assert_eq!(
             handle_input(&mut content, key(KeyCode::Enter)),
             DialogAction::None
+        );
+    }
+
+    #[test]
+    fn enter_does_nothing_when_not_viewing_the_latest_report() {
+        let mut content = two_row_content();
+        content.history_position = 0;
+        content.history_total = 2; // not the latest (position 0 of 2)
+        assert!(!content.is_latest());
+
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Enter)),
+            DialogAction::None,
+            "Enter must not confirm while browsing a non-latest report, even with an actionable row selected"
+        );
+    }
+
+    #[test]
+    fn left_and_right_return_navigate_report_history() {
+        let mut content = two_row_content();
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Left)),
+            DialogAction::NavigateReportHistory { older: true }
+        );
+        assert_eq!(
+            handle_input(&mut content, key(KeyCode::Right)),
+            DialogAction::NavigateReportHistory { older: false }
         );
     }
 

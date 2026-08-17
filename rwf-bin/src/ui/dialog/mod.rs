@@ -124,6 +124,12 @@ pub enum DialogAction {
     /// stays open; the app loop dispatches
     /// `Transition::CycleFileInfoHeaderEncoding`.
     CycleHeaderEncoding,
+    /// Move the Operation Report dialog's view to an older/newer report in
+    /// history (Left/Right in `operation_report::handle_input`). The app
+    /// loop dispatches `Transition::NavigateOperationReportHistory`.
+    NavigateReportHistory {
+        older: bool,
+    },
 }
 
 fn archive_ext_for_format(fmt: rwf_lib::ArchiveFormat) -> &'static str {
