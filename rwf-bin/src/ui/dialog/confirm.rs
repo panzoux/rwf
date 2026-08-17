@@ -934,6 +934,23 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 return None;
             }
             DialogContent::OperationReportView(content) => {
+                if !content.is_latest() {
+                    // Defense in depth: the input-layer guard in
+                    // operation_report::handle_input already requires
+                    // `is_latest()` before Enter ever produces
+                    // `DialogAction::Confirm`, so this arm should be
+                    // unreachable for a non-latest report through any real
+                    // keypress today. It stays here because
+                    // `process_dialog_confirmation` is a `pub fn` that could
+                    // be called from a future path (e.g. scripting) that
+                    // bypasses the input layer — Undo/Redo must never fire
+                    // against a report that isn't the most recent one (see
+                    // docs/superpowers/plans/2026-08-17-operation-report-history-navigation.md).
+                    state.pending_confirmation_logs.push(
+                        "[Info] Undo/Redo is only available for the most recent operation — navigate to it first".to_string(),
+                    );
+                    return None;
+                }
                 let actions = content.selected_reversal_actions();
                 if actions.is_empty() {
                     return None;
@@ -1735,6 +1752,55 @@ mod tests {
         assert!(
             state.dialogs.is_empty(),
             "ContextMenu should have popped normally, leaving no ghost dialog"
+        );
+    }
+
+    /// Defense-in-depth guard added by the operation-report-history-navigation
+    /// plan's Task 7: `process_dialog_confirmation` must refuse to submit a
+    /// reversal job for an `OperationReportView` that isn't the latest report,
+    /// even though the input-layer guard in `operation_report::handle_input`
+    /// already prevents Enter from reaching here for a non-latest report
+    /// through any real keypress. Calling `process_dialog_confirmation`
+    /// directly (as every other test in this module does) bypasses the input
+    /// layer entirely, so this exercises the new guard in isolation.
+    #[test]
+    fn confirm_operation_report_view_on_a_non_latest_report_starts_no_job() {
+        use rwf_lib::model::{OperationRecord, OperationReport, ReversalAction, UndoAvailability};
+
+        let mut state = test_state();
+        let older = OperationReport {
+            id: 1,
+            operation_name: "Copy".to_string(),
+            records: vec![OperationRecord {
+                source: Some(Location::Local(PathBuf::from("a.txt"))),
+                destination: Some(Location::Local(PathBuf::from("b.txt"))),
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::Available(ReversalAction::Delete {
+                    target: Location::Local(PathBuf::from("b.txt")),
+                    recreate: None,
+                }),
+            }],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        // history_position 0 of 2 total reports: not the latest.
+        let dialog = Dialog::operation_report_view_at(older, 0, 2);
+        state.dialogs.push(dialog);
+
+        let job_spec = process_dialog_confirmation(&mut state);
+
+        assert!(
+            job_spec.is_none(),
+            "no reversal job should start for a non-latest report"
+        );
+        assert!(
+            state
+                .pending_confirmation_logs
+                .iter()
+                .any(|l| l.contains("only available for the most recent")),
+            "expected an info log explaining why nothing happened, got {:?}",
+            state.pending_confirmation_logs
         );
     }
 }
