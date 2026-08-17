@@ -1244,6 +1244,17 @@ impl App {
                     }
                     return true;
                 }
+                crate::ui::dialog::DialogAction::NavigateReportHistory { older } => {
+                    // Dialog stays open — same pattern as ToggleHeaderView above.
+                    let result = rwf_lib::state::update_state(
+                        &mut self.state,
+                        rwf_lib::state::Transition::NavigateOperationReportHistory { older },
+                    );
+                    for job_spec in result.jobs_to_start {
+                        self.pending_job_submission.push(job_spec);
+                    }
+                    return true;
+                }
                 _ => return true,
             }
         }
@@ -3309,6 +3320,63 @@ mod operation_report_confirm_tests {
                 assert!(*resulting_is_undo);
             }
             other => panic!("expected JobKind::ExecuteReversal, got {other:?}"),
+        }
+    }
+}
+
+/// History-navigation follow-up (2026-08-17 plan): Left/Right in the Operation Report
+/// dialog now dispatch `DialogAction::NavigateReportHistory`, which app.rs must turn
+/// into a `Transition::NavigateOperationReportHistory` call. This test exercises the
+/// real `App::handle_key_event` pipeline end to end (not `update_state` directly, which
+/// is already covered by the state-layer tests) to prove the app.rs wiring itself works.
+#[cfg(test)]
+mod operation_report_navigation_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::{DialogContent, OperationReport};
+
+    #[tokio::test]
+    async fn left_arrow_navigates_to_an_older_report_and_right_arrow_returns() {
+        let older_report = OperationReport {
+            id: 1,
+            operation_name: "Copy".to_string(),
+            records: vec![],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        let newer_report = OperationReport {
+            id: 2,
+            operation_name: "Move".to_string(),
+            records: vec![],
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.operation_reports.push_back(older_report);
+        state.operation_reports.push_back(newer_report);
+        rwf_lib::state::update_state(&mut state, rwf_lib::state::Transition::ShowOperationReport);
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+
+        match app.state.dialogs.current().map(|d| &d.content) {
+            Some(DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.operation_name, "Copy");
+                assert!(!content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+
+        match app.state.dialogs.current().map(|d| &d.content) {
+            Some(DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.operation_name, "Move");
+                assert!(content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
     }
 }
