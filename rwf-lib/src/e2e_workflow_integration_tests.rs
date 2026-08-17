@@ -989,8 +989,19 @@ mod tests {
         state.operation_reports.push_back(report1);
         state.operation_reports.push_back(report2);
 
-        // Open the dialog (shows report2, the latest) and navigate to the older report1.
+        // Open the dialog and confirm it starts on report2 (the latest) before
+        // navigating anywhere — without this, the two flip assertions below
+        // would only prove the flag *changes*, not that it changes *from a
+        // known-correct starting point*.
         update_state(&mut state, Transition::ShowOperationReport);
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(DialogContent::OperationReportView(c)) => {
+                assert!(c.is_latest(), "should open on the latest report");
+                assert_eq!(c.report.id, 2);
+            }
+            other => panic!("expected OperationReportView, got {other:?}"),
+        }
+
         update_state(
             &mut state,
             Transition::NavigateOperationReportHistory { older: true },
