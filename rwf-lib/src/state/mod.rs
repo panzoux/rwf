@@ -2512,10 +2512,19 @@ mod tests {
 
         update_state(&mut state, Transition::ShowOperationReport);
 
-        assert!(matches!(
-            state.dialogs.current().map(|d| &d.content),
-            Some(crate::model::dialog::DialogContent::OperationReportView(_))
-        ));
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert!(
+                    content.is_latest(),
+                    "opening via ShowOperationReport must show the latest report as latest"
+                );
+                assert_eq!(
+                    content.history_total, 1,
+                    "only one report exists in this test's history"
+                );
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
     }
 
     #[test]

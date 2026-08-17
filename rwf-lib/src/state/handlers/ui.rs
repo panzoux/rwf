@@ -745,8 +745,13 @@ impl AppState {
             }
             Transition::ShowOperationReport => {
                 if let Some(report) = self.operation_reports.back() {
+                    let total = self.operation_reports.len();
                     self.dialogs
-                        .push(crate::model::Dialog::operation_report_view(report.clone()));
+                        .push(crate::model::Dialog::operation_report_view_at(
+                            report.clone(),
+                            total - 1,
+                            total,
+                        ));
                     Some(StateUpdateResult::with_ui_change())
                 } else {
                     Some(StateUpdateResult {

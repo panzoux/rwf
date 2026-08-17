@@ -705,6 +705,29 @@ impl Dialog {
         }
     }
 
+    /// Like `operation_report_view`, but with explicit knowledge of where
+    /// `report` sits in the caller's history list — used by
+    /// `Transition::ShowOperationReport` and
+    /// `Transition::NavigateOperationReportHistory`, both of which have
+    /// real `AppState.operation_reports` context available.
+    pub fn operation_report_view_at(
+        report: crate::model::OperationReport,
+        history_position: usize,
+        history_total: usize,
+    ) -> Self {
+        let title = report.title();
+        Self {
+            title,
+            content: DialogContent::OperationReportView(
+                OperationReportDialogContent::with_history_position(
+                    report,
+                    history_position,
+                    history_total,
+                ),
+            ),
+        }
+    }
+
     pub fn pattern_rename() -> Self {
         Self {
             title: "Pattern Rename".to_string(),
