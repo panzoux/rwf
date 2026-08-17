@@ -101,3 +101,19 @@ fn operation_report_viewing_an_older_report_shows_position_and_view_only_hint() 
         &state,
     );
 }
+
+/// The other half of the `history_total > 1` branch: viewing the LATEST
+/// report of a multi-report history shows the position indicator (no
+/// "(view only)" suffix) and the full, still-active hint with "history"
+/// appended — as opposed to the non-latest case covered by the test above.
+#[test]
+fn operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint() {
+    let state = test_state();
+    let report = sample_report();
+    let dialog = Dialog::operation_report_view_at(report, 4, 5); // position 5 of 5 — latest
+    snapshot_dialog(
+        "operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint",
+        &dialog,
+        &state,
+    );
+}
