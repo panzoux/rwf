@@ -99,16 +99,39 @@ pub fn render_operation_report_dialog(
         selected_style,
     );
 
-    let detail_label = Paragraph::new("Details:").style(base_style);
-    frame.render_widget(detail_label, chunks[1]);
+    let detail_label = if content.history_total > 1 {
+        format!(
+            "Details:  [{} of {}]{}",
+            content.history_position + 1,
+            content.history_total,
+            if content.is_latest() {
+                ""
+            } else {
+                " (view only)"
+            }
+        )
+    } else {
+        "Details:".to_string()
+    };
+    frame.render_widget(Paragraph::new(detail_label).style(base_style), chunks[1]);
 
     render_detail(frame, chunks[2], records.get(content.cursor), base_style);
 
-    let hint = Paragraph::new(format!(
-        "Space: toggle  a: all/none  {}: run  Esc: close  \u{2191}\u{2193}: select",
-        action_label.to_lowercase()
-    ))
-    .style(hint_style);
+    let hint = if content.is_latest() {
+        format!(
+            "Space: toggle  a: all/none  {}: run  Esc: close  \u{2191}\u{2193}: select{}",
+            action_label.to_lowercase(),
+            if content.history_total > 1 {
+                "  \u{2190}\u{2192}: history"
+            } else {
+                ""
+            }
+        )
+    } else {
+        "Esc: close  \u{2191}\u{2193}: select  \u{2190}\u{2192}: history (navigate to latest to act)"
+            .to_string()
+    };
+    let hint = Paragraph::new(hint).style(hint_style);
     frame.render_widget(hint, chunks[3]);
 }
 

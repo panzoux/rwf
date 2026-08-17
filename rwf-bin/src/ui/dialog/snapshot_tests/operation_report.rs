@@ -89,3 +89,15 @@ fn operation_report_cjk_filenames_stay_aligned() {
         &state,
     );
 }
+
+#[test]
+fn operation_report_viewing_an_older_report_shows_position_and_view_only_hint() {
+    let state = test_state();
+    let report = sample_report();
+    let dialog = Dialog::operation_report_view_at(report, 1, 5); // position 2 of 5 — not latest
+    snapshot_dialog(
+        "operation_report_viewing_an_older_report_shows_position_and_view_only_hint",
+        &dialog,
+        &state,
+    );
+}
