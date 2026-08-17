@@ -267,9 +267,12 @@ use crossterm::event::{KeyCode, KeyEvent};
 use super::DialogAction;
 
 /// Up/Down/j/k navigate the cursor; Space toggles the current row's
-/// selection; `a` toggles all rows on/off together; Enter triggers
-/// Undo/Redo on the current selection (handled by `process_dialog_confirmation`
-/// in Task 17, which reads `selected_reversal_actions()`); Esc closes.
+/// selection; `a` toggles all rows on/off together; Left/Right browse
+/// older/newer reports in history (`DialogAction::NavigateReportHistory`,
+/// dispatched by the app loop); Enter triggers Undo/Redo on the current
+/// selection, but only while viewing the latest report (handled by
+/// `process_dialog_confirmation` in Task 17, which reads
+/// `selected_reversal_actions()`); Esc closes.
 pub(super) fn handle_input(
     content: &mut OperationReportDialogContent,
     key: KeyEvent,
