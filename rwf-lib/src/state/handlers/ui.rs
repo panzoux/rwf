@@ -785,7 +785,20 @@ impl AppState {
                 if live_total == 0 {
                     return Some(StateUpdateResult::none());
                 }
-                let current_position = content.history_position.min(live_total - 1);
+                // Re-locate the currently-displayed report by identity, not
+                // by its stored index: if history evicted its front entry
+                // (the history_size cap, see state/handlers/job.rs) while
+                // this dialog was open, every surviving report's index
+                // shifted down by the eviction count, and trusting the
+                // stale index would silently show a different report than
+                // the one on screen. Only fall back to the clamped stored
+                // index in the rarer case where the displayed report itself
+                // was evicted (nothing to re-locate by id).
+                let current_position = self
+                    .operation_reports
+                    .iter()
+                    .position(|r| r.id == content.report.id)
+                    .unwrap_or_else(|| content.history_position.min(live_total - 1));
                 let new_position = if *older {
                     current_position.saturating_sub(1)
                 } else {

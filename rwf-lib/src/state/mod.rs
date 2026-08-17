@@ -2661,4 +2661,61 @@ mod tests {
         assert!(!result.ui_changed);
         assert!(state.dialogs.is_empty());
     }
+
+    #[test]
+    fn navigate_history_relocates_by_id_after_front_eviction() {
+        // If history evicts its front entry (the history_size cap, see
+        // state/handlers/job.rs) while the dialog is open browsing an
+        // older report, every surviving report's raw index shifts down by
+        // the eviction count. Trusting the stale stored index instead of
+        // re-locating the currently-displayed report by its `id` would
+        // silently treat a *different* report as "current" — this proves
+        // the handler doesn't do that.
+        let mut state = crate::test_utils::test_state();
+        state
+            .operation_reports
+            .push_back(sample_operation_report(1, "Copy"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(2, "Move"));
+        state
+            .operation_reports
+            .push_back(sample_operation_report(3, "Delete"));
+        update_state(&mut state, Transition::ShowOperationReport); // shows id 3, position 2/3
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        ); // shows id 2, position 1/3
+
+        // Simulate the history_size cap evicting the oldest report (id 1)
+        // while the dialog is still showing id 2 — exactly what
+        // `state/handlers/job.rs`'s eviction does when a new report is
+        // pushed past the cap. This shifts id 2 from index 1 to index 0,
+        // and id 3 from index 2 to index 1.
+        state.operation_reports.pop_front();
+        assert_eq!(state.operation_reports.len(), 2);
+
+        // Navigate newer. A buggy raw-index implementation would treat the
+        // stale position (1) as "current" — which is now id 3 in the
+        // post-eviction list — and, already clamped at the last index,
+        // incorrectly no-op instead of moving forward from the report
+        // actually on screen (id 2) to the next one (id 3).
+        let result = update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: false },
+        );
+        assert!(
+            result.ui_changed,
+            "must move forward from the report actually displayed, not a stale index"
+        );
+
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert_eq!(content.report.id, 3);
+                assert_eq!(content.report.operation_name, "Delete");
+                assert!(content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
+    }
 }
