@@ -15,6 +15,16 @@ pub struct OperationReportDialogContent {
     /// Undo/Redo trigger. Starts all-`true` (design doc's "全件戻す" default
     /// — an explicit deselect is needed to exclude a row, not the reverse).
     pub selected: Vec<bool>,
+    /// 0-based position of `report` within `AppState.operation_reports` at
+    /// the time this content was built (0 = oldest). Defaults to 0 via
+    /// `new()` for callers with no navigation context — combined with
+    /// `history_total: 1`, that default makes `is_latest()` true, which is
+    /// correct for every isolated-report test/call site that doesn't care
+    /// about history browsing.
+    pub history_position: usize,
+    /// Total report count at the time this content was built. See
+    /// `history_position`.
+    pub history_total: usize,
 }
 
 impl OperationReportDialogContent {
@@ -24,7 +34,36 @@ impl OperationReportDialogContent {
             report,
             cursor: 0,
             selected,
+            history_position: 0,
+            history_total: 1,
         }
+    }
+
+    /// Like `new`, but with explicit history-navigation context — used when
+    /// the dialog is opened or navigated with real knowledge of where this
+    /// report sits in `AppState.operation_reports`.
+    pub fn with_history_position(
+        report: crate::model::OperationReport,
+        history_position: usize,
+        history_total: usize,
+    ) -> Self {
+        let selected = vec![true; report.records.len()];
+        Self {
+            report,
+            cursor: 0,
+            selected,
+            history_position,
+            history_total,
+        }
+    }
+
+    /// True iff this is the most recent report in history — the only one
+    /// Undo/Redo may act on directly (see module docs on the plan this was
+    /// added by: reaching an older report's state requires undoing forward
+    /// through everything after it first, matching how every mainstream
+    /// undo system works).
+    pub fn is_latest(&self) -> bool {
+        self.history_position + 1 == self.history_total
     }
 
     /// The `ReversalAction`s for every currently-selected row whose `undo` is
@@ -104,5 +143,24 @@ mod tests {
 
         content.selected[0] = false;
         assert!(content.selected_reversal_actions().is_empty());
+    }
+
+    #[test]
+    fn new_defaults_to_latest() {
+        let content = OperationReportDialogContent::new(report_with(UndoAvailability::NotApplicable));
+        assert_eq!(content.history_position, 0);
+        assert_eq!(content.history_total, 1);
+        assert!(content.is_latest());
+    }
+
+    #[test]
+    fn with_history_position_reports_is_latest_correctly() {
+        let report = report_with(UndoAvailability::NotApplicable);
+        let oldest = OperationReportDialogContent::with_history_position(report.clone(), 0, 3);
+        assert!(!oldest.is_latest());
+        let middle = OperationReportDialogContent::with_history_position(report.clone(), 1, 3);
+        assert!(!middle.is_latest());
+        let newest = OperationReportDialogContent::with_history_position(report, 2, 3);
+        assert!(newest.is_latest());
     }
 }
