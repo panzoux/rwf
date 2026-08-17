@@ -128,8 +128,12 @@ pub fn render_operation_report_dialog(
             }
         )
     } else {
-        "Esc: close  \u{2191}\u{2193}: select  \u{2190}\u{2192}: history (navigate to latest to act)"
-            .to_string()
+        // Kept to the same "key: action" list style as the latest-report
+        // hint above (not a full sentence explaining *why* — at 80 columns
+        // a longer explanatory clause gets silently clipped by this
+        // unwrapped Paragraph, and the detail-label's "(view only)" suffix
+        // already conveys the reason).
+        "Esc: close  \u{2191}\u{2193}: select  \u{2190}\u{2192}: history".to_string()
     };
     let hint = Paragraph::new(hint).style(hint_style);
     frame.render_widget(hint, chunks[3]);
