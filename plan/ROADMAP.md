@@ -228,7 +228,7 @@ Layer 1 が捉えられない外部プロセス・他アプリによる変化を
 | 7.11 | **属性/タイムスタンプ変更** | `[x]` | **実装完了（2026-07-30）**。ファイル属性（Windows: ReadOnly/Hidden/System/Archive、Unix: パーミッション、8進数直接入力+rwx連動表示）とタイムスタンプ（modified/accessed、Windowsのみcreatedも読み取り専用表示）の編集ダイアログ（`Ctrl+a`）。マーク複数選択の一括編集・混在状態表示に対応。touchはこのダイアログの `Now` キーへ統合。Windows属性設定は`volume_info.rs`（唯一のunsafe許可モジュール）へ`SetFileAttributesW`呼び出しを追加、タイムスタンプ設定は新規`filetime`クレート依存で対応。7.6 Undo対象表（Attribute Change / Timestamp Change）の前提操作。詳細は [7.6.attribute_timestamp_edit.md](7.6.attribute_timestamp_edit.md) 参照 | ⭐⭐⭐ | 完了 |
 | 7.12 | **Create Link / Create File** | `[x]` | **実装完了（2026-07-30）**。シンボリックリンク/ハードリンク/(Windows)ジャンクション作成ダイアログ（`;`。当初`Ctrl+l`を予定していたがターミナルに予約されて使用不可と判明し変更）と空ファイル作成ダイアログ（`N`）。Create File はマクロ+外部コマンドでも代替可能だが、Job化することで 7.6 の Undo/Operation Report 追跡対象になれる点が内蔵化の主な価値。Junction作成は`mklink /J`シェルアウト（`/D`でAutoRun無効化— Clink等のシェル拡張によるexit code汚染を回避）。targetはダイアログを開いた時点のカーソル位置アイテムに固定・非入力、dest_dirは対向ペインのカレントディレクトリに固定・非入力(設計通り)。7.6 Undo対象表（Create Link / Create File）の前提操作は全て解消。詳細は [7.6.create_link_file.md](7.6.create_link_file.md) 参照 | ⭐⭐⭐ | 完了 |
 | 7.15 | **デバッグレポート機能（診断セッション）** | `[x]` | **Stage 1〜6 実装完了（2026-08-11、worktree `worktree-phase-7.15-diagnostics`、main へ未マージ）**。`F12` 診断セッション開始/終了、`F11` スナップショット（NormalMode/ViewerMode/LeapMode 全てに割当）、`● DIAG mm:ss` インジケータ、終了時レポート入力ダイアログ、`RWF_DIAGNOSTICS=1` 環境変数トリガ、`Diagnostics` 設定セクション。バンドル = `events.jsonl`/`logs.jsonl`/`config_effective.json`/`metadata.json`/`snapshots/NNN-*.{txt,json}`/`report.txt`。観測点は `update_state()`・`JobManager::start_job()`・`handle_key_event()`・`render()`・main loop の Wake の5箇所。**実装中に判明した設計前提の誤り5件**（`Backend::buffer()` は `TestBackend` 専用で実バックエンドには無い / 全角文字の継続セルは空文字ではなく**スペース**のため表示幅で歩進が必要 / `AppConfig` の `key_bindings` は `#[serde(skip)]` でシリアライズされない / `DialogStack` に `iter()` は無い / `test_utils` は `#[cfg(test)]` gate で統合テストから使えない）はすべてテストが検出し、plan 側に日付付きで訂正記録済み。Ring buffer は v1 スコープ外。**7.6 と並列開発し main へ先行マージ**（7.6 が自身のデバッグに使えるようにするため）。詳細は [7.15.diagnostic_report.md](7.15.diagnostic_report.md) 参照 | ⭐⭐⭐⭐ | 未見積 |
-| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[ ]` | Job履歴に基づく操作の取り消し・やり直し。Job + Transition 体系で逆操作を記録。詳細は [7.6.transactional_rollback.md](7.6.transactional_rollback.md) 参照。**rwf の "killer feature"**。**2026-07-28 設計改訂**: Operation Report 中心へ転換（[7.6.operation_report_ui.md](7.6.operation_report_ui.md) が UI/UX の正）。前提操作は 7.7 Trash・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File の3つ。**7.11・7.12 は実装完了（2026-07-30）**、残るは 7.7 Trash のみ | ⭐⭐⭐⭐⭐ | 3週間 |
+| 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[x]` | **実装完了（2026-08-17）**。Copy/Move/Rename/Delete/Mkdir/CreateFile/CreateLink/CreateArchive を Operation Record 化し、既存の ChangeAttributes/ChangeTimestamps/MoveToTrash/RestoreFromTrash/ExtractArchive も Operation Report へ翻訳して統合。`Alt+o` で開く Operation Report ダイアログ（一覧+詳細ペイン、行選択）から Undo/Redo を実行——両方向とも単一の `ExecuteReversal` 機構が駆動し、実行前に pre-flight 検証を通す。唯一真に破壊的なケース（Delete の取り消し＝復元）は `recreate` 情報を持つ `Delete` バリアントとして自己連鎖する設計とし、Undo→Redo→Undo…を無制限に繰り返せる。実装過程で見つかった MoveToTrash ペイン再描画・EmptyTrash 確認ダイアログ表示重複の既存バグ（7.6 由来ではない）は別チケットへ分離済み。詳細は [7.6.operation_report_ui.md](7.6.operation_report_ui.md)（UI/UX）・[7.6.transactional_rollback.md](7.6.transactional_rollback.md)（力学）参照 | ⭐⭐⭐⭐⭐ | 完了 |
 | 7.2 | **コマンドパレット** | `[ ]` | 旧 Phase 8.7 から昇格。ヘルプビューア（`?`）で検索して `Enter` でアクションを直接実行。VS Code の `Ctrl+Shift+P` と同じ体験。ヘルプはすでに検索ボックスとフィルタ済みリストを持っており、不足しているのは「ハイライト中のアクションをディスパッチして閉じる」`Enter` キーの処理のみ。コンテキスト（NormalMode / ViewerMode）でアクション絞り込みが必要。**2026-07-18: 意図的に後回し** — コンテキスト絞り込み・他機能との自然な統合（Open With ピッカー等）を含めた設計をまだ詰めていないため、7.3/7.6 の後に着手 | ⭐⭐⭐ | 小規模 |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[ ]` | **Shift+S** で再帰的ディレクトリサイズを非同期計算。エントリごとにサイズを段階的に埋める。スピナー + Task pane ログ。詳細は [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) 参照 | ⭐⭐⭐⭐ | 2.5週間 |
 | 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータ定期チェック（twf PerformSmartRefresh 相当）。間隔は config `polling_interval_ms`（1.4.2 で追加済み） | ⭐⭐⭐ | 2週間 |
@@ -309,20 +309,19 @@ Phase 7 (再開)     → 差別化機能
 - 最後に完了したタスク
 - 残課題・ブロッカー
 
-最終更新: 2026-08-12（**7.17 複数行テキスト入力 実装完了**（ドッグフィードバックで横スクロール→ソフトラップ+`↵`へ設計変更）。併せて実機報告から3件のバグ修正: Error ダイアログの OK ボタンが枠外描画・ディレクトリ読み取りエラーがパスも原因も表示しない・セッション復元時に消えたパスを黙って読み失敗。**7.15 デバッグレポート機能 全 Stage 完了 → `main` へマージ・push 済み**（`aba6d39`）。
+最終更新: 2026-08-17（**7.6 Undo/Redo（Operation Report）実装完了**。Task 19 で全体検証パス（`cargo fmt`/`clippy -D warnings`/`cargo test -p rwf`/`cargo test -p rwf-lib` を `--test-threads=1` で実行、全件パス）を通し、本ファイルを更新。Copy/Move/Rename/Delete/Mkdir/CreateFile/CreateLink/CreateArchive の Operation Record 化 + 既存 ChangeAttributes/ChangeTimestamps/MoveToTrash/RestoreFromTrash/ExtractArchive の翻訳 + `Alt+o` Operation Report ダイアログ + 単一 `ExecuteReversal` 機構による Undo/Redo（Delete 側は `recreate` 情報で自己連鎖し無制限往復可能）。レビュー中に見つかった MoveToTrash ペイン再描画・EmptyTrash 確認ダイアログ表示重複の既存バグ（7.6 由来ではない）は別チケットへ分離済み）
+前回更新: 2026-08-12（**7.17 複数行テキスト入力 実装完了**（ドッグフィードバックで横スクロール→ソフトラップ+`↵`へ設計変更）。併せて実機報告から3件のバグ修正: Error ダイアログの OK ボタンが枠外描画・ディレクトリ読み取りエラーがパスも原因も表示しない・セッション復元時に消えたパスを黙って読み失敗。**7.15 デバッグレポート機能 全 Stage 完了 → `main` へマージ・push 済み**（`aba6d39`）。
 併せて implicit-contracts 監査ブランチもマージ（`docs/IMPLICIT_CONTRACTS.md` + ガードテスト9件 + 実在違反5件の修正）。
 7.6 worktree へ `git merge main` 済み（`5e4291a`、コンフリクトなし）。
 7.15 の積み残しを **7.16**（JobProgress 記録のオプトイン化）・**7.17**（複数行テキスト入力）として起票）
-現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation・7.3 スマート・ファイルオープナー・
-7.7 スマート・トラッシュ・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File は完了済み）
+現在のフェーズ: **Phase 7**（機能開発再開。Phase M1〜M7 全完了、7.1 Leap Navigation・7.3 スマート・ファイルオープナー・7.6 Undo/Redo・
+7.7 スマート・トラッシュ・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File・7.15 デバッグレポート機能・7.17 複数行テキスト入力 は完了済み）
 Phase 6: 全タスク完了（6.1 の colors.json 分離のみ後フェーズ送り）
 Phase M: 全タスク完了（詳細: [quality_overhaul.md](quality_overhaul.md) の「Phase M 完了サマリ」）
 次の作業候補（優先順。実行順の一次情報は上の Phase 7 表の行順）:
-1. **7.6 Undo/Redo** — killer feature、**2026-07-28 設計改訂済み**（Operation Report 中心。UI/UX の正は 7.6.operation_report_ui.md、力学は 7.6.transactional_rollback.md）。前提操作（7.7 Trash・7.11 属性/タイムスタンプ変更・7.12 Create Link/Create File）は全て完了済み。**着手済み**: worktree `worktree-phase-7.6-undo-redo`（`5e4291a`、Operation Record 化を copy/move/rename まで完了 + rename 失敗時のペイン誤更新バグ修正 + main マージ済み）。**7.15 の `F12` が同 worktree で使用可能** — 非同期トランザクションが生むタイミング/状態不整合バグの調査に使うこと
-2. **7.17 複数行テキスト入力** — 7.15 のドッグフーディングで判明した実制約。`text_input.rs` を触るため 7.14 と着手順を調整
-3. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
-4. **7.14 fish シェル風インライン自動補完** — 独立タスク。7.17 と同じ `text_input.rs` を触る
-5. **7.16 JobProgress オプトイン記録** — 小規模。7.15 の積み残し
+1. **7.2 コマンドパレット** — 意図的に後回し。着手前にコンテキスト絞り込み等の設計を詰める
+2. **7.14 fish シェル風インライン自動補完** — 独立タスク。7.17 と同じ `text_input.rs` を触る
+3. **7.16 JobProgress オプトイン記録** — 小規模。7.15 の積み残し
 
 ## ROADMAP外で実装済みの機能（2026-06-13〜07-02、要フェーズ整理）
 
