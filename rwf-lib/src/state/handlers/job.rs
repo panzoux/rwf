@@ -751,6 +751,68 @@ impl AppState {
                             }
                             self.unmark_all_panes();
                         }
+                        // ExecuteReversal (Phase 7.6 Undo/Redo): a batch of
+                        // heterogeneous actions (create/delete/move/restore/
+                        // attribute-and-timestamp-change), each potentially
+                        // touching a different directory. Unlike Delete above,
+                        // an in-memory patch isn't attempted here — the
+                        // record shapes are too varied (entries need adding,
+                        // removing, relocating, or field-patching depending
+                        // on which ReversalAction ran) for a targeted retain/
+                        // patch to be worth the complexity. Instead, collect
+                        // every directory any record's source/destination
+                        // lives in and force a full refresh of any pane
+                        // currently showing one of them — correctness over
+                        // optimism, same reasoning as the Cancelled fallback
+                        // in the Delete arm above, just applied unconditionally
+                        // here since heterogeneity makes "guess what changed"
+                        // unreliable even on success.
+                        crate::job::JobKind::ExecuteReversal { .. } => {
+                            let mut affected_dirs = std::collections::HashSet::new();
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::OperationRecords(records),
+                            ) = result
+                            {
+                                for record in records {
+                                    if let Some(loc) = &record.source {
+                                        if let Some(parent) = loc.parent() {
+                                            affected_dirs.insert(parent);
+                                        }
+                                    }
+                                    if let Some(loc) = &record.destination {
+                                        if let Some(parent) = loc.parent() {
+                                            affected_dirs.insert(parent);
+                                        }
+                                    }
+                                }
+                            }
+                            if affected_dirs.is_empty() {
+                                // Cancelled, or a result shape with no
+                                // records to derive directories from — we
+                                // don't know what (if anything) changed, so
+                                // fall back to refreshing the active pane
+                                // rather than refreshing nothing.
+                                result_obj.panes_to_refresh.push(PaneRefresh {
+                                    tab_id: self.tabs.active_index,
+                                    pane: self.ui.active_pane,
+                                });
+                            } else {
+                                for (tab_idx, tab) in self.tabs.tabs.iter().enumerate() {
+                                    if affected_dirs.contains(&tab.left_pane.current_location) {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Left,
+                                        });
+                                    }
+                                    if affected_dirs.contains(&tab.right_pane.current_location) {
+                                        result_obj.panes_to_refresh.push(PaneRefresh {
+                                            tab_id: tab_idx,
+                                            pane: crate::model::ActivePane::Right,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                         crate::job::JobKind::PatternRename { .. }
                         | crate::job::JobKind::Mkdir { .. }
                         | crate::job::JobKind::CreateFile { .. } => {

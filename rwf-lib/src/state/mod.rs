@@ -2319,6 +2319,68 @@ mod tests {
     }
 
     #[test]
+    fn test_complete_job_execute_reversal_refreshes_affected_panes() {
+        // ExecuteReversal (Phase 7.6 Undo/Redo) has no in-memory patch —
+        // it must force a refresh of whichever pane shows a directory one
+        // of the completed records touched, or the pane silently goes
+        // stale after Undo/Redo runs (found during the branch's final
+        // holistic review — every other file-mutating job kind either
+        // patches in-memory or pushes panes_to_refresh; this one did
+        // neither before this fix).
+        use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+        use crate::model::{
+            ActivePane, Location, OperationRecord, ReversalAction, UndoAvailability,
+        };
+        use std::path::PathBuf;
+
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+
+        let dest_dir = PathBuf::from("/test/dest");
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.current_location = Location::Local(dest_dir.clone());
+        }
+
+        let restored = Location::Local(dest_dir.join("a.txt"));
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![ReversalAction::Copy {
+                from: Location::Local(PathBuf::from("/test/src/a.txt")),
+                to: restored.clone(),
+            }],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: false,
+        });
+        let job_id = spec.id;
+        state.jobs.start_job(spec);
+
+        let records = vec![OperationRecord {
+            source: Some(Location::Local(PathBuf::from("/test/src/a.txt"))),
+            destination: Some(restored),
+            succeeded: true,
+            failure_reason: None,
+            undo: UndoAvailability::NotApplicable,
+        }];
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(records)),
+            },
+        );
+
+        assert!(
+            result
+                .panes_to_refresh
+                .iter()
+                .any(|r| r.tab_id == 0 && matches!(r.pane, ActivePane::Left)),
+            "the pane showing the record's destination directory must be refreshed, got: {:?}",
+            result.panes_to_refresh
+        );
+    }
+
+    #[test]
     fn test_cancel_job_transition() {
         use crate::job::{JobKind, JobSpec};
         let config = AppConfig::default();
