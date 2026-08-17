@@ -907,4 +907,115 @@ mod tests {
             UndoAvailability::Available(_)
         ));
     }
+
+    /// End-to-end history-navigation round trip: run two real Copy jobs via
+    /// a real `JobExecutor`, build both `OperationReport`s via the real
+    /// `build_operation_report` (same as `CompleteJob` would), push them
+    /// into `AppState.operation_reports`, open the dialog (shows the
+    /// latest), navigate to the older report, and navigate back — proving
+    /// `is_latest()` flips both directions across the full
+    /// executor -> report-builder -> history -> dialog -> navigation chain.
+    #[tokio::test]
+    async fn undo_is_blocked_while_browsing_an_older_report_and_works_after_returning_to_latest() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let backend = std::sync::Arc::new(crate::backend::LocalFilesystemBackend::new());
+        let archive_handler = std::sync::Arc::new(crate::backend::MockArchiveHandler);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let executor = crate::job::JobExecutor::new(backend, archive_handler, event_tx);
+
+        async fn next_terminal_event(
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
+        ) -> crate::worker_pool::JobEvent {
+            loop {
+                match rx.recv().await.expect("channel closed") {
+                    crate::worker_pool::JobEvent::Started(_)
+                    | crate::worker_pool::JobEvent::Progress(..) => continue,
+                    other => return other,
+                }
+            }
+        }
+
+        // Two independent Copy operations, producing two OperationReports.
+        let src1 = temp_dir.path().join("a.txt");
+        tokio::fs::write(&src1, b"one").await.unwrap();
+        let src2 = temp_dir.path().join("b.txt");
+        tokio::fs::write(&src2, b"two").await.unwrap();
+        let dest_dir = temp_dir.path().join("dest");
+        tokio::fs::create_dir(&dest_dir).await.unwrap();
+
+        let spec1 = JobSpec::new(JobKind::Copy {
+            sources: vec![Location::Local(src1.clone())],
+            dest: Location::Local(dest_dir.clone()),
+        });
+        executor.execute(spec1).await;
+        let event1 = next_terminal_event(&mut event_rx).await;
+        let records1 = match event1 {
+            crate::worker_pool::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
+            other => panic!("expected OperationRecords, got {other:?}"),
+        };
+
+        let spec2 = JobSpec::new(JobKind::Copy {
+            sources: vec![Location::Local(src2.clone())],
+            dest: Location::Local(dest_dir.clone()),
+        });
+        executor.execute(spec2).await;
+        let event2 = next_terminal_event(&mut event_rx).await;
+        let records2 = match event2 {
+            crate::worker_pool::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
+            other => panic!("expected OperationRecords, got {other:?}"),
+        };
+
+        // Build the AppState-level history exactly as CompleteJob would: two
+        // reports, oldest first.
+        let mut state = test_state();
+        let report1 = crate::job::build_operation_report(
+            &JobSpec::new(JobKind::Copy {
+                sources: vec![Location::Local(src1)],
+                dest: Location::Local(dest_dir.clone()),
+            }),
+            &OpResult::Success(SuccessData::OperationRecords(records1)),
+            1,
+        )
+        .expect("report1");
+        let report2 = crate::job::build_operation_report(
+            &JobSpec::new(JobKind::Copy {
+                sources: vec![Location::Local(src2)],
+                dest: Location::Local(dest_dir.clone()),
+            }),
+            &OpResult::Success(SuccessData::OperationRecords(records2)),
+            2,
+        )
+        .expect("report2");
+        state.operation_reports.push_back(report1);
+        state.operation_reports.push_back(report2);
+
+        // Open the dialog (shows report2, the latest) and navigate to the older report1.
+        update_state(&mut state, Transition::ShowOperationReport);
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: true },
+        );
+
+        let content = match state.dialogs.current().map(|d| &d.content) {
+            Some(DialogContent::OperationReportView(c)) => c,
+            other => panic!("expected OperationReportView, got {other:?}"),
+        };
+        assert!(
+            !content.is_latest(),
+            "should be viewing the older report after navigating"
+        );
+        assert_eq!(content.report.id, 1);
+
+        // Navigate back to the latest — is_latest() must flip back to true.
+        update_state(
+            &mut state,
+            Transition::NavigateOperationReportHistory { older: false },
+        );
+        let content = match state.dialogs.current().map(|d| &d.content) {
+            Some(DialogContent::OperationReportView(c)) => c,
+            other => panic!("expected OperationReportView, got {other:?}"),
+        };
+        assert!(content.is_latest());
+        assert_eq!(content.report.id, 2);
+    }
 }
