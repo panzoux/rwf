@@ -254,7 +254,7 @@ fn render_detail(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(ratatui::style::Color::Black)),
+                .border_style(crate::ui::dialog::common::DIALOG_BORDER),
         )
         .style(base_style)
         .wrap(Wrap { trim: false });
