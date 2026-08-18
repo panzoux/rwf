@@ -94,7 +94,7 @@ fn operation_report_cjk_filenames_stay_aligned() {
 fn operation_report_viewing_an_older_report_shows_position_and_view_only_hint() {
     let state = test_state();
     let report = sample_report();
-    let dialog = Dialog::operation_report_view_at(report, 1, 5); // position 2 of 5 — not latest
+    let dialog = Dialog::operation_report_view_at(report, 1, 5); // displays as [4 of 5] — not latest
     snapshot_dialog(
         "operation_report_viewing_an_older_report_shows_position_and_view_only_hint",
         &dialog,
@@ -110,9 +110,32 @@ fn operation_report_viewing_an_older_report_shows_position_and_view_only_hint() 
 fn operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint() {
     let state = test_state();
     let report = sample_report();
-    let dialog = Dialog::operation_report_view_at(report, 4, 5); // position 5 of 5 — latest
+    let dialog = Dialog::operation_report_view_at(report, 4, 5); // displays as [1 of 5] — latest
     snapshot_dialog(
         "operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint",
+        &dialog,
+        &state,
+    );
+}
+
+/// `Alt+o` with no operations recorded yet still opens this dialog (rather
+/// than only logging to the task panel) — it shows its own empty state:
+/// no rows, no `[X of Y]` position indicator, and a bare "Esc: close" hint
+/// (no "Space: toggle"/"a: all/none"/undo hint, since there's nothing to
+/// select or run).
+#[test]
+fn operation_report_empty_history_shows_no_operations_message() {
+    let state = test_state();
+    let report = OperationReport {
+        id: 0,
+        operation_name: "Operations".to_string(),
+        records: vec![],
+        finished_at: std::time::SystemTime::UNIX_EPOCH,
+        is_undo: false,
+    };
+    let dialog = Dialog::operation_report_view(report);
+    snapshot_dialog(
+        "operation_report_empty_history_shows_no_operations_message",
         &dialog,
         &state,
     );

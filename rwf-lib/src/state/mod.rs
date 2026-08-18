@@ -2535,14 +2535,22 @@ mod tests {
     }
 
     #[test]
-    fn show_operation_report_logs_info_when_history_empty() {
+    fn show_operation_report_opens_an_empty_dialog_when_history_empty() {
+        // `Alt+o` must do exactly one thing: open the Operation Report
+        // dialog — even with nothing recorded yet, it should show its own
+        // empty state rather than silently logging to the task panel with
+        // no dialog appearing at all.
         let mut state = crate::test_utils::test_state();
         let result = update_state(&mut state, Transition::ShowOperationReport);
-        assert!(state.dialogs.is_empty());
-        assert!(result
-            .task_panel_logs
-            .iter()
-            .any(|l| l.contains("No operations recorded")));
+        assert!(result.ui_changed);
+
+        match state.dialogs.current().map(|d| &d.content) {
+            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+                assert!(content.report.records.is_empty());
+                assert!(content.is_latest());
+            }
+            other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
+        }
     }
 
     fn sample_operation_report(id: u64, name: &str) -> crate::model::OperationReport {

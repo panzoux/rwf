@@ -100,9 +100,14 @@ pub fn render_operation_report_dialog(
     );
 
     let detail_label = if content.history_total > 1 {
+        // Displayed number counts down from the latest report (labelled
+        // "1", matching the LIFO undo-stack mental model where the most
+        // recent — and only directly undo-able — operation is "on top") to
+        // the oldest (labelled `history_total`), the reverse of
+        // `history_position`'s own oldest=0 storage order.
         format!(
             "Details:  [{} of {}]{}",
-            content.history_position + 1,
+            content.history_total - content.history_position,
             content.history_total,
             if content.is_latest() {
                 ""
@@ -117,9 +122,11 @@ pub fn render_operation_report_dialog(
 
     render_detail(frame, chunks[2], records.get(content.cursor), base_style);
 
-    let hint = if content.is_latest() {
+    let hint = if records.is_empty() {
+        "Esc: close".to_string()
+    } else if content.is_latest() {
         format!(
-            "Space: toggle  a: all/none  {}: run  Esc: close  \u{2191}\u{2193}: select{}",
+            "Space: toggle  a: all/none  Enter: {}  Esc: close  \u{2191}\u{2193}: select{}",
             action_label.to_lowercase(),
             if content.history_total > 1 {
                 "  \u{2190}\u{2192}: history"
@@ -196,7 +203,7 @@ fn render_row_list(
     );
 
     if records.is_empty() {
-        let empty = Paragraph::new(" (no rows)").style(base_style);
+        let empty = Paragraph::new(" No operations recorded yet").style(base_style);
         frame.render_widget(empty, Rect::new(area.x, area.y + 1, area.width, 1));
         return;
     }
@@ -294,12 +301,13 @@ use crossterm::event::{KeyCode, KeyEvent};
 use super::DialogAction;
 
 /// Up/Down/j/k navigate the cursor; Space toggles the current row's
-/// selection; `a` toggles all rows on/off together; Left/Right browse
-/// older/newer reports in history (`DialogAction::NavigateReportHistory`,
-/// dispatched by the app loop); Enter triggers Undo/Redo on the current
-/// selection, but only while viewing the latest report (handled by
-/// `process_dialog_confirmation` in Task 17, which reads
-/// `selected_reversal_actions()`); Esc closes.
+/// selection and `a` toggles all rows on/off together, but only while
+/// viewing the latest report — view-only browsing disables both, matching
+/// the "(view only)" label; Left/Right browse older/newer reports in
+/// history (`DialogAction::NavigateReportHistory`, dispatched by the app
+/// loop); Enter triggers Undo/Redo on the current selection, but only
+/// while viewing the latest report (handled by `process_dialog_confirmation`
+/// in Task 17, which reads `selected_reversal_actions()`); Esc closes.
 pub(super) fn handle_input(
     content: &mut OperationReportDialogContent,
     key: KeyEvent,
@@ -326,12 +334,18 @@ pub(super) fn handle_input(
         }
         KeyCode::Home => content.cursor = 0,
         KeyCode::End => content.cursor = len.saturating_sub(1),
-        KeyCode::Char(' ') => {
+        // Marking exists to choose which rows a future Undo/Redo trigger
+        // will act on — meaningless while viewing a non-latest report,
+        // since Enter is already blocked there (see the guard above). Left
+        // disabled, these would silently change `selected` on a report the
+        // user can never actually run, contradicting the "(view only)"
+        // label.
+        KeyCode::Char(' ') if content.is_latest() => {
             if let Some(sel) = content.selected.get_mut(content.cursor) {
                 *sel = !*sel;
             }
         }
-        KeyCode::Char('a') | KeyCode::Char('A') => {
+        KeyCode::Char('a') | KeyCode::Char('A') if content.is_latest() => {
             let all_selected = content.selected.iter().all(|s| *s);
             content.selected.iter_mut().for_each(|s| *s = !all_selected);
         }
@@ -433,6 +447,27 @@ mod tests {
             handle_input(&mut content, key(KeyCode::Enter)),
             DialogAction::None,
             "Enter must not confirm while browsing a non-latest report, even with an actionable row selected"
+        );
+    }
+
+    #[test]
+    fn space_and_a_do_nothing_while_viewing_a_non_latest_report() {
+        let mut content = two_row_content();
+        let original = content.selected.clone();
+        content.history_position = 0;
+        content.history_total = 2; // not the latest (position 0 of 2)
+        assert!(!content.is_latest());
+
+        handle_input(&mut content, key(KeyCode::Char(' ')));
+        assert_eq!(
+            content.selected, original,
+            "Space must not toggle selection while the report is view-only"
+        );
+
+        handle_input(&mut content, key(KeyCode::Char('a')));
+        assert_eq!(
+            content.selected, original,
+            "'a' must not toggle selection while the report is view-only"
         );
     }
 

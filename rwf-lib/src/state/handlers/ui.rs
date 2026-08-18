@@ -744,29 +744,24 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowOperationReport => {
-                if let Some(report) = self.operation_reports.back() {
+                let dialog = if let Some(report) = self.operation_reports.back() {
                     let total = self.operation_reports.len();
-                    self.dialogs
-                        .push(crate::model::Dialog::operation_report_view_at(
-                            report.clone(),
-                            total - 1,
-                            total,
-                        ));
-                    Some(StateUpdateResult::with_ui_change())
+                    crate::model::Dialog::operation_report_view_at(report.clone(), total - 1, total)
                 } else {
-                    Some(StateUpdateResult {
-                        jobs_to_start: Vec::new(),
-                        jobs_to_cancel: Vec::new(),
-                        completed_jobs: Vec::new(),
-                        failed_jobs: Vec::new(),
-                        cancelled_jobs: Vec::new(),
-                        started_jobs: Vec::new(),
-                        task_panel_logs: vec!["[Info] No operations recorded yet".to_string()],
-                        panes_to_refresh: Vec::new(),
-                        ui_changed: true,
-                        reload_keybindings: false,
+                    // No operations recorded yet — open the dialog anyway,
+                    // showing its own empty state, instead of a task-panel
+                    // log message. `Alt+o` should do exactly one thing:
+                    // open the Operation Report dialog.
+                    crate::model::Dialog::operation_report_view(crate::model::OperationReport {
+                        id: 0,
+                        operation_name: "Operations".to_string(),
+                        records: Vec::new(),
+                        finished_at: std::time::SystemTime::now(),
+                        is_undo: false,
                     })
-                }
+                };
+                self.dialogs.push(dialog);
+                Some(StateUpdateResult::with_ui_change())
             }
             Transition::NavigateOperationReportHistory { older } => {
                 let Some(dialog) = self.dialogs.current() else {

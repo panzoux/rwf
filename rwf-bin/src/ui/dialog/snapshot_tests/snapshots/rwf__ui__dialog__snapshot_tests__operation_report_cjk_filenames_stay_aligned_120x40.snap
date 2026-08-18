@@ -37,7 +37,7 @@ Buffer {
         "                        ││                                                                    ││                        ",
         "                        ││Undo: Available                                                     ││                        ",
         "                        │└────────────────────────────────────────────────────────────────────┘│                        ",
-        "                        │Space: toggle  a: all/none  undo: run  Esc: close  ↑↓: select         │                        ",
+        "                        │Space: toggle  a: all/none  Enter: undo  Esc: close  ↑↓: select       │                        ",
         "                        └──────────────────────────────────────────────────────────────────────┘                        ",
         "                                                                                                                        ",
         "                                                                                                                        ",
