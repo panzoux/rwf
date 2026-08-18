@@ -25,6 +25,11 @@ const MARK_WIDTH: usize = 5;
 /// Width of the "OK"/"Fail" result column.
 const RESULT_WIDTH: usize = 6;
 
+/// Width of the history sidebar (including its own border), reserved from
+/// the dialog's overall width whenever there's more than one entry to
+/// browse — see `render_history_sidebar`.
+const SIDEBAR_WIDTH: u16 = 20;
+
 fn undo_symbol(undo: &UndoAvailability) -> &'static str {
     match undo {
         UndoAvailability::Available(_) => "\u{2713}", // check mark
@@ -83,10 +88,24 @@ pub fn render_operation_report_dialog(
     let records = &report.records;
     let action_label = report.action_column_label();
 
+    // The sidebar only earns its keep once there's more than one entry to
+    // browse — a single-report dialog gets the full width, same as before
+    // the sidebar existed.
+    let main_area = if content.history.len() > 1 {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(SIDEBAR_WIDTH), Constraint::Min(20)])
+            .split(area);
+        render_history_sidebar(frame, cols[0], content, base_style, selected_style);
+        cols[1]
+    } else {
+        area
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints())
-        .split(area);
+        .split(main_area);
 
     render_row_list(
         frame,
@@ -99,16 +118,10 @@ pub fn render_operation_report_dialog(
         selected_style,
     );
 
-    // The [X/Y] position now lives in the dialog title (see
-    // `Dialog::operation_report_view_at`), where it stays visible
-    // regardless of which row is scrolled into view — this line only needs
-    // the view-only marker.
-    let detail_label = if content.is_actionable() {
-        "Details:".to_string()
-    } else {
-        "Details: (view only)".to_string()
-    };
-    frame.render_widget(Paragraph::new(detail_label).style(base_style), chunks[1]);
+    // "(view only)" now lives in the dialog title (see
+    // `Dialog::operation_report_view_at`) next to the operation name it
+    // actually describes, rather than tacked onto "Details:" below.
+    frame.render_widget(Paragraph::new("Details:").style(base_style), chunks[1]);
 
     render_detail(frame, chunks[2], records.get(content.cursor), base_style);
 
@@ -118,7 +131,7 @@ pub fn render_operation_report_dialog(
         format!(
             "Space: toggle  a: all/none  Enter: {}  Esc: close  \u{2191}\u{2193}: select{}",
             action_label.to_lowercase(),
-            if content.history_total > 1 {
+            if content.history.len() > 1 {
                 "  \u{2190}\u{2192}: history"
             } else {
                 ""
@@ -128,12 +141,75 @@ pub fn render_operation_report_dialog(
         // Kept to the same "key: action" list style as the actionable-report
         // hint above (not a full sentence explaining *why* — at 80 columns
         // a longer explanatory clause gets silently clipped by this
-        // unwrapped Paragraph, and the detail-label's "(view only)" suffix
-        // already conveys the reason).
+        // unwrapped Paragraph, and the title's "(view only)" suffix already
+        // conveys the reason).
         "Esc: close  \u{2191}\u{2193}: select  \u{2190}\u{2192}: history".to_string()
     };
     let hint = Paragraph::new(hint).style(hint_style);
     frame.render_widget(hint, chunks[3]);
+}
+
+/// Renders the Undo/Redo history sidebar: one row per
+/// `content.history` entry (newest at top), each prefixed with `u:`/`r:`
+/// for its current direction (report.is_undo — see `action_column_label`)
+/// and `* ` when it's the live target for that direction (both the
+/// nearest-redo and nearest-undo entries get one; everything else is
+/// browsable but view-only). Scrolls to keep the focused entry
+/// (`content.history_cursor`) visible, same clamped-scroll approach as
+/// `render_row_list`.
+fn render_history_sidebar(
+    frame: &mut Frame,
+    area: Rect,
+    content: &OperationReportDialogContent,
+    base_style: ratatui::style::Style,
+    selected_style: ratatui::style::Style,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(crate::ui::dialog::common::DIALOG_BORDER);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let list_height = inner.height as usize;
+    if list_height == 0 || content.history.is_empty() {
+        return;
+    }
+    let clamped_cursor = content.history_cursor.min(content.history.len() - 1);
+    let scroll_start = if clamped_cursor >= list_height {
+        clamped_cursor + 1 - list_height
+    } else {
+        0
+    };
+    let width = inner.width as usize;
+
+    for row in 0..list_height {
+        let idx = scroll_start + row;
+        let Some(entry) = content.history.get(idx) else {
+            break;
+        };
+        let marker = if content
+            .history_actionable
+            .get(idx)
+            .copied()
+            .unwrap_or(false)
+        {
+            "*"
+        } else {
+            " "
+        };
+        let direction = if entry.is_undo { "r" } else { "u" };
+        let label = format!("{marker} {direction}:{}", entry.operation_name);
+        let label = pad_to_width(&smart_truncate(&label, width, "\u{2026}"), width);
+        let style = if idx == clamped_cursor {
+            selected_style
+        } else {
+            base_style
+        };
+        frame.render_widget(
+            Paragraph::new(label).style(style),
+            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -429,9 +505,7 @@ mod tests {
     #[test]
     fn enter_does_nothing_when_not_actionable() {
         let mut content = two_row_content();
-        content.history_position = 0;
-        content.history_total = 2; // browsed away from the stack top
-        content.actionable = false;
+        content.actionable = false; // browsed away from the stack top
         assert!(!content.is_actionable());
 
         assert_eq!(
@@ -445,9 +519,7 @@ mod tests {
     fn space_and_a_do_nothing_while_not_actionable() {
         let mut content = two_row_content();
         let original = content.selected.clone();
-        content.history_position = 0;
-        content.history_total = 2; // browsed away from the stack top
-        content.actionable = false;
+        content.actionable = false; // browsed away from the stack top
         assert!(!content.is_actionable());
 
         handle_input(&mut content, key(KeyCode::Char(' ')));

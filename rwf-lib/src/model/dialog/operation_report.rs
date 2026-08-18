@@ -4,36 +4,46 @@
 /// row within it, and per-row checkbox selection for "Undo/Redo Selected".
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperationReportDialogContent {
-    /// Snapshot of the report being displayed — dialogs don't borrow
-    /// `AppState` (see `Dialog`/`DialogStack`), so this is a clone taken when
-    /// the dialog was opened. Re-opening after a further Undo/Redo shows the
-    /// newest report again (that's the point — Undo/Redo push a fresh
-    /// report, and the dialog re-reads history each time it's opened).
+    /// Snapshot of the focused report — always `history[history_cursor]`,
+    /// kept as its own field (rather than re-derived on every access)
+    /// since it's what the row-list/detail panes and
+    /// `selected_reversal_actions()` read from.
     pub report: crate::model::OperationReport,
     pub cursor: usize,
     /// One entry per `report.records` row; `true` = selected for the next
     /// Undo/Redo trigger. Starts all-`true` (design doc's "全件戻す" default
     /// — an explicit deselect is needed to exclude a row, not the reverse).
     pub selected: Vec<bool>,
-    /// 0-based position of `report` within `AppState.operation_reports` at
-    /// the time this content was built (0 = oldest). Purely for the
-    /// browsable position indicator/title and Left/Right navigation — see
-    /// `actionable` for whether Undo/Redo can actually run on this report.
-    /// Defaults to 0 via `new()` for callers with no navigation context.
-    pub history_position: usize,
-    /// Total report count at the time this content was built. See
-    /// `history_position`.
-    pub history_total: usize,
-    /// True iff this report is the current Undo *or* Redo target — its id
-    /// matched `AppState.undo_stack.last()` or `redo_stack.last()` when
-    /// this content was built. This, not `history_position`/
-    /// `history_total`, is what gates Enter/marking: after any Undo/Redo
-    /// the two no longer coincide (the stack top is rarely
-    /// `operation_reports.back()` once anything's been undone), which is
-    /// the whole reason `AppState` tracks the stacks separately from the
-    /// flat, browsable history — see `AppState::undo_stack`'s doc comment.
-    /// Defaults to `true` via `new()`, matching every isolated-report
-    /// test/call site that doesn't care about stack context.
+    /// The canonical, browsable Undo/Redo history for the sidebar: one
+    /// entry per *original* action, newest first — never the raw flat
+    /// `AppState.operation_reports` audit log, which would show a
+    /// just-undone report *and* the fresh "undo of it" record as two
+    /// separate rows (confusing: "why is the thing I just undid still
+    /// listed as undo-able?"). Built by
+    /// `AppState::operation_history_slots()`, which interleaves
+    /// `redo_stack` (newest-undone first) and `undo_stack` (newest-applied
+    /// first, reversed) into this single newest-to-oldest list. Defaults
+    /// to `[report]` via `new()` for callers with no navigation context.
+    pub history: Vec<crate::model::OperationReport>,
+    /// Parallel to `history`: `true` at index *i* iff `history[i]` is the
+    /// live Undo *or* Redo target (its id matched `AppState.undo_stack.last()`
+    /// or `redo_stack.last()`). Two entries can be `true` at once — the
+    /// nearest-redo and nearest-undo sit right next to each other at the
+    /// stack boundary. Drives the sidebar's `*` marker, independent of
+    /// which entry is merely scrolled into focus. Defaults to `[true]` via
+    /// `new()`.
+    pub history_actionable: Vec<bool>,
+    /// Index into `history`/`history_actionable` of the focused report —
+    /// `history[history_cursor] == report`. Defaults to 0 via `new()`.
+    pub history_cursor: usize,
+    /// True iff `report` (i.e. `history[history_cursor]`) may be acted on
+    /// directly — always equal to `history_actionable[history_cursor]`,
+    /// kept as its own field for the many call sites that only care about
+    /// the focused entry. Older/newer entries reached by browsing
+    /// `history` that aren't a live stack top are view-only: reaching
+    /// their state requires undoing/redoing through everything between
+    /// here and there first, matching how every mainstream undo system
+    /// works.
     pub actionable: bool,
 }
 
@@ -41,41 +51,46 @@ impl OperationReportDialogContent {
     pub fn new(report: crate::model::OperationReport) -> Self {
         let selected = vec![true; report.records.len()];
         Self {
+            history: vec![report.clone()],
+            history_actionable: vec![true],
+            history_cursor: 0,
             report,
             cursor: 0,
             selected,
-            history_position: 0,
-            history_total: 1,
             actionable: true,
         }
     }
 
-    /// Like `new`, but with explicit history-navigation and stack context —
-    /// used when the dialog is opened or navigated with real knowledge of
-    /// where this report sits in `AppState.operation_reports` and whether
-    /// it's the live Undo/Redo target.
-    pub fn with_history_position(
-        report: crate::model::OperationReport,
-        history_position: usize,
-        history_total: usize,
-        actionable: bool,
+    /// Like `new`, but with explicit sidebar/stack context — used when the
+    /// dialog is opened or navigated with real knowledge of
+    /// `AppState.undo_stack`/`redo_stack`. `history_cursor` selects the
+    /// focused entry within `history`/`history_actionable`; panics if out
+    /// of bounds or if the two Vecs' lengths differ (both are always built
+    /// together, in lockstep, by
+    /// `AppState::operation_report_dialog_for_current_state`/
+    /// `NavigateOperationReportHistory`, which guarantee this invariant).
+    pub fn with_history(
+        history: Vec<crate::model::OperationReport>,
+        history_actionable: Vec<bool>,
+        history_cursor: usize,
     ) -> Self {
+        debug_assert_eq!(history.len(), history_actionable.len());
+        let report = history[history_cursor].clone();
+        let actionable = history_actionable[history_cursor];
         let selected = vec![true; report.records.len()];
         Self {
             report,
             cursor: 0,
             selected,
-            history_position,
-            history_total,
+            history,
+            history_actionable,
+            history_cursor,
             actionable,
         }
     }
 
-    /// True iff Undo/Redo may act on this report directly (see `actionable`'s
-    /// doc comment). Older/newer reports reached by browsing that aren't the
-    /// live stack top are view-only — reaching their state requires
-    /// undoing/redoing through everything between here and there first,
-    /// matching how every mainstream undo system works.
+    /// True iff Undo/Redo may act on `report` directly. See `actionable`'s
+    /// doc comment.
     pub fn is_actionable(&self) -> bool {
         self.actionable
     }
@@ -160,21 +175,30 @@ mod tests {
     }
 
     #[test]
-    fn new_defaults_to_actionable() {
+    fn new_defaults_to_a_single_actionable_history_entry() {
         let content =
             OperationReportDialogContent::new(report_with(UndoAvailability::NotApplicable));
-        assert_eq!(content.history_position, 0);
-        assert_eq!(content.history_total, 1);
+        assert_eq!(content.history.len(), 1);
+        assert_eq!(content.history_actionable, vec![true]);
+        assert_eq!(content.history_cursor, 0);
         assert!(content.is_actionable());
     }
 
     #[test]
-    fn with_history_position_carries_the_given_actionable_flag() {
-        let report = report_with(UndoAvailability::NotApplicable);
+    fn with_history_carries_the_given_actionable_flags_and_focuses_the_cursor_entry() {
+        let a = report_with(UndoAvailability::NotApplicable);
+        let mut b = a.clone();
+        b.id = 2;
+        b.operation_name = "Move".to_string();
+        let history = vec![b.clone(), a];
+
         let view_only =
-            OperationReportDialogContent::with_history_position(report.clone(), 0, 3, false);
+            OperationReportDialogContent::with_history(history.clone(), vec![true, false], 1);
         assert!(!view_only.is_actionable());
-        let stack_top = OperationReportDialogContent::with_history_position(report, 2, 3, true);
+        assert_eq!(view_only.report.operation_name, "Copy");
+
+        let stack_top = OperationReportDialogContent::with_history(history, vec![true, false], 0);
         assert!(stack_top.is_actionable());
+        assert_eq!(stack_top.report.operation_name, "Move");
     }
 }

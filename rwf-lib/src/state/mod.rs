@@ -2551,7 +2551,8 @@ mod tests {
                     "opening via ShowOperationReport must show the live undo-stack target as actionable"
                 );
                 assert_eq!(
-                    content.history_total, 1,
+                    content.history.len(),
+                    1,
                     "only one report exists in this test's history"
                 );
             }
@@ -2600,7 +2601,9 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(3, "Delete"));
-        state.undo_stack.push(3);
+        // All three completed as real undoable ops would: each pushed
+        // its id onto the live undo stack, oldest first.
+        state.undo_stack.extend([1, 2, 3]);
         update_state(&mut state, Transition::ShowOperationReport);
 
         update_state(
@@ -2611,8 +2614,8 @@ mod tests {
         match state.dialogs.current().map(|d| &d.content) {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Move");
-                assert_eq!(content.history_position, 1);
-                assert_eq!(content.history_total, 3);
+                assert_eq!(content.history_cursor, 1);
+                assert_eq!(content.history.len(), 3);
                 assert!(!content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
@@ -2628,7 +2631,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(2, "Move"));
-        state.undo_stack.push(2);
+        state.undo_stack.extend([1, 2]);
         update_state(&mut state, Transition::ShowOperationReport);
 
         update_state(
@@ -2647,7 +2650,9 @@ mod tests {
         match state.dialogs.current().map(|d| &d.content) {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Copy");
-                assert_eq!(content.history_position, 0);
+                // `history` is newest-first, so the oldest entry clamps at
+                // the *last* index (1 of 2 here), not 0.
+                assert_eq!(content.history_cursor, 1);
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
@@ -2662,7 +2667,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(2, "Move"));
-        state.undo_stack.push(2);
+        state.undo_stack.extend([1, 2]);
         update_state(&mut state, Transition::ShowOperationReport);
         update_state(
             &mut state,
@@ -2717,18 +2722,21 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(3, "Delete"));
-        state.undo_stack.push(3);
-        update_state(&mut state, Transition::ShowOperationReport); // shows id 3, position 2/3
+        state.undo_stack.extend([1, 2, 3]);
+        update_state(&mut state, Transition::ShowOperationReport); // shows id 3 (newest-first index 0)
         update_state(
             &mut state,
             Transition::NavigateOperationReportHistory { older: true },
-        ); // shows id 2, position 1/3
+        ); // shows id 2 (index 1)
 
         // Simulate the history_size cap evicting the oldest report (id 1)
         // while the dialog is still showing id 2 — exactly what
         // `state/handlers/job.rs`'s eviction does when a new report is
-        // pushed past the cap. This shifts id 2 from index 1 to index 0,
-        // and id 3 from index 2 to index 1.
+        // pushed past the cap. `undo_stack` still lists id 1 (eviction
+        // doesn't touch it — see `AppState::undo_stack`'s doc comment on
+        // graceful degradation here), but the freshly rebuilt `history`
+        // drops it since its report data is gone, shifting id 3 and id 2
+        // down by one index.
         state.operation_reports.pop_front();
         assert_eq!(state.operation_reports.len(), 2);
 

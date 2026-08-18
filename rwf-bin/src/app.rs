@@ -3369,8 +3369,9 @@ mod operation_report_navigation_tests {
         state.operation_reports.push_back(older_report);
         state.operation_reports.push_back(newer_report);
         // What `handle_job_transition`'s `CompleteJob` would have done for
-        // the real Move completion: put its id on the live undo stack.
-        state.undo_stack.push(2);
+        // each real Copy/Move completion: put its id on the live undo
+        // stack, oldest first.
+        state.undo_stack.extend([1, 2]);
         rwf_lib::state::update_state(&mut state, rwf_lib::state::Transition::ShowOperationReport);
         let mut app =
             App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());

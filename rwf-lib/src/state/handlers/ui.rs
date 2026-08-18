@@ -758,48 +758,50 @@ impl AppState {
                     return Some(StateUpdateResult::none());
                 };
 
-                // Re-derive against the live list rather than trusting the
-                // dialog's own (possibly stale, if reports were pushed
-                // while browsing) history_total.
-                let live_total = self.operation_reports.len();
-                if live_total == 0 {
+                // Re-derive against the live stacks rather than trusting the
+                // dialog's own (possibly stale, if a job completed while
+                // browsing) `history`.
+                let slots = self.operation_history_slots();
+                if slots.is_empty() {
                     return Some(StateUpdateResult::none());
                 }
                 // Re-locate the currently-displayed report by identity, not
                 // by its stored index: if history evicted its front entry
                 // (the history_size cap, see state/handlers/job.rs) while
-                // this dialog was open, every surviving report's index
-                // shifted down by the eviction count, and trusting the
-                // stale index would silently show a different report than
-                // the one on screen. Only fall back to the clamped stored
-                // index in the rarer case where the displayed report itself
-                // was evicted (nothing to re-locate by id).
-                let current_position = self
-                    .operation_reports
+                // this dialog was open, every surviving report's index in
+                // the freshly rebuilt `slots` may differ from the stale
+                // stored one — trusting the stale index would silently
+                // show a different report than the one on screen. Only
+                // fall back to the clamped stored index in the rarer case
+                // where the displayed report itself is no longer part of
+                // the live history (nothing to re-locate by id).
+                let current_position = slots
                     .iter()
                     .position(|r| r.id == content.report.id)
-                    .unwrap_or_else(|| content.history_position.min(live_total - 1));
+                    .unwrap_or_else(|| content.history_cursor.min(slots.len() - 1));
+                // `slots` is newest-first (index 0) to oldest-last — the
+                // reverse order of the old flat-deque list this replaced —
+                // so "older" now *increases* the index and "newer"
+                // decreases it.
                 let new_position = if *older {
-                    current_position.saturating_sub(1)
+                    (current_position + 1).min(slots.len() - 1)
                 } else {
-                    (current_position + 1).min(live_total - 1)
+                    current_position.saturating_sub(1)
                 };
                 if new_position == current_position {
                     // Already at the boundary in the requested direction.
                     return Some(StateUpdateResult::none());
                 }
-                let Some(new_report) = self.operation_reports.get(new_position) else {
-                    return Some(StateUpdateResult::none());
-                };
-                let new_report = new_report.clone();
-                let actionable = self.is_undo_redo_target(new_report.id);
+                let actionable: Vec<bool> = slots
+                    .iter()
+                    .map(|r| self.is_undo_redo_target(r.id))
+                    .collect();
 
                 if let Some(dialog) = self.dialogs.current_mut() {
                     *dialog = crate::model::Dialog::operation_report_view_at(
-                        new_report,
-                        new_position,
-                        live_total,
+                        slots,
                         actionable,
+                        new_position,
                     );
                 }
                 Some(StateUpdateResult::with_ui_change())
@@ -987,44 +989,71 @@ impl AppState {
         self.undo_stack.last() == Some(&report_id) || self.redo_stack.last() == Some(&report_id)
     }
 
+    /// The canonical, browsable Undo/Redo history for the Operation Report
+    /// dialog's sidebar: one entry per *original* action, newest first —
+    /// deliberately not the raw flat `operation_reports` audit log, which
+    /// would list a just-undone report *and* the fresh "undo of it" record
+    /// as two separate rows (confusing: the just-undone one reads as if
+    /// it's still undo-able, when it isn't — its own undo record is what
+    /// you'd redo instead). `redo_stack` (newest-undone first, by
+    /// construction — see `undo_stack`'s doc comment) supplies the top
+    /// portion; `undo_stack` reversed (newest-applied first) supplies the
+    /// rest, so the two portions splice into one seamless
+    /// newest-to-oldest list with no special-casing at the boundary.
+    ///
+    /// Falls back to the single latest audit-log entry (view-only) when
+    /// nothing is currently undoable/redoable but something has been
+    /// recorded (e.g. only a permanent Delete has ever happened), or an
+    /// empty vec when nothing has been recorded at all.
+    pub(crate) fn operation_history_slots(&self) -> Vec<crate::model::OperationReport> {
+        if self.undo_stack.is_empty() && self.redo_stack.is_empty() {
+            return self.operation_reports.back().cloned().into_iter().collect();
+        }
+        self.redo_stack
+            .iter()
+            .chain(self.undo_stack.iter().rev())
+            .filter_map(|id| self.operation_reports.iter().find(|r| r.id == *id))
+            .cloned()
+            .collect()
+    }
+
     /// Build the Operation Report dialog reflecting the current stack
     /// state — used both for the initial `Alt+o` open and to refresh an
     /// already-open dialog after an Undo/Redo completes (see
     /// `Transition::CompleteJob`'s `ExecuteReversal` handling), so
     /// continual Undo/Redo always lands on the right next target.
     ///
-    /// Priority: the live Undo target (`undo_stack.last()`), else the live
-    /// Redo target (`redo_stack.last()`), else the most recent audit-log
-    /// entry (view-only — nothing undoable happened, e.g. a permanent
-    /// Delete), else an empty placeholder if nothing's been recorded yet.
+    /// Focuses the live Undo target (`undo_stack.last()`) if any, else the
+    /// live Redo target (`redo_stack.last()`) — both sit right at
+    /// `operation_history_slots()`'s boundary, so no searching is needed,
+    /// just clamping for the defensive case where a stack-top id was
+    /// evicted from `operation_reports` (the `history_size` cap) and so
+    /// is missing from the slots list.
     pub(crate) fn operation_report_dialog_for_current_state(&self) -> crate::model::Dialog {
-        if let Some(&id) = self.undo_stack.last().or(self.redo_stack.last()) {
-            if let Some(position) = self.operation_reports.iter().position(|r| r.id == id) {
-                let report = self.operation_reports[position].clone();
-                let total = self.operation_reports.len();
-                return crate::model::Dialog::operation_report_view_at(
-                    report, position, total, true,
-                );
-            }
+        let slots = self.operation_history_slots();
+        let Some(last_index) = slots.len().checked_sub(1) else {
+            // No operations recorded yet — open the dialog anyway, showing
+            // its own empty state, instead of a task-panel log message.
+            // `Alt+o` should do exactly one thing: open the Operation
+            // Report dialog.
+            return crate::model::Dialog::operation_report_view(crate::model::OperationReport {
+                id: 0,
+                operation_name: "Operations".to_string(),
+                records: Vec::new(),
+                finished_at: std::time::SystemTime::now(),
+                is_undo: false,
+            });
+        };
+        let cursor = if !self.undo_stack.is_empty() {
+            self.redo_stack.len()
+        } else {
+            self.redo_stack.len().saturating_sub(1)
         }
-        if let Some(report) = self.operation_reports.back() {
-            let total = self.operation_reports.len();
-            return crate::model::Dialog::operation_report_view_at(
-                report.clone(),
-                total - 1,
-                total,
-                false,
-            );
-        }
-        // No operations recorded yet — open the dialog anyway, showing its
-        // own empty state, instead of a task-panel log message. `Alt+o`
-        // should do exactly one thing: open the Operation Report dialog.
-        crate::model::Dialog::operation_report_view(crate::model::OperationReport {
-            id: 0,
-            operation_name: "Operations".to_string(),
-            records: Vec::new(),
-            finished_at: std::time::SystemTime::now(),
-            is_undo: false,
-        })
+        .min(last_index);
+        let actionable: Vec<bool> = slots
+            .iter()
+            .map(|r| self.is_undo_redo_target(r.id))
+            .collect();
+        crate::model::Dialog::operation_report_view_at(slots, actionable, cursor)
     }
 }

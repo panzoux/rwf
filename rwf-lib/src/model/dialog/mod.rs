@@ -705,42 +705,31 @@ impl Dialog {
         }
     }
 
-    /// Like `operation_report_view`, but with explicit knowledge of where
-    /// `report` sits in the caller's history list and whether it's the live
-    /// Undo/Redo target — used by `Transition::ShowOperationReport` and
-    /// `Transition::NavigateOperationReportHistory`, both of which have
-    /// real `AppState` context (`operation_reports`, `undo_stack`,
-    /// `redo_stack`) available.
+    /// Like `operation_report_view`, but with explicit knowledge of the
+    /// caller's canonical Undo/Redo history (`history`/`history_actionable`,
+    /// parallel Vecs — see `OperationReportDialogContent::history_actionable`)
+    /// and which entry is focused — used by `Transition::ShowOperationReport`
+    /// and `Transition::NavigateOperationReportHistory`, both of which
+    /// build them from real `AppState` context
+    /// (`AppState::operation_history_slots`).
     pub fn operation_report_view_at(
-        report: crate::model::OperationReport,
-        history_position: usize,
-        history_total: usize,
-        actionable: bool,
+        history: Vec<crate::model::OperationReport>,
+        history_actionable: Vec<bool>,
+        history_cursor: usize,
     ) -> Self {
-        // Position counts down from the latest report (labelled "1") to the
-        // oldest (labelled `history_total`) — see
-        // `OperationReportDialogContent`'s doc comment on `history_position`
-        // for why that's the reverse of the field's own oldest=0 storage
-        // order. Lives in the title, not the "Details:" line, so it stays
-        // visible regardless of which row is scrolled into view.
-        let title = if history_total > 1 {
-            format!(
-                "[{}/{}] {}",
-                history_total - history_position,
-                history_total,
-                report.title()
-            )
+        let title = history[history_cursor].title();
+        let title = if history_actionable[history_cursor] {
+            title
         } else {
-            report.title()
+            format!("{title} (view only)")
         };
         Self {
             title,
             content: DialogContent::OperationReportView(
-                OperationReportDialogContent::with_history_position(
-                    report,
-                    history_position,
-                    history_total,
-                    actionable,
+                OperationReportDialogContent::with_history(
+                    history,
+                    history_actionable,
+                    history_cursor,
                 ),
             ),
         }

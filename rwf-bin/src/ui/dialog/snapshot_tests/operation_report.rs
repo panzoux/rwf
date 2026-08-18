@@ -90,30 +90,81 @@ fn operation_report_cjk_filenames_stay_aligned() {
     );
 }
 
+/// Five distinct reports sharing `sample_report()`'s single-row shape, ids
+/// 1..=5 — a stand-in "canonical Undo/Redo history"
+/// (`AppState::operation_history_slots()`'s real output) for exercising the
+/// sidebar and title across more than one entry.
+fn sample_history() -> Vec<OperationReport> {
+    (1..=5)
+        .map(|id| {
+            let mut r = sample_report();
+            r.id = id;
+            r
+        })
+        .collect()
+}
+
 #[test]
-fn operation_report_viewing_an_older_report_shows_position_and_view_only_hint() {
+fn operation_report_viewing_a_non_actionable_history_entry_shows_view_only_hint() {
     let state = test_state();
-    let report = sample_report();
-    let dialog = Dialog::operation_report_view_at(report, 1, 5, false); // displays as [4 of 5], not actionable
+    let history = sample_history();
+    let actionable = vec![false, false, false, false, true]; // only the newest (id 5) is live
+    let dialog = Dialog::operation_report_view_at(history, actionable, 2); // browsed to a non-actionable entry
     snapshot_dialog(
-        "operation_report_viewing_an_older_report_shows_position_and_view_only_hint",
+        "operation_report_viewing_a_non_actionable_history_entry_shows_view_only_hint",
         &dialog,
         &state,
     );
 }
 
-/// The other half of the `history_total > 1` branch: viewing the
-/// actionable (stack-top) report of a multi-report history shows the
-/// position indicator (no "(view only)" suffix) and the full, still-active
-/// hint with "history" appended — as opposed to the non-actionable case
-/// covered by the test above.
+/// The other half: viewing the actionable (live stack-top) entry of a
+/// multi-report history shows the full, still-active hint with "history"
+/// appended and no "(view only)" title suffix — as opposed to the
+/// non-actionable case covered by the test above.
 #[test]
-fn operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint() {
+fn operation_report_viewing_the_actionable_history_entry_shows_active_hint() {
     let state = test_state();
-    let report = sample_report();
-    let dialog = Dialog::operation_report_view_at(report, 4, 5, true); // displays as [1 of 5], actionable
+    let history = sample_history();
+    let actionable = vec![false, false, false, false, true];
+    let dialog = Dialog::operation_report_view_at(history, actionable, 4); // focused on the live target
     snapshot_dialog(
-        "operation_report_viewing_the_latest_of_several_reports_shows_position_with_active_hint",
+        "operation_report_viewing_the_actionable_history_entry_shows_active_hint",
+        &dialog,
+        &state,
+    );
+}
+
+/// The sidebar itself: `*` marks both the nearest-redo and nearest-undo
+/// entries (the two live targets, adjacent at the stack boundary), `r:`/`u:`
+/// prefixes reflect each entry's own direction (`OperationReport::is_undo`),
+/// and the focused entry (cursor) is highlighted independently of whether
+/// it's one of the starred ones.
+#[test]
+fn operation_report_sidebar_marks_both_stack_boundaries() {
+    let state = test_state();
+    let history: Vec<OperationReport> = [
+        ("Rename", true),
+        ("Create Directory", true),
+        ("Create Directory", false),
+        ("Copy", false),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (name, is_undo))| {
+        let mut r = sample_report();
+        r.id = i as u64 + 1;
+        r.operation_name = name.to_string();
+        r.is_undo = is_undo;
+        r
+    })
+    .collect();
+    // Boundary sits between index 1 (nearest redo) and index 2 (nearest
+    // undo) — both starred; focus on the undo side, matching what a fresh
+    // Alt+o open would show.
+    let actionable = vec![false, true, true, false];
+    let dialog = Dialog::operation_report_view_at(history, actionable, 2);
+    snapshot_dialog(
+        "operation_report_sidebar_marks_both_stack_boundaries",
         &dialog,
         &state,
     );

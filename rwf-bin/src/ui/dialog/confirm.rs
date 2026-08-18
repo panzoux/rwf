@@ -1783,7 +1783,7 @@ mod tests {
             is_undo: false,
         };
         // Not the live Undo/Redo target — not actionable.
-        let dialog = Dialog::operation_report_view_at(older, 0, 2, false);
+        let dialog = Dialog::operation_report_view_at(vec![older], vec![false], 0);
         state.dialogs.push(dialog);
 
         let job_spec = process_dialog_confirmation(&mut state);
