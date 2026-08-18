@@ -913,7 +913,7 @@ mod tests {
     /// `build_operation_report` (same as `CompleteJob` would), push them
     /// into `AppState.operation_reports`, open the dialog (shows the
     /// latest), navigate to the older report, and navigate back — proving
-    /// `is_latest()` flips both directions across the full
+    /// `is_actionable()` flips both directions across the full
     /// executor -> report-builder -> history -> dialog -> navigation chain.
     #[tokio::test]
     async fn undo_is_blocked_while_browsing_an_older_report_and_works_after_returning_to_latest() {
@@ -988,6 +988,11 @@ mod tests {
         .expect("report2");
         state.operation_reports.push_back(report1);
         state.operation_reports.push_back(report2);
+        // What `handle_job_transition`'s `CompleteJob` would have done for
+        // each real Copy completion: push each undoable report's id onto
+        // the live undo stack, in the same order.
+        state.undo_stack.push(1);
+        state.undo_stack.push(2);
 
         // Open the dialog and confirm it starts on report2 (the latest) before
         // navigating anywhere — without this, the two flip assertions below
@@ -996,7 +1001,7 @@ mod tests {
         update_state(&mut state, Transition::ShowOperationReport);
         match state.dialogs.current().map(|d| &d.content) {
             Some(DialogContent::OperationReportView(c)) => {
-                assert!(c.is_latest(), "should open on the latest report");
+                assert!(c.is_actionable(), "should open on the latest report");
                 assert_eq!(c.report.id, 2);
             }
             other => panic!("expected OperationReportView, got {other:?}"),
@@ -1012,12 +1017,12 @@ mod tests {
             other => panic!("expected OperationReportView, got {other:?}"),
         };
         assert!(
-            !content.is_latest(),
+            !content.is_actionable(),
             "should be viewing the older report after navigating"
         );
         assert_eq!(content.report.id, 1);
 
-        // Navigate back to the latest — is_latest() must flip back to true.
+        // Navigate back to the latest — is_actionable() must flip back to true.
         update_state(
             &mut state,
             Transition::NavigateOperationReportHistory { older: false },
@@ -1026,7 +1031,211 @@ mod tests {
             Some(DialogContent::OperationReportView(c)) => c,
             other => panic!("expected OperationReportView, got {other:?}"),
         };
-        assert!(content.is_latest());
+        assert!(content.is_actionable());
         assert_eq!(content.report.id, 2);
+    }
+
+    /// End-to-end proof of the undo/redo *stack* model, driven entirely
+    /// through real jobs and real `Transition::CompleteJob` calls (the
+    /// exact path a live Undo/Redo keypress takes) — not the flat
+    /// "act on whatever's newest" model `operation_reports` alone can't
+    /// distinguish from it. Matches the exact scenario from the Operation
+    /// Report follow-up's design discussion: rename a, rename b, mkdir c,
+    /// then undo c, undo b, redo (the undo of b) — proving the next undo
+    /// target after undoing c is b (not c again), and that the still-open
+    /// dialog reflects that live via `AppState::undo_stack`/`redo_stack`,
+    /// not merely whatever's newest in the flat audit log.
+    #[tokio::test]
+    async fn undo_redo_stack_tracks_the_correct_next_target_through_a_full_chain() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let backend = std::sync::Arc::new(crate::backend::LocalFilesystemBackend::new());
+        let archive_handler = std::sync::Arc::new(crate::backend::MockArchiveHandler);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let executor = crate::job::JobExecutor::new(backend, archive_handler, event_tx);
+
+        async fn next_terminal_event(
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
+        ) -> crate::worker_pool::JobEvent {
+            loop {
+                match rx.recv().await.expect("channel closed") {
+                    crate::worker_pool::JobEvent::Started(_)
+                    | crate::worker_pool::JobEvent::Progress(..) => continue,
+                    other => return other,
+                }
+            }
+        }
+
+        // Runs one job through the real executor, then a real
+        // `Transition::CompleteJob` — exactly the path a live job takes,
+        // and what actually populates `undo_stack`/`redo_stack`.
+        async fn run_job<
+            B: crate::backend::FilesystemBackend,
+            A: crate::backend::ArchiveHandler,
+        >(
+            executor: &crate::job::JobExecutor<B, A>,
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
+            state: &mut crate::AppState,
+            spec: JobSpec,
+        ) {
+            state.jobs.start_job(spec.clone());
+            executor.execute(spec.clone()).await;
+            let result = match next_terminal_event(rx).await {
+                crate::worker_pool::JobEvent::Completed(_, data) => OpResult::Success(data),
+                crate::worker_pool::JobEvent::Failed(_, e) => OpResult::Failed(e),
+                crate::worker_pool::JobEvent::Cancelled(_) => OpResult::Cancelled,
+                other => panic!("expected a terminal event, got {other:?}"),
+            };
+            update_state(
+                state,
+                Transition::CompleteJob {
+                    job_id: spec.id,
+                    result,
+                },
+            );
+        }
+
+        let mut state = test_state();
+
+        // a) rename, b) rename, c) mkdir.
+        let a_from = temp_dir.path().join("a.txt");
+        tokio::fs::write(&a_from, b"a").await.unwrap();
+        let a_to = temp_dir.path().join("a2.txt");
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::Rename {
+                from: Location::Local(a_from),
+                to: Location::Local(a_to),
+            }),
+        )
+        .await;
+
+        let b_from = temp_dir.path().join("b.txt");
+        tokio::fs::write(&b_from, b"b").await.unwrap();
+        let b_to = temp_dir.path().join("b2.txt");
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::Rename {
+                from: Location::Local(b_from),
+                to: Location::Local(b_to),
+            }),
+        )
+        .await;
+
+        let c_dir = temp_dir.path().join("c_dir");
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::Mkdir {
+                location: Location::Local(c_dir),
+            }),
+        )
+        .await;
+
+        assert_eq!(state.undo_stack.len(), 3, "a, b, c all undoable");
+        assert!(state.redo_stack.is_empty());
+        let [a_id, b_id, c_id] = [
+            state.undo_stack[0],
+            state.undo_stack[1],
+            state.undo_stack[2],
+        ];
+
+        // Open the dialog — shows c), actionable.
+        update_state(&mut state, Transition::ShowOperationReport);
+        let report_id = |state: &crate::AppState| match state.dialogs.current().map(|d| &d.content)
+        {
+            Some(DialogContent::OperationReportView(c)) => (c.report.id, c.is_actionable()),
+            other => panic!("expected OperationReportView, got {other:?}"),
+        };
+        assert_eq!(report_id(&state), (c_id, true));
+
+        // Undo c) — run its reversal action for real, complete it for
+        // real. The dialog (still open) must now show b), not c' (the
+        // fresh redo-record that just became `operation_reports.back()`).
+        let undo_action = |state: &crate::AppState, id: u64| {
+            state
+                .operation_reports
+                .iter()
+                .find(|r| r.id == id)
+                .expect("report")
+                .records
+                .iter()
+                .find_map(|r| match &r.undo {
+                    crate::model::UndoAvailability::Available(a) => Some(a.clone()),
+                    _ => None,
+                })
+                .expect("an available reversal action")
+        };
+        let c_undo = undo_action(&state, c_id);
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::ExecuteReversal {
+                actions: vec![c_undo],
+                operation_name: "Mkdir".to_string(),
+                resulting_is_undo: true,
+            }),
+        )
+        .await;
+        assert_eq!(
+            state.undo_stack,
+            vec![a_id, b_id],
+            "c popped off undo_stack"
+        );
+        assert_eq!(state.redo_stack.len(), 1, "c's undo pushed onto redo_stack");
+        let c_prime_id = state.redo_stack[0];
+        assert_eq!(
+            report_id(&state),
+            (b_id, true),
+            "dialog must refresh to the new undo target (b), not the fresh c' record"
+        );
+
+        // Undo b) — dialog must now show a).
+        let b_undo = undo_action(&state, b_id);
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::ExecuteReversal {
+                actions: vec![b_undo],
+                operation_name: "Rename".to_string(),
+                resulting_is_undo: true,
+            }),
+        )
+        .await;
+        assert_eq!(state.undo_stack, vec![a_id]);
+        assert_eq!(state.redo_stack.len(), 2, "b's undo pushed onto redo_stack");
+        let b_prime_id = state.redo_stack[1];
+        assert_eq!(report_id(&state), (a_id, true));
+
+        // Redo b' (not c' — the *nearer* undone action) — dialog must
+        // return to showing (a fresh report equivalent to) b), and c'
+        // must still be waiting on redo_stack.
+        let b_prime_redo = undo_action(&state, b_prime_id);
+        run_job(
+            &executor,
+            &mut event_rx,
+            &mut state,
+            JobSpec::new(JobKind::ExecuteReversal {
+                actions: vec![b_prime_redo],
+                operation_name: "Rename".to_string(),
+                resulting_is_undo: false,
+            }),
+        )
+        .await;
+        assert_eq!(state.redo_stack, vec![c_prime_id], "only c' left to redo");
+        assert_eq!(state.undo_stack.len(), 2, "a, and the fresh redo of b");
+        assert_eq!(state.undo_stack[0], a_id);
+        let (shown_id, actionable) = report_id(&state);
+        assert!(actionable);
+        assert_eq!(
+            shown_id, state.undo_stack[1],
+            "dialog must show the fresh redo-of-b report as the new undo target"
+        );
     }
 }

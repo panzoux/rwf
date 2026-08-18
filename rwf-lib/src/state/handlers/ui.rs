@@ -744,23 +744,8 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::ShowOperationReport => {
-                let dialog = if let Some(report) = self.operation_reports.back() {
-                    let total = self.operation_reports.len();
-                    crate::model::Dialog::operation_report_view_at(report.clone(), total - 1, total)
-                } else {
-                    // No operations recorded yet — open the dialog anyway,
-                    // showing its own empty state, instead of a task-panel
-                    // log message. `Alt+o` should do exactly one thing:
-                    // open the Operation Report dialog.
-                    crate::model::Dialog::operation_report_view(crate::model::OperationReport {
-                        id: 0,
-                        operation_name: "Operations".to_string(),
-                        records: Vec::new(),
-                        finished_at: std::time::SystemTime::now(),
-                        is_undo: false,
-                    })
-                };
-                self.dialogs.push(dialog);
+                self.dialogs
+                    .push(self.operation_report_dialog_for_current_state());
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::NavigateOperationReportHistory { older } => {
@@ -807,12 +792,14 @@ impl AppState {
                     return Some(StateUpdateResult::none());
                 };
                 let new_report = new_report.clone();
+                let actionable = self.is_undo_redo_target(new_report.id);
 
                 if let Some(dialog) = self.dialogs.current_mut() {
                     *dialog = crate::model::Dialog::operation_report_view_at(
                         new_report,
                         new_position,
                         live_total,
+                        actionable,
                     );
                 }
                 Some(StateUpdateResult::with_ui_change())
@@ -988,5 +975,56 @@ impl AppState {
             }
             _ => None,
         }
+    }
+}
+
+impl AppState {
+    /// True iff `report_id` is the live Undo *or* Redo target — the top of
+    /// `undo_stack` or `redo_stack`. See `AppState::undo_stack`'s doc
+    /// comment for why this, not "is it the newest entry in
+    /// `operation_reports`", is what actually gates Undo/Redo.
+    pub(crate) fn is_undo_redo_target(&self, report_id: u64) -> bool {
+        self.undo_stack.last() == Some(&report_id) || self.redo_stack.last() == Some(&report_id)
+    }
+
+    /// Build the Operation Report dialog reflecting the current stack
+    /// state — used both for the initial `Alt+o` open and to refresh an
+    /// already-open dialog after an Undo/Redo completes (see
+    /// `Transition::CompleteJob`'s `ExecuteReversal` handling), so
+    /// continual Undo/Redo always lands on the right next target.
+    ///
+    /// Priority: the live Undo target (`undo_stack.last()`), else the live
+    /// Redo target (`redo_stack.last()`), else the most recent audit-log
+    /// entry (view-only — nothing undoable happened, e.g. a permanent
+    /// Delete), else an empty placeholder if nothing's been recorded yet.
+    pub(crate) fn operation_report_dialog_for_current_state(&self) -> crate::model::Dialog {
+        if let Some(&id) = self.undo_stack.last().or(self.redo_stack.last()) {
+            if let Some(position) = self.operation_reports.iter().position(|r| r.id == id) {
+                let report = self.operation_reports[position].clone();
+                let total = self.operation_reports.len();
+                return crate::model::Dialog::operation_report_view_at(
+                    report, position, total, true,
+                );
+            }
+        }
+        if let Some(report) = self.operation_reports.back() {
+            let total = self.operation_reports.len();
+            return crate::model::Dialog::operation_report_view_at(
+                report.clone(),
+                total - 1,
+                total,
+                false,
+            );
+        }
+        // No operations recorded yet — open the dialog anyway, showing its
+        // own empty state, instead of a task-panel log message. `Alt+o`
+        // should do exactly one thing: open the Operation Report dialog.
+        crate::model::Dialog::operation_report_view(crate::model::OperationReport {
+            id: 0,
+            operation_name: "Operations".to_string(),
+            records: Vec::new(),
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        })
     }
 }

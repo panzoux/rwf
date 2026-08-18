@@ -934,18 +934,18 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 return None;
             }
             DialogContent::OperationReportView(content) => {
-                if !content.is_latest() {
+                if !content.is_actionable() {
                     // Defense in depth: the input-layer guard in
                     // operation_report::handle_input already requires
-                    // `is_latest()` before Enter ever produces
+                    // `is_actionable()` before Enter ever produces
                     // `DialogAction::Confirm`, so this arm should be
-                    // unreachable for a non-latest report through any real
-                    // keypress today. It stays here because
+                    // unreachable for a non-actionable report through any
+                    // real keypress today. It stays here because
                     // `process_dialog_confirmation` is a `pub fn` that could
                     // be called from a future path (e.g. scripting) that
                     // bypasses the input layer — Undo/Redo must never fire
-                    // against a report that isn't the most recent one (see
-                    // docs/superpowers/plans/2026-08-17-operation-report-history-navigation.md).
+                    // against a report that isn't the live undo/redo-stack
+                    // target (see `AppState::undo_stack`).
                     state.pending_confirmation_logs.push(
                         "[Info] Undo/Redo is only available for the most recent operation — navigate to it first".to_string(),
                     );
@@ -960,6 +960,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
 
                 let (ready, blocked) = rwf_lib::job::preflight_check(&actions);
                 if blocked.is_empty() {
+                    // Keep the Operation Report dialog open — once the job
+                    // completes, `Transition::CompleteJob` refreshes it to
+                    // show the new live target, so the user can keep
+                    // undoing/redoing continually without reopening Alt+o.
+                    state.suppress_next_dialog_pop = true;
                     return Some(rwf_lib::job::JobSpec::new(
                         rwf_lib::job::JobKind::ExecuteReversal {
                             actions: ready,
@@ -1060,10 +1065,6 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     if actions.is_empty() {
                         return None;
                     }
-                    // Clone out of `action` (borrowed from `state.dialogs`'
-                    // current entry) before mutating the stack below — the
-                    // borrow checker won't allow `pop_below_top()` while
-                    // `action`'s fields are still borrowed.
                     let job_spec =
                         rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::ExecuteReversal {
                             actions: actions.clone(),
@@ -1076,13 +1077,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     // `suppress_next_dialog_pop` so the report dialog stayed
                     // underneath rather than being popped there. The generic
                     // post-confirm path pops only the current (summary)
-                    // dialog, so without this the stale report dialog would
-                    // be left open underneath after the job starts — pop it
-                    // explicitly to match the "pop all related dialogs"
-                    // dialog-stack-hygiene rule the direct-submit path
-                    // already satisfies for free (no summary dialog means
-                    // only the report dialog itself gets popped there).
-                    state.dialogs.pop_below_top();
+                    // dialog, leaving the report dialog as the new top —
+                    // exactly what we want now: it stays open so the user
+                    // can keep undoing/redoing, and `Transition::CompleteJob`
+                    // refreshes it once the job finishes.
                     return Some(job_spec);
                 }
             },
@@ -1784,8 +1782,8 @@ mod tests {
             finished_at: std::time::SystemTime::now(),
             is_undo: false,
         };
-        // history_position 0 of 2 total reports: not the latest.
-        let dialog = Dialog::operation_report_view_at(older, 0, 2);
+        // Not the live Undo/Redo target — not actionable.
+        let dialog = Dialog::operation_report_view_at(older, 0, 2, false);
         state.dialogs.push(dialog);
 
         let job_spec = process_dialog_confirmation(&mut state);

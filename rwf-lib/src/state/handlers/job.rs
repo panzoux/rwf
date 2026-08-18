@@ -102,10 +102,72 @@ impl AppState {
                         self.next_operation_report_id,
                     ) {
                         self.next_operation_report_id += 1;
+                        let report_id = report.id;
+                        let undoable = report.undoable_count() > 0;
                         self.operation_reports.push_back(report);
                         let cap = self.config.undo.history_size.max(1);
                         while self.operation_reports.len() > cap {
                             self.operation_reports.pop_front();
+                        }
+
+                        // Undo/Redo stack bookkeeping — see `AppState::undo_stack`'s
+                        // doc comment for why `operation_reports` alone can't drive
+                        // this: Undo/Redo append a new report rather than removing
+                        // the one they acted on.
+                        match &spec.kind {
+                            crate::job::JobKind::ExecuteReversal {
+                                resulting_is_undo, ..
+                            } => {
+                                if *resulting_is_undo {
+                                    // This job undid the top of undo_stack;
+                                    // its result is available to redo.
+                                    self.undo_stack.pop();
+                                    if undoable {
+                                        self.redo_stack.push(report_id);
+                                    }
+                                } else {
+                                    // This job redid the top of redo_stack;
+                                    // its result is available to undo again.
+                                    self.redo_stack.pop();
+                                    if undoable {
+                                        self.undo_stack.push(report_id);
+                                    }
+                                }
+
+                                // The Operation Report dialog stays open
+                                // across Undo/Redo (see
+                                // `process_dialog_confirmation`'s
+                                // `OperationReportView` arm) so the user can
+                                // keep going without reopening Alt+o —
+                                // refresh it now to the new live target.
+                                // Computed before the mutable borrow below:
+                                // it reads `self.undo_stack`/`redo_stack`/
+                                // `operation_reports`, which can't overlap
+                                // with a live `&mut self.dialogs` borrow.
+                                let is_report_dialog_open = matches!(
+                                    self.dialogs.current().map(|d| &d.content),
+                                    Some(crate::model::dialog::DialogContent::OperationReportView(
+                                        _
+                                    ))
+                                );
+                                if is_report_dialog_open {
+                                    let refreshed =
+                                        self.operation_report_dialog_for_current_state();
+                                    if let Some(dialog) = self.dialogs.current_mut() {
+                                        *dialog = refreshed;
+                                    }
+                                }
+                            }
+                            _ => {
+                                // A genuinely new forward operation — the
+                                // standard "a new edit discards the redo
+                                // future" rule every undo/redo system
+                                // follows.
+                                self.redo_stack.clear();
+                                if undoable {
+                                    self.undo_stack.push(report_id);
+                                }
+                            }
                         }
                     }
                 }

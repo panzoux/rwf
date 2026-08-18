@@ -82,9 +82,29 @@ pub struct AppState {
     pub leap: Option<crate::model::LeapState>,
     /// Bounded history of recent Operation Reports (Phase 7.6). Newest last.
     /// Capacity is `config.undo.history_size`, enforced in `handle_job_transition`.
+    /// This is the append-only audit log everything ever gets recorded to
+    /// (browsable read-only via Left/Right in the Operation Report dialog);
+    /// `undo_stack`/`redo_stack` below are what actually drive Undo/Redo.
     pub operation_reports: VecDeque<crate::model::OperationReport>,
     /// Monotonically increasing ID source for `OperationReport::id`.
     pub next_operation_report_id: u64,
+    /// The classic two-stack Undo/Redo model (Operation Report follow-up),
+    /// layered on top of `operation_reports`: ids of currently-applied,
+    /// undoable reports, last = next Undo target. Every completed
+    /// undoable forward operation pushes its id here. Undoing pops this
+    /// stack and pushes onto `redo_stack`; redoing does the reverse.
+    ///
+    /// Needed because `operation_reports` alone can't answer "what's next
+    /// to undo": an Undo/Redo trigger appends a *new* report (the result
+    /// of running the reversal) rather than removing the one it acted on,
+    /// so `operation_reports.back()` is the wrong thing to act on again
+    /// once anything has been undone.
+    pub undo_stack: Vec<u64>,
+    /// Ids of reports representing undone operations available to redo,
+    /// last = next Redo target. Cleared whenever a genuinely new forward
+    /// operation completes — the standard "a new edit discards the redo
+    /// future" rule every undo/redo system follows.
+    pub redo_stack: Vec<u64>,
 }
 
 impl AppState {
@@ -228,6 +248,8 @@ impl AppState {
             leap: None,
             operation_reports: VecDeque::new(),
             next_operation_report_id: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -2516,14 +2538,17 @@ mod tests {
                 finished_at: std::time::SystemTime::now(),
                 is_undo: false,
             });
+        // What `handle_job_transition`'s `CompleteJob` would have done for
+        // a real undoable Copy: put its id on the live undo stack.
+        state.undo_stack.push(1);
 
         update_state(&mut state, Transition::ShowOperationReport);
 
         match state.dialogs.current().map(|d| &d.content) {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert!(
-                    content.is_latest(),
-                    "opening via ShowOperationReport must show the latest report as latest"
+                    content.is_actionable(),
+                    "opening via ShowOperationReport must show the live undo-stack target as actionable"
                 );
                 assert_eq!(
                     content.history_total, 1,
@@ -2547,7 +2572,7 @@ mod tests {
         match state.dialogs.current().map(|d| &d.content) {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert!(content.report.records.is_empty());
-                assert!(content.is_latest());
+                assert!(content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
@@ -2575,6 +2600,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(3, "Delete"));
+        state.undo_stack.push(3);
         update_state(&mut state, Transition::ShowOperationReport);
 
         update_state(
@@ -2587,7 +2613,7 @@ mod tests {
                 assert_eq!(content.report.operation_name, "Move");
                 assert_eq!(content.history_position, 1);
                 assert_eq!(content.history_total, 3);
-                assert!(!content.is_latest());
+                assert!(!content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
@@ -2602,6 +2628,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(2, "Move"));
+        state.undo_stack.push(2);
         update_state(&mut state, Transition::ShowOperationReport);
 
         update_state(
@@ -2635,6 +2662,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(2, "Move"));
+        state.undo_stack.push(2);
         update_state(&mut state, Transition::ShowOperationReport);
         update_state(
             &mut state,
@@ -2649,7 +2677,7 @@ mod tests {
         match state.dialogs.current().map(|d| &d.content) {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Move");
-                assert!(content.is_latest());
+                assert!(content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
@@ -2689,6 +2717,7 @@ mod tests {
         state
             .operation_reports
             .push_back(sample_operation_report(3, "Delete"));
+        state.undo_stack.push(3);
         update_state(&mut state, Transition::ShowOperationReport); // shows id 3, position 2/3
         update_state(
             &mut state,
@@ -2721,7 +2750,7 @@ mod tests {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.id, 3);
                 assert_eq!(content.report.operation_name, "Delete");
-                assert!(content.is_latest());
+                assert!(content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }

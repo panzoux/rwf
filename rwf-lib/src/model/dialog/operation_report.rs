@@ -16,15 +16,25 @@ pub struct OperationReportDialogContent {
     /// — an explicit deselect is needed to exclude a row, not the reverse).
     pub selected: Vec<bool>,
     /// 0-based position of `report` within `AppState.operation_reports` at
-    /// the time this content was built (0 = oldest). Defaults to 0 via
-    /// `new()` for callers with no navigation context — combined with
-    /// `history_total: 1`, that default makes `is_latest()` true, which is
-    /// correct for every isolated-report test/call site that doesn't care
-    /// about history browsing.
+    /// the time this content was built (0 = oldest). Purely for the
+    /// browsable position indicator/title and Left/Right navigation — see
+    /// `actionable` for whether Undo/Redo can actually run on this report.
+    /// Defaults to 0 via `new()` for callers with no navigation context.
     pub history_position: usize,
     /// Total report count at the time this content was built. See
     /// `history_position`.
     pub history_total: usize,
+    /// True iff this report is the current Undo *or* Redo target — its id
+    /// matched `AppState.undo_stack.last()` or `redo_stack.last()` when
+    /// this content was built. This, not `history_position`/
+    /// `history_total`, is what gates Enter/marking: after any Undo/Redo
+    /// the two no longer coincide (the stack top is rarely
+    /// `operation_reports.back()` once anything's been undone), which is
+    /// the whole reason `AppState` tracks the stacks separately from the
+    /// flat, browsable history — see `AppState::undo_stack`'s doc comment.
+    /// Defaults to `true` via `new()`, matching every isolated-report
+    /// test/call site that doesn't care about stack context.
+    pub actionable: bool,
 }
 
 impl OperationReportDialogContent {
@@ -36,16 +46,19 @@ impl OperationReportDialogContent {
             selected,
             history_position: 0,
             history_total: 1,
+            actionable: true,
         }
     }
 
-    /// Like `new`, but with explicit history-navigation context — used when
-    /// the dialog is opened or navigated with real knowledge of where this
-    /// report sits in `AppState.operation_reports`.
+    /// Like `new`, but with explicit history-navigation and stack context —
+    /// used when the dialog is opened or navigated with real knowledge of
+    /// where this report sits in `AppState.operation_reports` and whether
+    /// it's the live Undo/Redo target.
     pub fn with_history_position(
         report: crate::model::OperationReport,
         history_position: usize,
         history_total: usize,
+        actionable: bool,
     ) -> Self {
         let selected = vec![true; report.records.len()];
         Self {
@@ -54,16 +67,17 @@ impl OperationReportDialogContent {
             selected,
             history_position,
             history_total,
+            actionable,
         }
     }
 
-    /// True iff this is the most recent report in history — the only one
-    /// Undo/Redo may act on directly (see module docs on the plan this was
-    /// added by: reaching an older report's state requires undoing forward
-    /// through everything after it first, matching how every mainstream
-    /// undo system works).
-    pub fn is_latest(&self) -> bool {
-        self.history_position + 1 == self.history_total
+    /// True iff Undo/Redo may act on this report directly (see `actionable`'s
+    /// doc comment). Older/newer reports reached by browsing that aren't the
+    /// live stack top are view-only — reaching their state requires
+    /// undoing/redoing through everything between here and there first,
+    /// matching how every mainstream undo system works.
+    pub fn is_actionable(&self) -> bool {
+        self.actionable
     }
 
     /// The `ReversalAction`s for every currently-selected row whose `undo` is
@@ -146,22 +160,21 @@ mod tests {
     }
 
     #[test]
-    fn new_defaults_to_latest() {
+    fn new_defaults_to_actionable() {
         let content =
             OperationReportDialogContent::new(report_with(UndoAvailability::NotApplicable));
         assert_eq!(content.history_position, 0);
         assert_eq!(content.history_total, 1);
-        assert!(content.is_latest());
+        assert!(content.is_actionable());
     }
 
     #[test]
-    fn with_history_position_reports_is_latest_correctly() {
+    fn with_history_position_carries_the_given_actionable_flag() {
         let report = report_with(UndoAvailability::NotApplicable);
-        let oldest = OperationReportDialogContent::with_history_position(report.clone(), 0, 3);
-        assert!(!oldest.is_latest());
-        let middle = OperationReportDialogContent::with_history_position(report.clone(), 1, 3);
-        assert!(!middle.is_latest());
-        let newest = OperationReportDialogContent::with_history_position(report, 2, 3);
-        assert!(newest.is_latest());
+        let view_only =
+            OperationReportDialogContent::with_history_position(report.clone(), 0, 3, false);
+        assert!(!view_only.is_actionable());
+        let stack_top = OperationReportDialogContent::with_history_position(report, 2, 3, true);
+        assert!(stack_top.is_actionable());
     }
 }

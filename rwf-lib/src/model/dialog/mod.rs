@@ -706,16 +706,33 @@ impl Dialog {
     }
 
     /// Like `operation_report_view`, but with explicit knowledge of where
-    /// `report` sits in the caller's history list — used by
-    /// `Transition::ShowOperationReport` and
+    /// `report` sits in the caller's history list and whether it's the live
+    /// Undo/Redo target — used by `Transition::ShowOperationReport` and
     /// `Transition::NavigateOperationReportHistory`, both of which have
-    /// real `AppState.operation_reports` context available.
+    /// real `AppState` context (`operation_reports`, `undo_stack`,
+    /// `redo_stack`) available.
     pub fn operation_report_view_at(
         report: crate::model::OperationReport,
         history_position: usize,
         history_total: usize,
+        actionable: bool,
     ) -> Self {
-        let title = report.title();
+        // Position counts down from the latest report (labelled "1") to the
+        // oldest (labelled `history_total`) — see
+        // `OperationReportDialogContent`'s doc comment on `history_position`
+        // for why that's the reverse of the field's own oldest=0 storage
+        // order. Lives in the title, not the "Details:" line, so it stays
+        // visible regardless of which row is scrolled into view.
+        let title = if history_total > 1 {
+            format!(
+                "[{}/{}] {}",
+                history_total - history_position,
+                history_total,
+                report.title()
+            )
+        } else {
+            report.title()
+        };
         Self {
             title,
             content: DialogContent::OperationReportView(
@@ -723,6 +740,7 @@ impl Dialog {
                     report,
                     history_position,
                     history_total,
+                    actionable,
                 ),
             ),
         }

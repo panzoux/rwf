@@ -99,24 +99,14 @@ pub fn render_operation_report_dialog(
         selected_style,
     );
 
-    let detail_label = if content.history_total > 1 {
-        // Displayed number counts down from the latest report (labelled
-        // "1", matching the LIFO undo-stack mental model where the most
-        // recent — and only directly undo-able — operation is "on top") to
-        // the oldest (labelled `history_total`), the reverse of
-        // `history_position`'s own oldest=0 storage order.
-        format!(
-            "Details:  [{} of {}]{}",
-            content.history_total - content.history_position,
-            content.history_total,
-            if content.is_latest() {
-                ""
-            } else {
-                " (view only)"
-            }
-        )
-    } else {
+    // The [X/Y] position now lives in the dialog title (see
+    // `Dialog::operation_report_view_at`), where it stays visible
+    // regardless of which row is scrolled into view — this line only needs
+    // the view-only marker.
+    let detail_label = if content.is_actionable() {
         "Details:".to_string()
+    } else {
+        "Details: (view only)".to_string()
     };
     frame.render_widget(Paragraph::new(detail_label).style(base_style), chunks[1]);
 
@@ -124,7 +114,7 @@ pub fn render_operation_report_dialog(
 
     let hint = if records.is_empty() {
         "Esc: close".to_string()
-    } else if content.is_latest() {
+    } else if content.is_actionable() {
         format!(
             "Space: toggle  a: all/none  Enter: {}  Esc: close  \u{2191}\u{2193}: select{}",
             action_label.to_lowercase(),
@@ -135,7 +125,7 @@ pub fn render_operation_report_dialog(
             }
         )
     } else {
-        // Kept to the same "key: action" list style as the latest-report
+        // Kept to the same "key: action" list style as the actionable-report
         // hint above (not a full sentence explaining *why* — at 80 columns
         // a longer explanatory clause gets silently clipped by this
         // unwrapped Paragraph, and the detail-label's "(view only)" suffix
@@ -316,7 +306,7 @@ pub(super) fn handle_input(
     match key.code {
         KeyCode::Esc => return DialogAction::Cancel,
         KeyCode::Enter
-            if content.is_latest() && !content.selected_reversal_actions().is_empty() =>
+            if content.is_actionable() && !content.selected_reversal_actions().is_empty() =>
         {
             return DialogAction::Confirm
         }
@@ -335,17 +325,17 @@ pub(super) fn handle_input(
         KeyCode::Home => content.cursor = 0,
         KeyCode::End => content.cursor = len.saturating_sub(1),
         // Marking exists to choose which rows a future Undo/Redo trigger
-        // will act on — meaningless while viewing a non-latest report,
+        // will act on — meaningless while viewing a non-actionable report,
         // since Enter is already blocked there (see the guard above). Left
         // disabled, these would silently change `selected` on a report the
         // user can never actually run, contradicting the "(view only)"
         // label.
-        KeyCode::Char(' ') if content.is_latest() => {
+        KeyCode::Char(' ') if content.is_actionable() => {
             if let Some(sel) = content.selected.get_mut(content.cursor) {
                 *sel = !*sel;
             }
         }
-        KeyCode::Char('a') | KeyCode::Char('A') if content.is_latest() => {
+        KeyCode::Char('a') | KeyCode::Char('A') if content.is_actionable() => {
             let all_selected = content.selected.iter().all(|s| *s);
             content.selected.iter_mut().for_each(|s| *s = !all_selected);
         }
@@ -437,26 +427,28 @@ mod tests {
     }
 
     #[test]
-    fn enter_does_nothing_when_not_viewing_the_latest_report() {
+    fn enter_does_nothing_when_not_actionable() {
         let mut content = two_row_content();
         content.history_position = 0;
-        content.history_total = 2; // not the latest (position 0 of 2)
-        assert!(!content.is_latest());
+        content.history_total = 2; // browsed away from the stack top
+        content.actionable = false;
+        assert!(!content.is_actionable());
 
         assert_eq!(
             handle_input(&mut content, key(KeyCode::Enter)),
             DialogAction::None,
-            "Enter must not confirm while browsing a non-latest report, even with an actionable row selected"
+            "Enter must not confirm while browsing a non-actionable report, even with an actionable row selected"
         );
     }
 
     #[test]
-    fn space_and_a_do_nothing_while_viewing_a_non_latest_report() {
+    fn space_and_a_do_nothing_while_not_actionable() {
         let mut content = two_row_content();
         let original = content.selected.clone();
         content.history_position = 0;
-        content.history_total = 2; // not the latest (position 0 of 2)
-        assert!(!content.is_latest());
+        content.history_total = 2; // browsed away from the stack top
+        content.actionable = false;
+        assert!(!content.is_actionable());
 
         handle_input(&mut content, key(KeyCode::Char(' ')));
         assert_eq!(

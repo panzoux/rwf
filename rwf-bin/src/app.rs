@@ -3169,13 +3169,19 @@ mod operation_report_confirm_tests {
 
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        // No pre-flight blockers, so the job should start immediately — no
-        // intermediate summary/confirm dialog left on the stack.
-        assert!(
-            app.state.dialogs.is_empty(),
-            "no blockers means no summary dialog should remain: {:?}",
+        // No pre-flight blockers, so the job should start immediately, and
+        // the Operation Report dialog stays open (not popped) so the user
+        // can keep undoing/redoing without reopening Alt+o.
+        assert_eq!(
+            app.state.dialogs.stack.len(),
+            1,
+            "the report dialog should stay open across the confirm: {:?}",
             app.state.dialogs
         );
+        assert!(matches!(
+            app.state.dialogs.current().map(|d| &d.content),
+            Some(DialogContent::OperationReportView(_))
+        ));
         let job = app
             .state
             .jobs
@@ -3288,12 +3294,19 @@ mod operation_report_confirm_tests {
         app.handle_key_event(release);
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        assert!(
-            app.state.dialogs.is_empty(),
-            "confirming the summary should pop both it and the underlying report dialog \
-             (dialog-stack hygiene — no stale dialog left behind), got: {:?}",
+        // Confirming the summary pops only the summary — the underlying
+        // report dialog stays open (see the direct-submit path's test
+        // above for why) so it's the new top of the stack.
+        assert_eq!(
+            app.state.dialogs.stack.len(),
+            1,
+            "the summary should be popped, leaving the report dialog open: {:?}",
             app.state.dialogs
         );
+        assert!(matches!(
+            app.state.dialogs.current().map(|d| &d.content),
+            Some(DialogContent::OperationReportView(_))
+        ));
         let job = app
             .state
             .jobs
@@ -3355,6 +3368,9 @@ mod operation_report_navigation_tests {
         let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
         state.operation_reports.push_back(older_report);
         state.operation_reports.push_back(newer_report);
+        // What `handle_job_transition`'s `CompleteJob` would have done for
+        // the real Move completion: put its id on the live undo stack.
+        state.undo_stack.push(2);
         rwf_lib::state::update_state(&mut state, rwf_lib::state::Transition::ShowOperationReport);
         let mut app =
             App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
@@ -3364,7 +3380,7 @@ mod operation_report_navigation_tests {
         match app.state.dialogs.current().map(|d| &d.content) {
             Some(DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Copy");
-                assert!(!content.is_latest());
+                assert!(!content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
@@ -3374,7 +3390,7 @@ mod operation_report_navigation_tests {
         match app.state.dialogs.current().map(|d| &d.content) {
             Some(DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Move");
-                assert!(content.is_latest());
+                assert!(content.is_actionable());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
