@@ -3337,8 +3337,8 @@ mod operation_report_confirm_tests {
     }
 }
 
-/// History-navigation follow-up (2026-08-17 plan): Left/Right in the Operation Report
-/// dialog now dispatch `DialogAction::NavigateReportHistory`, which app.rs must turn
+/// History-navigation follow-up (2026-08-17 plan): Shift+Up/Shift+Down in the Operation
+/// Report dialog dispatch `DialogAction::NavigateReportHistory`, which app.rs must turn
 /// into a `Transition::NavigateOperationReportHistory` call. This test exercises the
 /// real `App::handle_key_event` pipeline end to end (not `update_state` directly, which
 /// is already covered by the state-layer tests) to prove the app.rs wiring itself works.
@@ -3349,7 +3349,7 @@ mod operation_report_navigation_tests {
     use rwf_lib::model::{DialogContent, OperationReport};
 
     #[tokio::test]
-    async fn left_arrow_navigates_to_an_older_report_and_right_arrow_returns() {
+    async fn shift_down_navigates_to_an_older_report_and_shift_up_returns() {
         let older_report = OperationReport {
             id: 1,
             operation_name: "Copy".to_string(),
@@ -3376,7 +3376,7 @@ mod operation_report_navigation_tests {
         let mut app =
             App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
 
-        app.handle_key_event(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        app.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
 
         match app.state.dialogs.current().map(|d| &d.content) {
             Some(DialogContent::OperationReportView(content)) => {
@@ -3386,7 +3386,7 @@ mod operation_report_navigation_tests {
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
 
-        app.handle_key_event(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        app.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
 
         match app.state.dialogs.current().map(|d| &d.content) {
             Some(DialogContent::OperationReportView(content)) => {

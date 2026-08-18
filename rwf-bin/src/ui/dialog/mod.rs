@@ -125,8 +125,8 @@ pub enum DialogAction {
     /// `Transition::CycleFileInfoHeaderEncoding`.
     CycleHeaderEncoding,
     /// Move the Operation Report dialog's view to an older/newer report in
-    /// history (Left/Right in `operation_report::handle_input`). The app
-    /// loop dispatches `Transition::NavigateOperationReportHistory`.
+    /// history (Shift+Down/Shift+Up in `operation_report::handle_input`).
+    /// The app loop dispatches `Transition::NavigateOperationReportHistory`.
     NavigateReportHistory {
         older: bool,
     },
@@ -631,6 +631,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // reasons row when more than one option is disabled.
             76u16.min(screen_width.saturating_sub(2)).max(50)
         }
+        DialogContent::OperationReportView(_) => ((screen_width * 88) / 100)
+            .max(50)
+            .min(screen_width.saturating_sub(2)),
         _ => default_dialog_width(screen_width),
     };
 

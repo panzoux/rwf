@@ -27,8 +27,11 @@ const RESULT_WIDTH: usize = 6;
 
 /// Width of the history sidebar (including its own border), reserved from
 /// the dialog's overall width whenever there's more than one entry to
-/// browse — see `render_history_sidebar`.
-const SIDEBAR_WIDTH: u16 = 20;
+/// browse — see `render_history_sidebar`. 26 fits the longest label
+/// `report_builder::operation_name_for` ever produces, "Restore from
+/// Trash" (19 chars), plus its "* u:" prefix (4 chars) and a spare
+/// column, with no truncation.
+const SIDEBAR_WIDTH: u16 = 26;
 
 fn undo_symbol(undo: &UndoAvailability) -> &'static str {
     match undo {
@@ -132,7 +135,7 @@ pub fn render_operation_report_dialog(
             "Space: toggle  a: all/none  Enter: {}  Esc: close  \u{2191}\u{2193}: select{}",
             action_label.to_lowercase(),
             if content.history.len() > 1 {
-                "  \u{2190}\u{2192}: history"
+                "  Shift+\u{2191}/\u{2193}: history"
             } else {
                 ""
             }
@@ -143,7 +146,7 @@ pub fn render_operation_report_dialog(
         // a longer explanatory clause gets silently clipped by this
         // unwrapped Paragraph, and the title's "(view only)" suffix already
         // conveys the reason).
-        "Esc: close  \u{2191}\u{2193}: select  \u{2190}\u{2192}: history".to_string()
+        "Esc: close  \u{2191}\u{2193}: select  Shift+\u{2191}/\u{2193}: history".to_string()
     };
     let hint = Paragraph::new(hint).style(hint_style);
     frame.render_widget(hint, chunks[3]);
@@ -362,18 +365,22 @@ fn render_detail(
     frame.render_widget(detail, area);
 }
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::DialogAction;
 
-/// Up/Down/j/k navigate the cursor; Space toggles the current row's
+/// Up/Down/j/k navigate the row cursor; Space toggles the current row's
 /// selection and `a` toggles all rows on/off together, but only while
 /// viewing the latest report — view-only browsing disables both, matching
-/// the "(view only)" label; Left/Right browse older/newer reports in
-/// history (`DialogAction::NavigateReportHistory`, dispatched by the app
-/// loop); Enter triggers Undo/Redo on the current selection, but only
-/// while viewing the latest report (handled by `process_dialog_confirmation`
-/// in Task 17, which reads `selected_reversal_actions()`); Esc closes.
+/// the "(view only)" label; Shift+Up/Shift+Down browse newer/older entries
+/// in the sidebar (`DialogAction::NavigateReportHistory`, dispatched by
+/// the app loop) — Shift distinguishes this from the plain Up/Down row
+/// cursor above, matching the sidebar's own vertical, newest-at-top
+/// layout (Down moves toward older entries, same direction as scrolling
+/// down the list); Enter triggers Undo/Redo on the current selection, but
+/// only while viewing the latest report (handled by
+/// `process_dialog_confirmation` in Task 17, which reads
+/// `selected_reversal_actions()`); Esc closes.
 pub(super) fn handle_input(
     content: &mut OperationReportDialogContent,
     key: KeyEvent,
@@ -386,8 +393,12 @@ pub(super) fn handle_input(
         {
             return DialogAction::Confirm
         }
-        KeyCode::Left => return DialogAction::NavigateReportHistory { older: true },
-        KeyCode::Right => return DialogAction::NavigateReportHistory { older: false },
+        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            return DialogAction::NavigateReportHistory { older: true }
+        }
+        KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            return DialogAction::NavigateReportHistory { older: false }
+        }
         KeyCode::Up | KeyCode::Char('k') => {
             if content.cursor > 0 {
                 content.cursor -= 1;
@@ -536,14 +547,20 @@ mod tests {
     }
 
     #[test]
-    fn left_and_right_return_navigate_report_history() {
+    fn shift_down_and_shift_up_return_navigate_report_history() {
         let mut content = two_row_content();
         assert_eq!(
-            handle_input(&mut content, key(KeyCode::Left)),
+            handle_input(
+                &mut content,
+                KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT)
+            ),
             DialogAction::NavigateReportHistory { older: true }
         );
         assert_eq!(
-            handle_input(&mut content, key(KeyCode::Right)),
+            handle_input(
+                &mut content,
+                KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT)
+            ),
             DialogAction::NavigateReportHistory { older: false }
         );
     }
