@@ -61,6 +61,28 @@ impl OperationReportDialogContent {
         }
     }
 
+    /// Like `new`, but for the true "nothing recorded yet" empty state:
+    /// `report` (a placeholder, never a real operation) is still shown in
+    /// the row-list/detail panes for its own empty-state message, but
+    /// `history` is genuinely empty — so the sidebar renders as an empty
+    /// box instead of a fake browsable entry for a report that never
+    /// happened. The sidebar always renders regardless of history size
+    /// (see `render_operation_report_dialog`), so this is what keeps it
+    /// honest in the one case `new()`'s `history: vec![report]` would
+    /// otherwise mislead.
+    pub fn empty(report: crate::model::OperationReport) -> Self {
+        let selected = vec![true; report.records.len()];
+        Self {
+            report,
+            cursor: 0,
+            selected,
+            history: Vec::new(),
+            history_actionable: Vec::new(),
+            history_cursor: 0,
+            actionable: true,
+        }
+    }
+
     /// Like `new`, but with explicit sidebar/stack context — used when the
     /// dialog is opened or navigated with real knowledge of
     /// `AppState.undo_stack`/`redo_stack`. `history_cursor` selects the
@@ -182,6 +204,19 @@ mod tests {
         assert_eq!(content.history_actionable, vec![true]);
         assert_eq!(content.history_cursor, 0);
         assert!(content.is_actionable());
+    }
+
+    #[test]
+    fn empty_shows_the_placeholder_report_but_keeps_history_empty() {
+        let placeholder = report_with(UndoAvailability::NotApplicable);
+        let content = OperationReportDialogContent::empty(placeholder.clone());
+        assert_eq!(content.report, placeholder);
+        assert!(
+            content.history.is_empty(),
+            "the sidebar must not show a fake browsable entry for a report that never happened"
+        );
+        assert!(content.history_actionable.is_empty());
+        assert_eq!(content.history_cursor, 0);
     }
 
     #[test]

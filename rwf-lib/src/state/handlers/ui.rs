@@ -1036,13 +1036,7 @@ impl AppState {
             // its own empty state, instead of a task-panel log message.
             // `Alt+o` should do exactly one thing: open the Operation
             // Report dialog.
-            return crate::model::Dialog::operation_report_view(crate::model::OperationReport {
-                id: 0,
-                operation_name: "Operations".to_string(),
-                records: Vec::new(),
-                finished_at: std::time::SystemTime::now(),
-                is_undo: false,
-            });
+            return crate::model::Dialog::operation_report_empty();
         };
         let cursor = if !self.undo_stack.is_empty() {
             self.redo_stack.len()

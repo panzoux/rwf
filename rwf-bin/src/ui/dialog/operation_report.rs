@@ -97,18 +97,19 @@ pub fn render_operation_report_dialog(
     let records = &report.records;
     let action_label = report.action_column_label();
 
-    // The sidebar only earns its keep once there's more than one entry to
-    // browse — a single-report dialog gets the full width, same as before
-    // the sidebar existed.
-    let main_area = if content.history.len() > 1 {
+    // Always reserved, even with zero or one history entries — showing it
+    // only from two entries onward made the dialog appear to switch to a
+    // different layout the moment a second operation happened, which read
+    // as confusing rather than adaptive. `render_history_sidebar` renders
+    // an empty box when `content.history` is empty (the true "nothing
+    // recorded yet" case — see `OperationReportDialogContent::empty`).
+    let main_area = {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(SIDEBAR_WIDTH), Constraint::Min(20)])
             .split(area);
         render_history_sidebar(frame, cols[0], content, base_style, selected_style);
         cols[1]
-    } else {
-        area
     };
 
     let chunks = Layout::default()

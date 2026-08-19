@@ -705,6 +705,28 @@ impl Dialog {
         }
     }
 
+    /// Create the Operation Report dialog's true "nothing recorded yet"
+    /// empty state — `Alt+o` should always open this dialog, even with no
+    /// history at all, rather than only logging to the task panel. See
+    /// `OperationReportDialogContent::empty` for why this needs its own
+    /// constructor rather than `operation_report_view`.
+    pub fn operation_report_empty() -> Self {
+        let report = crate::model::OperationReport {
+            id: 0,
+            operation_name: "Operations".to_string(),
+            records: Vec::new(),
+            finished_at: std::time::SystemTime::now(),
+            is_undo: false,
+        };
+        let title = report.title();
+        Self {
+            title,
+            content: DialogContent::OperationReportView(OperationReportDialogContent::empty(
+                report,
+            )),
+        }
+    }
+
     /// Like `operation_report_view`, but with explicit knowledge of the
     /// caller's canonical Undo/Redo history (`history`/`history_actionable`,
     /// parallel Vecs — see `OperationReportDialogContent::history_actionable`)

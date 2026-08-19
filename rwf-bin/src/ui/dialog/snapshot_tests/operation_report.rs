@@ -171,21 +171,17 @@ fn operation_report_sidebar_marks_both_stack_boundaries() {
 }
 
 /// `Alt+o` with no operations recorded yet still opens this dialog (rather
-/// than only logging to the task panel) — it shows its own empty state:
-/// no rows, no `[X of Y]` position indicator, and a bare "Esc: close" hint
-/// (no "Space: toggle"/"a: all/none"/undo hint, since there's nothing to
-/// select or run).
+/// than only logging to the task panel) — it shows its own empty state: no
+/// rows, a bare "Esc: close" hint (no "Space: toggle"/"a: all/none"/undo
+/// hint, since there's nothing to select or run), and — since the sidebar
+/// always renders (see `render_operation_report_dialog`) — an empty
+/// sidebar box, not a fake browsable entry for a report that never
+/// happened (`Dialog::operation_report_empty`, not `operation_report_view`
+/// with a placeholder report).
 #[test]
 fn operation_report_empty_history_shows_no_operations_message() {
     let state = test_state();
-    let report = OperationReport {
-        id: 0,
-        operation_name: "Operations".to_string(),
-        records: vec![],
-        finished_at: std::time::SystemTime::UNIX_EPOCH,
-        is_undo: false,
-    };
-    let dialog = Dialog::operation_report_view(report);
+    let dialog = Dialog::operation_report_empty();
     snapshot_dialog(
         "operation_report_empty_history_shows_no_operations_message",
         &dialog,

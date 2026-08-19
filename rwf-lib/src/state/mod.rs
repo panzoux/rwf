@@ -2574,6 +2574,12 @@ mod tests {
             Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
                 assert!(content.report.records.is_empty());
                 assert!(content.is_actionable());
+                // The sidebar always renders (see `render_operation_report_dialog`),
+                // so `history` must be genuinely empty here — not a
+                // single fake entry for the placeholder report, which
+                // would show as a misleading browsable row for an
+                // operation that never happened.
+                assert!(content.history.is_empty());
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
