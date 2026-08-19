@@ -24,8 +24,8 @@ Buffer {
         "     ││                                                                  ││     ",
         "     │└──────────────────────────────────────────────────────────────────┘│     ",
         "     │Esc: close                                                          │     ",
+        "     │                                                                    │     ",
         "     └────────────────────────────────────────────────────────────────────┘     ",
-        "                                                                                ",
         "                                                                                ",
         "                                                                                ",
         "                                                                                ",
@@ -77,6 +77,10 @@ Buffer {
         x: 74, y: 18, fg: Black, bg: Gray, underline: Reset, modifier: NONE,
         x: 75, y: 18, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 5, y: 19, fg: Black, bg: Gray, underline: Reset, modifier: NONE,
+        x: 6, y: 19, fg: DarkGray, bg: Gray, underline: Reset, modifier: NONE,
+        x: 74, y: 19, fg: Black, bg: Gray, underline: Reset, modifier: NONE,
         x: 75, y: 19, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 5, y: 20, fg: Black, bg: Gray, underline: Reset, modifier: NONE,
+        x: 75, y: 20, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

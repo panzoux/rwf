@@ -61,21 +61,27 @@ fn location_text(loc: &Option<Location>) -> String {
 /// lines (Source/Destination/Result/Reason-or-blank/Undo — see
 /// `render_detail`). 6 would clip the last line (Undo/Redo status) off the
 /// bottom, which is the most important field in the dialog.
+///
+/// The hint gets 2 rows, not 1: when the history sidebar is showing it
+/// reserves SIDEBAR_WIDTH columns from the dialog, leaving the hint line
+/// too narrow at 80 columns for its full text — a second wrapped row
+/// (`Wrap { trim: false }`, set in `render_operation_report_dialog`) keeps
+/// that text intact instead of clipping it.
 fn constraints() -> Vec<Constraint> {
     vec![
         Constraint::Min(4),
         Constraint::Length(1),
         Constraint::Length(7),
-        Constraint::Length(1),
+        Constraint::Length(2),
     ]
 }
 
 /// Height needed for the row list (header + up to 15 data rows), the
-/// detail label, the detail view, the hint line, and the surrounding
+/// detail label, the detail view, the two-row hint, and the surrounding
 /// border pair.
 pub fn calculate_operation_report_dialog_min_height(report: &OperationReport) -> u16 {
     let list_rows = (report.records.len() as u16 + 1).clamp(4, 15); // +1 header row
-    list_rows + 1 + 7 + 1 + 2 // detail-label + detail-view + hint + borders
+    list_rows + 1 + 7 + 2 + 2 // detail-label + detail-view + hint + borders
 }
 
 pub fn render_operation_report_dialog(
@@ -142,13 +148,22 @@ pub fn render_operation_report_dialog(
         )
     } else {
         // Kept to the same "key: action" list style as the actionable-report
-        // hint above (not a full sentence explaining *why* — at 80 columns
-        // a longer explanatory clause gets silently clipped by this
-        // unwrapped Paragraph, and the title's "(view only)" suffix already
-        // conveys the reason).
+        // hint above (not a full sentence explaining *why* — the title's
+        // "(view only)" suffix already conveys the reason, and a longer
+        // explanatory clause would just eat into the two rows the hint
+        // Paragraph wraps within, below).
         "Esc: close  \u{2191}\u{2193}: select  Shift+\u{2191}/\u{2193}: history".to_string()
     };
-    let hint = Paragraph::new(hint).style(hint_style);
+    // The sidebar (when present) reserves SIDEBAR_WIDTH columns from the
+    // dialog, so chunks[3] can be much narrower than a full 80-column
+    // dialog's hint line. Wrapping (like `render_detail` above) reflows
+    // onto the second row `constraints()` reserves for this chunk instead
+    // of silently clipping mid-word — truncating with an ellipsis was
+    // tried and rejected because at the narrowest width it drops whole
+    // key hints (e.g. "Esc: close") rather than just shortening the line.
+    let hint = Paragraph::new(hint)
+        .style(hint_style)
+        .wrap(Wrap { trim: false });
     frame.render_widget(hint, chunks[3]);
 }
 
