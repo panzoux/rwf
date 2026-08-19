@@ -4035,4 +4035,648 @@ mod tests {
         assert!(at_a.exists());
         assert!(!at_b.exists());
     }
+
+    #[tokio::test]
+    async fn test_execute_reversal_copy_redoes_a_copy() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let src = temp_dir.path().join("a.txt");
+        let dest = temp_dir.path().join("b.txt");
+        tokio::fs::write(&src, b"x").await.unwrap();
+
+        let src_loc = Location::Local(src.clone());
+        let dest_loc = Location::Local(dest.clone());
+        let action = crate::model::ReversalAction::Copy {
+            from: src_loc.clone(),
+            to: dest_loc.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Copy".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: Some(src_loc.clone()),
+                        destination: Some(dest_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Delete {
+                                target: dest_loc.clone(),
+                                recreate: Some(Box::new(crate::model::ReversalAction::Copy {
+                                    from: src_loc,
+                                    to: dest_loc,
+                                })),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(src.exists());
+        assert!(dest.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_rename_self_flips() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let renamed = temp_dir.path().join("renamed.txt");
+        let original = temp_dir.path().join("original.txt");
+        tokio::fs::write(&renamed, b"x").await.unwrap();
+
+        let renamed_loc = Location::Local(renamed.clone());
+        let original_loc = Location::Local(original.clone());
+        let action = crate::model::ReversalAction::Rename {
+            from: renamed_loc.clone(),
+            to: original_loc.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Rename".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: Some(renamed_loc.clone()),
+                        destination: Some(original_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Rename {
+                                from: original_loc.clone(),
+                                to: renamed_loc.clone(),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(original.exists());
+        assert!(!renamed.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_mkdir_redoes_a_mkdir() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let new_dir = temp_dir.path().join("new_dir");
+        let dir_loc = Location::Local(new_dir.clone());
+        let action = crate::model::ReversalAction::Mkdir {
+            location: dir_loc.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Create Folder".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(dir_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Delete {
+                                target: dir_loc.clone(),
+                                recreate: Some(Box::new(crate::model::ReversalAction::Mkdir {
+                                    location: dir_loc,
+                                })),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(new_dir.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_create_file_redoes_a_create_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let new_file = temp_dir.path().join("test_file.txt");
+        let file_loc = Location::Local(new_file.clone());
+        let action = crate::model::ReversalAction::CreateFile {
+            location: file_loc.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Create File".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(file_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Delete {
+                                target: file_loc.clone(),
+                                recreate: Some(Box::new(
+                                    crate::model::ReversalAction::CreateFile { location: file_loc }
+                                )),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(new_file.exists());
+        assert!(new_file.is_file());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_create_link_redoes_a_link() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let target = temp_dir.path().join("target.txt");
+        let link = temp_dir.path().join("link.txt");
+        tokio::fs::write(&target, b"content").await.unwrap();
+
+        let target_loc = Location::Local(target.clone());
+        let link_loc = Location::Local(link.clone());
+        let action = crate::model::ReversalAction::CreateLink {
+            target: target_loc.clone(),
+            link_path: link_loc.clone(),
+            kind: crate::model::LinkCreateKind::Hardlink,
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Create Link".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: Some(target_loc.clone()),
+                        destination: Some(link_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Delete {
+                                target: link_loc.clone(),
+                                recreate: Some(Box::new(
+                                    crate::model::ReversalAction::CreateLink {
+                                        target: target_loc,
+                                        link_path: link_loc,
+                                        kind: crate::model::LinkCreateKind::Hardlink,
+                                    }
+                                )),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(link.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_create_archive_redoes_an_archive() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file1 = temp_dir.path().join("a.txt");
+        let file2 = temp_dir.path().join("b.txt");
+        tokio::fs::write(&file1, b"x").await.unwrap();
+        tokio::fs::write(&file2, b"y").await.unwrap();
+        let archive = temp_dir.path().join("archive.zip");
+
+        let sources = vec![
+            Location::Local(file1.clone()),
+            Location::Local(file2.clone()),
+        ];
+        let dest = Location::Local(archive.clone());
+        let action = crate::model::ReversalAction::CreateArchive {
+            sources: sources.clone(),
+            dest: dest.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Create Archive".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(dest.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::Delete {
+                                target: dest.clone(),
+                                recreate: Some(Box::new(
+                                    crate::model::ReversalAction::CreateArchive { sources, dest }
+                                )),
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_restore_attributes_returns_prior_value() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let cancel_token = CancellationToken::new();
+
+        let target = temp_dir.path().join("attrs.txt");
+        tokio::fs::write(&target, b"x").await.unwrap();
+        let target_loc = Location::Local(target.clone());
+        let no_op = crate::model::AttributeChange::default();
+
+        let toggle_hidden = crate::model::AttributeChange {
+            #[cfg(windows)]
+            readonly: None,
+            #[cfg(windows)]
+            hidden: Some(true),
+            #[cfg(windows)]
+            system: None,
+            #[cfg(windows)]
+            archive: None,
+            #[cfg(unix)]
+            mode: Some(0o600),
+        };
+
+        // Simulate the forward "Change Attributes" op: toggle hidden on,
+        // capturing what it returns as "previous" — this is exactly what the
+        // forward executor stores as the reversal action's `attrs` field.
+        let pristine = backend
+            .set_attributes(&target_loc, &no_op, &cancel_token)
+            .await
+            .unwrap();
+        let forward_previous = backend
+            .set_attributes(&target_loc, &toggle_hidden, &cancel_token)
+            .await
+            .unwrap();
+        assert_eq!(
+            forward_previous, pristine,
+            "forward op's captured previous must be the pristine state"
+        );
+
+        // State right before we run the reversal — this is exactly what the
+        // reversal's own backend call must return as ITS "previous".
+        let state_before_reversal = backend
+            .set_attributes(&target_loc, &no_op, &cancel_token)
+            .await
+            .unwrap();
+
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend.clone(), archive_handler, event_tx);
+
+        let action = crate::model::ReversalAction::RestoreAttributes {
+            target: target_loc.clone(),
+            attrs: forward_previous.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Change Attributes".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(target_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::RestoreAttributes {
+                                target: target_loc.clone(),
+                                attrs: state_before_reversal,
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+
+        // Real effect: attributes are back to pristine.
+        let final_state = backend
+            .set_attributes(&target_loc, &no_op, &cancel_token)
+            .await
+            .unwrap();
+        assert_eq!(final_state, pristine);
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_restore_timestamps_returns_prior_value() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let cancel_token = CancellationToken::new();
+
+        let target = temp_dir.path().join("times.txt");
+        tokio::fs::write(&target, b"x").await.unwrap();
+        let target_loc = Location::Local(target.clone());
+        let no_op = crate::model::TimestampChange::default();
+
+        let new_modified =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let set_modified = crate::model::TimestampChange {
+            modified: Some(new_modified),
+            accessed: None,
+            #[cfg(windows)]
+            created: None,
+        };
+
+        // Simulate the forward "Change Timestamps" op: set `modified`,
+        // capturing what it returns as "previous" — this is exactly what the
+        // forward executor stores as the reversal action's `times` field.
+        let pristine = backend
+            .set_timestamps(&target_loc, &no_op, &cancel_token)
+            .await
+            .unwrap();
+        let forward_previous = backend
+            .set_timestamps(&target_loc, &set_modified, &cancel_token)
+            .await
+            .unwrap();
+        assert_eq!(
+            forward_previous, pristine,
+            "forward op's captured previous must be the pristine state"
+        );
+
+        // State right before we run the reversal — this is exactly what the
+        // reversal's own backend call must return as ITS "previous".
+        let state_before_reversal = backend
+            .set_timestamps(&target_loc, &no_op, &cancel_token)
+            .await
+            .unwrap();
+        assert_eq!(state_before_reversal.modified, Some(new_modified));
+
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend.clone(), archive_handler, event_tx);
+
+        let action = crate::model::ReversalAction::RestoreTimestamps {
+            target: target_loc.clone(),
+            times: forward_previous.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![action],
+            operation_name: "Change Timestamps".to_string(),
+            resulting_is_undo: true,
+        });
+
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(target_loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::RestoreTimestamps {
+                                target: target_loc.clone(),
+                                times: state_before_reversal,
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+
+        // Real effect: modified time is back to pristine.
+        let modified_after = tokio::fs::metadata(&target)
+            .await
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(modified_after, pristine.modified.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_execute_reversal_trash_move_and_restore_round_trip() {
+        let temp_dir = TempDir::new().unwrap();
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        let file_path = temp_dir.path().join("trash_round_trip.txt");
+        tokio::fs::write(&file_path, b"x").await.unwrap();
+        let loc = Location::Local(file_path.clone());
+
+        // Step 1: run MoveToTrash through the reversal executor — this is
+        // what happens when the user redoes a "Move to Trash" they'd
+        // previously undone. The resulting TrashRecord is OS-assigned, so we
+        // capture the real one and use it to build the full expected value
+        // (rather than trying to hardcode it), while asserting its `original`
+        // field explicitly against the known target.
+        let move_action = crate::model::ReversalAction::MoveToTrash {
+            target: loc.clone(),
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![move_action],
+            operation_name: "Move to Trash".to_string(),
+            resulting_is_undo: true,
+        });
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        let trash_record = match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(records.len(), 1);
+                let trash_record = match &records[0].undo {
+                    crate::model::UndoAvailability::Available(
+                        crate::model::ReversalAction::RestoreFromTrash { record },
+                    ) => record.clone(),
+                    other => panic!("expected RestoreFromTrash undo, got {other:?}"),
+                };
+                assert_eq!(trash_record.original, loc);
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: Some(loc.clone()),
+                        destination: None,
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::RestoreFromTrash {
+                                record: trash_record.clone(),
+                            }
+                        ),
+                    }
+                );
+                trash_record
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        };
+        assert!(!file_path.exists());
+
+        // Step 2: run RestoreFromTrash through the reversal executor using
+        // the exact record Step 1 produced — the round trip a user gets by
+        // redoing then immediately undoing again. This half is fully known
+        // ahead of time, so it gets a direct assert_eq.
+        let restore_action = crate::model::ReversalAction::RestoreFromTrash {
+            record: trash_record,
+        };
+        let spec = JobSpec::new(JobKind::ExecuteReversal {
+            actions: vec![restore_action],
+            operation_name: "Move to Trash".to_string(),
+            resulting_is_undo: false,
+        });
+        executor.execute(spec).await;
+
+        let event = loop {
+            match event_rx.recv().await {
+                Some(JobEvent::Started(_)) | Some(JobEvent::Progress(_, _)) => continue,
+                other => break other,
+            }
+        };
+        match event {
+            Some(JobEvent::Completed(_, SuccessData::OperationRecords(records))) => {
+                assert_eq!(
+                    records[0],
+                    crate::model::OperationRecord {
+                        source: None,
+                        destination: Some(loc.clone()),
+                        succeeded: true,
+                        failure_reason: None,
+                        undo: crate::model::UndoAvailability::Available(
+                            crate::model::ReversalAction::MoveToTrash {
+                                target: loc.clone()
+                            }
+                        ),
+                    }
+                );
+            }
+            other => panic!("Expected OperationRecords success, got {other:?}"),
+        }
+        assert!(file_path.exists());
+    }
 }
