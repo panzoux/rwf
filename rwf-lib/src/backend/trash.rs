@@ -408,6 +408,10 @@ mod tests {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     #[test]
     fn test_move_to_trash_is_os_managed_on_windows_and_linux() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("tracked.txt");
         std::fs::write(&file_path, b"x").unwrap();
@@ -528,6 +532,10 @@ mod tests {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     #[test]
     fn test_restore_from_trash_os_managed_round_trip() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("restore_me.txt");
         std::fs::write(&file_path, b"restore me").unwrap();
@@ -584,6 +592,10 @@ mod tests {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     #[test]
     fn test_purge_os_trash_respects_age_cutoff() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("too_new_to_purge.txt");
         std::fs::write(&file_path, b"x").unwrap();

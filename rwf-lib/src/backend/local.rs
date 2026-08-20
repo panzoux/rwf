@@ -1570,6 +1570,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_move_to_trash_and_restore_round_trip() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("backend_trash_test.txt");
         std::fs::write(&file_path, b"hello").unwrap();

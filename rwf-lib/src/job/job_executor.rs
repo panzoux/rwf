@@ -3849,6 +3849,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_restore_from_trash() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("restore_via_executor.txt");
         std::fs::write(&file_path, b"x").unwrap();
@@ -4576,6 +4580,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_reversal_trash_move_and_restore_round_trip() {
+        if crate::test_utils::is_ci() {
+            eprintln!("skipping: CI's OS trash has no restore-tracking metadata");
+            return;
+        }
         let temp_dir = TempDir::new().unwrap();
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MockArchiveHandler);

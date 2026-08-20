@@ -7,6 +7,7 @@
 //! - [`entry`] / [`entries`] / [`numbered_entries`] / [`FileEntryBuilder`] — `FileEntry` fixtures
 //! - [`temp_dir`] / [`state_with_temp_dirs`] — filesystem-backed setups
 //! - [`open_dialog`] / [`current_dialog`] — dialog launch and access
+//! - [`is_ci`] — skip a test that depends on a real desktop OS trash
 //!
 //! Tests whose setup differs *intentionally* from these defaults should keep
 //! their own local helpers rather than force-fit the shared ones.
@@ -23,6 +24,20 @@ use crate::state::{update_state, AppState, Transition};
 /// An `AppState` with default config — the most common test starting point.
 pub fn test_state() -> AppState {
     AppState::new(AppConfig::default())
+}
+
+/// True under a CI runner (GitHub Actions sets `CI=true`, as do most other
+/// CI providers).
+///
+/// A handful of tests exercise the *real* OS trash/Recycle Bin. GitHub
+/// Actions' `windows-latest` runner moves files there fine but doesn't
+/// attach the restore-tracking metadata a real desktop session does, so
+/// those tests fail for reasons that have nothing to do with rwf's own
+/// code (confirmed failing on every CI run since 2026-08-06; passes on a
+/// real Windows machine). Call this to skip just those tests under CI
+/// while still running them by default everywhere else.
+pub fn is_ci() -> bool {
+    std::env::var_os("CI").is_some()
 }
 
 /// Builder for [`FileEntry`] with test defaults.
