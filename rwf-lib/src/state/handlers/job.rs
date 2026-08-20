@@ -95,12 +95,32 @@ impl AppState {
                     job_id
                 );
                 let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                // Per-record failure summary for the task panel log below.
+                // execute_delete/execute_rename/etc. (Phase 7.6) always
+                // return `OpResult::Success` wrapping per-file
+                // `OperationRecord`s, even when some or all of them failed
+                // (the failure is recorded per-record instead of failing
+                // the whole job) — so the log line can't trust the outer
+                // `OpResult` variant alone, or it prints "[OK]" for an
+                // operation that failed outright. Captured from `report`
+                // before it moves into `self.operation_reports` below.
+                let mut record_failure: Option<(usize, usize, Option<String>)> = None;
                 if let Some(spec) = &job_spec {
                     if let Some(report) = crate::job::build_operation_report(
                         spec,
                         result,
                         self.next_operation_report_id,
                     ) {
+                        let failed = report.records.iter().filter(|r| !r.succeeded).count();
+                        if failed > 0 {
+                            let first_reason = report
+                                .records
+                                .iter()
+                                .find(|r| !r.succeeded)
+                                .and_then(|r| r.failure_reason.clone());
+                            record_failure = Some((failed, report.records.len(), first_reason));
+                        }
+
                         self.next_operation_report_id += 1;
                         let report_id = report.id;
                         let undoable = report.undoable_count() > 0;
@@ -185,13 +205,39 @@ impl AppState {
                 let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
                     let timestamp = chrono::Local::now().format("[%H:%M:%S]");
                     match result {
-                        crate::job::OpResult::Success(_) => format!(
-                            "{} [Job {}] [Tab {}] {}: [OK]",
-                            timestamp,
-                            bg_job.id.short_id,
-                            bg_job.tab_id + 1,
-                            bg_job.name
-                        ),
+                        crate::job::OpResult::Success(_) => match &record_failure {
+                            None => format!(
+                                "{} [Job {}] [Tab {}] {}: [OK]",
+                                timestamp,
+                                bg_job.id.short_id,
+                                bg_job.tab_id + 1,
+                                bg_job.name
+                            ),
+                            Some((failed, total, reason)) if failed == total => format!(
+                                "{} [Job {}] [Tab {}] {}: [FAIL]{}",
+                                timestamp,
+                                bg_job.id.short_id,
+                                bg_job.tab_id + 1,
+                                bg_job.name,
+                                reason
+                                    .as_deref()
+                                    .map(|r| format!(" — {r}"))
+                                    .unwrap_or_default()
+                            ),
+                            Some((failed, total, reason)) => format!(
+                                "{} [Job {}] [Tab {}] {}: [WARN] {}/{} failed{}",
+                                timestamp,
+                                bg_job.id.short_id,
+                                bg_job.tab_id + 1,
+                                bg_job.name,
+                                failed,
+                                total,
+                                reason
+                                    .as_deref()
+                                    .map(|r| format!(" — {r}"))
+                                    .unwrap_or_default()
+                            ),
+                        },
                         crate::job::OpResult::Failed(e) => {
                             let detail = e.trim();
                             if detail.is_empty() {
@@ -2094,5 +2140,211 @@ mod operation_report_history_tests {
             "Create Directory"
         );
         assert_eq!(state.next_operation_report_id, 3);
+    }
+}
+
+#[cfg(test)]
+mod panel_status_tests {
+    use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::model::{Location, OperationRecord, UndoAvailability};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::test_state;
+
+    fn start_delete_job(
+        state: &mut crate::state::AppState,
+        targets: Vec<Location>,
+    ) -> crate::job::JobId {
+        let spec = JobSpec::new(JobKind::Delete { targets });
+        let job_id = spec.id;
+        state.background_jobs.start_job(
+            "Delete".to_string(),
+            "desc".to_string(),
+            0,
+            "tab".to_string(),
+            spec.clone(),
+        );
+        state.jobs.start_job(spec);
+        job_id
+    }
+
+    /// Regression: `execute_delete` (Phase 7.6) always returns
+    /// `OpResult::Success` wrapping per-file `OperationRecord`s, even when
+    /// every record failed — the per-file outcome is recorded instead of
+    /// failing the whole job (see job_executor.rs / report_builder.rs). The
+    /// task panel log line matched only the outer `OpResult` variant, so a
+    /// Delete where every target failed still logged `[OK]`. Found via a
+    /// diagnostics bundle (2026-08-20): "delete folder fails. task panes
+    /// says [OK]".
+    #[test]
+    fn complete_job_logs_fail_when_every_operation_record_failed() {
+        let mut state = test_state();
+        let target = Location::Local("C:/doomed.md".into());
+        let job_id = start_delete_job(&mut state, vec![target.clone()]);
+
+        let record = OperationRecord {
+            source: Some(target),
+            destination: None,
+            succeeded: false,
+            failure_reason: Some("file not found".to_string()),
+            undo: UndoAvailability::NotApplicable,
+        };
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(vec![record])),
+            },
+        );
+
+        assert!(
+            result.task_panel_logs.iter().any(|l| l.contains("[FAIL]")),
+            "a delete where every target failed must not log [OK]; got {:?}",
+            result.task_panel_logs
+        );
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.contains("file not found")),
+            "the panel log should surface why the delete failed; got {:?}",
+            result.task_panel_logs
+        );
+    }
+
+    #[test]
+    fn complete_job_logs_partial_failure_for_mixed_operation_records() {
+        let mut state = test_state();
+        let ok_target = Location::Local("C:/kept.md".into());
+        let bad_target = Location::Local("C:/doomed.md".into());
+        let job_id = start_delete_job(&mut state, vec![ok_target.clone(), bad_target.clone()]);
+
+        let records = vec![
+            OperationRecord {
+                source: Some(ok_target),
+                destination: None,
+                succeeded: true,
+                failure_reason: None,
+                undo: UndoAvailability::NotApplicable,
+            },
+            OperationRecord {
+                source: Some(bad_target),
+                destination: None,
+                succeeded: false,
+                failure_reason: Some("access denied".to_string()),
+                undo: UndoAvailability::NotApplicable,
+            },
+        ];
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(records)),
+            },
+        );
+
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| !l.contains("[OK]") && l.contains("1/2")),
+            "a partially-failed delete must not log a plain [OK], and should show the failure count; got {:?}",
+            result.task_panel_logs
+        );
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.contains("access denied")),
+            "the panel log should surface why the delete partially failed; got {:?}",
+            result.task_panel_logs
+        );
+    }
+
+    #[test]
+    fn complete_job_still_logs_ok_when_every_operation_record_succeeded() {
+        let mut state = test_state();
+        let target = Location::Local("C:/renamed.md".into());
+        let job_id = start_delete_job(&mut state, vec![target.clone()]);
+
+        let record = OperationRecord {
+            source: Some(target),
+            destination: None,
+            succeeded: true,
+            failure_reason: None,
+            undo: UndoAvailability::NotApplicable,
+        };
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(vec![record])),
+            },
+        );
+
+        assert!(
+            result.task_panel_logs.iter().any(|l| l.contains("[OK]")),
+            "an all-succeeded delete should still log [OK]; got {:?}",
+            result.task_panel_logs
+        );
+    }
+
+    /// Regression, pinned from a real diagnostics bundle (2026-08-19):
+    /// renaming `20260818-193454` failed with "Access is denied" (Windows
+    /// os error 5) — a locked/in-use directory, most likely a transient
+    /// scan of the just-written diagnostics files — yet the task panel
+    /// logged `[OK]`, matching the report "rename didnt work ... (other
+    /// pane's folder rename worked)". `execute_rename` shares the same
+    /// `SuccessData::OperationRecords` shape as `execute_delete`, so this
+    /// exercises the same `record_failure` mechanism proven above, just
+    /// pinned to the exact JobKind that produced the original report.
+    #[test]
+    fn complete_job_logs_fail_for_a_failed_rename_record() {
+        let mut state = test_state();
+        let from = Location::Local("C:/diagnostics/20260818-193454".into());
+        let to = Location::Local("C:/diagnostics/20260818-193454_".into());
+        let spec = JobSpec::new(JobKind::Rename {
+            from: from.clone(),
+            to: to.clone(),
+        });
+        let job_id = spec.id;
+        state.background_jobs.start_job(
+            "Rename".to_string(),
+            "desc".to_string(),
+            0,
+            "tab".to_string(),
+            spec.clone(),
+        );
+        state.jobs.start_job(spec);
+
+        let record = OperationRecord {
+            source: Some(from),
+            destination: Some(to),
+            succeeded: false,
+            failure_reason: Some(
+                "Failed to rename file: Access is denied. (os error 5)".to_string(),
+            ),
+            undo: UndoAvailability::NotApplicable,
+        };
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(SuccessData::OperationRecords(vec![record])),
+            },
+        );
+
+        assert!(
+            result.task_panel_logs.iter().any(|l| l.contains("[FAIL]")),
+            "a rename that failed must not log [OK]; got {:?}",
+            result.task_panel_logs
+        );
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.contains("Access is denied")),
+            "the panel log should surface why the rename failed; got {:?}",
+            result.task_panel_logs
+        );
     }
 }
