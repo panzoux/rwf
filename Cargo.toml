@@ -60,3 +60,13 @@ predicates = "3.1"
 
 # Migemo support
 rustmigemo = { git = "https://github.com/oguna/rustmigemo" }
+
+# Debuginfo is the dominant cost of MSVC linking: full PDB generation on every
+# test-binary link dwarfs the tests themselves (the whole suite executes in ~27s;
+# the rest of a local run is compile + link). "line-tables-only" keeps file/line
+# in panic backtraces, which is all the test suite needs from debuginfo.
+#
+# Profiles are only honored in the workspace root; the same keys in a member
+# manifest are ignored with a warning. [profile.test] inherits from this.
+[profile.dev]
+debug = "line-tables-only"

@@ -6,9 +6,9 @@
 //!
 //! Why these live in rwf-bin's integration-test target rather than in rwf-lib:
 //! `cargo test -p rwf` runs in seconds and is the first thing CI executes, while
-//! `cargo test -p rwf-lib` takes ~37 minutes. A contract violation should surface
-//! in the fast suite. Several of these guards are static scans over the *whole*
-//! workspace source tree, so they are not really "rwf-bin tests" at all — they just
+//! `cargo test -p rwf-lib` costs a full rebuild of the larger crate's test binary.
+//! A contract violation should surface in the fast suite. Several of these guards
+//! are static scans over the *whole* workspace source tree, so they are not really "rwf-bin tests" at all — they just
 //! need a fast home.
 //!
 //! Adding a legitimate exception means editing the allowlist in this file *and*
@@ -385,17 +385,31 @@ fn gitignore_patterns_cannot_shadow_a_future_source_subdirectory() {
 // Contract 3 — Rust sources and Cargo manifests are LF
 // ---------------------------------------------------------------------------
 
+/// Every `.toml` the LF rule covers, relative to the workspace root.
+///
+/// Kept explicit rather than discovered by a recursive walk: `.claude/worktrees/`
+/// can hold additional checkouts of this same repo, and a walk from the root would
+/// scan *those* manifests too, making the result depend on which worktrees happen
+/// to exist on the machine. `lf_toml_allowlist_is_complete` below keeps the list
+/// honest without needing the walk.
+const LF_TOML_FILES: &[&str] = &[
+    ".cargo/config.toml",
+    "Cargo.toml",
+    "clippy.toml",
+    "rustfmt.toml",
+    "rwf-bin/Cargo.toml",
+    "rwf-lib/Cargo.toml",
+];
+
+/// Directories that may hold a `.toml` subject to the LF rule, scanned one level
+/// deep (no recursion — see the note on `LF_TOML_FILES`). `""` is the root itself.
+const LF_TOML_DIRS: &[&str] = &["", ".cargo", "rwf-bin", "rwf-lib"];
+
 #[test]
 fn rust_sources_and_manifests_use_lf_line_endings() {
     let root = workspace_root();
     let mut files = workspace_rust_sources(&root);
-    for manifest in [
-        "Cargo.toml",
-        "rwf-lib/Cargo.toml",
-        "rwf-bin/Cargo.toml",
-        "clippy.toml",
-        "rustfmt.toml",
-    ] {
+    for manifest in LF_TOML_FILES {
         let path = root.join(manifest);
         if path.is_file() {
             files.push(path);
@@ -418,6 +432,52 @@ fn rust_sources_and_manifests_use_lf_line_endings() {
          On Windows, PowerShell's Set-Content/Out-File rewrite whole files as CRLF — use \
          an LF-preserving editor instead. To repair: `git add --renormalize <file>`.",
         crlf.join("\n  ")
+    );
+}
+
+/// The LF check above can only guard files it knows about. A new `.toml` added to
+/// the workspace would be silently unguarded — which is exactly how a CRLF
+/// `.cargo/config.toml` got in. This scans the directories the rule covers, one
+/// level deep, and fails if any `.toml` there is missing from `LF_TOML_FILES`.
+#[test]
+fn lf_toml_allowlist_is_complete() {
+    let root = workspace_root();
+    let known: BTreeSet<&str> = LF_TOML_FILES.iter().copied().collect();
+    let mut missing: Vec<String> = Vec::new();
+
+    for dir in LF_TOML_DIRS {
+        let path = if dir.is_empty() {
+            root.clone()
+        } else {
+            root.join(dir)
+        };
+        if !path.is_dir() {
+            continue;
+        }
+        let entries = ok(
+            std::fs::read_dir(&path),
+            &format!("cannot read directory {:?}", path),
+        );
+        for entry in entries {
+            let entry = ok(entry, "cannot read directory entry");
+            let file = entry.path();
+            if !file.is_file() || file.extension().map(|e| e != "toml").unwrap_or(true) {
+                continue;
+            }
+            let key = rel(&root, &file);
+            if !known.contains(key.as_str()) {
+                missing.push(key);
+            }
+        }
+    }
+
+    missing.sort();
+    assert!(
+        missing.is_empty(),
+        "these .toml files are not covered by the LF guard:\n  {}\n\n\
+         .gitattributes pins `*.toml text eol=lf`, so they are subject to the LF rule \
+         but nothing checks them. Add each to LF_TOML_FILES in this file.",
+        missing.join("\n  ")
     );
 }
 

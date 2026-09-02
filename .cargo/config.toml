@@ -1,0 +1,18 @@
+# Local default for proptest depth. Matches CI's pin.
+#
+# proptest's own default is 256 cases per property across 52 `proptest!` blocks,
+# which is what made a full rwf-lib run take 37 minutes. Property tests are the
+# single most expensive thing in the suite: measured 2026-09-01, 132 of them cost
+# 330s of the 391s execution time (84%), and the cost is linear in this value
+# (1 case: 26s, 16: 138s, 32: 330s). See docs/TESTING.md.
+#
+# 16 rather than something deeper because CI is the authoritative gate and also
+# runs at 16 — a local run at 32 pays ~190s per run to catch nothing CI wouldn't.
+# Deep runs stay explicit, at phase close:
+#   PROPTEST_CASES=256 cargo test -p rwf-lib -- --test-threads=1
+#
+# `[env]` entries do NOT override an already-set variable unless `force = true`,
+# so CI's own `PROPTEST_CASES: "16"` (.github/workflows/ci.yml) still wins there
+# and this file cannot silently change CI behavior.
+[env]
+PROPTEST_CASES = "16"

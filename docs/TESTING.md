@@ -7,33 +7,96 @@ write new tests. Architecture context: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Suite | Where | Count | Command |
 |---|---|---|---|
-| rwf-lib | `rwf-lib/src/*_tests.rs`, `src/input/*_tests.rs`, inline `#[cfg(test)]` modules | 1043 | `cargo test -p rwf-lib -- --test-threads=1` (~37 min) |
-| rwf-bin | inline `#[cfg(test)]` modules under `rwf-bin/src/` | 51 | `cargo test -p rwf -- --test-threads=1` (seconds) |
-
-During development, run name-filtered subsets:
-
-```sh
-cargo test -p rwf-lib marking -- --test-threads=1
-```
+| rwf-lib | `rwf-lib/src/*_tests.rs`, `src/input/*_tests.rs`, inline `#[cfg(test)]` modules | 1361 | `cargo test -p rwf-lib -- --test-threads=1` (~8.5 min; see *Where the time actually goes*) |
+| rwf-bin | inline `#[cfg(test)]` modules under `rwf-bin/src/`, plus `rwf-bin/tests/` | 322 (+11) | `cargo test -p rwf -- --test-threads=1` (~58s) |
 
 Full verification (fmt + clippy + both suites) is bundled in `/project:check`.
 
-Baseline: **all green** (re-baselined 2026-07-03). Any failure is a new
-regression — do not dismiss failures as "known flaky"; the last batch of
-"known failures" encoded a real product bug for weeks.
+## When to run what
 
-## Why `--test-threads=1`
+The full suite is cheap enough to run often (see *Where the time actually goes*
+below). Reach for a narrower tier only to keep the edit loop tight, not because
+the full run is unaffordable.
 
-Many integration tests touch the real filesystem (TempDirs, archive creation,
-config files, log files) and some manipulate process-wide state such as
-environment variables (`env::set_var`) and the process working directory.
-Running in parallel causes races and spurious failures, so single-threaded
-execution is mandatory, both locally and in CI.
+| Tier | When | What |
+|---|---|---|
+| Inner loop | every edit | `cargo check -p rwf-lib`, then a name-filtered subset: `cargo test -p rwf-lib marking -- --test-threads=1` |
+| Pre-commit | every commit | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p rwf -- --test-threads=1` (322 tests in ~58s, and it carries the repo-wide contract guards) |
+| Pre-push | every push | both packages in full |
+| Phase close | end of a 7.x item | both packages with `PROPTEST_CASES=256` (see *Property-based tests*) |
 
-Related: prefer per-package runs (`-p rwf-lib` / `-p rwf`) — workspace-wide
-parallel `cargo test` has run out of memory in the past. After refactors that
-remove or rename methods, also run `cargo test -p rwf --no-run`: stale
-references in rwf-bin UI tests can break the whole workspace test build.
+CI runs the full suite on every push and PR in about four minutes and is the
+authoritative gate. **A red CI run blocks the next commit** — check
+`gh run list --limit 1` after pushing. CI was red for two weeks straight in
+August 2026 without anyone acting on it, which is exactly the failure mode a
+fast gate is supposed to prevent.
+
+## Where the time actually goes
+
+Measured 2026-09-01 on the primary dev machine (2-core i5-7300U, 8 GB, Defender
+exclusions applied), full `cargo test -p rwf-lib` at `PROPTEST_CASES=32`. The
+default has since been lowered to 16, which takes the total to **257s** (252.93s
+execution, no rebuild needed — changing `[env]` does not invalidate the build):
+
+| Slice | Time |
+|---|---|
+| compile + link the test binary | 114s |
+| **132 property tests** | **330s — 84% of execution** |
+| the other 1228 tests | ~61s |
+| total | 509s |
+
+**Property tests dominate everything else combined by 5x.** Their cost is linear
+in `PROPTEST_CASES`, measured on the same subset:
+
+| `PROPTEST_CASES` | 132 property tests |
+|---|---|
+| 1 | 26s |
+| 16 (CI's pin, and the local default) | 138s |
+| 32 | 330s |
+| 256 (proptest's own default) | ~32 min — this is what the original 37-minute run was |
+
+So the first question about any slow local run is *what proptest depth am I
+running*, not *how fast is this machine*.
+
+For reference, CI runs the **entire** rwf-lib suite at `PROPTEST_CASES=16` in 12.65s,
+against 138s here for the property subset alone. Part of that gap is hardware,
+but not 11x worth — it is not yet attributed, so do not treat CI's timing as a
+prediction of local timing. If you chase it, the prime suspect is antivirus
+scanning of the temp trees the filesystem-touching properties create.
+
+## Keeping a local run fast
+
+In order of measured impact:
+
+1. **Antivirus exclusions — 2206s to 294s (7.5x)** on this machine, the single
+   biggest win and it costs nothing. In an *elevated* PowerShell:
+
+   ```powershell
+   Add-MpPreference -ExclusionPath '<repo>\target'
+   Add-MpPreference -ExclusionPath $env:TEMP
+   Add-MpPreference -ExclusionProcess 'rustc.exe','cargo.exe','link.exe'
+   ```
+
+   Excluding the temp directory matters as much as excluding `target/`: the
+   filesystem tests churn thousands of temp files and every one gets scanned.
+2. **proptest depth.** `.cargo/config.toml` pins `PROPTEST_CASES=16`, matching
+   CI. Anything deeper pays real time per run to catch what CI would not; see the
+   table above. Raise it deliberately, not by default.
+3. **Debuginfo.** `[profile.dev] debug = "line-tables-only"` in the workspace root
+   cuts MSVC PDB generation, which dominates test-binary link time.
+
+Measure before changing anything, and re-measure after:
+
+```sh
+powershell -c "Measure-Command { cargo test -p rwf-lib -- --test-threads=1 } | Select TotalSeconds"
+```
+
+To skip the expensive part entirely during the edit loop, the property tests all
+match one filter:
+
+```sh
+cargo test -p rwf-lib -- --test-threads=1 --skip propert
+```
 
 ## Shared fixtures: `rwf-lib/src/test_utils.rs`
 

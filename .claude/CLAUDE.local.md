@@ -57,11 +57,36 @@ Re-baselined 2026-07-03 (dev-environment inventory + SpawnProcess `wait` fix).
   `SpawnProcess`) and were fixed by adding `wait: bool` to `JobKind::SpawnProcess`.
 - **Regressions**: Any test failure is a new regression. Don't dismiss "known failing" tests without
   tracing the root cause — these 5 encoded genuinely broken product behavior for weeks.
-- **Counts** (2026-07-03): rwf-lib ~1043 tests, rwf-bin 51 tests.
+- **Counts** (2026-09-01, measured locally): rwf-lib **1361** tests, rwf-bin **322** tests (+11 integration: 4 config_contracts, 7 repo_contracts).
+  (CI run 32384451630 saw 1351/309 — the working tree carries a few more.)
 - **Execution rules**:
   - Always `--test-threads=1` (filesystem race conditions).
-  - The full rwf-lib suite takes **~37 min** single-threaded. During development run name-filtered
-    subsets: `cargo test -p rwf-lib <filter> -- --test-threads=1`.
+  - The full rwf-lib suite takes **257s warm** (252.93s execution) single-threaded,
+    down from **2206s (36.8 min)**. Measured at `PROPTEST_CASES=32` it was 509s
+    (114s compile + 391s execution), of which **132 property tests were 330s — 84%**;
+    the default is now 16. All figures 2026-09-01/02, 1360 passed / 0 failed / 1 ignored.
+    `cargo test -p rwf-lib -- --test-threads=1 --skip propert` runs the other 1228 tests
+    in ~61s and is the right everyday full-ish run.
+- **Machine setup — do this first on any new dev machine** (2026-09-01):
+  Measured here, in order of impact:
+  1. **Windows Defender exclusions: 2206s -> 294s (7.5x).** The single biggest win, and it
+     costs nothing. In an *elevated* PowerShell:
+     `Add-MpPreference -ExclusionPath '<repo>\target'`,
+     `Add-MpPreference -ExclusionPath $env:TEMP`,
+     `Add-MpPreference -ExclusionProcess 'rustc.exe','cargo.exe','link.exe'`.
+     Excluding `$env:TEMP` matters as much as `target/`: the filesystem tests churn
+     thousands of temp files and every one gets scanned.
+  2. `.cargo/config.toml` sets `PROPTEST_CASES=16`, matching CI (proptest's own default
+     is 256 across 52 `proptest!` blocks — that is what made the run 37 minutes).
+     Non-forced `[env]`, so CI's own value still wins there.
+     Linear cost, measured: 1 case 26s, 16 -> 138s, 32 -> 330s.
+  3. Root `Cargo.toml` sets `[profile.dev] debug = "line-tables-only"` — MSVC PDB
+     generation dominates test-binary link time.
+  Hardware is *not* the lever: this machine is a 2-core i5-7300U with 8 GB RAM and still
+  finishes in minutes once the above are in place. Re-measure before blaming the box:
+  `powershell -c "Measure-Command { cargo test -p rwf-lib -- --test-threads=1 } | Select TotalSeconds"`
+  - `target/` reached 33 GB. Prefer `cargo sweep --time 30` over `cargo clean`, which would
+    force a multi-hour cold rebuild here.
   - Historical OOM: parallel workspace-wide `cargo test` has run out of memory; prefer per-package
     runs (`-p rwf-lib` / `-p rwf`). `cargo build` is unaffected.
   - After refactors that remove/rename methods, run `cargo test -p rwf --no-run` — stale references
