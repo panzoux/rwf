@@ -391,6 +391,14 @@ mod tests {
         assert!(result.contains("file2.rs"));
     }
 
+    /// The quote character `shell_quote` uses on this platform. The `S` (shell form)
+    /// macros quote with `"` on Windows and `'` elsewhere, so a test must not
+    /// hardcode either one.
+    #[cfg(target_os = "windows")]
+    const SQ: char = '"';
+    #[cfg(not(target_os = "windows"))]
+    const SQ: char = '\'';
+
     /// Builds a state with two marked entries, one of whose names contains a space,
     /// so quoting behaviour is observable.
     fn state_with_marked_spaces() -> AppState {
@@ -421,7 +429,7 @@ mod tests {
         let expand = |t: &str| expander.expand_template(&state, t);
 
         // names / shell form — space-joined, the space-containing name quoted
-        assert_eq!(expand("$MFS"), r#"a.txt "b c.txt""#);
+        assert_eq!(expand("$MFS"), format!("a.txt {SQ}b c.txt{SQ}"));
         // names / list form — newline-joined, raw
         assert_eq!(expand("$MFL"), "a.txt\nb c.txt");
         // full paths / list form — one raw path per line.
@@ -433,7 +441,7 @@ mod tests {
         // full paths / shell form — the corner the old $M could not reach
         assert_eq!(
             expand("$MPS"),
-            format!(r#"/test{s}a.txt "/test{s}b c.txt""#, s = sep)
+            format!("/test{s}a.txt {SQ}/test{s}b c.txt{SQ}", s = sep)
         );
     }
 
@@ -447,7 +455,10 @@ mod tests {
         let expander = MacroExpander::new();
 
         assert_eq!(expander.expand_template(&state, "$MFL"), "b c.txt");
-        assert_eq!(expander.expand_template(&state, "$MFS"), r#""b c.txt""#);
+        assert_eq!(
+            expander.expand_template(&state, "$MFS"),
+            format!("{SQ}b c.txt{SQ}")
+        );
     }
 
     #[test]
@@ -487,7 +498,7 @@ mod tests {
         let state = state_with_marked_spaces();
         let expander = MacroExpander::new();
         let out = expander.expand_template(&state, "$MFS|$MFL");
-        assert_eq!(out, "a.txt \"b c.txt\"|a.txt\nb c.txt");
+        assert_eq!(out, format!("a.txt {SQ}b c.txt{SQ}|a.txt\nb c.txt"));
         assert!(!out.contains('$'), "a macro survived expansion: {out}");
     }
 
