@@ -5,7 +5,6 @@ use rwf_lib::model::dialog::Dialog;
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 
-#[cfg(windows)]
 #[test]
 fn attr_timestamp_default() {
     let state = test_state();
@@ -15,7 +14,6 @@ fn attr_timestamp_default() {
     snapshot_dialog("attr_timestamp_default", &dialog, &state);
 }
 
-#[cfg(windows)]
 #[test]
 fn attr_timestamp_hidden_checked() {
     let state = test_state();
@@ -27,7 +25,6 @@ fn attr_timestamp_hidden_checked() {
     snapshot_dialog("attr_timestamp_hidden_checked", &dialog, &state);
 }
 
-#[cfg(windows)]
 #[test]
 fn attr_timestamp_focused_ok() {
     let state = test_state();
@@ -39,7 +36,6 @@ fn attr_timestamp_focused_ok() {
     snapshot_dialog("attr_timestamp_focused_ok", &dialog, &state);
 }
 
-#[cfg(windows)]
 #[test]
 fn attr_timestamp_modified_focused_mid_edit() {
     let state = test_state();
@@ -53,7 +49,6 @@ fn attr_timestamp_modified_focused_mid_edit() {
     snapshot_dialog("attr_timestamp_modified_focused_mid_edit", &dialog, &state);
 }
 
-#[cfg(windows)]
 #[test]
 fn attr_timestamp_multi_target_mixed() {
     let state = test_state();

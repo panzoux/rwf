@@ -18,6 +18,9 @@ use ratatui::Terminal;
 use rwf_lib::model::dialog::Dialog;
 use rwf_lib::{AppConfig, AppState};
 
+// Every snapshot in here covers Win32 file attributes, so the whole module is
+// Windows-only; without this the imports are unused on other platforms.
+#[cfg(windows)]
 mod attr_timestamp;
 mod close_tab_with_active_job;
 mod comparison_view;

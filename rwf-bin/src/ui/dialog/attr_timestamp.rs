@@ -74,6 +74,9 @@ pub(super) fn handle_input(dialog: &mut AttrTimestampDialog, key: KeyEvent) -> D
     DialogAction::None
 }
 
+// Called only from the `#[cfg(windows)]` focus arms above: the readonly/hidden/
+// system/archive checkboxes are Win32 file attributes and do not exist elsewhere.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn handle_checkbox_key(
     key: KeyEvent,
     field: &mut rwf_lib::model::dialog::TriToggle,
