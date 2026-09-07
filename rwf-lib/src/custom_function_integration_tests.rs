@@ -131,6 +131,9 @@ mod tests {
                     shell: Some("bash".to_string()),
                 },
             );
+            // Shadow with a mutable clone: adding `mut` to the outer binding would
+            // be an unused-mut warning on every other platform.
+            let mut function = function.clone();
             function.os_specific = os_specific;
 
             assert_eq!(function.get_command(), Some("echo linux"));

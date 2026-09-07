@@ -23,6 +23,10 @@ pub struct TriToggle {
 }
 
 impl TriToggle {
+    // The only non-test caller is `AttrTimestampDialog::new`, which lives in a
+    // `#[cfg(windows)]` impl (file attributes are a Win32 concept), so this is
+    // genuinely dead in a non-Windows lib build.
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn new(initial: Option<bool>) -> Self {
         Self {
             initial,
