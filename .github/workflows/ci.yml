@@ -79,5 +79,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
+      # continue-on-error per step, not just per job: a failing step would
+      # otherwise short-circuit the rest and we would only ever measure the gap
+      # in whichever package fails first.
       - run: cargo test -p rwf -- --test-threads=1
+        continue-on-error: true
       - run: cargo test -p rwf-lib -- --test-threads=1
+        continue-on-error: true
