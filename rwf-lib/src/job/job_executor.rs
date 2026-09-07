@@ -1522,7 +1522,12 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             }
         }
         #[cfg(not(target_os = "windows"))]
-        cmd.arg(shell_arg).arg(command);
+        {
+            // ShellKind only selects between cmd.exe's raw_arg path and the normal
+            // one above; off Windows there is no cmd.exe and nothing reads it.
+            let _ = shell_kind;
+            cmd.arg(shell_arg).arg(command);
+        }
         cmd.current_dir(working_path);
         let output = cmd.output().await;
 
