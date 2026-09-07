@@ -44,3 +44,40 @@ jobs:
       # rwf-lib: single-threaded (filesystem races). Baseline is zero failures
       # (see .claude/CLAUDE.local.md "Test Suite Status").
       - run: cargo test -p rwf-lib -- --test-threads=1
+
+  # Linux exists to compile the code paths Windows never touches: arboard's
+  # X11/Wayland clipboard backends, and every cfg(unix) block. Until this job
+  # was added, none of that had ever been built anywhere.
+  lint-linux:
+    name: build + clippy (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # x11rb is pure Rust, but wl-clipboard-rs -> wayland-sys resolves
+      # libwayland through pkg-config, so the dev package must be present.
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
+      # --all-targets so tests type-check too: this is what proves the Linux
+      # clipboard backend and the cfg(unix) paths actually compile.
+      - run: cargo clippy --all-targets -- -D warnings
+
+  # Advisory, NOT a gate. The suite has never run on Linux and there are ~46
+  # hardcoded C:\ paths across 16 test files, so failures here are expected and
+  # are pre-existing portability gaps rather than regressions. Kept visible so
+  # the gap can be measured and closed; flip continue-on-error off once green.
+  test-linux:
+    name: test (linux, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
+      - run: cargo test -p rwf -- --test-threads=1
+      - run: cargo test -p rwf-lib -- --test-threads=1
