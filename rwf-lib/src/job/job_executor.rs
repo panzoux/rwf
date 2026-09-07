@@ -143,6 +143,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 working_dir,
                 pipe_to_action,
                 shell,
+                // `suspend: true` jobs are intercepted on the main thread in the app
+                // layer and never reach the pool, so there is nothing to honour here.
+                suspend: _,
             } => {
                 self.execute_custom_function(
                     command,
@@ -260,6 +263,13 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 // Intercepted in app layer before pool submission — should never arrive here.
                 crate::job::OpResult::Failed(
                     "SuspendAndRun reached worker pool unexpectedly".to_string(),
+                )
+            }
+            JobKind::SetClipboard { .. } => {
+                // Also intercepted in the app layer: the OSC 52 fallback needs the
+                // terminal handle, which the pool does not own.
+                crate::job::OpResult::Failed(
+                    "SetClipboard reached worker pool unexpectedly".to_string(),
                 )
             }
             JobKind::DetectFileType { path, purpose: _ } => {

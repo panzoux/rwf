@@ -144,19 +144,25 @@ pub(super) fn render_dialog_content(
             input,
             cursor_pos,
             scroll_pos,
+            error,
             ..
         }) => {
             use ratatui::layout::Alignment;
+            // The error row is only laid out when there is an error to show —
+            // `input_dialog_content_height` in `mod.rs` sizes the dialog the same
+            // way, so the two must agree or the hint falls outside the border.
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(1), // prompt label
-                    Constraint::Length(1), // textbox
-                    Constraint::Length(1), // hint
+                    Constraint::Length(1),                                   // prompt label
+                    Constraint::Length(1),                                   // textbox
+                    Constraint::Length(if error.is_some() { 1 } else { 0 }), // error
+                    Constraint::Length(1),                                   // hint
                 ])
                 .split(area);
             let base_style = crate::ui::dialog::common::DIALOG_TEXT;
             let hint_style = crate::ui::dialog::common::DIALOG_DIM;
+            let error_style = crate::ui::dialog::common::DIALOG_ERROR;
             let item_width = area.width.saturating_sub(4);
             frame.render_widget(
                 Paragraph::new(prompt.as_str()).style(base_style),
@@ -175,15 +181,37 @@ pub(super) fn render_dialog_content(
                     focused,
                 );
             }
+            if let Some(message) = error {
+                // Width-aware truncation: a message can embed the typed name,
+                // which may be CJK, so it can't be cut by byte index.
+                let text =
+                    crate::ui::unicode_utils::truncate_to_width(message, item_width as usize, "…");
+                frame.render_widget(
+                    Paragraph::new(text).style(error_style),
+                    Rect::new(area.x + 2, chunks[2].y, item_width, 1),
+                );
+            }
             frame.render_widget(
                 Paragraph::new("(Enter to confirm, Esc to cancel)")
                     .style(hint_style)
                     .alignment(Alignment::Left),
-                Rect::new(area.x + 2, chunks[2].y, item_width, 1),
+                Rect::new(area.x + 2, chunks[3].y, item_width, 1),
             );
         }
         _ => {}
     }
+}
+
+/// Width in columns of the `Input` dialog's textbox on a `screen_width`-wide
+/// terminal.
+///
+/// Reconstructs what the render arm above lays out, for the key handler, which
+/// has no `Frame` to measure: the dialog is `default_dialog_width` wide, the
+/// border takes 2 columns, and the render arm insets the field by a further 2
+/// columns on each side (`area.x + 2`, `area.width - 4`). Pinned against that
+/// derivation by `input_field_width_matches_the_rendered_field`.
+pub(super) fn input_field_width(screen_width: u16) -> u16 {
+    super::default_dialog_width(screen_width).saturating_sub(2 + 4)
 }
 
 /// Handle key input for the generic Input dialog (Create Directory, Register Folder,
@@ -194,6 +222,7 @@ pub(super) fn handle_input(dialog: &mut InputDialog, key: KeyEvent) -> DialogAct
         input,
         cursor_pos,
         scroll_pos,
+        error,
         ..
     } = dialog;
     use crate::ui::text_input::{TextInput, TextInputAction};
@@ -205,6 +234,21 @@ pub(super) fn handle_input(dialog: &mut InputDialog, key: KeyEvent) -> DialogAct
         return DialogAction::Confirm;
     }
     let mut ti = TextInput::new(Some(input.clone()), rwf_lib::config::EditMode::Emacs);
+    // `TextInput::update_scroll` keeps the cursor visible by measuring against
+    // `self.width`, which defaults to 40 — but the field this dialog actually
+    // draws is `default_dialog_width(screen) - 4` (2 border + 2 margin columns),
+    // and the dialog is sized as a percentage of the terminal. Without this the
+    // handler computes the scroll offset for a 40-column field on every
+    // terminal size: too wide and the text scrolls with empty space left over,
+    // too narrow and the cursor scrolls clean out of the visible slice. Derived
+    // from the terminal size here for the same reason `multiline_input::
+    // handle_input` does it — the key handler has no `Frame` to ask, and
+    // stashing the rendered width on the dialog would mean mutating state from
+    // the render layer.
+    //
+    // Must precede `set_cursor`, which calls `update_scroll` itself.
+    let (screen_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
+    ti.set_width(input_field_width(screen_w));
     ti.set_original_text(input.clone());
     ti.set_cursor(*cursor_pos);
     ti.set_scroll(*scroll_pos);
@@ -212,6 +256,12 @@ pub(super) fn handle_input(dialog: &mut InputDialog, key: KeyEvent) -> DialogAct
     *input = ti.text().to_string();
     *cursor_pos = ti.cursor();
     *scroll_pos = ti.scroll();
+    // A rejected name stops being wrong the moment it's edited; leaving the
+    // message up while the user types would make it look like the new text was
+    // rejected too. Confirming again re-runs validation and re-sets it.
+    if action == TextInputAction::TextChanged {
+        *error = None;
+    }
     match action {
         TextInputAction::Confirm => DialogAction::Confirm,
         TextInputAction::Cancel => DialogAction::Cancel,
@@ -516,5 +566,97 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
             }
         }
         _ => DialogAction::None,
+    }
+}
+
+#[cfg(test)]
+mod input_dialog_error_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::InputDialog;
+
+    fn dialog_with_error(text: &str) -> InputDialog {
+        let mut d = InputDialog::new("Name:".to_string(), text.to_string());
+        d.error = Some("'taken.txt' already exists".to_string());
+        d
+    }
+
+    /// Typing a character makes the rejected name stale, so the message goes
+    /// away — leaving it up would read as "this new text is wrong too".
+    #[test]
+    fn typing_clears_the_inline_error() {
+        let mut d = dialog_with_error("taken.txt");
+        let action = handle_input(
+            &mut d,
+            KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE),
+        );
+        assert_eq!(action, DialogAction::None);
+        assert_eq!(d.input, "taken.txt2");
+        assert!(d.error.is_none());
+    }
+
+    #[test]
+    fn deleting_clears_the_inline_error() {
+        let mut d = dialog_with_error("taken.txt");
+        handle_input(
+            &mut d,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+        );
+        assert!(d.error.is_none());
+    }
+
+    /// Cursor movement is not an edit: the name is still the rejected one, so
+    /// the reason must stay visible while the user navigates to fix it.
+    #[test]
+    fn cursor_movement_keeps_the_inline_error() {
+        let mut d = dialog_with_error("taken.txt");
+        handle_input(&mut d, KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert!(d.error.is_some());
+    }
+
+    /// Enter re-submits for validation; clearing the message here would blank
+    /// the dialog for a frame before the confirmation handler re-sets it.
+    #[test]
+    fn enter_confirms_without_clearing_the_inline_error() {
+        let mut d = dialog_with_error("taken.txt");
+        let action = handle_input(&mut d, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(action, DialogAction::Confirm);
+        assert!(d.error.is_some());
+    }
+}
+
+#[cfg(test)]
+mod input_field_width_tests {
+    use super::*;
+    use ratatui::layout::Rect;
+
+    /// The key handler reconstructs the textbox width from the terminal size
+    /// while the render arm measures it off the real `Rect`. Nothing but this
+    /// test stops the two from drifting — and when they drift, the symptom is
+    /// a textbox that scrolls at the wrong column, which no other test sees.
+    #[test]
+    fn input_field_width_matches_the_rendered_field() {
+        for screen_w in [40u16, 60, 80, 120, 200] {
+            let dialog_w = super::super::default_dialog_width(screen_w);
+            // What `render_dialog` hands `render_dialog_content` as `area`:
+            // the dialog rect minus its 1-column border on each side.
+            let content_area = Rect::new(0, 0, dialog_w - 2, 10);
+            // What the Input arm then uses as `item_width`.
+            let rendered = content_area.width.saturating_sub(4);
+            assert_eq!(
+                input_field_width(screen_w),
+                rendered,
+                "field width disagrees at screen width {screen_w}"
+            );
+        }
+    }
+
+    /// The bug this replaced: the handler left `TextInput` on its built-in
+    /// 40-column default, so on any terminal whose dialog field isn't exactly
+    /// 40 wide the scroll offset was computed for the wrong field.
+    #[test]
+    fn input_field_width_tracks_the_terminal_rather_than_the_widget_default() {
+        assert_ne!(input_field_width(200), 40);
+        assert!(input_field_width(200) > input_field_width(80));
     }
 }

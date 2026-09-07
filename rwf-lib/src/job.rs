@@ -88,6 +88,7 @@ impl JobSpec {
             working_dir,
             pipe_to_action: None,
             shell,
+            suspend: false,
         })
     }
 }
@@ -181,6 +182,18 @@ pub enum JobKind {
         working_dir: Location,
         pipe_to_action: Option<PipeToAction>,
         shell: Option<String>,
+        /// Hand the terminal to the command instead of running it in the worker pool.
+        /// Intercepted in the app layer (`rwf-bin/src/app.rs`) — a job with this set
+        /// never reaches the pool. The child inherits stdin/stderr so a TUI (fzf, vim)
+        /// can draw; stdout is captured and fed to `pipe_to_action` exactly as the
+        /// pooled path does.
+        suspend: bool,
+    },
+    /// Put `text` on the system clipboard. Intercepted on the main thread in the app
+    /// layer: the OSC 52 fallback needs the terminal handle, and keeping it there
+    /// leaves the state layer free of side effects.
+    SetClipboard {
+        text: String,
     },
     /// Spawn a program directly (no shell), avoiding cmd.exe quote-mangling.
     /// `program` is the executable name/path; `args` are its arguments.
@@ -315,6 +328,10 @@ pub enum PipeToAction {
     JumpToPath,
     ExecuteFile,
     ExecuteFileWithEditor,
+    /// Copy the command's stdout to the clipboard. The counterpart to the `ClipText`
+    /// function kind: that one copies an expanded template with no process, this one
+    /// copies what a command produced.
+    ClipText,
 }
 
 /// Active job with execution state

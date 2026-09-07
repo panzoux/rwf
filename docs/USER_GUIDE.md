@@ -84,6 +84,7 @@ All key bindings are configurable via `keybindings.json`. Below are the default 
 | `D` | Delete | Delete selected/marked files |
 | `R` | Rename | Rename current file |
 | `Shift+K` | Create Directory | Create new directory |
+| `Shift+E` | Create File | Create new empty file |
 | `Shift+R` | Pattern Rename | Batch rename with pattern |
 | `H` | Calculate Size | Calculate directory size |
 
@@ -332,18 +333,108 @@ Custom functions allow you to define shell commands with macro expansion:
 | `$F` | Cursor file name | Name of file under cursor |
 | `$W` | File name without extension | Name without extension |
 | `$E` | File extension | Extension of file under cursor |
-| `$M` | Marked files list | Space-separated list of marked files |
+| `$/` | Path separator | `\` on Windows, `/` elsewhere — so `$P$/$F` is the cursor file's full path on every OS |
+| `$MFS` | Marked names, shell form | Space-separated, shell-quoted |
+| `$MPS` | Marked full paths, shell form | Space-separated, shell-quoted |
+| `$MFL` | Marked names, list form | Newline-separated, unquoted. Name only — `c:\a\b\c.txt` → `c.txt` |
+| `$MPL` | Marked full paths, list form | Newline-separated, unquoted |
 | `$*` | All files in pane | Space-separated list of all files |
 | `$I` | User input prompt | Prompts user for input |
-| `$V` | Selected text | Currently selected text (if any) |
+| `$V"NAME"` | Environment variable | `$V"APPDATA"` → the value of `APPDATA` (empty if unset) |
 | `$~` | Home directory | User's home directory |
 | `$#` | File count | Number of files in active pane |
 
+The four `$M...` macros are `$M` + **what** (`F` = file name, `P` = full path) +
+**how** (`S` = shell form, `L` = list form). All four fall back to the cursor entry
+when nothing is marked. Nothing ties a form to a particular field — all four are
+just values, usable anywhere macros are. The difference is only how the list is
+joined and whether it is shell-quoted, so in practice the `S` forms suit `Command`
+(the shell needs the quoting) and the `L` forms suit `ClipText`, a file list, or
+anything reading one item per line.
+
+> **`$M` was removed.** It only produced *names*, always shell-quoted, so there was no
+> way to hand a command the marked files' *full paths* safely — `$P$/$M` applies the
+> prefix to the first item only. Replace `$M` with `$MFS` for identical behaviour, or
+> `$MPS` for the full paths you probably wanted. A leftover `$M` is reported as a
+> config error on startup rather than silently surviving as literal text.
+
+Prefer `${VAR}` or `$env:VAR` over bare `$VAR` for environment variables: bare `$VAR`
+is expanded after the macros above, so a variable whose name starts with `P`, `O`, `L`,
+`R`, `F`, `W`, `E` or `M` is unreachable that way. (This is also why the separator macro
+is `$/` and not `$S` — `$S` would have eaten `$SYSTEMROOT`.)
+
 #### PipeToAction Directives
 
-- **JumpToPath**: Navigate to the path returned by the command
+What to do with the command's standard output:
+
+- **JumpToPath**: Navigate to the path returned by the command. A *directory* is opened
+  directly; a *file* opens its parent folder with the cursor parked on that file.
+  Relative output is resolved against the pane's directory, so a picker that prints
+  relative paths needs no wrapper.
 - **ExecuteFile**: Execute the file path returned by the command
 - **ExecuteFileWithEditor**: Open the file path in configured editor
+- **ClipText**: Copy the command's output to the clipboard
+
+#### `Suspend` — running interactive terminal programs
+
+`"Suspend": true` hands the terminal to the command: rwf leaves the alternate screen,
+the command owns the console (inheriting stdin and stderr), its standard output is
+captured, and rwf redraws when it exits. That is what makes full-screen tools usable
+from rwf — `vim`, `lazygit`, `htop`, `less`, and pickers like `fzf`.
+
+`Suspend` and `PipeToAction` are independent; either works without the other:
+
+```json
+{
+  "Name": "fzf jump to file",
+  "Command": "fzf --walker=file,follow,hidden",
+  "Suspend": true,
+  "PipeToAction": "JumpToPath"
+}
+```
+
+fzf draws its interface on stderr and prints the selection on stdout, which is exactly
+the split `Suspend` sets up — so the picker is interactive *and* its result drives
+navigation. Bound to `Ctrl+P` (files) and `Alt+P` (directories) by default; both
+require [fzf](https://github.com/junegunn/fzf) on `PATH`.
+
+#### `ClipText` — copying to the clipboard
+
+`ClipText` is a third kind of entry, alongside `Command` and `Menu`. It runs no process
+at all: the macro template is expanded and the result goes straight to the clipboard —
+no `echo`, no console flash, no trailing newline, no shell quoting to get wrong.
+
+```json
+{ "Name": "clip file path",        "ClipText": "$P$/$F" },
+{ "Name": "clip marked file path", "ClipText": "$MPL" }
+```
+
+Exactly one of `Command`, `Menu` and `ClipText` may be present; combining them is a
+startup config error rather than a silent precedence rule. The default
+`menu_copy_paths.json` collects these on `F6`.
+
+**Clipboard backend** (`config.json`):
+
+```json
+"Clipboard": { "Backend": "Auto" }
+```
+
+| Backend | Behaviour |
+|---------|-----------|
+| `Auto` (default) | Native clipboard; falls back to OSC 52 if unavailable |
+| `Native` | Win32 / NSPasteboard / X11 / Wayland only |
+| `Osc52` | Always emit the OSC 52 terminal escape sequence |
+| `None` | Disable copying |
+
+The OSC 52 fallback is what makes copying work **over SSH** — the escape sequence is
+interpreted by your local terminal emulator, so the text lands on the clipboard of the
+machine you are sitting at rather than on the remote host. Force `Osc52` if the remote
+has a display server but you still want your local clipboard. Not every terminal
+supports it, and payload size is capped.
+
+> **X11 note:** X11 has no clipboard daemon — the selection is owned by a running
+> process. rwf holds the clipboard while it runs, but copied text is lost once rwf
+> exits. Use a clipboard manager if you need it to persist.
 
 ### Opening Files (`Enter`, `Ctrl+Enter`)
 

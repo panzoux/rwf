@@ -360,6 +360,7 @@ impl AppState {
                             }
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
                             crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
+                            crate::job::JobKind::SetClipboard { .. } => "Copy to clipboard",
                             // Phase 7.3 foundation (Task 1): nothing constructs these yet;
                             // completion routing lands in a later task.
                             crate::job::JobKind::DetectFileType { .. } => "Detect file type",
@@ -980,6 +981,7 @@ impl AppState {
                         }
                         crate::job::JobKind::ExecuteCustomFunction {
                             command,
+                            working_dir,
                             pipe_to_action,
                             ..
                         } => {
@@ -1007,8 +1009,12 @@ impl AppState {
                                         action,
                                         output
                                     );
-                                    match crate::pipe_to_action::process_pipe_to_action(action, output) {
-                                        Ok(crate::pipe_to_action::PipeToActionResult::JumpToPath(location)) => {
+                                    let cwd = match working_dir {
+                                        crate::model::Location::Local(p) => p.clone(),
+                                        other => std::path::PathBuf::from(other.display_path()),
+                                    };
+                                    match crate::pipe_to_action::process_pipe_to_action(action, output, &cwd) {
+                                        Ok(crate::pipe_to_action::PipeToActionResult::JumpToPath { location, cursor_name }) => {
                                             // Navigate the active pane to the target location
                                             let pane = self.ui.active_pane;
                                             let tab = self.current_tab_mut();
@@ -1022,11 +1028,19 @@ impl AppState {
                                             pane_model.is_loading = true;
                                             pane_model.cursor = 0;
                                             pane_model.scroll_offset = 0;
+                                            // Set when the picker returned a file: park the cursor on it
+                                            // once the parent directory finishes loading.
+                                            pane_model.pending_cursor_name = cursor_name;
                                             let job_spec = crate::job::JobSpec::new(
                                                 crate::job::JobKind::ReadDirectory { location }
                                             ).with_requesting_pane(tab_id, pane);
                                             result_obj.jobs_to_start.push(job_spec);
                                             result_obj.ui_changed = true;
+                                        }
+                                        Ok(crate::pipe_to_action::PipeToActionResult::ClipText(text)) => {
+                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(
+                                                crate::job::JobKind::SetClipboard { text }
+                                            ));
                                         }
                                         Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFile(path)) => {
                                             let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
@@ -1034,6 +1048,7 @@ impl AppState {
                                                 working_dir: self.active_pane().current_location.clone(),
                                                 pipe_to_action: None,
                                                 shell: None,
+                                                suspend: false,
                                             });
                                             result_obj.jobs_to_start.push(job_spec);
                                         }

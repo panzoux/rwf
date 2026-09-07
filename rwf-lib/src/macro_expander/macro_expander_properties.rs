@@ -216,11 +216,12 @@ mod custom_function_job_tests {
                     working_dir: working_dir.clone(),
                     pipe_to_action: function.pipe_to_action.clone(),
                     shell: function.get_shell().map(|s| s.to_string()),
+                suspend: false,
                 });
 
                 // Verify the job spec has the correct kind
                 match &job_spec.kind {
-                    JobKind::ExecuteCustomFunction { command, working_dir: wd, pipe_to_action, shell } => {
+                    JobKind::ExecuteCustomFunction { command, working_dir: wd, pipe_to_action, shell, suspend: _ } => {
                         prop_assert_eq!(command, &expanded_command, "Command mismatch");
                         prop_assert_eq!(wd, &working_dir, "Working directory mismatch");
                         prop_assert_eq!(pipe_to_action, &function.pipe_to_action, "PipeToAction mismatch");
@@ -250,6 +251,7 @@ mod custom_function_job_tests {
                     working_dir,
                     pipe_to_action: function.pipe_to_action.clone(),
                     shell: function.get_shell().map(|s| s.to_string()),
+                suspend: false,
                 });
 
                 // Verify the job spec has a cancellation token
@@ -296,6 +298,7 @@ mod custom_function_job_tests {
             working_dir: working_dir.clone(),
             pipe_to_action: None,
             shell: Some("bash".to_string()),
+            suspend: false,
         });
 
         // Verify the job spec
@@ -305,6 +308,7 @@ mod custom_function_job_tests {
                 working_dir: wd,
                 pipe_to_action,
                 shell,
+                suspend: false,
             } => {
                 assert_eq!(command, &expanded_command);
                 assert_eq!(wd, &working_dir);

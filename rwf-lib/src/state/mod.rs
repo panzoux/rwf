@@ -4,7 +4,7 @@
 //! for explicit state changes following the AppState pattern.
 
 mod handlers;
-mod helpers;
+pub mod helpers;
 
 use crate::job::{BackgroundJobManager, JobId, JobManager, JobSpec};
 use crate::log_manager::LogManager;
@@ -182,6 +182,21 @@ impl AppState {
                     crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string()),
                 ),
             };
+
+        // Semantic validation of the functions themselves: ambiguous Command/Menu/ClipText
+        // combinations, and the removed $M macro (which would otherwise survive as
+        // literal text in a command rather than erroring). Reported, not auto-resolved.
+        let custom_fn_result = {
+            let problems = crate::model::dialog::validate_custom_functions(&custom_functions);
+            if problems.is_empty() {
+                custom_fn_result
+            } else {
+                crate::config::ConfigLoadResult::error(
+                    custom_fn_result.path.clone(),
+                    problems.join("; "),
+                )
+            }
+        };
 
         let context_menu_result =
             crate::config::ConfigManager::validate_json_file(config_manager.context_menu_path());

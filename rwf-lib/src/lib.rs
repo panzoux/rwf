@@ -18,6 +18,7 @@
 //! 4. FIFO job ordering with cooperative cancellation
 
 pub mod backend;
+pub mod clipboard;
 pub mod config;
 pub mod diagnostics;
 pub mod event_receiver;
@@ -155,7 +156,7 @@ pub use backend::{FilesystemBackend, LocalFilesystemBackend};
 pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
 pub use help_content::{
     DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_EXTENSION_ASSOCIATIONS, DEFAULT_FILE_TYPE_MAP,
-    DEFAULT_MENU_CONFIG,
+    DEFAULT_MENU_CONFIG, DEFAULT_MENU_COPY_PATHS,
 };
 pub use input::{
     action_to_transitions, check_keybindings_content_duplicates, check_keybindings_duplicates,

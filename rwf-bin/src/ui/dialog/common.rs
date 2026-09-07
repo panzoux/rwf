@@ -29,6 +29,10 @@ pub const DIALOG_ACCENT_GREEN: Style = Style::new().fg(Color::Green).bg(Color::G
 /// Warning accent (e.g. running jobs) on the dialog background.
 pub const DIALOG_ACCENT_YELLOW: Style = Style::new().fg(Color::Yellow).bg(Color::Gray);
 
+/// Error/validation-failure accent (e.g. the Create File dialog rejecting a
+/// name). Red on the dialog background.
+pub const DIALOG_ERROR: Style = Style::new().fg(Color::Red).bg(Color::Gray);
+
 /// Dialog background fill (no foreground override).
 pub const DIALOG_BG: Style = Style::new().bg(Color::Gray);
 

@@ -258,6 +258,93 @@ impl App {
         }
     }
 
+    /// Run a custom function with the terminal handed over to it, returning its stdout.
+    ///
+    /// rwf leaves the alternate screen and drops raw mode so the child owns the console,
+    /// then restores both. **stdin and stderr are inherited, stdout is piped**: a TUI
+    /// picker such as fzf draws its interface on stderr and prints the selection on
+    /// stdout, so this split is what lets a full-screen picker be both interactive and
+    /// consumable by `PipeToAction`.
+    fn run_suspended(
+        terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        command: &str,
+        working_dir: &rwf_lib::model::Location,
+        shell: Option<&str>,
+    ) -> Result<String, String> {
+        use std::process::Stdio;
+
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen,);
+
+        let mut cmd = Self::shell_command(command, shell);
+        if let rwf_lib::model::Location::Local(dir) = working_dir {
+            cmd.current_dir(dir);
+        }
+        let outcome = cmd
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .output();
+
+        // Restore before interpreting the result, so an error still leaves a usable screen.
+        let _ = crossterm::terminal::enable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen,);
+        let _ = terminal.clear();
+
+        match outcome {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+                // A picker the user cancelled exits non-zero with no output; that is a
+                // normal outcome, not a failure worth an error line.
+                if out.status.success() || !stdout.trim().is_empty() {
+                    Ok(stdout)
+                } else {
+                    Err(format!("command exited with {}", out.status))
+                }
+            }
+            Err(e) => Err(format!("cannot run '{command}': {e}")),
+        }
+    }
+
+    /// Build the shell invocation for a custom-function command string.
+    /// Mirrors the worker-pool path in `rwf-lib/src/job/job_executor.rs`, including
+    /// `cmd /D /C` (see docs/IMPLICIT_CONTRACTS.md) and `raw_arg` so cmd.exe's own
+    /// quoting rules are not corrupted by Rust's escaping.
+    fn shell_command(command: &str, shell: Option<&str>) -> std::process::Command {
+        let (program, arg, is_cmd) = match shell {
+            Some("bash") => ("bash", "-c", false),
+            Some("zsh") => ("zsh", "-c", false),
+            Some("powershell") | Some("powershell.exe") => ("powershell", "-Command", false),
+            Some("cmd") | Some("cmd.exe") => ("cmd", "/C", true),
+            _ => {
+                #[cfg(target_os = "windows")]
+                {
+                    ("cmd", "/C", true)
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    ("sh", "-c", false)
+                }
+            }
+        };
+        let mut cmd = std::process::Command::new(program);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            if is_cmd {
+                cmd.raw_arg("/D").raw_arg("/C").raw_arg(command);
+            } else {
+                cmd.arg(arg).arg(command);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = is_cmd;
+            cmd.arg(arg).arg(command);
+        }
+        cmd
+    }
+
     pub fn should_output_directory(&self) -> bool {
         self.should_exit_and_cd
     }
@@ -443,6 +530,66 @@ impl App {
                     let _ = terminal.clear();
                     continue;
                 }
+
+                // SetClipboard: main thread, because the OSC 52 fallback writes an
+                // escape sequence to the terminal we own. Sub-millisecond, so there is
+                // nothing to gain from handing it to the pool.
+                if let JobKind::SetClipboard { text } = &job_spec.kind {
+                    let backend = self.state.config.clipboard.backend;
+                    let chars = text.chars().count();
+                    match rwf_lib::clipboard::set_text(text, backend) {
+                        Ok(via) => self
+                            .state
+                            .log_manager
+                            .info(format!("Copied {chars} chars to clipboard ({via})")),
+                        Err(e) => self
+                            .state
+                            .log_manager
+                            .error(format!("Clipboard copy failed: {e}")),
+                    }
+                    ui_needs_update = true;
+                    continue;
+                }
+
+                // ExecuteCustomFunction with Suspend: like SuspendAndRun above, but the
+                // child's stdout is captured so PipeToAction can consume it. stdin and
+                // stderr stay inherited — a TUI picker like fzf draws on stderr and
+                // writes its selection to stdout, which is exactly this split.
+                if let JobKind::ExecuteCustomFunction {
+                    command,
+                    working_dir,
+                    shell,
+                    suspend: true,
+                    ..
+                } = &job_spec.kind
+                {
+                    let output =
+                        Self::run_suspended(terminal, command, working_dir, shell.as_deref());
+                    // Re-enter the normal completion path so PipeToAction, pane refresh
+                    // and task-panel logging all behave exactly as for a pooled job.
+                    self.state.jobs.start_job(job_spec.clone());
+                    let result = match output {
+                        Ok(stdout) => rwf_lib::job::OpResult::Success(
+                            rwf_lib::job::SuccessData::CustomFunctionOutput(stdout),
+                        ),
+                        Err(e) => rwf_lib::job::OpResult::Failed(e),
+                    };
+                    let update = rwf_lib::state::update_state(
+                        &mut self.state,
+                        rwf_lib::state::Transition::CompleteJob {
+                            job_id: job_spec.id,
+                            result,
+                        },
+                    );
+                    // Safe to push: `pending_jobs` is a drained snapshot, so this vec is
+                    // empty and the next tick picks these up.
+                    for job in update.jobs_to_start {
+                        self.pending_job_submission.push(job);
+                    }
+                    ui_needs_update = true;
+                    continue;
+                }
+
                 if let Some(ref pool) = self.worker_pool {
                     match &job_spec.kind {
                         JobKind::Copy { sources, dest } | JobKind::Move { sources, dest } => {
@@ -2526,6 +2673,104 @@ impl App {
             self.state.active_pane_mut().cursor = m;
             let h = self.state.ui.layout.pane_height;
             self.state.active_pane_mut().update_scroll(h, 3);
+        }
+    }
+}
+
+#[cfg(test)]
+mod suspended_command_tests {
+    use super::*;
+
+    fn fzf_available() -> bool {
+        let probe = if cfg!(target_os = "windows") {
+            "where"
+        } else {
+            "which"
+        };
+        std::process::Command::new(probe)
+            .arg("fzf")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn shell_command_uses_cmd_d_c_on_windows() {
+        // /D must precede /C so the user's AutoRun hook (Clink and friends) does not
+        // run inside the transient shell and print into the terminal we just handed
+        // over. See docs/IMPLICIT_CONTRACTS.md.
+        let cmd = App::shell_command("echo hi", None);
+        let program = cmd.get_program().to_string_lossy().into_owned();
+        if cfg!(target_os = "windows") {
+            assert_eq!(program, "cmd");
+        } else {
+            assert_eq!(program, "sh");
+        }
+    }
+
+    #[test]
+    fn shell_command_honours_an_explicit_shell() {
+        let cmd = App::shell_command("pwd", Some("bash"));
+        assert_eq!(cmd.get_program().to_string_lossy(), "bash");
+    }
+
+    /// End-to-end for everything a `Suspend: true` fzf entry does *except* the
+    /// terminal handover itself: the shell invocation, the working directory, stdout
+    /// capture, and the relative-path resolution that lets a picker's output drive
+    /// navigation without a `join-path (pwd)` wrapper.
+    ///
+    /// fzf's interactive walker requires a TTY, which the test harness has not, so the
+    /// candidates are piped in and `--filter` selects non-interactively. The plumbing
+    /// under test is identical.
+    #[test]
+    fn fzf_output_resolves_to_a_parent_directory_and_a_cursor_target() {
+        if !fzf_available() {
+            eprintln!("skipping: fzf not on PATH");
+            return;
+        }
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("target_file.txt"), b"x").expect("write");
+        std::fs::write(tmp.path().join("other.txt"), b"x").expect("write");
+
+        let lister = if cfg!(target_os = "windows") {
+            "dir /b"
+        } else {
+            "ls"
+        };
+        let mut cmd = App::shell_command(&format!("{lister} | fzf --filter=target_file"), None);
+        let out = cmd
+            .current_dir(tmp.path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .expect("fzf runs");
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert_eq!(
+            stdout.trim(),
+            "target_file.txt",
+            "fzf should print the relative name it matched"
+        );
+
+        // The output is relative; JumpToPath must resolve it against the pane directory
+        // and, because it names a file, target the parent with the cursor on the file.
+        let result = rwf_lib::pipe_to_action::process_pipe_to_action(
+            &rwf_lib::job::PipeToAction::JumpToPath,
+            stdout.trim(),
+            tmp.path(),
+        )
+        .expect("relative file resolves");
+
+        match result {
+            rwf_lib::pipe_to_action::PipeToActionResult::JumpToPath {
+                location: rwf_lib::model::Location::Local(path),
+                cursor_name,
+            } => {
+                assert_eq!(path, tmp.path());
+                assert_eq!(cursor_name.as_deref(), Some("target_file.txt"));
+            }
+            other => panic!("expected JumpToPath, got {other:?}"),
         }
     }
 }

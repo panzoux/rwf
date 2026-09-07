@@ -49,6 +49,9 @@ pub const DEFAULT_CUSTOM_FUNCTIONS: &str =
 /// Embedded default menu_config.json — exported by `--export-config-files`
 pub const DEFAULT_MENU_CONFIG: &str = include_str!("../resources/default_menu_config.json");
 
+/// Embedded default menu_copy_paths.json — exported by `--export-config-files`
+pub const DEFAULT_MENU_COPY_PATHS: &str = include_str!("../resources/default_menu_copy_paths.json");
+
 /// Embedded default file_type_map.json — exported by `--export-config-files`
 pub const DEFAULT_FILE_TYPE_MAP: &str = include_str!("../resources/default_file_type_map.json");
 
@@ -373,6 +376,10 @@ impl HelpContent {
                         KeyBinding {
                             key: "Shift+K".to_string(),
                             description: "Create directory".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Shift+E".to_string(),
+                            description: "Create file".to_string(),
                         },
                     ],
                 },

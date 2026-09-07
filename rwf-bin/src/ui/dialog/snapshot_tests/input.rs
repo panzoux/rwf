@@ -34,3 +34,17 @@ fn input_with_scrolling() {
     );
     snapshot_dialog("input_with_scrolling", &dialog, &state);
 }
+
+/// Create File rejecting a name: the error row is inserted between the textbox
+/// and the hint, and the dialog grows by one row so the hint still lands inside
+/// the border. The snapshot is the only check that the height arm in `mod.rs`
+/// and the constraint list in `basic.rs` actually agree.
+#[test]
+fn input_with_validation_error() {
+    let state = test_state();
+    let mut dialog = Dialog::input("Create File", "File name:", "notes.txt");
+    if let rwf_lib::model::dialog::DialogContent::Input(d) = &mut dialog.content {
+        d.error = Some("'notes.txt' already exists".to_string());
+    }
+    snapshot_dialog("input_with_validation_error", &dialog, &state);
+}

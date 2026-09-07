@@ -76,8 +76,15 @@ Phase 7.15: two `println!` lines reporting a diagnostic session path, fixed in
 under `rwf-bin/src` for `println!`, `print!` and `stdout()`, and fails on anything
 not in `ALLOWED_STDOUT_WRITES`. The current allowlist is four `main.rs` entries
 (`--export-function-list` and `--export-config-files`, both of which `return` before
-the TUI starts; and the exit directory itself) plus two handle acquisitions that feed
-crossterm/ratatui rather than printing text.
+the TUI starts; and the exit directory itself) plus three handle acquisitions that feed
+crossterm/ratatui rather than printing text: the ratatui backend in `terminal.rs`, and
+the alternate-screen enter/leave pairs in `app.rs` used by `SuspendAndRun` and by
+`run_suspended` (custom functions with `Suspend: true`).
+
+**Related, not a violation.** The OSC 52 clipboard fallback in
+`rwf-lib/src/clipboard.rs` also writes to stdout, but it emits an escape sequence the
+terminal emulator consumes rather than a line of text, and it only runs when the native
+clipboard is unavailable. It lives in `rwf-lib`, which this scan does not cover.
 
 **Limitation.** This is a static scan, not a behavioural test. Running the real
 interactive path requires a TTY that CI does not have, and `enable_raw_mode` fails

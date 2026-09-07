@@ -14,8 +14,28 @@
       "Action": "edit custom functions file"
     },
     {
+      "Name": "edit registered directory file",
+      "Action": "edit registered directory file"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "edit clip menu file",
+      "Action": "edit clip menu file"
+    },
+    {
+      "Name": "edit config menu file",
+      "Action": "edit config menu file"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
       "Name": "reload config",
-      "Action": "ReloadConfiguration"
+      "Action": "ReloadConfig"
     }
   ]
 }

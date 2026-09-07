@@ -183,6 +183,11 @@ const ALLOWED_STDOUT_WRITES: &[(&str, &str, &str)] = &[
         "std::io::stdout(),",
         "SuspendAndRun: crossterm alternate-screen enter/leave target, not text output",
     ),
+    (
+        "rwf-bin/src/app.rs",
+        "let _ = crossterm::execute!(std::io::stdout(),",
+        "run_suspended (custom functions with Suspend: true): same crossterm          alternate-screen enter/leave target as SuspendAndRun above, not text output.          Single-line because rustfmt collapses the shorter call at this indentation.",
+    ),
 ];
 
 /// Tokens that put bytes on the process's stdout. `stdout()` (with the call

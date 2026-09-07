@@ -20,7 +20,8 @@
         { "key": "M", "description": "移動" },
         { "key": "D", "description": "削除" },
         { "key": "R", "description": "名前変更" },
-        { "key": "Shift+K", "description": "ディレクトリ作成" }
+        { "key": "Shift+K", "description": "ディレクトリ作成" },
+        { "key": "Shift+E", "description": "ファイル作成" }
       ]
     },
     {

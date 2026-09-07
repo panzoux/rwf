@@ -87,6 +87,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub diagnostics: DiagnosticsConfig,
 
+    /// Clipboard configuration (the `ClipText` function kind and `PipeToAction: ClipText`)
+    #[serde(default)]
+    pub clipboard: ClipboardConfig,
+
     /// Background polling interval in milliseconds for detecting external filesystem changes.
     /// Used by Layer 2 of the pane update mechanism (Phase 7). 0 = disabled.
     #[serde(default = "default_polling_interval_ms")]
@@ -341,6 +345,19 @@ impl Default for UndoConfig {
     }
 }
 
+/// Clipboard configuration.
+///
+/// Container-level `#[serde(default)]` plus a default on every field, so a
+/// `config.json` written before this existed still loads (see the "every config
+/// field is optional" contract in docs/IMPLICIT_CONTRACTS.md).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct ClipboardConfig {
+    /// Which mechanism to copy with. `Auto` uses the native clipboard and falls back
+    /// to an OSC 52 escape sequence, which is what makes copying work over SSH.
+    pub backend: crate::clipboard::ClipboardBackend,
+}
+
 /// Archive configuration for compression operations
 ///
 /// The `alias`es accept the snake_case names this struct emitted before it grew a
@@ -529,6 +546,7 @@ impl Default for AppConfig {
             text_input: TextInputConfig::default(),
             jump_nav: JumpNavConfig::default(),
             diagnostics: DiagnosticsConfig::default(),
+            clipboard: ClipboardConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),

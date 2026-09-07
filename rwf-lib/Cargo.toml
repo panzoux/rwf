@@ -23,6 +23,13 @@ crossterm = { workspace = true }
 zip = { workspace = true }
 
 # Additional dependencies
+# Clipboard: in-process native access (Win32 / NSPasteboard / X11 / Wayland).
+# Default features are kept so Wayland works; the OSC 52 fallback in
+# src/clipboard.rs covers headless and SSH sessions where none of these apply.
+# default-features=false drops "image-data" (and its `image` dependency tree) —
+# we only ever put text on the clipboard. wayland-data-control is kept so Wayland
+# sessions work; it is inert on non-Unix targets.
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 async-trait = "0.1"
 dirs = "5.0"
 filetime = "0.2"

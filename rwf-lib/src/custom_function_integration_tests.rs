@@ -65,8 +65,8 @@ mod tests {
         let result = expander.expand(&state, &func).unwrap();
         assert!(result.contains("3"));
 
-        // Test $M macro (marked files)
-        let func = CustomFunction::new("test", "process $M");
+        // Test $MFS macro (marked file names, shell form — successor to the removed $M)
+        let func = CustomFunction::new("test", "process $MFS");
         let result = expander.expand(&state, &func).unwrap();
         assert!(result.contains("file2.rs"));
     }
@@ -92,6 +92,7 @@ mod tests {
             working_dir: working_dir.clone(),
             pipe_to_action: None,
             shell: Some("bash".to_string()),
+            suspend: false,
         });
 
         // Verify the job spec
@@ -149,15 +150,18 @@ mod tests {
         let current_dir = std::env::current_dir().unwrap();
         let output = current_dir.to_str().unwrap();
 
-        let result = process_pipe_to_action(&PipeToAction::JumpToPath, output);
+        let result = process_pipe_to_action(&PipeToAction::JumpToPath, output, &current_dir);
         assert!(result.is_ok());
 
         match result.unwrap() {
-            PipeToActionResult::JumpToPath(location) => match location {
-                Location::Local(path) => assert_eq!(path, current_dir),
-                _ => panic!("Expected Local location"),
-            },
-            _ => panic!("Expected JumpToPath result"),
+            PipeToActionResult::JumpToPath {
+                location: Location::Local(path),
+                cursor_name,
+            } => {
+                assert_eq!(path, current_dir);
+                assert_eq!(cursor_name, None, "a directory target needs no cursor name");
+            }
+            other => panic!("Expected JumpToPath result, got {other:?}"),
         }
     }
 
@@ -169,7 +173,8 @@ mod tests {
         let test_file = std::env::current_exe().unwrap();
         let output = test_file.to_str().unwrap();
 
-        let result = process_pipe_to_action(&PipeToAction::ExecuteFile, output);
+        let base = test_file.parent().expect("exe has a parent").to_path_buf();
+        let result = process_pipe_to_action(&PipeToAction::ExecuteFile, output, &base);
         assert!(result.is_ok());
 
         match result.unwrap() {
@@ -184,16 +189,18 @@ mod tests {
     /// **Validates: Requirements 28.10, 28.15**
     #[test]
     fn test_pipe_to_action_execute_file_with_editor() {
+        // Absolute output is used as-is, regardless of the working directory.
         let output = "/tmp/newfile.txt";
+        let base = std::env::current_dir().unwrap();
 
-        let result = process_pipe_to_action(&PipeToAction::ExecuteFileWithEditor, output);
+        let result = process_pipe_to_action(&PipeToAction::ExecuteFileWithEditor, output, &base);
         assert!(result.is_ok());
 
         match result.unwrap() {
             PipeToActionResult::ExecuteFileWithEditor(path) => {
                 assert_eq!(path, PathBuf::from("/tmp/newfile.txt"));
             }
-            _ => panic!("Expected ExecuteFileWithEditor result"),
+            other => panic!("Expected ExecuteFileWithEditor result, got {other:?}"),
         }
     }
 

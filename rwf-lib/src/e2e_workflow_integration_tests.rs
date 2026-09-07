@@ -367,6 +367,7 @@ mod tests {
             working_dir: Location::Local(PathBuf::from("/test")),
             pipe_to_action: None,
             shell: Some("bash".to_string()),
+            suspend: false,
         });
 
         update_state(&mut state, Transition::EnqueueJob { spec: job_spec });

@@ -11,6 +11,7 @@ use rwf_lib::model::dialog::{
     SimpleRenameDialog, SortDialog, TrashBrowserDialog, TypeMismatchWarningDialog,
     WildcardMarkDialog,
 };
+use rwf_lib::state::helpers::CustomFunctionOutcome;
 use tracing::debug;
 
 use super::archive_ext_for_format;
@@ -136,6 +137,43 @@ pub fn restore_job_name(records: &[rwf_lib::model::TrashRecord]) -> String {
     }
 }
 
+/// Validate a name typed into the Create File / Create Directory dialog against
+/// both the syntax rules and what already lives in `dir`.
+///
+/// The collision check is a single `symlink_metadata` on the joined path, not a
+/// scan of the pane's `entries`: `entries` reflects one `ReadDirectory` snapshot
+/// and (depending on config) may omit hidden files, so a name colliding with a
+/// hidden entry would pass here and then fail in the job. `symlink_metadata`
+/// (rather than `exists`) also catches a dangling symlink, which occupies the
+/// name even though it resolves to nothing. It's the one stat this path does —
+/// on the directory the user is already looking at, so the entry is warm — and
+/// it reads nothing, so it doesn't break the "no side-effects outside jobs" rule.
+///
+/// Non-`Local` locations have no path to stat; the syntax rules still apply and
+/// the backend rejects the operation itself.
+fn validate_new_entry(dir: &rwf_lib::model::Location, name: &str) -> Result<(), String> {
+    rwf_lib::model::dialog::validate_new_entry_name(name)?;
+    let candidate = dir.join(name);
+    if let Some(path) = candidate.path() {
+        if path.symlink_metadata().is_ok() {
+            return Err(format!("'{name}' already exists"));
+        }
+    }
+    Ok(())
+}
+
+/// Show `message` under the textbox of the currently focused `Input` dialog.
+///
+/// Paired with `suppress_next_dialog_pop` at every call site: the message is
+/// only useful while the dialog it belongs to is still on screen.
+fn set_input_dialog_error(state: &mut rwf_lib::AppState, message: String) {
+    if let Some(dialog) = state.dialogs.current_mut() {
+        if let DialogContent::Input(input_dialog) = &mut dialog.content {
+            input_dialog.error = Some(message);
+        }
+    }
+}
+
 /// Process dialog confirmation and create transitions
 /// Returns the job spec if a job was created, so it can be submitted to the worker pool
 pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_lib::job::JobSpec> {
@@ -192,39 +230,37 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     rwf_lib::state::Transition::RegisterCurrentFolder { name: input, path },
                 );
             }
-            "Create Directory" if !input.is_empty() => {
+            // Both create-dialogs validate before starting a job. The backend
+            // rejects the same names (`LocalFilesystemBackend::create_file` /
+            // `create_directory`), but that failure only lands in the task
+            // panel *after* the dialog has closed and the typed name is gone.
+            // Validating here lets the dialog stay open with the reason shown
+            // inline, so the name can be corrected in place.
+            "Create Directory" | "Create File" => {
+                let is_file = title == "Create File";
                 let current_location = state.active_pane().current_location.clone();
-                let new_dir_loc = current_location.join(&input);
-                return Some(rwf_lib::job::JobSpec::new(rwf_lib::job::JobKind::Mkdir {
-                    location: new_dir_loc,
-                }));
-            }
-            "Create File" if !input.is_empty() => {
-                let current_location = state.active_pane().current_location.clone();
-                let new_file_loc = current_location.join(&input);
-                return Some(rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::CreateFile {
-                        location: new_file_loc,
-                    },
-                ));
+                if let Err(message) = validate_new_entry(&current_location, &input) {
+                    set_input_dialog_error(state, message);
+                    state.suppress_next_dialog_pop = true;
+                    return None;
+                }
+                let new_loc = current_location.join(&input);
+                let kind = if is_file {
+                    rwf_lib::job::JobKind::CreateFile { location: new_loc }
+                } else {
+                    rwf_lib::job::JobKind::Mkdir { location: new_loc }
+                };
+                return Some(rwf_lib::job::JobSpec::new(kind));
             }
             "Custom Function Input" => {
                 if let Some(func) = state.pending_custom_function_input.take() {
-                    let expander = rwf_lib::macro_expander::MacroExpander::new();
-                    if let Ok(command) = expander.expand_with_user_input(state, &func, &input) {
-                        let working_dir = state.active_pane().current_location.clone();
-                        let shell = func.shell.clone();
+                    if let CustomFunctionOutcome::Job(job) =
+                        state.custom_function_job(&func, Some(&input))
+                    {
                         // Pop the CustomFunctionSelector sitting below this Input dialog;
                         // app.rs will pop the Input dialog itself after we return.
                         state.dialogs.pop_below_top();
-                        return Some(rwf_lib::job::JobSpec::new(
-                            rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                command,
-                                working_dir,
-                                pipe_to_action: func.pipe_to_action.clone(),
-                                shell,
-                            },
-                        ));
+                        return Some(*job);
                     }
                 }
             }
@@ -779,21 +815,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 };
                 if let Some(&func) = filtered.get(*selected_index) {
                     let func = func.clone();
-                    let expander = rwf_lib::macro_expander::MacroExpander::new();
-                    match expander.expand(state, &func) {
-                        Ok(command) => {
-                            let working_dir = state.active_pane().current_location.clone();
-                            let shell = func.shell.clone();
-                            return Some(rwf_lib::job::JobSpec::new(
-                                rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                    command,
-                                    working_dir,
-                                    pipe_to_action: func.pipe_to_action.clone(),
-                                    shell,
-                                },
-                            ));
+                    match state.custom_function_job(&func, None) {
+                        CustomFunctionOutcome::Job(job) => {
+                            return Some(*job);
                         }
-                        Err(_) => {
+                        CustomFunctionOutcome::NeedsInput => {
                             // Command requires $I user input — push an Input dialog.
                             let prompt = rwf_lib::macro_expander::MacroExpander::extract_i_prompt(
                                 func.get_command().unwrap_or(""),
@@ -806,6 +832,9 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             ));
                             state.pending_custom_function_input = Some(func);
                             state.suppress_next_dialog_pop = true;
+                            return None;
+                        }
+                        CustomFunctionOutcome::Menu | CustomFunctionOutcome::Nothing => {
                             return None;
                         }
                     }
@@ -885,18 +914,10 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                                 .find(|f| f.name == name)
                                 .cloned();
                             if let Some(func) = func {
-                                let expander = rwf_lib::macro_expander::MacroExpander::new();
-                                if let Ok(command) = expander.expand(state, &func) {
-                                    let working_dir = state.active_pane().current_location.clone();
-                                    let shell = func.shell.clone();
-                                    return Some(rwf_lib::job::JobSpec::new(
-                                        rwf_lib::job::JobKind::ExecuteCustomFunction {
-                                            command,
-                                            working_dir,
-                                            pipe_to_action: func.pipe_to_action.clone(),
-                                            shell,
-                                        },
-                                    ));
+                                if let CustomFunctionOutcome::Job(job) =
+                                    state.custom_function_job(&func, None)
+                                {
+                                    return Some(*job);
                                 }
                             }
                         }
@@ -1137,20 +1158,8 @@ fn resolve_menu_item_action(
         .find(|f| f.name == action_name)
         .cloned();
     if let Some(func) = func {
-        if func.is_command() {
-            let expander = rwf_lib::macro_expander::MacroExpander::new();
-            if let Ok(command) = expander.expand(state, &func) {
-                let working_dir = state.active_pane().current_location.clone();
-                let shell = func.shell.clone();
-                return Some(rwf_lib::job::JobSpec::new(
-                    rwf_lib::job::JobKind::ExecuteCustomFunction {
-                        command,
-                        working_dir,
-                        pipe_to_action: func.pipe_to_action.clone(),
-                        shell,
-                    },
-                ));
-            }
+        if let CustomFunctionOutcome::Job(job) = state.custom_function_job(&func, None) {
+            return Some(*job);
         }
     }
     None
@@ -1167,6 +1176,55 @@ mod tests {
 
     fn test_state() -> AppState {
         AppState::new(AppConfig::default())
+    }
+
+    /// The `F6` clip menu path: a menu item whose `Action` names a `ClipText`
+    /// function must produce a `SetClipboard` job with the macros already expanded.
+    /// Before `ClipText` existed this resolver required `is_command()`, so a
+    /// non-command entry would have silently done nothing.
+    #[test]
+    fn menu_item_naming_a_clip_text_function_copies_to_the_clipboard() {
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from("/test"));
+
+        // Deliberately not a name from the shipped defaults: `AppState::new` loads the
+        // developer's real custom_functions.json from the OS config dir, and name
+        // lookup takes the first match, so a realistic name here would silently
+        // resolve to their entry instead of this one.
+        let name = "rwf test clip path";
+        let mut func = rwf_lib::model::dialog::CustomFunction::new(name, "unused");
+        func.command = None;
+        func.clip_text = Some("$P".to_string());
+        state.custom_functions.push(func);
+
+        let job = resolve_menu_item_action(&mut state, name).expect("expected a job");
+        match job.kind {
+            rwf_lib::job::JobKind::SetClipboard { text } => {
+                assert_eq!(text, "/test", "macros must be expanded before copying");
+            }
+            other => panic!("expected SetClipboard, got {other:?}"),
+        }
+    }
+
+    /// A menu item naming a `Suspend: true` function must carry the flag through, or
+    /// the command would be handed to the worker pool with no terminal and fzf would
+    /// fail with no visible cause.
+    #[test]
+    fn menu_item_naming_a_suspend_function_keeps_the_flag() {
+        let mut state = test_state();
+        let name = "rwf test suspend pick";
+        let mut func = rwf_lib::model::dialog::CustomFunction::new(name, "fzf");
+        func.suspend = true;
+        state.custom_functions.push(func);
+
+        let job = resolve_menu_item_action(&mut state, name).expect("expected a job");
+        match job.kind {
+            rwf_lib::job::JobKind::ExecuteCustomFunction { suspend, .. } => {
+                assert!(suspend, "Suspend was dropped on the menu dispatch path");
+            }
+            other => panic!("expected ExecuteCustomFunction, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1359,6 +1417,135 @@ mod tests {
         }
     }
 
+    // ── Create File / Create Directory inline validation ──────────────────
+    //
+    // The contract these pin: a rejected name starts no job, leaves the dialog
+    // on screen (`suppress_next_dialog_pop`) and puts the reason in
+    // `InputDialog::error`, so the user corrects the name in place instead of
+    // finding out from the task panel after the dialog is gone.
+
+    /// Push a Create File/Directory dialog with `name` already typed, pointing
+    /// the active pane at `dir`.
+    fn state_with_create_dialog(
+        title: &str,
+        dir: &std::path::Path,
+        name: &str,
+    ) -> rwf_lib::AppState {
+        let mut state = test_state();
+        state.current_tab_mut().left_pane.current_location = Location::Local(dir.to_path_buf());
+        let mut dialog = Dialog::input(title, "Name:", "");
+        if let rwf_lib::model::dialog::DialogContent::Input(rwf_lib::model::InputDialog {
+            input,
+            ..
+        }) = &mut dialog.content
+        {
+            *input = name.to_string();
+        }
+        state.dialogs.push(dialog);
+        state
+    }
+
+    fn dialog_error(state: &rwf_lib::AppState) -> Option<String> {
+        match &state.dialogs.current()?.content {
+            rwf_lib::model::dialog::DialogContent::Input(d) => d.error.clone(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn confirm_create_file_with_existing_name_reports_error_and_keeps_dialog_open() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(temp_dir.path().join("taken.txt"), b"x").unwrap();
+        let mut state = state_with_create_dialog("Create File", temp_dir.path(), "taken.txt");
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+        assert!(
+            state.suppress_next_dialog_pop,
+            "dialog must stay open so the name can be corrected"
+        );
+        let err = dialog_error(&state).expect("expected an inline error");
+        assert!(err.contains("already exists"), "unexpected error: {err}");
+    }
+
+    /// Same rule for directories — the two share one code path, and mkdir over
+    /// an existing name fails in the backend exactly like create-file does.
+    #[test]
+    fn confirm_create_directory_with_existing_name_reports_error_and_keeps_dialog_open() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir(temp_dir.path().join("taken")).unwrap();
+        let mut state = state_with_create_dialog("Create Directory", temp_dir.path(), "taken");
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+        assert!(state.suppress_next_dialog_pop);
+        let err = dialog_error(&state).expect("expected an inline error");
+        assert!(err.contains("already exists"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn confirm_create_file_with_invalid_character_reports_error() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut state = state_with_create_dialog("Create File", temp_dir.path(), "bad:name.txt");
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+        assert!(state.suppress_next_dialog_pop);
+        let err = dialog_error(&state).expect("expected an inline error");
+        assert!(err.contains("Invalid character"), "unexpected error: {err}");
+    }
+
+    /// A path separator would create the file somewhere other than the
+    /// directory the user is looking at, so it's rejected like any other
+    /// invalid character rather than silently honoured.
+    #[test]
+    fn confirm_create_file_with_path_separator_reports_error() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut state = state_with_create_dialog("Create File", temp_dir.path(), "sub/name.txt");
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+        assert!(dialog_error(&state).is_some());
+    }
+
+    #[test]
+    fn confirm_create_file_with_empty_name_reports_error() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut state = state_with_create_dialog("Create File", temp_dir.path(), "");
+
+        assert!(process_dialog_confirmation(&mut state).is_none());
+        assert!(state.suppress_next_dialog_pop);
+        let err = dialog_error(&state).expect("expected an inline error");
+        assert!(err.contains("empty"), "unexpected error: {err}");
+    }
+
+    /// A free name in a real directory still starts the job and leaves the
+    /// dialog to be popped as usual — the validation must not block the
+    /// happy path.
+    #[test]
+    fn confirm_create_file_with_free_name_starts_job_in_real_directory() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut state = state_with_create_dialog("Create File", temp_dir.path(), "fresh.txt");
+
+        let job_spec = process_dialog_confirmation(&mut state).expect("expected a job spec");
+        assert!(!state.suppress_next_dialog_pop);
+        assert!(dialog_error(&state).is_none());
+        match job_spec.kind {
+            rwf_lib::job::JobKind::CreateFile { location } => {
+                assert_eq!(location, Location::Local(temp_dir.path().join("fresh.txt")));
+            }
+            other => panic!("expected CreateFile, got {:?}", other),
+        }
+    }
+
     /// Confirming a TypeMismatchWarning dialog must run the *original*
     /// association command — the whole point of the dialog is "warn, then
     /// let the user proceed unchanged" (see plan/7.3.smart_file_opener.md §5).
@@ -1381,6 +1568,7 @@ mod tests {
                 working_dir,
                 shell,
                 pipe_to_action,
+                suspend: _,
             } => {
                 assert_eq!(command, "notepad $F");
                 assert_eq!(working_dir, Location::Local(PathBuf::from("/test")));

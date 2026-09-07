@@ -61,7 +61,7 @@ pub use file_info::FileInfoDialog;
 pub use file_mask::FileMaskDialog;
 pub use help::HelpDialog;
 pub use history_dialog::HistoryDialogContent;
-pub use input::InputDialog;
+pub use input::{validate_new_entry_name, InputDialog};
 pub use job_manager::JobManagerContent;
 pub use jump_to_file::JumpToFileDialog;
 pub use jump_to_path::JumpToPathDialog;
@@ -400,17 +400,32 @@ pub enum MenuContent {
 }
 
 /// Custom function definition with macro expansion support.
-/// Either `Command` (leaf) or `Menu` (submenu) must be present, not both.
+///
+/// Exactly one of `Command` (run a shell command), `Menu` (open a submenu) or
+/// `ClipText` (copy expanded text to the clipboard) must be present. The
+/// combination is validated at load time by [`validate_custom_functions`] rather
+/// than resolved by a silent precedence rule, so an ambiguous entry is a loud
+/// config error instead of a surprise.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct CustomFunction {
     pub name: String,
-    /// Shell command to execute (leaf entry). Mutually exclusive with Menu.
+    /// Shell command to execute (leaf entry). Mutually exclusive with Menu/ClipText.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     /// Submenu: inline item list or filename reference. Resolved to Items after loading.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub menu: Option<MenuContent>,
+    /// Macro template whose expansion is copied to the clipboard. No process is
+    /// spawned. Mutually exclusive with Command/Menu.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clip_text: Option<String>,
+    /// Hand the terminal to this command: rwf leaves the alternate screen, the
+    /// child inherits stdin/stderr (so a TUI like fzf or vim can draw), stdout is
+    /// captured, and rwf resumes when it exits. Orthogonal to `PipeToAction` —
+    /// either may be used without the other.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub suspend: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Category for display in the help viewer (default: "Custom Functions" if absent)
@@ -434,6 +449,9 @@ impl CustomFunction {
     }
     pub fn is_command(&self) -> bool {
         self.command.is_some()
+    }
+    pub fn is_clip_text(&self) -> bool {
+        self.clip_text.is_some()
     }
 
     /// Return the resolved menu items, or empty slice if not a menu or not yet resolved.
@@ -1368,6 +1386,8 @@ impl CustomFunction {
             name: name.into(),
             command: Some(command.into()),
             menu: None,
+            clip_text: None,
+            suspend: false,
             description: None,
             category: None,
             shell: None,
@@ -2333,6 +2353,142 @@ fn parse_custom_functions(
     Ok(file.functions)
 }
 
+/// Validate loaded custom functions, returning one human-readable message per problem.
+///
+/// Two classes of error, both deliberately loud rather than silently resolved:
+///
+/// 1. **Ambiguous kind** — `Command`/`Menu`/`ClipText` are mutually exclusive, and
+///    `Suspend` is meaningless on a `ClipText` entry (there is no process to suspend).
+///    Reporting beats inventing a precedence order nobody can remember.
+/// 2. **Stale `$M`** — the removed marked-files macro. Left alone it would survive as
+///    literal `$M` text in the command rather than erroring, so it is caught here.
+///    Replacements: `$MFS` (names for a shell), `$MPS` (full paths for a shell),
+///    `$MFL` / `$MPL` (newline-joined raw forms, for `ClipText`).
+pub fn validate_custom_functions(functions: &[CustomFunction]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for f in functions {
+        let kinds = [
+            ("Command", f.command.is_some()),
+            ("Menu", f.menu.is_some()),
+            ("ClipText", f.clip_text.is_some()),
+        ];
+        let present: Vec<&str> = kinds.iter().filter(|(_, p)| *p).map(|(n, _)| *n).collect();
+        match present.len() {
+            0 => problems.push(format!(
+                "'{}': needs one of Command, Menu or ClipText",
+                f.name
+            )),
+            1 => {}
+            _ => problems.push(format!(
+                "'{}': {} are mutually exclusive — keep only one",
+                f.name,
+                present.join(" and ")
+            )),
+        }
+        if f.suspend && f.clip_text.is_some() {
+            problems.push(format!(
+                "'{}': Suspend has no meaning with ClipText (no process is run)",
+                f.name
+            ));
+        }
+        for (field, text) in [("Command", &f.command), ("ClipText", &f.clip_text)] {
+            if let Some(text) = text {
+                if crate::macro_expander::has_stale_marked_macro(text) {
+                    problems.push(format!(
+                        "'{}': {} uses the removed $M macro — use $MFS (names, for a shell), \
+                         $MPS (full paths, for a shell), or $MFL/$MPL (newline-joined, for ClipText)",
+                        f.name, field
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
+#[cfg(test)]
+mod custom_function_validation_tests {
+    use super::*;
+
+    fn parse(json: &str) -> Vec<CustomFunction> {
+        parse_custom_functions(json).expect("valid JSON")
+    }
+
+    #[test]
+    fn a_single_kind_is_accepted() {
+        let fns = parse(
+            r#"{"Version":"1.0","Functions":[
+                {"Name":"a","Command":"echo hi"},
+                {"Name":"b","ClipText":"$P"},
+                {"Name":"c","Menu":[]}
+            ]}"#,
+        );
+        assert!(validate_custom_functions(&fns).is_empty());
+    }
+
+    #[test]
+    fn clip_text_with_command_is_rejected_rather_than_ranked() {
+        // The point of the check: no silent precedence rule decides which one wins.
+        let fns = parse(r#"[{"Name":"both","Command":"echo hi","ClipText":"$P"}]"#);
+        let problems = validate_custom_functions(&fns);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("mutually exclusive"), "{problems:?}");
+        assert!(
+            problems[0].contains("both"),
+            "message should name the function"
+        );
+    }
+
+    #[test]
+    fn suspend_on_clip_text_is_rejected() {
+        let fns = parse(r#"[{"Name":"c","ClipText":"$P","Suspend":true}]"#);
+        let problems = validate_custom_functions(&fns);
+        assert!(
+            problems.iter().any(|p| p.contains("Suspend")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn an_entry_with_no_kind_is_rejected() {
+        let fns = parse(r#"[{"Name":"empty"}]"#);
+        let problems = validate_custom_functions(&fns);
+        assert!(problems[0].contains("needs one of"), "{problems:?}");
+    }
+
+    /// The removed `$M` would otherwise survive as literal text in the command
+    /// (bare-`$VAR` expansion finds no variable named `M`), so it is caught at load.
+    #[test]
+    fn the_removed_dollar_m_macro_is_reported_with_its_replacements() {
+        let fns = parse(r#"[{"Name":"old","Command":"archive $M"}]"#);
+        let problems = validate_custom_functions(&fns);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("removed $M"), "{problems:?}");
+        assert!(problems[0].contains("$MPS"), "must name the replacement");
+    }
+
+    #[test]
+    fn the_new_marked_macros_pass_validation() {
+        let fns = parse(
+            r#"[{"Name":"new","Command":"archive $MPS"},
+                {"Name":"clip","ClipText":"$MPL"}]"#,
+        );
+        assert!(validate_custom_functions(&fns).is_empty());
+    }
+
+    #[test]
+    fn shipped_defaults_are_valid() {
+        // Guards the files we actually ship: a typo in default_custom_functions.json
+        // would otherwise only surface as a config error on the user's first run.
+        let fns = parse(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS);
+        assert!(
+            validate_custom_functions(&fns).is_empty(),
+            "{:?}",
+            validate_custom_functions(&fns)
+        );
+    }
+}
+
 /// Resolve `Menu: "filename.json"` references into item lists.
 /// Inline `Items` entries are left as-is (nested menus not supported in 6.6 scope).
 fn resolve_menu_files(functions: &mut [CustomFunction], base_dir: &std::path::Path) {
@@ -2470,6 +2626,8 @@ mod custom_function_tests {
             name: "Test".to_string(),
             command: Some("default command".to_string()),
             menu: None,
+            clip_text: None,
+            suspend: false,
             description: None,
             category: None,
             shell: None,

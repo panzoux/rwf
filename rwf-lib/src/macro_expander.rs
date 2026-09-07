@@ -7,6 +7,46 @@ use crate::model::CustomFunction;
 use crate::state::AppState;
 use regex::Regex;
 
+/// Native path separator, expanded from the `$/` macro.
+#[cfg(target_os = "windows")]
+const PATH_SEP: &str = "\\";
+#[cfg(not(target_os = "windows"))]
+const PATH_SEP: &str = "/";
+
+/// The entries the `$M*` macros operate on: the marked entries, or — when nothing
+/// is marked — the cursor entry alone. Empty only when the pane itself is empty.
+fn marked_or_cursor(state: &AppState) -> Vec<&crate::model::FileEntry> {
+    let pane = state.active_pane();
+    let marked = pane.marked_entries();
+    if marked.is_empty() {
+        pane.current_entry().into_iter().collect()
+    } else {
+        marked
+    }
+}
+
+/// True if `command` still uses the removed `$M` macro.
+///
+/// `$M` was replaced by the systematic `$MFS`/`$MPS`/`$MFL`/`$MPL` set. A leftover
+/// `$M` would not error on its own — it would fall through to bare-`$VAR` env
+/// expansion, find no variable named `M`, and survive as the literal text `$M` in
+/// the command. Config loading calls this so the removal fails loudly instead.
+pub fn has_stale_marked_macro(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    let mut search_from = 0;
+    while let Some(offset) = command[search_from..].find("$M") {
+        let at = search_from + offset;
+        // Valid forms are exactly $M + {F,P} + {S,L}
+        let valid = matches!(bytes.get(at + 2), Some(b'F') | Some(b'P'))
+            && matches!(bytes.get(at + 3), Some(b'S') | Some(b'L'));
+        if !valid {
+            return true;
+        }
+        search_from = at + 2;
+    }
+    false
+}
+
 /// Macro expander for custom functions
 pub struct MacroExpander;
 
@@ -18,19 +58,57 @@ impl MacroExpander {
 
     /// Expand all macros in a custom function command
     pub fn expand(&self, state: &AppState, function: &CustomFunction) -> Result<String, String> {
-        let mut command = function
+        let command = function
             .get_command()
-            .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?
-            .to_string();
+            .ok_or_else(|| "Cannot expand a menu entry — no command".to_string())?;
 
         // Check for $I macro first - this requires user input
         if command.contains("$I") {
             return Err("Command contains $I macro - user input required".to_string());
         }
 
+        Ok(self.expand_all(state, command))
+    }
+
+    /// Expand a bare template string (no `$I` handling, no `CustomFunction` wrapper).
+    /// Used by the `ClipText` function kind, which has no command to run.
+    pub fn expand_template(&self, state: &AppState, template: &str) -> String {
+        self.expand_all(state, template)
+    }
+
+    /// The single macro-expansion implementation.
+    ///
+    /// **Ordering invariant: longest macro first.** `$MFS`/`$MPS`/`$MFL`/`$MPL` are
+    /// expanded before the single-letter macros, and env vars are expanded last so a
+    /// bare `$VAR` cannot swallow a macro (and vice versa). `$/` is deliberately not
+    /// a letter: an env var name can never start with `/`, so it cannot shadow one
+    /// the way a hypothetical `$S` would shadow `$SYSTEMROOT`.
+    fn expand_all(&self, state: &AppState, command: &str) -> String {
         // $V"VARNAME" — cross-platform env var expansion (TWF-compatible)
         // e.g. $V"APPDATA" → C:\Users\user\AppData\Roaming on Windows
-        command = Self::expand_v_macro(&command);
+        let mut command = Self::expand_v_macro(command);
+
+        // Native path separator — lets one config work on Windows and Unix ("$P$/$F").
+        command = command.replace("$/", PATH_SEP);
+
+        // Marked-file macros (longest first). $M<what><how>:
+        //   what: F = file name, P = full path
+        //   how:  S = shell form (space-joined, shell-quoted)
+        //         L = list form  (newline-joined, raw)
+        // All four fall back to the cursor entry when nothing is marked.
+        if command.contains("$M") {
+            let entries = marked_or_cursor(state);
+            let join = |f: &dyn Fn(&crate::model::FileEntry) -> String, sep: &str| {
+                entries.iter().map(|e| f(e)).collect::<Vec<_>>().join(sep)
+            };
+            command = command.replace("$MFS", &join(&|e| shell_quote(&e.name), " "));
+            command = command.replace(
+                "$MPS",
+                &join(&|e| shell_quote(&e.location.display_path()), " "),
+            );
+            command = command.replace("$MFL", &join(&|e| e.name.clone(), "\n"));
+            command = command.replace("$MPL", &join(&|e| e.location.display_path(), "\n"));
+        }
 
         // Expand pane path macros
         command = self.expand_macro(&command, "$P", || {
@@ -68,19 +146,6 @@ impl MacroExpander {
             command = command.replace("$E", "");
         }
 
-        // Expand marked files macro
-        let marked = state.active_pane().marked_entries();
-        if !marked.is_empty() {
-            let marked_list = marked
-                .iter()
-                .map(|e| shell_quote(&e.name))
-                .collect::<Vec<_>>()
-                .join(" ");
-            command = self.expand_macro(&command, "$M", || marked_list.clone());
-        } else {
-            command = command.replace("$M", "");
-        }
-
         // Expand all files macro
         let all_files = state
             .active_pane()
@@ -102,9 +167,7 @@ impl MacroExpander {
         });
 
         // Expand environment variables
-        command = self.expand_env_vars(&command);
-
-        Ok(command)
+        self.expand_env_vars(&command)
     }
 
     /// Expand `$V"VARNAME"` patterns — cross-platform env var expansion (TWF-compatible).
@@ -136,8 +199,10 @@ impl MacroExpander {
     ///   ${VAR}    (curly brace)  — expanded before bare $VAR; unambiguous, preferred
     ///   %VAR%     (Windows batch)
     ///   $VAR      (Unix-style bare dollar) — NOTE: conflicts with single-letter RWF macros
-    ///             ($P, $O, $L, $R, $F, $W, $E, $M) which are expanded in an earlier pass.
+    ///             ($P, $O, $L, $R, $F, $W, $E) which are expanded in an earlier pass.
     ///             Env vars whose names start with those letters are unreachable via bare $VAR.
+    ///             This is exactly why the path separator is `$/` and not `$S`: `$S` would
+    ///             have shadowed $SYSTEMROOT and $SESSIONNAME.
     fn expand_env_vars(&self, command: &str) -> String {
         let mut result = command.to_string();
         result = Self::replace_env_pattern(
@@ -209,87 +274,7 @@ impl MacroExpander {
         command = re.replace_all(&command, user_input).into_owned();
 
         // Now expand all other macros
-        self.expand_impl(state, &command)
-    }
-
-    /// Internal implementation of expand that works on a command string
-    fn expand_impl(&self, state: &AppState, command: &str) -> Result<String, String> {
-        let mut result = command.to_string();
-
-        // $V"VARNAME" — cross-platform env var expansion
-        result = Self::expand_v_macro(&result);
-
-        // Expand pane path macros
-        result = self.expand_macro(&result, "$P", || {
-            state.active_pane().current_location.display_path()
-        });
-
-        result = self.expand_macro(&result, "$O", || {
-            state.opposite_pane().current_location.display_path()
-        });
-
-        let tab = state.current_tab();
-        result = self.expand_macro(&result, "$L", || {
-            tab.left_pane.current_location.display_path()
-        });
-
-        result = self.expand_macro(&result, "$R", || {
-            tab.right_pane.current_location.display_path()
-        });
-
-        // Expand cursor file macros
-        if let Some(entry) = state.active_pane().current_entry() {
-            result = self.expand_macro(&result, "$F", || entry.name.clone());
-            result =
-                self.expand_macro(&result, "$W", || entry.name_without_extension().to_string());
-            if let Some(ext) = entry.extension() {
-                result = self.expand_macro(&result, "$E", || ext.to_string());
-            } else {
-                result = result.replace("$E", "");
-            }
-        } else {
-            result = result.replace("$F", "");
-            result = result.replace("$W", "");
-            result = result.replace("$E", "");
-        }
-
-        // Expand marked files macro
-        let marked = state.active_pane().marked_entries();
-        if !marked.is_empty() {
-            let marked_list = marked
-                .iter()
-                .map(|e| shell_quote(&e.name))
-                .collect::<Vec<_>>()
-                .join(" ");
-            result = self.expand_macro(&result, "$M", || marked_list.clone());
-        } else {
-            result = result.replace("$M", "");
-        }
-
-        // Expand all files macro
-        let all_files = state
-            .active_pane()
-            .entries
-            .iter()
-            .map(|e| shell_quote(&e.name))
-            .collect::<Vec<_>>()
-            .join(" ");
-        result = self.expand_macro(&result, "$*", || all_files.clone());
-
-        // Expand home directory macro
-        if let Some(home) = dirs::home_dir() {
-            result = self.expand_macro(&result, "$~", || home.display().to_string());
-        }
-
-        // Expand file count macro
-        result = self.expand_macro(&result, "$#", || {
-            state.active_pane().entries.len().to_string()
-        });
-
-        // Expand environment variables
-        result = self.expand_env_vars(&result);
-
-        Ok(result)
+        Ok(self.expand_all(state, &command))
     }
 }
 
@@ -399,10 +384,123 @@ mod tests {
     fn test_expand_marked_files() {
         let state = create_test_state();
         let expander = MacroExpander::new();
-        let function = CustomFunction::new("test", "process $M");
+        // $MFS is the successor to the removed $M: names, space-joined, shell-quoted.
+        let function = CustomFunction::new("test", "process $MFS");
 
         let result = expander.expand(&state, &function).unwrap();
         assert!(result.contains("file2.rs"));
+    }
+
+    /// Builds a state with two marked entries, one of whose names contains a space,
+    /// so quoting behaviour is observable.
+    fn state_with_marked_spaces() -> AppState {
+        let mut state = create_test_state();
+        let loc = Location::Local(PathBuf::from("/test"));
+        let mk = |name: &str, marked: bool| FileEntry {
+            name: name.to_string(),
+            location: loc.join(name),
+            size: 1,
+            is_dir: false,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        };
+        state.tabs.tabs[0].left_pane.entries = vec![mk("a.txt", true), mk("b c.txt", true)];
+        state
+    }
+
+    #[test]
+    fn marked_macros_cover_all_four_corners() {
+        let state = state_with_marked_spaces();
+        let expander = MacroExpander::new();
+        let sep = PATH_SEP;
+        let expand = |t: &str| expander.expand_template(&state, t);
+
+        // names / shell form — space-joined, the space-containing name quoted
+        assert_eq!(expand("$MFS"), r#"a.txt "b c.txt""#);
+        // names / list form — newline-joined, raw
+        assert_eq!(expand("$MFL"), "a.txt\nb c.txt");
+        // full paths / list form — one raw path per line.
+        // "/test" is a literal base here; only `join` contributes a native separator.
+        assert_eq!(
+            expand("$MPL"),
+            format!("/test{s}a.txt\n/test{s}b c.txt", s = sep)
+        );
+        // full paths / shell form — the corner the old $M could not reach
+        assert_eq!(
+            expand("$MPS"),
+            format!(r#"/test{s}a.txt "/test{s}b c.txt""#, s = sep)
+        );
+    }
+
+    #[test]
+    fn marked_macros_fall_back_to_cursor_entry_when_nothing_marked() {
+        let mut state = state_with_marked_spaces();
+        for e in state.tabs.tabs[0].left_pane.entries.iter_mut() {
+            e.marked = false;
+        }
+        state.tabs.tabs[0].left_pane.cursor = 1; // "b c.txt"
+        let expander = MacroExpander::new();
+
+        assert_eq!(expander.expand_template(&state, "$MFL"), "b c.txt");
+        assert_eq!(expander.expand_template(&state, "$MFS"), r#""b c.txt""#);
+    }
+
+    #[test]
+    fn path_separator_macro_expands_natively_and_composes() {
+        let state = create_test_state();
+        let expander = MacroExpander::new();
+        // $P$/$F is the cross-platform spelling of "full path of the cursor file".
+        let result = expander.expand_template(&state, "$P$/$F");
+        assert!(
+            result.ends_with(&format!("{}file1.txt", PATH_SEP)),
+            "{result}"
+        );
+        assert!(
+            !result.contains("$/"),
+            "separator left unexpanded: {result}"
+        );
+    }
+
+    #[test]
+    fn path_separator_macro_does_not_shadow_env_vars() {
+        // The whole reason $/ was chosen over $S: a letter macro would have eaten
+        // the leading character of env vars starting with that letter.
+        let state = create_test_state();
+        let expander = MacroExpander::new();
+        std::env::set_var("SYSTEMROOT_RWFTEST", "C:\\Windows");
+
+        let result = expander.expand_template(&state, "$SYSTEMROOT_RWFTEST");
+        assert_eq!(result, "C:\\Windows", "env var was mangled by a macro pass");
+
+        std::env::remove_var("SYSTEMROOT_RWFTEST");
+    }
+
+    #[test]
+    fn marked_macros_expand_longest_first() {
+        // $MFS must not be chewed up into "<names>S" by a shorter macro, and the
+        // single-letter $F/$P passes must leave the $M* tokens alone.
+        let state = state_with_marked_spaces();
+        let expander = MacroExpander::new();
+        let out = expander.expand_template(&state, "$MFS|$MFL");
+        assert_eq!(out, "a.txt \"b c.txt\"|a.txt\nb c.txt");
+        assert!(!out.contains('$'), "a macro survived expansion: {out}");
+    }
+
+    #[test]
+    fn stale_marked_macro_is_detected() {
+        // The four valid forms are accepted...
+        for ok in ["$MFS", "$MPS", "$MFL", "$MPL", "cmd $MPS $P", "no macros"] {
+            assert!(!has_stale_marked_macro(ok), "false positive on {ok:?}");
+        }
+        // ...and anything else using $M is flagged, including half-migrated spellings.
+        for bad in ["process $M", "$M", "$MF", "$MP", "$MX", "a $M b"] {
+            assert!(has_stale_marked_macro(bad), "missed stale macro in {bad:?}");
+        }
     }
 
     #[test]

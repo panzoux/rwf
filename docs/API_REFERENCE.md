@@ -636,7 +636,9 @@ pub enum PipeToAction {
 - `$F` - Cursor file name
 - `$W` - File name without extension
 - `$E` - File extension
-- `$M` - Marked files list
+- `$/` - Native path separator
+- `$MFS` / `$MPS` - Marked names / full paths, space-joined and shell-quoted
+- `$MFL` / `$MPL` - Marked names / full paths, newline-joined and raw
 - `$*` - All files in pane
 - `$I` - User input prompt
 - `$V` - Selected text

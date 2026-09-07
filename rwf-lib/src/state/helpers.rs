@@ -1,6 +1,80 @@
 use crate::state::AppConfig;
 use crate::state::AppState;
 
+/// What invoking a [`CustomFunction`](crate::model::dialog::CustomFunction) should do.
+///
+/// Returned by [`AppState::custom_function_job`], the single place that turns a custom
+/// function into work. Before it existed, five call sites (keybindings, the `$I` input
+/// dialog, the function selector, the context menu, and menu-item dispatch) each
+/// re-derived this, and had already drifted — four of them read `func.shell` directly
+/// and so ignored `OsSpecific` shell overrides.
+#[derive(Debug)]
+pub enum CustomFunctionOutcome {
+    /// Ready to run (or to copy, for `ClipText`).
+    Job(Box<crate::job::JobSpec>),
+    /// A `Menu` entry — the caller opens the submenu dialog.
+    Menu,
+    /// The command contains `$I`. The caller prompts for input, then calls again
+    /// with `user_input` set.
+    NeedsInput,
+    /// Nothing to do: no `Command`/`Menu`/`ClipText`, or expansion failed.
+    Nothing,
+}
+
+impl AppState {
+    /// Turn a custom function into the work it represents.
+    ///
+    /// `user_input` carries the answer to a `$I` prompt when re-invoked after the input
+    /// dialog; pass `None` on the first attempt.
+    pub fn custom_function_job(
+        &self,
+        func: &crate::model::dialog::CustomFunction,
+        user_input: Option<&str>,
+    ) -> CustomFunctionOutcome {
+        use crate::job::{JobKind, JobSpec};
+
+        if func.is_menu() {
+            return CustomFunctionOutcome::Menu;
+        }
+
+        let expander = crate::macro_expander::MacroExpander::new();
+
+        // ClipText: no process, no shell, no working directory — just expanded text.
+        if let Some(template) = &func.clip_text {
+            let text = expander.expand_template(self, template);
+            return CustomFunctionOutcome::Job(Box::new(JobSpec::new(JobKind::SetClipboard {
+                text,
+            })));
+        }
+
+        if func.get_command().is_none() {
+            return CustomFunctionOutcome::Nothing;
+        }
+
+        let command = match user_input {
+            Some(input) => expander.expand_with_user_input(self, func, input),
+            None => expander.expand(self, func),
+        };
+        let command = match command {
+            Ok(c) => c,
+            // The only expected failure is an unanswered `$I`; ask, then retry.
+            Err(_) if user_input.is_none() && expander.requires_user_input(func) => {
+                return CustomFunctionOutcome::NeedsInput
+            }
+            Err(_) => return CustomFunctionOutcome::Nothing,
+        };
+
+        CustomFunctionOutcome::Job(Box::new(JobSpec::new(JobKind::ExecuteCustomFunction {
+            command,
+            working_dir: self.active_pane().current_location.clone(),
+            pipe_to_action: func.pipe_to_action.clone(),
+            // `get_shell()`, not `func.shell` — honours per-OS overrides.
+            shell: func.get_shell().map(str::to_string),
+            suspend: func.suspend,
+        })))
+    }
+}
+
 impl AppState {
     fn resolve_editor(config: &AppConfig) -> String {
         config.editor_command.clone().unwrap_or_else(|| {
@@ -146,6 +220,139 @@ impl AppState {
                 wait: false,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod custom_function_job_tests {
+    use super::CustomFunctionOutcome;
+    use crate::job::{JobKind, PipeToAction};
+    use crate::model::dialog::CustomFunction;
+    use crate::test_utils::test_state;
+
+    fn func(name: &str) -> CustomFunction {
+        CustomFunction::new(name, "echo hi")
+    }
+
+    #[test]
+    fn menu_entries_are_reported_as_menus_not_jobs() {
+        let mut f = func("m");
+        f.command = None;
+        f.menu = Some(crate::model::dialog::MenuContent::Items(Vec::new()));
+        let state = test_state();
+        assert!(matches!(
+            state.custom_function_job(&f, None),
+            CustomFunctionOutcome::Menu
+        ));
+    }
+
+    #[test]
+    fn clip_text_produces_a_set_clipboard_job_with_no_process() {
+        let mut f = func("c");
+        f.command = None;
+        f.clip_text = Some("hello $#".to_string());
+        let state = test_state();
+
+        match state.custom_function_job(&f, None) {
+            CustomFunctionOutcome::Job(job) => match job.kind {
+                // Macros are expanded; no shell, no working dir, no PipeToAction.
+                JobKind::SetClipboard { text } => assert_eq!(text, "hello 0"),
+                other => panic!("expected SetClipboard, got {other:?}"),
+            },
+            other => panic!("expected a job, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_command_needing_input_asks_before_it_runs() {
+        let f = CustomFunction::new("i", r#"notepad $I"Which file""#);
+        let state = test_state();
+        assert!(matches!(
+            state.custom_function_job(&f, None),
+            CustomFunctionOutcome::NeedsInput
+        ));
+
+        // Supplying the answer produces the job, with the prompt text gone.
+        match state.custom_function_job(&f, Some("out.txt")) {
+            CustomFunctionOutcome::Job(job) => match job.kind {
+                JobKind::ExecuteCustomFunction { command, .. } => {
+                    assert_eq!(command, "notepad out.txt");
+                }
+                other => panic!("expected ExecuteCustomFunction, got {other:?}"),
+            },
+            other => panic!("expected a job, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn suspend_and_pipe_to_action_are_carried_onto_the_job() {
+        let mut f = CustomFunction::new("fzf", "fzf");
+        f.suspend = true;
+        f.pipe_to_action = Some(PipeToAction::JumpToPath);
+        let state = test_state();
+
+        match state.custom_function_job(&f, None) {
+            CustomFunctionOutcome::Job(job) => match job.kind {
+                JobKind::ExecuteCustomFunction {
+                    suspend,
+                    pipe_to_action,
+                    ..
+                } => {
+                    assert!(
+                        suspend,
+                        "Suspend must reach the job or fzf gets no terminal"
+                    );
+                    assert_eq!(pipe_to_action, Some(PipeToAction::JumpToPath));
+                }
+                other => panic!("expected ExecuteCustomFunction, got {other:?}"),
+            },
+            other => panic!("expected a job, got {other:?}"),
+        }
+    }
+
+    /// Regression: four of the five former dispatch sites read `func.shell` directly
+    /// and so silently ignored a per-OS `Shell` override. The shared helper uses
+    /// `get_shell()`; this pins that down for every route.
+    #[test]
+    fn os_specific_shell_override_is_honoured() {
+        let mut f = CustomFunction::new("s", "pwd");
+        f.shell = Some("cmd".to_string());
+        let os_key = if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "linux"
+        };
+        f.os_specific.insert(
+            os_key.to_string(),
+            crate::model::dialog::OsConfig {
+                command: "pwd".to_string(),
+                shell: Some("bash".to_string()),
+            },
+        );
+        let state = test_state();
+
+        match state.custom_function_job(&f, None) {
+            CustomFunctionOutcome::Job(job) => match job.kind {
+                JobKind::ExecuteCustomFunction { shell, .. } => {
+                    assert_eq!(shell, Some("bash".to_string()), "OsSpecific shell ignored");
+                }
+                other => panic!("expected ExecuteCustomFunction, got {other:?}"),
+            },
+            other => panic!("expected a job, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_entry_with_no_runnable_kind_produces_nothing() {
+        let mut f = func("empty");
+        f.command = None;
+        let state = test_state();
+        assert!(matches!(
+            state.custom_function_job(&f, None),
+            CustomFunctionOutcome::Nothing
+        ));
     }
 }
 

@@ -20,7 +20,8 @@
         { "key": "M", "description": "Move" },
         { "key": "D", "description": "Delete" },
         { "key": "R", "description": "Rename" },
-        { "key": "Shift+K", "description": "Create directory" }
+        { "key": "Shift+K", "description": "Create directory" },
+        { "key": "Shift+E", "description": "Create file" }
       ]
     },
     {

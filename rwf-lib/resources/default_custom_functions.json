@@ -1,29 +1,164 @@
 {
   "Version": "1.0",
+  "_comment": [
+    "Each entry has exactly ONE of:",
+    "  Command  - run through a shell",
+    "  Menu     - open a submenu (inline items, or a menu_*.json filename)",
+    "  ClipText - expand a macro template straight to the clipboard (no process runs)",
+    "Mixing them is a load-time error rather than a silent precedence rule.",
+    "",
+    "Optional flags:",
+    "  Suspend      - hand the terminal to the command (fzf, vim, lazygit, less).",
+    "                 rwf leaves the alternate screen, the command draws on stderr,",
+    "                 its stdout is captured, and rwf resumes when it exits.",
+    "  PipeToAction - what to do with the command's stdout: JumpToPath, ExecuteFile,",
+    "                 ExecuteFileWithEditor, ClipText. Independent of Suspend.",
+    "",
+    "Path macros: $P active pane, $O other pane, $F cursor file name, $/ native",
+    "separator (so \"$P$/$F\" is the cursor file's full path on every OS).",
+    "Marked-file macros are $M<what><how> - what: F name, P full path;",
+    "how: S shell form (space-joined, quoted), L list form (newline-joined, raw).",
+    "All four fall back to the cursor entry when nothing is marked."
+  ],
   "Functions": [
+    {
+      "Name": "menu_clip_paths",
+      "Menu": "menu_copy_paths.json",
+      "Description": "Show copy-paths menu",
+      "Category": "Clip"
+    },
     {
       "Name": "menu_config",
       "Menu": "menu_config.json",
       "Description": "Show config menu",
       "Category": "Config"
     },
+
+    {
+      "Name": "clip file name",
+      "ClipText": "$F",
+      "Description": "Copy the cursor file's name",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip file path",
+      "ClipText": "$P$/$F",
+      "Description": "Copy the cursor file's full path",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip path",
+      "ClipText": "$P",
+      "Description": "Copy the active pane's directory",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip marked file path",
+      "ClipText": "$MPL",
+      "Description": "Copy marked files' full paths, one per line",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip marked file name",
+      "ClipText": "$MFL",
+      "Description": "Copy marked files' names, one per line",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip \"file path\"",
+      "ClipText": "\"$P$/$F\"",
+      "Description": "Copy the cursor file's full path, double-quoted",
+      "Category": "Clip"
+    },
+    {
+      "Name": "clip \"path\"",
+      "ClipText": "\"$P\"",
+      "Description": "Copy the active pane's directory, double-quoted",
+      "Category": "Clip"
+    },
+
     {
       "Name": "edit config file",
-      "Command": "notepad \"%APPDATA%\\rwf\\config.json\"",
-      "Description": "Open config.json in Notepad",
-      "Category": "Config"
+      "Command": "echo %APPDATA%\\rwf\\config.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open config.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/config.json" },
+        "macos": { "Command": "echo $~/.config/rwf/config.json" }
+      }
     },
     {
       "Name": "edit keybindings file",
-      "Command": "notepad \"%APPDATA%\\rwf\\keybindings.json\"",
-      "Description": "Open keybindings.json in Notepad",
-      "Category": "Config"
+      "Command": "echo %APPDATA%\\rwf\\keybindings.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open keybindings.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/keybindings.json" },
+        "macos": { "Command": "echo $~/.config/rwf/keybindings.json" }
+      }
     },
     {
       "Name": "edit custom functions file",
-      "Command": "notepad \"%APPDATA%\\rwf\\custom_functions.json\"",
-      "Description": "Open custom_functions.json in Notepad",
-      "Category": "Config"
+      "Command": "echo %APPDATA%\\rwf\\custom_functions.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open custom_functions.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/custom_functions.json" },
+        "macos": { "Command": "echo $~/.config/rwf/custom_functions.json" }
+      }
+    },
+    {
+      "Name": "edit registered directory file",
+      "Command": "echo %APPDATA%\\rwf\\registered_directory.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open registered_directory.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/registered_directory.json" },
+        "macos": { "Command": "echo $~/.config/rwf/registered_directory.json" }
+      }
+    },
+    {
+      "Name": "edit clip menu file",
+      "Command": "echo %APPDATA%\\rwf\\menu_copy_paths.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open menu_copy_paths.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/menu_copy_paths.json" },
+        "macos": { "Command": "echo $~/.config/rwf/menu_copy_paths.json" }
+      }
+    },
+    {
+      "Name": "edit config menu file",
+      "Command": "echo %APPDATA%\\rwf\\menu_config.json",
+      "PipeToAction": "ExecuteFileWithEditor",
+      "Description": "Open menu_config.json in the configured editor",
+      "Category": "Config",
+      "OsSpecific": {
+        "linux": { "Command": "echo $~/.config/rwf/menu_config.json" },
+        "macos": { "Command": "echo $~/.config/rwf/menu_config.json" }
+      }
+    },
+
+    {
+      "Name": "fzf jump to file",
+      "Command": "fzf --walker=file,follow,hidden --walker-skip .git,node_modules,target",
+      "Suspend": true,
+      "PipeToAction": "JumpToPath",
+      "Description": "Pick a file with fzf; jump to its folder with the cursor on it",
+      "Category": "Navigation"
+    },
+    {
+      "Name": "fzf jump to dir",
+      "Command": "fzf --walker=dir,follow,hidden --walker-skip .git,node_modules,target",
+      "Suspend": true,
+      "PipeToAction": "JumpToPath",
+      "Description": "Pick a directory with fzf and jump to it",
+      "Category": "Navigation"
     }
   ]
 }

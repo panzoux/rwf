@@ -411,29 +411,34 @@ impl AppState {
                     .find(|f| f.name == *name)
                     .cloned();
                 if let Some(func) = func {
-                    if func.is_menu() {
-                        let title = func.name.clone();
-                        let items = func.menu_items().to_vec();
-                        self.dialogs
-                            .push(crate::model::Dialog::custom_function_menu(title, items));
-                        Some(StateUpdateResult::with_ui_change())
-                    } else if let Some(_cmd) = func.get_command() {
-                        let expander = crate::macro_expander::MacroExpander::new();
-                        let command = expander
-                            .expand(self, &func)
-                            .unwrap_or_else(|_| func.get_command().unwrap_or("").replace("$I", ""));
-                        let working_dir = self.active_pane().current_location.clone();
-                        let shell = func.get_shell().map(|s| s.to_string());
-                        let job_spec =
-                            crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                                command,
-                                working_dir,
-                                pipe_to_action: func.pipe_to_action.clone(),
-                                shell,
-                            });
-                        Some(StateUpdateResult::with_job(job_spec))
-                    } else {
-                        None
+                    match self.custom_function_job(&func, None) {
+                        crate::state::helpers::CustomFunctionOutcome::Menu => {
+                            let title = func.name.clone();
+                            let items = func.menu_items().to_vec();
+                            self.dialogs
+                                .push(crate::model::Dialog::custom_function_menu(title, items));
+                            Some(StateUpdateResult::with_ui_change())
+                        }
+                        crate::state::helpers::CustomFunctionOutcome::Job(job_spec) => {
+                            Some(StateUpdateResult::with_job(*job_spec))
+                        }
+                        crate::state::helpers::CustomFunctionOutcome::NeedsInput => {
+                            // Previously this path silently stripped `$I` and ran the
+                            // command with a hole in it; prompt like every other
+                            // invocation route does.
+                            let prompt = crate::macro_expander::MacroExpander::extract_i_prompt(
+                                func.get_command().unwrap_or(""),
+                            )
+                            .unwrap_or_else(|| "Enter input".to_string());
+                            self.dialogs.push(crate::model::Dialog::input(
+                                "Custom Function Input",
+                                &prompt,
+                                "",
+                            ));
+                            self.pending_custom_function_input = Some(func);
+                            Some(StateUpdateResult::with_ui_change())
+                        }
+                        crate::state::helpers::CustomFunctionOutcome::Nothing => None,
                     }
                 } else {
                     tracing::warn!("InvokeCustomFunctionByName: no function named {:?}", name);

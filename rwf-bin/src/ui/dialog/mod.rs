@@ -89,10 +89,11 @@ use rwf_lib::model::dialog::{
     ActionConfirmDialog, CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog,
     CustomFunctionMenuDialog, CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog,
     DialogContent, DialogUiState, DriveSelectionDialog, ErrorDialog, FileConflictDialog,
-    FileInfoDialog, FileMaskDialog, HelpDialog, HistoryDialogContent, JobManagerContent,
-    JumpToFileDialog, JumpToPathDialog, OpenWithPickerDialog, OperationReportDialogContent,
-    PatternRenameContent, RegisteredFolderSelectorContent, SimpleRenameDialog, SortDialog,
-    TrashBrowserDialog, TypeMismatchWarningDialog, WildcardMarkDialog,
+    FileInfoDialog, FileMaskDialog, HelpDialog, HistoryDialogContent, InputDialog,
+    JobManagerContent, JumpToFileDialog, JumpToPathDialog, OpenWithPickerDialog,
+    OperationReportDialogContent, PatternRenameContent, RegisteredFolderSelectorContent,
+    SimpleRenameDialog, SortDialog, TrashBrowserDialog, TypeMismatchWarningDialog,
+    WildcardMarkDialog,
 };
 use tracing::debug;
 
@@ -443,9 +444,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let detail_rows = details.as_ref().map_or(0, |d| d.lines().count() as u16 + 1);
             (message.lines().count() as u16 + detail_rows + 3).max(8)
         }
-        DialogContent::Input { .. } => {
-            // prompt(1) + textbox(1) + hint(1) = 3
-            3u16
+        DialogContent::Input(InputDialog { error, .. }) => {
+            // prompt(1) + textbox(1) + hint(1) = 3, plus one row for the inline
+            // validation error when the Create File / Create Directory dialog
+            // has rejected a name. Must track the constraint list in
+            // `render_dialog_content`'s Input arm (basic.rs) exactly — one row
+            // short and the hint renders on top of the bottom border.
+            3u16 + u16::from(error.is_some())
         }
         DialogContent::Confirmation(ActionConfirmDialog { message, stats, .. }) => {
             // Same shape as the Error arm above: generic render path splits

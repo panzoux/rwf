@@ -2069,6 +2069,32 @@ mod tests {
         assert_eq!(bindings.normal_mode.get("?"), Some(&Action::Help));
     }
 
+    /// Shift+E creates a file, mirroring Shift+K for a directory. Written as
+    /// the uppercase letter because `format_key_event` folds Shift+alpha into
+    /// the uppercase char — "Shift+e" would never match a real key press.
+    #[test]
+    fn test_embedded_defaults_bind_shift_e_to_create_file() {
+        let bindings = KeyBindings::embedded_defaults();
+        assert_eq!(bindings.normal_mode.get("E"), Some(&Action::CreateFile));
+        assert_eq!(
+            bindings.normal_mode.get("K"),
+            Some(&Action::CreateDirectory)
+        );
+    }
+
+    /// The binding has to survive a user keybindings.json that doesn't mention
+    /// it — `load_from_file` merges over the embedded defaults, so a partial
+    /// user file must not drop Shift+E.
+    #[test]
+    fn test_shift_e_survives_a_partial_user_keybindings_file() {
+        let merged = KeyBindings::default();
+        let user = r#"{ "NormalMode": { "q": "Quit" } }"#;
+        let mut result = merged.clone();
+        let v: serde_json::Value = serde_json::from_str(user).expect("valid json");
+        KeyBindings::apply_from_value(&v, &mut result);
+        assert_eq!(result.normal_mode.get("E"), Some(&Action::CreateFile));
+    }
+
     #[test]
     fn test_embedded_defaults_has_leap_mode_bindings() {
         // F3 must enter Leap mode, and LeapMode must have its own bindings,
