@@ -16,6 +16,11 @@ impl AppState {
                 }
                 self.last_tab_created = Some(now);
 
+                // Creating a tab switches to it, so it owes the same viewer hand-off as
+                // NextTab/PrevTab/SwitchTab. Save before `create_tab()`: the save targets
+                // `tabs.active_index`, which still points at the tab being left.
+                self.save_viewer_to_current_tab();
+
                 let new_index = self.tabs.create_tab();
                 // Get the stable ID of the new tab
                 let tab_id = self.tabs.tabs[new_index].id;
@@ -44,6 +49,9 @@ impl AppState {
                 tracing::info!("[CreateTab] Created tab index={}, id={}", new_index, tab_id);
 
                 self.tabs.active_index = new_index;
+                // The new tab's slot is default, so this clears the viewer rather than
+                // restoring one — the point is that AppState ends up owned by this tab.
+                self.restore_viewer_from_tab();
 
                 let mut result = StateUpdateResult::with_ui_change();
                 result.jobs_to_start.push(job_left);

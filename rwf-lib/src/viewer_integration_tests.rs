@@ -729,3 +729,89 @@ fn test_tab_switch_repins_anchor_to_active_pane() {
     assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
     assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
 }
+
+/// `CreateTab` moves to the new tab, so it owes the same viewer save/restore pairing that
+/// `NextTab` / `PrevTab` / `SwitchTab` do. Without it the viewer stays live in `AppState`
+/// and the brand-new tab renders the previous tab's viewer beside its own file pane —
+/// and the next switch away stashes that viewer onto the wrong tab, silently losing it
+/// from the tab that actually opened it.
+#[test]
+fn test_create_tab_does_not_carry_the_viewer_to_the_new_tab() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/file.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+    assert!(state.viewer.is_some(), "precondition: tab 0 has a viewer");
+
+    update_state(&mut state, Transition::CreateTab);
+
+    assert_eq!(state.tabs.active_index, 1, "moved to the new tab");
+    assert!(
+        state.viewer.is_none(),
+        "the new tab must start with no viewer"
+    );
+    assert_eq!(
+        state.ui.layout.viewer_layout,
+        ViewerLayout::FullScreen,
+        "the new tab must not inherit the SideBySide layout"
+    );
+
+    // The viewer belongs to tab 0 and must still be there on the way back.
+    update_state(&mut state, Transition::PrevTab);
+    assert_eq!(state.tabs.active_index, 0);
+    assert!(
+        state.viewer.is_some(),
+        "tab 0's viewer was lost across the CreateTab round trip"
+    );
+    assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+}
+
+/// The 300ms `last_tab_created` debounce returns *before* the viewer hand-off. Ordering
+/// matters: a save hoisted above that early return would stash the current tab's viewer and
+/// then bail, blanking a viewer that is on screen without creating anything.
+///
+/// Reaching that needs a debounced CreateTab while the current tab holds a live viewer —
+/// created here by bouncing back to tab 0 inside the debounce window.
+#[test]
+fn test_debounced_create_tab_leaves_the_viewer_untouched() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/file.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+
+    update_state(&mut state, Transition::CreateTab);
+    assert_eq!(state.tabs.active_index, 1);
+
+    // Straight back to the tab that owns the viewer, still inside the debounce window.
+    update_state(&mut state, Transition::PrevTab);
+    assert!(state.viewer.is_some(), "tab 0's viewer is back on screen");
+
+    // Swallowed by the debounce — and must leave that viewer exactly where it is.
+    update_state(&mut state, Transition::CreateTab);
+
+    assert_eq!(
+        state.tabs.tabs.len(),
+        2,
+        "the second CreateTab was swallowed"
+    );
+    assert_eq!(state.tabs.active_index, 0, "still on tab 0");
+    assert!(
+        state.viewer.is_some(),
+        "a swallowed CreateTab blanked the visible viewer"
+    );
+    assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+}
