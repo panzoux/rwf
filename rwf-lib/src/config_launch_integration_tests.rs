@@ -74,10 +74,16 @@ mod tests {
         assert_eq!(result.jobs_to_start.len(), 1);
         let job = &result.jobs_to_start[0];
         match &job.kind {
-            JobKind::SpawnProcess { args, .. } => {
+            JobKind::SpawnProcess { program, args, .. } => {
+                // Windows wraps the editor as `cmd /D /C nano <file>`, so "nano" is an
+                // argument; on Unix it is spawned directly, so "nano" is the program.
+                // Assert the intent -- the configured editor is what runs -- not the
+                // platform-specific shape.
+                let launched = std::iter::once(program).chain(args.iter());
                 assert!(
-                    args.iter().any(|a| a == "nano"),
-                    "Args should contain 'nano', got: {:?}",
+                    launched.clone().any(|a| a == "nano"),
+                    "configured editor 'nano' should be launched, got program={:?} args={:?}",
+                    program,
                     args
                 );
             }

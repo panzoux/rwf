@@ -65,24 +65,19 @@ jobs:
       # clipboard backend and the cfg(unix) paths actually compile.
       - run: cargo clippy --all-targets -- -D warnings
 
-  # Advisory, NOT a gate. The suite has never run on Linux and there are ~46
-  # hardcoded C:\ paths across 16 test files, so failures here are expected and
-  # are pre-existing portability gaps rather than regressions. Kept visible so
-  # the gap can be measured and closed; flip continue-on-error off once green.
+  # A real gate as of 2026-09-08. It started out advisory to measure the gap;
+  # that came back as 9 failures, of which 1 was a genuine Windows-shaped test
+  # assumption (fixed) and 8 are the two tracked portability bugs in ROADMAP
+  # 7.18, whose tests are `#[cfg_attr(unix, ignore = "...")]` with the reason
+  # inline. Nothing is expected to fail here any more, so failures are real.
   test-linux:
-    name: test (linux, advisory)
+    name: test (linux)
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
-      # continue-on-error per step, not just per job: a failing step would
-      # otherwise short-circuit the rest and we would only ever measure the gap
-      # in whichever package fails first.
       - run: cargo test -p rwf -- --test-threads=1
-        continue-on-error: true
       - run: cargo test -p rwf-lib -- --test-threads=1
-        continue-on-error: true
