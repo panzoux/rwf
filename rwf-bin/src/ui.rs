@@ -150,7 +150,7 @@ fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) 
         render_path_line(frame, pane_chunks[0], state, Some(anchor));
         render_volume_line(frame, pane_chunks[1], state, Some(anchor));
         render_active_pane_only(frame, pane_chunks[2], state, anchor);
-        render_pane_info_line(frame, pane_chunks[3], state);
+        render_pane_info_line(frame, pane_chunks[3], state, Some(anchor));
         render_filename_line(frame, pane_chunks[4], state);
 
         // Render viewer side — directory preview or file viewer.
@@ -238,7 +238,7 @@ fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) 
     render_path_line(frame, chunks[0], state, None);
     render_volume_line(frame, chunks[1], state, None);
     render_panes(frame, chunks[2], state);
-    render_pane_info_line(frame, chunks[3], state);
+    render_pane_info_line(frame, chunks[3], state, None);
     render_filename_line(frame, chunks[4], state);
 
     if state.ui.layout.show_task_panel {
@@ -248,5 +248,89 @@ fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) 
     // Dialog overlay
     if let Some(dialog) = state.dialogs.current() {
         render_dialog(frame, dialog, state);
+    }
+}
+
+#[cfg(test)]
+mod side_by_side_layout_tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rwf_lib::model::{ActivePane, FileEntry, Location, ViewerLayout, ViewerMode, ViewerState};
+    use rwf_lib::{AppConfig, AppState};
+    use std::path::PathBuf;
+
+    fn entry(name: &str, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            location: Location::Local(PathBuf::from(format!("/test/{name}"))),
+            size: 0,
+            is_dir,
+            is_hidden: false,
+            modified: std::time::SystemTime::UNIX_EPOCH,
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    /// SideBySide with the viewer on the side opposite `anchor`. The left pane summarises as
+    /// "2 Dirs 0 Files" and the right as "0 Dirs 1 File", so each is identifiable by a
+    /// substring the other cannot produce.
+    fn sbs_state(anchor: ActivePane) -> AppState {
+        let mut state = AppState::new(AppConfig::default());
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.entries = vec![entry("d1", true), entry("d2", true)];
+            tab.right_pane.entries = vec![entry("only.txt", false)];
+        }
+        state.ui.active_pane = anchor;
+        state.ui.layout.viewer_layout = ViewerLayout::SideBySide;
+        state.ui.layout.viewer_anchor_pane = anchor;
+        let mut viewer = ViewerState::new(Location::Local(PathBuf::from("/test/only.txt")));
+        viewer.mode = ViewerMode::Text;
+        state.viewer = Some(viewer);
+        state
+    }
+
+    fn draw(state: &AppState) -> String {
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let task_panel = task_panel::TaskPanel::new();
+        terminal
+            .draw(|frame| render_ui(frame, state, &task_panel))
+            .expect("draw");
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    /// The bug from diagnostic bundle 20260908-212740: with the viewer on the left, the
+    /// pane-info line still painted the hidden left pane's counts next to the right pane's.
+    #[test]
+    fn viewer_on_left_shows_only_the_right_pane_counts() {
+        let out = draw(&sbs_state(ActivePane::Right));
+        assert!(out.contains("1 File"), "visible pane's counts missing");
+        assert!(
+            !out.contains("2 Dirs"),
+            "hidden left pane's counts rendered beside the viewer"
+        );
+    }
+
+    /// The mirror case the reporter suspected but had not tested.
+    #[test]
+    fn viewer_on_right_shows_only_the_left_pane_counts() {
+        let out = draw(&sbs_state(ActivePane::Left));
+        assert!(out.contains("2 Dirs"), "visible pane's counts missing");
+        assert!(
+            !out.contains("1 File"),
+            "hidden right pane's counts rendered beside the viewer"
+        );
     }
 }

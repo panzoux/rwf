@@ -63,7 +63,7 @@ impl AppState {
                 self.ui.layout.viewer_preferred_layout = crate::model::ViewerLayout::SideBySide;
                 // Pin the viewer to the opposite side of the current active pane.
                 // This stays fixed for the duration of the SideBySide session.
-                self.ui.layout.viewer_anchor_pane = self.ui.active_pane;
+                self.pin_sbs_anchor();
                 let mut viewer = crate::model::ViewerState::new(location.clone());
                 viewer.mode = *mode;
                 self.viewer = Some(viewer);
@@ -98,8 +98,10 @@ impl AppState {
                             crate::model::ViewerLayout::SideBySide;
                     }
                     crate::model::ViewerLayout::SideBySide => {
-                        // File pane gets focus.
+                        // File pane gets focus. Re-pin the anchor: reaching SideBySide via
+                        // FullScreen ("v" then "V") never went through OpenSideBySideViewer.
                         self.ui.mode = crate::model::UIMode::Normal;
+                        self.pin_sbs_anchor();
                     }
                 }
                 self.ui.layout.viewer_layout = *layout;

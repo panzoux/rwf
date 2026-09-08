@@ -2444,10 +2444,11 @@ impl App {
     /// Directory preview counts are computed inline in render_ui (no state needed).
     /// Returns true if a state change requires a redraw.
     fn refresh_sbs_preview(&mut self) -> bool {
-        if self.state.viewer.is_none()
-            || self.state.ui.layout.viewer_layout != rwf_lib::model::ViewerLayout::SideBySide
-            || self.state.ui.mode != rwf_lib::model::UIMode::Normal
-        {
+        if !should_refresh_sbs(
+            self.state.viewer.is_some(),
+            self.state.ui.layout.viewer_layout,
+            self.state.ui.mode,
+        ) {
             return false;
         }
 
@@ -2675,6 +2676,30 @@ impl App {
             self.state.active_pane_mut().update_scroll(h, 3);
         }
     }
+}
+
+/// Whether `refresh_sbs_preview` should do any work.
+///
+/// `UIMode::Viewer` is included, not just `Normal`: `restore_viewer_from_tab` re-focuses the
+/// viewer when a tab was left focused, and the anchor is re-pinned to the active pane on that
+/// restore, so the viewer can be showing the previous tab's file. Within a single tab this
+/// costs nothing — viewer-mode keys never reach `CursorMove`, so the anchor pane's cursor
+/// cannot move and the caller's location-equality check bails out.
+///
+/// `ViewerSearch` / `ViewerCommand` stay excluded: `restore_viewer_from_tab` never sets them,
+/// so they would gain nothing, and reloading the buffer under an in-progress search or command
+/// would discard its state.
+fn should_refresh_sbs(
+    has_viewer: bool,
+    layout: rwf_lib::model::ViewerLayout,
+    mode: rwf_lib::model::UIMode,
+) -> bool {
+    has_viewer
+        && layout == rwf_lib::model::ViewerLayout::SideBySide
+        && matches!(
+            mode,
+            rwf_lib::model::UIMode::Normal | rwf_lib::model::UIMode::Viewer
+        )
 }
 
 #[cfg(test)]
@@ -3640,5 +3665,57 @@ mod operation_report_navigation_tests {
             }
             other => panic!("expected DialogContent::OperationReportView, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod sbs_refresh_guard_tests {
+    use super::*;
+    use rwf_lib::model::{UIMode, ViewerLayout};
+
+    /// `UIMode::Viewer` must pass the guard. `restore_viewer_from_tab` re-focuses the viewer
+    /// when a tab was left focused, and re-pins the anchor to the active pane on that restore
+    /// — so the viewer can be left showing the *previous* tab's file. Excluding this mode is
+    /// what made that staleness visible until the next cursor move.
+    #[test]
+    fn viewer_focus_still_refreshes() {
+        assert!(should_refresh_sbs(
+            true,
+            ViewerLayout::SideBySide,
+            UIMode::Viewer
+        ));
+        assert!(should_refresh_sbs(
+            true,
+            ViewerLayout::SideBySide,
+            UIMode::Normal
+        ));
+    }
+
+    /// A reload here would pull the buffer out from under an in-progress search or command
+    /// and discard its state. `restore_viewer_from_tab` never sets either mode, so excluding
+    /// them costs nothing.
+    #[test]
+    fn viewer_search_and_command_are_left_alone() {
+        for mode in [UIMode::ViewerSearch, UIMode::ViewerCommand] {
+            assert!(
+                !should_refresh_sbs(true, ViewerLayout::SideBySide, mode),
+                "{mode:?} must not trigger a reload"
+            );
+        }
+    }
+
+    /// The other two arms of the guard are unchanged.
+    #[test]
+    fn requires_a_viewer_in_side_by_side() {
+        assert!(!should_refresh_sbs(
+            false,
+            ViewerLayout::SideBySide,
+            UIMode::Normal
+        ));
+        assert!(!should_refresh_sbs(
+            true,
+            ViewerLayout::FullScreen,
+            UIMode::Normal
+        ));
     }
 }
