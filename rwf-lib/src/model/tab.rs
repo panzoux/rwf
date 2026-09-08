@@ -99,8 +99,13 @@ impl TabManager {
 
         self.tabs.remove(index);
 
-        // Adjust active index if necessary
-        if self.active_index >= self.tabs.len() {
+        // Adjust the active index. Removing a tab shifts every tab to its right down
+        // by one, so an active index past the removal has to follow -- clamping alone
+        // leaves it in range but pointing at the right-hand neighbour.
+        if index < self.active_index {
+            self.active_index -= 1;
+        } else if self.active_index >= self.tabs.len() {
+            // The active tab itself was the last one and is now gone.
             self.active_index = self.tabs.len() - 1;
         }
 
@@ -177,6 +182,62 @@ mod tests {
 
         // Active index should be adjusted to last tab
         assert_eq!(manager.active_index, 1);
+    }
+
+    /// Removing a tab shifts every tab to its right down by one, so an active index
+    /// pointing past the removal must follow. Only clamping against the new length
+    /// misses this: the index stays in range and silently selects the neighbour.
+    #[test]
+    fn test_close_tab_left_of_active_keeps_the_same_tab_active() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        manager.active_index = 2;
+        let active_id = manager.tabs[2].id;
+
+        manager.close_tab(0);
+
+        assert_eq!(manager.tabs.len(), 2);
+        assert_eq!(
+            manager.active_index, 1,
+            "the active tab shifted left, so its index must follow"
+        );
+        assert_eq!(
+            manager.tabs[manager.active_index].id, active_id,
+            "a different tab became active"
+        );
+    }
+
+    /// The middle case: closing a tab left of the active one when the active one is
+    /// not last. Clamping cannot catch this at all -- the index stays well in range.
+    #[test]
+    fn test_close_tab_left_of_active_when_active_is_not_last() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        manager.create_tab();
+        manager.active_index = 1;
+        let active_id = manager.tabs[1].id;
+
+        manager.close_tab(0);
+
+        assert_eq!(manager.active_index, 0);
+        assert_eq!(manager.tabs[manager.active_index].id, active_id);
+    }
+
+    /// Closing a tab to the right of the active one leaves the index alone.
+    #[test]
+    fn test_close_tab_right_of_active_leaves_active_index_alone() {
+        let mut manager = TabManager::new();
+        manager.create_tab();
+        manager.create_tab();
+        manager.active_index = 1;
+        let active_id = manager.tabs[1].id;
+
+        manager.close_tab(2);
+
+        assert_eq!(manager.active_index, 1);
+        assert_eq!(manager.tabs[manager.active_index].id, active_id);
     }
 
     #[test]

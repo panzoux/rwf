@@ -1700,6 +1700,29 @@ mod tests {
         assert_eq!(state.tabs.tabs.len(), 2);
     }
 
+    /// Closing a tab to the left of the active one must keep the *same* tab active.
+    /// The transition clamps the index against the new length, which cannot catch
+    /// this -- the index stays in range and quietly selects the neighbour instead.
+    #[test]
+    fn test_close_tab_left_of_active_keeps_the_same_tab_on_screen() {
+        let config = AppConfig::default();
+        let mut state = AppState::new(config);
+
+        state.tabs.create_tab();
+        state.tabs.create_tab();
+        state.tabs.active_index = 1;
+        let active_id = state.tabs.tabs[1].id;
+
+        update_state(&mut state, Transition::CloseTab { index: 0 });
+
+        assert_eq!(state.tabs.tabs.len(), 2);
+        assert_eq!(state.tabs.active_index, 0);
+        assert_eq!(
+            state.tabs.tabs[state.tabs.active_index].id, active_id,
+            "closing a tab on the left switched the user to a different tab"
+        );
+    }
+
     #[test]
     fn test_close_last_tab_fails() {
         let config = AppConfig::default();
