@@ -435,9 +435,13 @@ fn test_viewer_ready_with_seekable_buffer() {
         },
     );
     // Simulate ViewerReady arriving from the executor
+    let load_job = state
+        .viewer_job_id
+        .expect("opening the viewer starts a load");
     update_state(
         &mut state,
         Transition::ViewerReady {
+            job_id: load_job,
             buffer,
             encoding: TextEncoding::Utf8,
         },
@@ -475,9 +479,13 @@ fn test_viewer_seekable_text_search() {
             location: Location::Local(tmp.path().to_path_buf()),
         },
     );
+    let load_job = state
+        .viewer_job_id
+        .expect("opening the viewer starts a load");
     update_state(
         &mut state,
         Transition::ViewerReady {
+            job_id: load_job,
             buffer,
             encoding: TextEncoding::Utf8,
         },
@@ -527,9 +535,13 @@ fn test_viewer_seekable_hex_mode() {
             location: Location::Local(tmp.path().to_path_buf()),
         },
     );
+    let load_job = state
+        .viewer_job_id
+        .expect("opening the viewer starts a load");
     update_state(
         &mut state,
         Transition::ViewerReady {
+            job_id: load_job,
             buffer,
             encoding: TextEncoding::Utf8,
         },
@@ -566,9 +578,13 @@ fn test_viewer_seekable_hex_search() {
             location: Location::Local(tmp.path().to_path_buf()),
         },
     );
+    let load_job = state
+        .viewer_job_id
+        .expect("opening the viewer starts a load");
     update_state(
         &mut state,
         Transition::ViewerReady {
+            job_id: load_job,
             buffer,
             encoding: TextEncoding::Utf8,
         },
@@ -814,4 +830,143 @@ fn test_debounced_create_tab_leaves_the_viewer_untouched() {
         "a swallowed CreateTab blanked the visible viewer"
     );
     assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+}
+
+// ---------------------------------------------------------------------------
+// ViewerReady routing
+//
+// A `LoadFileForViewer` job outlives the tab hand-off: `save_viewer_to_current_tab`
+// moves a still-loading viewer into its tab's slot while the job keeps running. The
+// `JobEvent::ViewerReady` that eventually arrives carries no tab identity, so the
+// buffer has to be routed by job id -- otherwise it lands in whatever viewer happens
+// to be live, and the tab that started the load never gets its contents.
+// ---------------------------------------------------------------------------
+
+/// A small in-memory buffer whose contents identify which load produced it.
+fn in_memory_buffer(text: &str) -> ViewerBuffer {
+    let bytes = text.as_bytes().to_vec();
+    let mut offsets = vec![0u64];
+    for (i, b) in bytes.iter().enumerate() {
+        if *b == b'\n' && i + 1 < bytes.len() {
+            offsets.push(i as u64 + 1);
+        }
+    }
+    ViewerBuffer::new(
+        FileBytes::InMemory(bytes),
+        LineIndex {
+            offsets,
+            is_complete: true,
+        },
+    )
+}
+
+/// `ReloadViewer` cancels the in-flight load and starts a new one, but a cancel is a
+/// request -- the old job can still finish and emit its buffer. Without a job-id check
+/// that late buffer overwrites the file the user is actually looking at.
+#[test]
+fn test_viewer_ready_from_a_superseded_job_is_dropped() {
+    let mut state = test_state();
+    update_state(
+        &mut state,
+        Transition::OpenTextViewer {
+            location: Location::Local(PathBuf::from("/test/wanted.txt")),
+        },
+    );
+    let live_job = state.viewer_job_id.expect("OpenTextViewer starts a load");
+
+    let superseded = crate::job::JobId::new();
+    assert_ne!(superseded, live_job);
+    update_state(
+        &mut state,
+        Transition::ViewerReady {
+            job_id: superseded,
+            buffer: in_memory_buffer("SUPERSEDED"),
+            encoding: TextEncoding::Utf8,
+        },
+    );
+
+    assert!(
+        state
+            .viewer
+            .as_ref()
+            .expect("viewer is open")
+            .buffer
+            .is_none(),
+        "a buffer from a superseded load was shown"
+    );
+
+    // The buffer the user is waiting for still arrives normally.
+    update_state(
+        &mut state,
+        Transition::ViewerReady {
+            job_id: live_job,
+            buffer: in_memory_buffer("WANTED"),
+            encoding: TextEncoding::Utf8,
+        },
+    );
+    assert_eq!(state.viewer.as_ref().and_then(|v| v.text()), Some("WANTED"));
+}
+
+/// `CreateTab` stashes a still-loading viewer into the tab it leaves. The buffer must
+/// follow the job to that tab's slot: delivering it to the live viewer shows the
+/// previous tab's file, and dropping it leaves the owning tab permanently empty.
+#[test]
+fn test_viewer_ready_reaches_the_tab_that_started_the_load() {
+    use crate::model::ActivePane;
+
+    let mut state = test_state();
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/tab0.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+    let tab0_job = state.viewer_job_id.expect("tab 0 started a load");
+
+    // Ctrl+T before the load finishes: the viewer moves into tab 0's slot, job and all.
+    update_state(&mut state, Transition::CreateTab);
+    assert_eq!(state.tabs.active_index, 1);
+    assert!(state.viewer.is_none(), "the new tab starts with no viewer");
+
+    // The new tab opens a viewer of its own, so there is a live viewer to leak into.
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/tab1.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+    let tab1_job = state.viewer_job_id.expect("tab 1 started a load");
+    assert_ne!(tab0_job, tab1_job);
+
+    // Tab 0's load finally completes while tab 1 is on screen.
+    update_state(
+        &mut state,
+        Transition::ViewerReady {
+            job_id: tab0_job,
+            buffer: in_memory_buffer("TAB ZERO"),
+            encoding: TextEncoding::Utf8,
+        },
+    );
+
+    assert!(
+        state
+            .viewer
+            .as_ref()
+            .expect("tab 1's viewer is on screen")
+            .buffer
+            .is_none(),
+        "tab 0's buffer leaked into the viewer the user is looking at"
+    );
+
+    // ...and it is waiting on tab 0 when the user goes back.
+    update_state(&mut state, Transition::PrevTab);
+    assert_eq!(state.tabs.active_index, 0);
+    assert_eq!(
+        state.viewer.as_ref().and_then(|v| v.text()),
+        Some("TAB ZERO"),
+        "the tab that started the load never received its contents"
+    );
 }

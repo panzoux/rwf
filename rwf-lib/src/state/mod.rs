@@ -331,6 +331,32 @@ impl AppState {
         }
     }
 
+    /// Find the viewer that started `job_id`: the live one, or a background tab's
+    /// stashed slot.
+    ///
+    /// A viewer load outlives the tab hand-off -- `save_viewer_to_current_tab` moves a
+    /// still-loading viewer into its tab's slot while the job keeps running -- and the
+    /// `ViewerReady` event carries no tab identity. Without this lookup a late buffer
+    /// lands in whatever viewer happens to be live, showing the wrong tab's file, and
+    /// the tab that actually started the load is left permanently empty.
+    ///
+    /// The `bool` says whether the match is the on-screen viewer, so callers know
+    /// whether the delivery is worth a redraw.
+    fn viewer_for_job(
+        &mut self,
+        job_id: crate::job::JobId,
+    ) -> Option<(&mut crate::model::viewer::ViewerState, bool)> {
+        if self.viewer_job_id == Some(job_id) {
+            return self.viewer.as_mut().map(|v| (v, true));
+        }
+        self.tabs
+            .tabs
+            .iter_mut()
+            .find(|t| t.tab_viewer.viewer_job_id == Some(job_id))
+            .and_then(|t| t.tab_viewer.viewer.as_mut())
+            .map(|v| (v, false))
+    }
+
     /// Pin the SideBySide viewer to the side opposite the active pane.
     ///
     /// Must be called at every transition into `ViewerLayout::SideBySide`. A stale anchor
@@ -830,6 +856,9 @@ pub enum Transition {
         layout: crate::model::ViewerLayout,
     },
     ViewerReady {
+        /// The load job that produced this buffer. Routed by id: the viewer that
+        /// started it may since have been stashed into a background tab's slot.
+        job_id: crate::job::JobId,
         buffer: crate::model::viewer::ViewerBuffer,
         encoding: crate::model::viewer::TextEncoding,
     },

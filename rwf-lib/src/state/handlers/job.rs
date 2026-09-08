@@ -575,9 +575,11 @@ impl AppState {
                         }
                         crate::job::JobKind::LoadFileForViewer { .. } => {
                             // Buffer was already delivered via ViewerReady event.
-                            // On final Completed just mark loading as done.
+                            // On final Completed just mark loading as done -- on the
+                            // viewer that started this job, which a tab hand-off may
+                            // have moved off screen since (see `viewer_for_job`).
                             if let crate::job::OpResult::Success(_) = result {
-                                if let Some(ref mut viewer) = self.viewer {
+                                if let Some((viewer, _)) = self.viewer_for_job(*job_id) {
                                     viewer.is_loading = false;
                                 }
                                 result_obj.ui_changed = true;
