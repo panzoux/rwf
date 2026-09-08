@@ -107,16 +107,30 @@ impl AppState {
                 self.ui.layout.viewer_layout = *layout;
                 Some(StateUpdateResult::with_ui_change())
             }
-            Transition::ViewerReady { buffer, encoding } => {
-                if let Some(ref mut viewer) = self.viewer {
-                    viewer.buffer = Some(buffer.clone());
-                    // Only apply detected encoding on first arrival (encoding may have
-                    // been manually changed by the user before the job completes).
-                    if viewer.encoding == crate::model::viewer::TextEncoding::Utf8 {
-                        viewer.encoding = *encoding;
-                    }
+            Transition::ViewerReady {
+                job_id,
+                buffer,
+                encoding,
+            } => {
+                // Deliver to the viewer that started this load, which may since have
+                // been stashed into a background tab. A job with no owner left was
+                // superseded (`ReloadViewer` cancels and replaces, but a cancel is a
+                // request -- the old job can still finish): drop its buffer.
+                let Some((viewer, is_live)) = self.viewer_for_job(*job_id) else {
+                    return Some(StateUpdateResult::none());
+                };
+                viewer.buffer = Some(buffer.clone());
+                // Only apply detected encoding on first arrival (encoding may have
+                // been manually changed by the user before the job completes).
+                if viewer.encoding == crate::model::viewer::TextEncoding::Utf8 {
+                    viewer.encoding = *encoding;
                 }
-                Some(StateUpdateResult::with_ui_change())
+                Some(if is_live {
+                    StateUpdateResult::with_ui_change()
+                } else {
+                    // Off-screen: nothing to redraw until that tab comes back.
+                    StateUpdateResult::none()
+                })
             }
             Transition::ViewerLoadComplete { contents } => {
                 // Legacy path: used by tests and the ViewerLoadComplete transition.

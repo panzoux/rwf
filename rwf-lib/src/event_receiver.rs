@@ -53,9 +53,11 @@ pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
 
         JobEvent::Cancelled(job_id) => Transition::AcknowledgeCancel { job_id },
 
-        JobEvent::ViewerReady(_job_id, buffer, encoding) => {
-            Transition::ViewerReady { buffer, encoding }
-        }
+        JobEvent::ViewerReady(job_id, buffer, encoding) => Transition::ViewerReady {
+            job_id,
+            buffer,
+            encoding,
+        },
         JobEvent::ViewerSearchComplete(job_id, matches) => {
             Transition::ViewerSearchComplete { job_id, matches }
         }
