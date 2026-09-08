@@ -599,3 +599,133 @@ fn test_viewer_seekable_hex_search() {
     assert_eq!(viewer.search_matches[0].1, 8); // byte offset 8
     assert_eq!(viewer.search_matches[0].2, 12); // byte offset 12
 }
+
+// ---------------------------------------------------------------------------
+// SideBySide anchor pinning
+//
+// `viewer_anchor_pane` decides which file pane the SideBySide layout renders. If it
+// disagrees with `ui.active_pane`, rwf draws the *other* pane: wrong entry list, wrong
+// pane-info counts, and a path line with no active marker. The invariant under test is
+// that the anchor is re-pinned to `ui.active_pane` at every entry into SideBySide.
+// ---------------------------------------------------------------------------
+
+/// Route A: reaching SideBySide via FullScreen ("v" then "V") goes through
+/// `ViewerSwitchLayout`, not `OpenSideBySideViewer`. That path used to leave the anchor at
+/// whatever it was before — `ActivePane::Left` on a fresh session — so opening the viewer
+/// from the right pane rendered the left pane beside it.
+#[test]
+fn test_switch_layout_to_side_by_side_pins_anchor_to_active_pane() {
+    use crate::model::{ActivePane, ViewerLayout};
+
+    let mut state = test_state();
+    state.ui.active_pane = ActivePane::Right;
+    assert_eq!(
+        state.ui.layout.viewer_anchor_pane,
+        ActivePane::Left,
+        "precondition: a fresh session defaults the anchor to Left"
+    );
+
+    update_state(
+        &mut state,
+        Transition::OpenTextViewer {
+            location: Location::Local(PathBuf::from("/test/file.txt")),
+        },
+    );
+    update_state(
+        &mut state,
+        Transition::ViewerSwitchLayout {
+            layout: ViewerLayout::SideBySide,
+        },
+    );
+
+    assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
+}
+
+/// `OpenSideBySideViewer` ("V") pins the pane the user is standing on, from either side.
+#[test]
+fn test_open_side_by_side_viewer_pins_active_pane() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    for pane in [ActivePane::Left, ActivePane::Right] {
+        let mut state = test_state();
+        state.ui.active_pane = pane;
+        update_state(
+            &mut state,
+            Transition::OpenSideBySideViewer {
+                location: Location::Local(PathBuf::from("/test/file.txt")),
+                mode: ViewerMode::Text,
+            },
+        );
+        assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+        assert_eq!(state.ui.layout.viewer_anchor_pane, pane);
+    }
+}
+
+/// Leaving SideBySide for FullScreen and coming back re-pins against the pane that is
+/// active at that moment, not the one from the previous SideBySide session.
+#[test]
+fn test_side_by_side_round_trip_repins_anchor() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/file.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Left);
+
+    update_state(
+        &mut state,
+        Transition::ViewerSwitchLayout {
+            layout: ViewerLayout::FullScreen,
+        },
+    );
+    // The user moves to the other pane while the viewer is full-screen.
+    state.ui.active_pane = ActivePane::Right;
+    update_state(
+        &mut state,
+        Transition::ViewerSwitchLayout {
+            layout: ViewerLayout::SideBySide,
+        },
+    );
+
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
+}
+
+/// Route B: the viewer is saved per tab but `ui.active_pane` is global, so a saved anchor
+/// can come back disagreeing with the pane the user is on. The anchor must be re-derived
+/// on restore rather than carried across the tab switch.
+#[test]
+fn test_tab_switch_repins_anchor_to_active_pane() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    state.tabs.create_tab(); // tab 1; active_index stays 0
+
+    // Tab 0: SideBySide anchored to the left pane.
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/file.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Left);
+
+    // Switch to tab 1 (no viewer there, so pane switching is allowed) and move right.
+    update_state(&mut state, Transition::NextTab);
+    assert!(state.viewer.is_none(), "tab 1 has no viewer");
+    state.ui.active_pane = ActivePane::Right;
+
+    // Back to tab 0: the viewer returns, and must anchor to where the user now is.
+    update_state(&mut state, Transition::PrevTab);
+    assert!(state.viewer.is_some(), "tab 0's viewer is restored");
+    assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
+}
