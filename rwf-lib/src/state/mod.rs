@@ -278,6 +278,7 @@ impl AppState {
         tv.viewer_search_job_id = self.viewer_search_job_id.take();
         tv.viewer_layout = self.ui.layout.viewer_layout;
         tv.viewer_preferred_layout = self.ui.layout.viewer_preferred_layout;
+        tv.viewer_anchor_pane = self.ui.layout.viewer_anchor_pane;
         tv.viewer_was_focused = matches!(
             self.ui.mode,
             crate::model::UIMode::Viewer
@@ -310,6 +311,7 @@ impl AppState {
         self.viewer_search_job_id = tv.viewer_search_job_id.take();
         self.ui.layout.viewer_layout = tv.viewer_layout;
         self.ui.layout.viewer_preferred_layout = tv.viewer_preferred_layout;
+        self.ui.layout.viewer_anchor_pane = tv.viewer_anchor_pane;
         self.viewer_search_input = std::mem::take(&mut tv.viewer_search_input);
         self.viewer_command_input = std::mem::take(&mut tv.viewer_command_input);
         let was_focused = tv.viewer_was_focused;
@@ -317,13 +319,20 @@ impl AppState {
         // Reset the slot to default so it's clean for next time.
         *tv = crate::model::TabViewerState::default();
 
-        // The anchor is never carried across tabs: `ui.active_pane` is global while the
-        // viewer is per-tab, so a saved anchor can disagree with the pane the user is
-        // actually standing on. Re-derive it instead.
+        // The anchor is restored from the tab, never re-derived from `ui.active_pane`.
+        // `active_pane` is global while the anchor is per tab, so on arrival here it
+        // carries whichever pane the *other* tab was standing on; pinning against it
+        // drags this tab's viewer to the wrong side and re-points the preview at the
+        // wrong pane's cursor entry.
+        //
+        // `active_pane` moves to the anchor instead. That is the direction that makes
+        // the two agree without losing information: while a tab holds a SideBySide
+        // viewer the anchored pane is the only file pane on screen and `SwitchPane` is
+        // blocked, so the anchor *is* that tab's active pane.
         if self.viewer.is_some()
             && self.ui.layout.viewer_layout == crate::model::ViewerLayout::SideBySide
         {
-            self.pin_sbs_anchor();
+            self.ui.active_pane = self.ui.layout.viewer_anchor_pane;
         }
 
         if was_focused && self.viewer.is_some() {
@@ -359,9 +368,13 @@ impl AppState {
 
     /// Pin the SideBySide viewer to the side opposite the active pane.
     ///
-    /// Must be called at every transition into `ViewerLayout::SideBySide`. A stale anchor
-    /// makes the SideBySide layout render the *other* file pane: the wrong entry list, the
-    /// wrong pane-info counts, and a path line with no active marker.
+    /// Must be called at every transition into `ViewerLayout::SideBySide` that *opens* a
+    /// SideBySide session -- `OpenSideBySideViewer` and `ViewerSwitchLayout`. A stale
+    /// anchor makes the SideBySide layout render the *other* file pane: the wrong entry
+    /// list, the wrong pane-info counts, and a path line with no active marker.
+    ///
+    /// Restoring a tab is *not* such a transition and must not call this: that tab's
+    /// session already chose a side, and `restore_viewer_from_tab` brings it back.
     fn pin_sbs_anchor(&mut self) {
         self.ui.layout.viewer_anchor_pane = self.ui.active_pane;
     }

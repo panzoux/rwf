@@ -1,6 +1,6 @@
 //! Tab management
 
-use super::ui::ViewerLayout;
+use super::ui::{ActivePane, ViewerLayout};
 use super::{Location, NavigationHistory, PaneModel};
 use std::path::PathBuf;
 
@@ -14,6 +14,9 @@ pub struct TabViewerState {
     pub viewer_search_job_id: Option<crate::job::JobId>,
     pub viewer_layout: ViewerLayout,
     pub viewer_preferred_layout: ViewerLayout,
+    /// Which file pane the tab's SideBySide viewer is anchored to. Per tab, not per
+    /// session: two tabs can hold viewers on opposite sides at the same time.
+    pub viewer_anchor_pane: ActivePane,
     /// Whether the tab was in viewer-focus mode (UIMode::Viewer/Search/Command)
     pub viewer_was_focused: bool,
     pub viewer_search_input: String,

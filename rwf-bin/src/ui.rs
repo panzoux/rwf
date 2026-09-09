@@ -333,4 +333,53 @@ mod side_by_side_layout_tests {
             "hidden right pane's counts rendered beside the viewer"
         );
     }
+
+    /// Diagnostic bundle `20260909-172206` at the level it was reported: what is on
+    /// screen after a tab round trip. Two tabs hold SideBySide viewers on opposite
+    /// sides; returning to the first must redraw it on the side it was left on, not on
+    /// the side the *other* tab happened to be using.
+    ///
+    /// The tabs are told apart by their pane summaries: tab 0's visible (right) pane
+    /// reads "1 File", tab 1's visible (left) pane reads "2 Dirs".
+    #[test]
+    fn a_tab_round_trip_redraws_each_viewer_on_its_own_side() {
+        use rwf_lib::state::{update_state, Transition};
+
+        // Tab 0 anchors right -> viewer on the left.
+        let mut state = sbs_state(ActivePane::Right);
+        state.tabs.create_tab();
+        {
+            let tab = &mut state.tabs.tabs[1];
+            tab.left_pane.entries = vec![entry("d1", true), entry("d2", true)];
+            tab.right_pane.entries = vec![entry("only.txt", false)];
+        }
+
+        // Tab 1 anchors left -> viewer on the right.
+        update_state(&mut state, Transition::NextTab);
+        state.ui.active_pane = ActivePane::Left;
+        update_state(
+            &mut state,
+            Transition::OpenSideBySideViewer {
+                location: Location::Local(PathBuf::from("/test/d1")),
+                mode: ViewerMode::Text,
+            },
+        );
+        let on_tab1 = draw(&state);
+        assert!(
+            on_tab1.contains("2 Dirs") && !on_tab1.contains("1 File"),
+            "tab 1 should render its left pane"
+        );
+
+        // Back to tab 0: its own right pane again, not tab 1's left.
+        update_state(&mut state, Transition::PrevTab);
+        let back_on_tab0 = draw(&state);
+        assert!(
+            back_on_tab0.contains("1 File"),
+            "tab 0's viewer came back on the wrong side: its right pane is not drawn"
+        );
+        assert!(
+            !back_on_tab0.contains("2 Dirs"),
+            "tab 0 redrew the left pane -- the anchor followed tab 1"
+        );
+    }
 }

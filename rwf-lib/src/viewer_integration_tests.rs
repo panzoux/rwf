@@ -713,11 +713,12 @@ fn test_side_by_side_round_trip_repins_anchor() {
     assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
 }
 
-/// Route B: the viewer is saved per tab but `ui.active_pane` is global, so a saved anchor
-/// can come back disagreeing with the pane the user is on. The anchor must be re-derived
-/// on restore rather than carried across the tab switch.
+/// Route B: the anchor belongs to its tab, not to the session. `ui.active_pane` is
+/// global, so on a tab switch it arrives carrying whichever pane the *other* tab was
+/// standing on -- re-deriving the anchor from it drags the viewer to the wrong side.
+/// The tab's own anchor is restored, and `ui.active_pane` follows it.
 #[test]
-fn test_tab_switch_repins_anchor_to_active_pane() {
+fn test_tab_switch_restores_the_tabs_own_anchor() {
     use crate::model::{ActivePane, ViewerLayout, ViewerMode};
 
     let mut state = test_state();
@@ -739,11 +740,79 @@ fn test_tab_switch_repins_anchor_to_active_pane() {
     assert!(state.viewer.is_none(), "tab 1 has no viewer");
     state.ui.active_pane = ActivePane::Right;
 
-    // Back to tab 0: the viewer returns, and must anchor to where the user now is.
+    // Back to tab 0: its viewer must come back on the side it was left on, with the
+    // active pane moved to the anchored pane -- the only file pane on screen there.
     update_state(&mut state, Transition::PrevTab);
     assert!(state.viewer.is_some(), "tab 0's viewer is restored");
     assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+    assert_eq!(
+        state.ui.layout.viewer_anchor_pane,
+        ActivePane::Left,
+        "tab 1's pane choice leaked into tab 0's anchor"
+    );
+    assert_eq!(
+        state.ui.active_pane,
+        ActivePane::Left,
+        "the active pane must follow the restored anchor"
+    );
+}
+
+/// Diagnostic bundle `20260909-172206`, verbatim: two tabs each holding their own
+/// SideBySide viewer on opposite sides. Tab 1 anchors right (viewer on the left), tab 2
+/// anchors left (viewer on the right); coming back to tab 1 flipped its viewer to the
+/// right and re-pointed it at the other pane's cursor entry (`ReloadViewer README.md`
+/// at seq 211). Two tabs is the minimum to reproduce -- with one, the global
+/// `ui.active_pane` never disagrees with the anchor.
+#[test]
+fn test_two_tabs_keep_their_own_side_by_side_sides() {
+    use crate::model::{ActivePane, ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    state.tabs.create_tab();
+
+    // Tab 0 anchors right: file pane on the right, viewer on the left.
+    state.ui.active_pane = ActivePane::Right;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/tab0.txt")),
+            mode: ViewerMode::Text,
+        },
+    );
     assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Right);
+
+    // Tab 1 anchors left: file pane on the left, viewer on the right.
+    update_state(&mut state, Transition::NextTab);
+    state.ui.active_pane = ActivePane::Left;
+    update_state(
+        &mut state,
+        Transition::OpenSideBySideViewer {
+            location: Location::Local(PathBuf::from("/test/tab1.txt")),
+            mode: ViewerMode::Hex,
+        },
+    );
+    assert_eq!(state.ui.layout.viewer_anchor_pane, ActivePane::Left);
+
+    // Back to tab 0 -- the step that broke.
+    update_state(&mut state, Transition::PrevTab);
+    assert_eq!(state.tabs.active_index, 0);
+    assert_eq!(
+        state.ui.layout.viewer_anchor_pane,
+        ActivePane::Right,
+        "tab 0's viewer jumped to the other side"
+    );
+    assert_eq!(state.ui.active_pane, ActivePane::Right);
+    assert_eq!(state.ui.layout.viewer_layout, ViewerLayout::SideBySide);
+
+    // ...and forward again: tab 1 keeps its own side too.
+    update_state(&mut state, Transition::NextTab);
+    assert_eq!(state.tabs.active_index, 1);
+    assert_eq!(
+        state.ui.layout.viewer_anchor_pane,
+        ActivePane::Left,
+        "tab 1's viewer jumped to the other side"
+    );
+    assert_eq!(state.ui.active_pane, ActivePane::Left);
 }
 
 /// `CreateTab` moves to the new tab, so it owes the same viewer save/restore pairing that
