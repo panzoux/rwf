@@ -48,6 +48,11 @@ pub struct SavedTabState {
     pub left_cursor: usize,
     /// Right pane cursor position
     pub right_cursor: usize,
+    /// Which pane the cursor was on in this tab. Defaulted: session files written
+    /// before the cursor side became per-tab have no such field, and fall back to
+    /// `SessionState::active_pane` for the active tab (see `AppState::restore_session`).
+    #[serde(default)]
+    pub active_pane: SavedActivePane,
 }
 
 /// Saved location (simplified for serialization)
@@ -58,8 +63,9 @@ pub enum SavedLocation {
 }
 
 /// Saved active pane
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub enum SavedActivePane {
+    #[default]
     Left,
     Right,
 }
@@ -191,6 +197,7 @@ pub fn save_session(
             right_location: (&tab.right_pane.current_location).into(),
             left_cursor: tab.left_pane.cursor,
             right_cursor: tab.right_pane.cursor,
+            active_pane: tab.active_pane.into(),
         })
         .collect();
 
@@ -276,6 +283,7 @@ pub fn restore_tabs(session: &SessionState) -> (Vec<TabState>, Vec<String>) {
                 tab.right_pane.current_location = right;
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
+                tab.active_pane = saved_tab.active_pane.into();
 
                 // Don't adjust scroll_offset here - let the normal scrolling logic
                 // handle it when entries are loaded via CompleteJob transition.
@@ -324,6 +332,7 @@ mod tests {
             right_location: SavedLocation::Local(PathBuf::from("/tmp")),
             left_cursor: 5,
             right_cursor: 10,
+            active_pane: SavedActivePane::Left,
         });
         session.active_tab_index = 0;
         session.active_pane = SavedActivePane::Right;
@@ -403,6 +412,7 @@ mod tests {
             right_location: SavedLocation::Local(PathBuf::from("/tmp")),
             left_cursor: 0,
             right_cursor: 0,
+            active_pane: SavedActivePane::Left,
         });
         session.tabs.push(SavedTabState {
             id: 1,
@@ -410,6 +420,7 @@ mod tests {
             right_location: SavedLocation::Local(PathBuf::from("/opt")),
             left_cursor: 0,
             right_cursor: 0,
+            active_pane: SavedActivePane::Left,
         });
 
         let (tabs, _) = restore_tabs(&session);
@@ -494,6 +505,7 @@ mod tests {
             right_location: SavedLocation::Local(PathBuf::from("/tmp")),
             left_cursor: 5,
             right_cursor: 10,
+            active_pane: SavedActivePane::Left,
         });
         session.tabs.push(SavedTabState {
             id: 1,
@@ -501,6 +513,7 @@ mod tests {
             right_location: SavedLocation::Local(PathBuf::from("/opt")),
             left_cursor: 3,
             right_cursor: 7,
+            active_pane: SavedActivePane::Left,
         });
         session.active_tab_index = 1;
         session.active_pane = SavedActivePane::Right;
@@ -619,6 +632,55 @@ mod tests {
         assert_eq!(restored_right, ActivePane::Right);
     }
 
+    /// The cursor side is per tab, so it has to survive a save/restore round trip per
+    /// tab -- not collapse onto the session-wide value, which is only the active tab's.
+    #[test]
+    fn test_each_tab_keeps_its_own_cursor_side_across_a_round_trip() {
+        use crate::model::{ActivePane, TabState};
+        use std::collections::HashSet;
+
+        let mut tabs = vec![TabState::new(0), TabState::new(1), TabState::new(2)];
+        tabs[0].active_pane = ActivePane::Left;
+        tabs[1].active_pane = ActivePane::Right;
+        tabs[2].active_pane = ActivePane::Left;
+
+        let session = save_session(&tabs, 1, ActivePane::Right, &HashSet::new(), true, 5);
+        let (restored, _notes) = restore_tabs(&session);
+
+        assert_eq!(restored[0].active_pane, ActivePane::Left);
+        assert_eq!(
+            restored[1].active_pane,
+            ActivePane::Right,
+            "tab 1's cursor side was not carried through the session"
+        );
+        assert_eq!(restored[2].active_pane, ActivePane::Left);
+    }
+
+    /// Session files written before the cursor side became per-tab have no such field.
+    /// They must still load, with the tabs defaulting to Left; `AppState::restore_session`
+    /// then puts the session-wide value back on the active tab.
+    #[test]
+    fn test_session_file_without_per_tab_cursor_side_still_loads() {
+        let json = r#"{
+            "tabs": [{
+                "id": 0,
+                "left_location": { "Local": "/home/user" },
+                "right_location": { "Local": "/tmp" },
+                "left_cursor": 5,
+                "right_cursor": 10
+            }],
+            "active_tab_index": 0,
+            "active_pane": "Right",
+            "marked_locations": []
+        }"#;
+
+        let session: SessionState =
+            serde_json::from_str(json).expect("a pre-per-tab session file must still parse");
+        assert_eq!(session.tabs.len(), 1);
+        assert!(matches!(session.tabs[0].active_pane, SavedActivePane::Left));
+        assert!(matches!(session.active_pane, SavedActivePane::Right));
+    }
+
     #[test]
     fn test_multiple_tabs_persistence() {
         use crate::model::TabState;
@@ -663,6 +725,7 @@ mod restore_missing_path_tests {
             right_location: SavedLocation::Local(right),
             left_cursor: 0,
             right_cursor: 0,
+            active_pane: SavedActivePane::Left,
         }
     }
 
