@@ -87,6 +87,10 @@ pub struct LayoutSnapshot {
     pub show_task_panel: bool,
     pub task_panel_height: usize,
     pub viewer_layout: String,
+    /// Which file pane a SideBySide viewer is anchored to. Meaningless unless
+    /// `viewer_layout` is `SideBySide`; recorded because the side the viewer was on
+    /// otherwise has to be read back out of the rendered `.txt`.
+    pub viewer_anchor_pane: String,
 }
 
 /// All tabs.
@@ -238,6 +242,7 @@ impl DiagnosticStateSnapshot {
                     show_task_panel: state.ui.layout.show_task_panel,
                     task_panel_height: state.ui.layout.task_panel_height,
                     viewer_layout: format!("{:?}", state.ui.layout.viewer_layout),
+                    viewer_anchor_pane: format!("{:?}", state.ui.layout.viewer_anchor_pane),
                 },
             },
             tabs: TabsSnapshot {
