@@ -2680,13 +2680,13 @@ impl App {
 
 /// Whether `refresh_sbs_preview` should do any work.
 ///
-/// `UIMode::Viewer` is included, not just `Normal`: `restore_viewer_from_tab` re-focuses the
+/// `UIMode::Viewer` is included, not just `Normal`: `restore_tab_ui_state` re-focuses the
 /// viewer when a tab was left focused, and the anchor is re-pinned to the active pane on that
 /// restore, so the viewer can be showing the previous tab's file. Within a single tab this
 /// costs nothing — viewer-mode keys never reach `CursorMove`, so the anchor pane's cursor
 /// cannot move and the caller's location-equality check bails out.
 ///
-/// `ViewerSearch` / `ViewerCommand` stay excluded: `restore_viewer_from_tab` never sets them,
+/// `ViewerSearch` / `ViewerCommand` stay excluded: `restore_tab_ui_state` never sets them,
 /// so they would gain nothing, and reloading the buffer under an in-progress search or command
 /// would discard its state.
 fn should_refresh_sbs(
@@ -3673,7 +3673,7 @@ mod sbs_refresh_guard_tests {
     use super::*;
     use rwf_lib::model::{UIMode, ViewerLayout};
 
-    /// `UIMode::Viewer` must pass the guard. `restore_viewer_from_tab` re-focuses the viewer
+    /// `UIMode::Viewer` must pass the guard. `restore_tab_ui_state` re-focuses the viewer
     /// when a tab was left focused, and re-pins the anchor to the active pane on that restore
     /// — so the viewer can be left showing the *previous* tab's file. Excluding this mode is
     /// what made that staleness visible until the next cursor move.
@@ -3692,7 +3692,7 @@ mod sbs_refresh_guard_tests {
     }
 
     /// A reload here would pull the buffer out from under an in-progress search or command
-    /// and discard its state. `restore_viewer_from_tab` never sets either mode, so excluding
+    /// and discard its state. `restore_tab_ui_state` never sets either mode, so excluding
     /// them costs nothing.
     #[test]
     fn viewer_search_and_command_are_left_alone() {

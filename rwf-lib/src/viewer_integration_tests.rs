@@ -904,7 +904,7 @@ fn test_debounced_create_tab_leaves_the_viewer_untouched() {
 // ---------------------------------------------------------------------------
 // ViewerReady routing
 //
-// A `LoadFileForViewer` job outlives the tab hand-off: `save_viewer_to_current_tab`
+// A `LoadFileForViewer` job outlives the tab hand-off: `save_tab_ui_state`
 // moves a still-loading viewer into its tab's slot while the job keeps running. The
 // `JobEvent::ViewerReady` that eventually arrives carries no tab identity, so the
 // buffer has to be routed by job id -- otherwise it lands in whatever viewer happens
