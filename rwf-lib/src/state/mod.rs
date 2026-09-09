@@ -497,7 +497,12 @@ impl AppState {
     }
 
     /// Save current state to session storage
-    pub fn save_session(&self) -> Result<(), crate::session::SessionError> {
+    pub fn save_session(&mut self) -> Result<(), crate::session::SessionError> {
+        // The active tab's cursor side is live in `ui.active_pane`; every other tab
+        // parked its own on the way out. Park this one too so all of them serialise.
+        let idx = self.tabs.active_index;
+        self.tabs.tabs[idx].active_pane = self.ui.active_pane;
+
         let session = crate::session::save_session(
             &self.tabs.tabs,
             self.tabs.active_index,
@@ -537,8 +542,13 @@ impl AppState {
             self.tabs.active_index = 0;
         }
 
-        // Restore active pane
-        self.ui.active_pane = session.active_pane.into();
+        // Restore the cursor side. Each tab carries its own; the session-wide value is
+        // the active tab's, and is authoritative for it -- a session file written before
+        // the side became per-tab has only that one, with every tab defaulting to Left.
+        let restored_pane: crate::model::ActivePane = session.active_pane.into();
+        let idx = self.tabs.active_index;
+        self.tabs.tabs[idx].active_pane = restored_pane;
+        self.ui.active_pane = restored_pane;
 
         // Restore task panel settings
         self.ui.layout.show_task_panel = session.show_task_panel;
