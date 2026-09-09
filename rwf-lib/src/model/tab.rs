@@ -29,6 +29,12 @@ pub struct TabState {
     pub id: usize,
     pub left_pane: PaneModel,
     pub right_pane: PaneModel,
+    /// Which pane the cursor is on in this tab.
+    ///
+    /// `ui.active_pane` holds the live value for whichever tab is active; this is where
+    /// it is parked while the tab sits in the background. Without it a single shared
+    /// `ui.active_pane` follows the user from tab to tab.
+    pub active_pane: ActivePane,
     pub history: NavigationHistory,
     /// Viewer state saved while this tab is not active.
     pub tab_viewer: TabViewerState,
@@ -47,6 +53,7 @@ impl TabState {
             id,
             left_pane: PaneModel::new(Location::Local(cwd.clone())),
             right_pane: PaneModel::new(Location::Local(cwd)),
+            active_pane: ActivePane::Left,
             history: NavigationHistory::new(),
             tab_viewer: TabViewerState::default(),
         }

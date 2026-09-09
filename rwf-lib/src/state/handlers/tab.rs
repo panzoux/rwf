@@ -19,7 +19,7 @@ impl AppState {
                 // Creating a tab switches to it, so it owes the same viewer hand-off as
                 // NextTab/PrevTab/SwitchTab. Save before `create_tab()`: the save targets
                 // `tabs.active_index`, which still points at the tab being left.
-                self.save_viewer_to_current_tab();
+                self.save_tab_ui_state();
 
                 let new_index = self.tabs.create_tab();
                 // Get the stable ID of the new tab
@@ -51,7 +51,7 @@ impl AppState {
                 self.tabs.active_index = new_index;
                 // The new tab's slot is default, so this clears the viewer rather than
                 // restoring one — the point is that AppState ends up owned by this tab.
-                self.restore_viewer_from_tab();
+                self.restore_tab_ui_state();
 
                 let mut result = StateUpdateResult::with_ui_change();
                 result.jobs_to_start.push(job_left);
@@ -106,7 +106,7 @@ impl AppState {
                         self.tabs.active_index = self.tabs.tabs.len().saturating_sub(1);
                     }
                     if is_active {
-                        self.restore_viewer_from_tab();
+                        self.restore_tab_ui_state();
                     }
                     let mut result = StateUpdateResult::with_ui_change();
                     result.jobs_to_cancel = active_jobs;
@@ -116,22 +116,22 @@ impl AppState {
                 }
             }
             Transition::NextTab => {
-                self.save_viewer_to_current_tab();
+                self.save_tab_ui_state();
                 self.tabs.switch_to_next();
-                self.restore_viewer_from_tab();
+                self.restore_tab_ui_state();
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::PrevTab => {
-                self.save_viewer_to_current_tab();
+                self.save_tab_ui_state();
                 self.tabs.switch_to_prev();
-                self.restore_viewer_from_tab();
+                self.restore_tab_ui_state();
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::SwitchTab { index } => {
                 if *index < self.tabs.tabs.len() {
-                    self.save_viewer_to_current_tab();
+                    self.save_tab_ui_state();
                     self.tabs.active_index = *index;
-                    self.restore_viewer_from_tab();
+                    self.restore_tab_ui_state();
                     Some(StateUpdateResult::with_ui_change())
                 } else {
                     Some(StateUpdateResult::none())

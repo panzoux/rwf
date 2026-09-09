@@ -268,10 +268,14 @@ impl AppState {
         }
     }
 
-    /// Move the current viewer state into the active tab's `tab_viewer` slot
-    /// and reset AppState to "no viewer". Called before switching away from a tab.
-    fn save_viewer_to_current_tab(&mut self) {
+    /// Park the active tab's live UI state on the tab itself: the cursor side, and the
+    /// viewer moved into its `tab_viewer` slot with AppState reset to "no viewer".
+    /// Called before switching away from a tab.
+    fn save_tab_ui_state(&mut self) {
         let idx = self.tabs.active_index;
+        // `ui.active_pane` is one live value shared by every tab. Park it here or the
+        // next tab inherits whichever side this one happened to be on.
+        self.tabs.tabs[idx].active_pane = self.ui.active_pane;
         let tv = &mut self.tabs.tabs[idx].tab_viewer;
         tv.viewer = self.viewer.take();
         tv.viewer_job_id = self.viewer_job_id.take();
@@ -301,10 +305,11 @@ impl AppState {
         }
     }
 
-    /// Restore viewer state from the newly active tab's `tab_viewer` slot into AppState.
-    /// Called after switching to a new tab.
-    fn restore_viewer_from_tab(&mut self) {
+    /// Load the newly active tab's parked UI state back into AppState: its cursor side,
+    /// and its viewer from the `tab_viewer` slot. Called after switching to a new tab.
+    fn restore_tab_ui_state(&mut self) {
         let idx = self.tabs.active_index;
+        self.ui.active_pane = self.tabs.tabs[idx].active_pane;
         let tv = &mut self.tabs.tabs[idx].tab_viewer;
         self.viewer = tv.viewer.take();
         self.viewer_job_id = tv.viewer_job_id.take();
@@ -319,16 +324,11 @@ impl AppState {
         // Reset the slot to default so it's clean for next time.
         *tv = crate::model::TabViewerState::default();
 
-        // The anchor is restored from the tab, never re-derived from `ui.active_pane`.
-        // `active_pane` is global while the anchor is per tab, so on arrival here it
-        // carries whichever pane the *other* tab was standing on; pinning against it
-        // drags this tab's viewer to the wrong side and re-points the preview at the
-        // wrong pane's cursor entry.
-        //
-        // `active_pane` moves to the anchor instead. That is the direction that makes
-        // the two agree without losing information: while a tab holds a SideBySide
-        // viewer the anchored pane is the only file pane on screen and `SwitchPane` is
-        // blocked, so the anchor *is* that tab's active pane.
+        // In SideBySide the anchor is the authority for which pane is on screen, so it
+        // wins over the parked cursor side. The two normally agree -- the anchor was
+        // pinned from `ui.active_pane` when the session opened, and `SwitchPane` is
+        // blocked while it lasts -- but if they ever diverge, following the parked side
+        // would put the cursor on a pane that is not being drawn.
         if self.viewer.is_some()
             && self.ui.layout.viewer_layout == crate::model::ViewerLayout::SideBySide
         {
@@ -343,7 +343,7 @@ impl AppState {
     /// Find the viewer that started `job_id`: the live one, or a background tab's
     /// stashed slot.
     ///
-    /// A viewer load outlives the tab hand-off -- `save_viewer_to_current_tab` moves a
+    /// A viewer load outlives the tab hand-off -- `save_tab_ui_state` moves a
     /// still-loading viewer into its tab's slot while the job keeps running -- and the
     /// `ViewerReady` event carries no tab identity. Without this lookup a late buffer
     /// lands in whatever viewer happens to be live, showing the wrong tab's file, and
@@ -374,7 +374,7 @@ impl AppState {
     /// list, the wrong pane-info counts, and a path line with no active marker.
     ///
     /// Restoring a tab is *not* such a transition and must not call this: that tab's
-    /// session already chose a side, and `restore_viewer_from_tab` brings it back.
+    /// session already chose a side, and `restore_tab_ui_state` brings it back.
     fn pin_sbs_anchor(&mut self) {
         self.ui.layout.viewer_anchor_pane = self.ui.active_pane;
     }
@@ -1744,6 +1744,96 @@ mod tests {
         let result = update_state(&mut state, Transition::CloseTab { index: 0 });
         assert!(!result.ui_changed);
         assert_eq!(state.tabs.tabs.len(), 1);
+    }
+
+    /// Diagnostic bundle `20260909-222639`: tab 1 on the left pane, tab 2 switched to
+    /// the right, back to tab 1 -- which came back on the *right*. `ui.active_pane` is a
+    /// single live value shared by every tab, so whichever pane was last chosen anywhere
+    /// followed the user into every other tab.
+    #[test]
+    fn test_each_tab_remembers_its_own_cursor_side() {
+        let mut state = AppState::new(AppConfig::default());
+        state.tabs.create_tab();
+
+        // Tab 0 stays on the left.
+        state.ui.active_pane = ActivePane::Left;
+
+        // Tab 1 moves to the right.
+        update_state(&mut state, Transition::NextTab);
+        update_state(&mut state, Transition::SwitchPane);
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+
+        // Back to tab 0: its own side, not tab 1's.
+        update_state(&mut state, Transition::PrevTab);
+        assert_eq!(state.tabs.active_index, 0);
+        assert_eq!(
+            state.ui.active_pane,
+            ActivePane::Left,
+            "tab 1's cursor side followed the user into tab 0"
+        );
+
+        // ...and forward again: tab 1 kept its own.
+        update_state(&mut state, Transition::NextTab);
+        assert_eq!(
+            state.ui.active_pane,
+            ActivePane::Right,
+            "tab 1 lost the side it was left on"
+        );
+    }
+
+    /// `SwitchTab` jumps by index and owes the same hand-off as Next/Prev.
+    #[test]
+    fn test_switch_tab_by_index_restores_the_cursor_side() {
+        let mut state = AppState::new(AppConfig::default());
+        state.tabs.create_tab();
+        state.tabs.create_tab();
+
+        update_state(&mut state, Transition::SwitchTab { index: 2 });
+        update_state(&mut state, Transition::SwitchPane);
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+
+        update_state(&mut state, Transition::SwitchTab { index: 0 });
+        assert_eq!(state.ui.active_pane, ActivePane::Left);
+
+        update_state(&mut state, Transition::SwitchTab { index: 2 });
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+    }
+
+    /// A brand-new tab starts on the left rather than inheriting the side of the tab it
+    /// was created from, and the tab left behind keeps its own.
+    #[test]
+    fn test_create_tab_starts_on_the_left_and_leaves_the_old_side_intact() {
+        let mut state = AppState::new(AppConfig::default());
+        update_state(&mut state, Transition::SwitchPane);
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+
+        update_state(&mut state, Transition::CreateTab);
+        assert_eq!(state.tabs.active_index, 1);
+        assert_eq!(
+            state.ui.active_pane,
+            ActivePane::Left,
+            "the new tab inherited the previous tab's cursor side"
+        );
+
+        update_state(&mut state, Transition::PrevTab);
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+    }
+
+    /// Closing the active tab lands on another one, which brings its own side with it.
+    #[test]
+    fn test_closing_the_active_tab_restores_the_next_tabs_cursor_side() {
+        let mut state = AppState::new(AppConfig::default());
+        state.tabs.create_tab();
+
+        // Tab 1 is on the right; tab 0 stays on the left.
+        update_state(&mut state, Transition::NextTab);
+        update_state(&mut state, Transition::SwitchPane);
+        assert_eq!(state.ui.active_pane, ActivePane::Right);
+
+        // Close tab 1 -> tab 0 becomes active, on the left where it was left.
+        update_state(&mut state, Transition::CloseTab { index: 1 });
+        assert_eq!(state.tabs.active_index, 0);
+        assert_eq!(state.ui.active_pane, ActivePane::Left);
     }
 
     #[test]
