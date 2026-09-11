@@ -1,0 +1,29 @@
+{
+  "Version": "1.0",
+  "Menus": [
+    {
+      "Name": "file name",
+      "Action": "file name"
+    },
+    {
+      "Name": "full path",
+      "Action": "full path"
+    },
+    {
+      "Name": "current directory",
+      "Action": "current directory"
+    },
+    {
+      "Name": "-----",
+      "Action": ""
+    },
+    {
+      "Name": "marked file names",
+      "Action": "marked file names"
+    },
+    {
+      "Name": "marked full paths",
+      "Action": "marked full paths"
+    }
+  ]
+}

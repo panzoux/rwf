@@ -49,8 +49,8 @@ pub const DEFAULT_CUSTOM_FUNCTIONS: &str =
 /// Embedded default menu_config.json — exported by `--export-config-files`
 pub const DEFAULT_MENU_CONFIG: &str = include_str!("../resources/default_menu_config.json");
 
-/// Embedded default menu_copy_paths.json — exported by `--export-config-files`
-pub const DEFAULT_MENU_COPY_PATHS: &str = include_str!("../resources/default_menu_copy_paths.json");
+/// Embedded default menu_clip.json — exported by `--export-config-files`
+pub const DEFAULT_MENU_CLIP: &str = include_str!("../resources/default_menu_clip.json");
 
 /// Embedded default file_type_map.json — exported by `--export-config-files`
 pub const DEFAULT_FILE_TYPE_MAP: &str = include_str!("../resources/default_file_type_map.json");

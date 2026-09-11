@@ -22,58 +22,58 @@
   ],
   "Functions": [
     {
-      "Name": "menu_clip_paths",
-      "Menu": "menu_copy_paths.json",
-      "Description": "Show copy-paths menu",
+      "Name": "clip menu",
+      "Menu": "menu_clip.json",
+      "Description": "the clip menu",
       "Category": "Clip"
     },
     {
-      "Name": "menu_config",
+      "Name": "config menu",
       "Menu": "menu_config.json",
-      "Description": "Show config menu",
+      "Description": "the config menu",
       "Category": "Config"
     },
 
     {
-      "Name": "clip file name",
+      "Name": "file name",
       "ClipText": "$F",
-      "Description": "Copy the cursor file's name",
+      "Description": "the cursor entry's name",
       "Category": "Clip"
     },
     {
-      "Name": "clip file path",
+      "Name": "full path",
       "ClipText": "$P$/$F",
-      "Description": "Copy the cursor file's full path",
+      "Description": "the cursor entry's full path",
       "Category": "Clip"
     },
     {
-      "Name": "clip path",
+      "Name": "current directory",
       "ClipText": "$P",
-      "Description": "Copy the active pane's directory",
+      "Description": "the active pane's directory",
       "Category": "Clip"
     },
     {
-      "Name": "clip marked file path",
+      "Name": "marked full paths",
       "ClipText": "$MPL",
-      "Description": "Copy marked files' full paths, one per line",
+      "Description": "every marked entry's full path, one per line",
       "Category": "Clip"
     },
     {
-      "Name": "clip marked file name",
+      "Name": "marked file names",
       "ClipText": "$MFL",
-      "Description": "Copy marked files' names, one per line",
+      "Description": "every marked entry's name, one per line",
       "Category": "Clip"
     },
     {
-      "Name": "clip \"file path\"",
+      "Name": "full path, quoted",
       "ClipText": "\"$P$/$F\"",
-      "Description": "Copy the cursor file's full path, double-quoted",
+      "Description": "the cursor entry's full path in double quotes",
       "Category": "Clip"
     },
     {
-      "Name": "clip \"path\"",
+      "Name": "current directory, quoted",
       "ClipText": "\"$P\"",
-      "Description": "Copy the active pane's directory, double-quoted",
+      "Description": "the active pane's directory in double quotes",
       "Category": "Clip"
     },
 
@@ -123,13 +123,13 @@
     },
     {
       "Name": "edit clip menu file",
-      "Command": "echo %APPDATA%\\rwf\\menu_copy_paths.json",
+      "Command": "echo %APPDATA%\\rwf\\menu_clip.json",
       "PipeToAction": "ExecuteFileWithEditor",
-      "Description": "Open menu_copy_paths.json in the configured editor",
+      "Description": "Open menu_clip.json in the configured editor",
       "Category": "Config",
       "OsSpecific": {
-        "linux": { "Command": "echo $~/.config/rwf/menu_copy_paths.json" },
-        "macos": { "Command": "echo $~/.config/rwf/menu_copy_paths.json" }
+        "linux": { "Command": "echo $~/.config/rwf/menu_clip.json" },
+        "macos": { "Command": "echo $~/.config/rwf/menu_clip.json" }
       }
     },
     {

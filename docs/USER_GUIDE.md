@@ -405,13 +405,18 @@ at all: the macro template is expanded and the result goes straight to the clipb
 no `echo`, no console flash, no trailing newline, no shell quoting to get wrong.
 
 ```json
-{ "Name": "clip file path",        "ClipText": "$P$/$F" },
-{ "Name": "clip marked file path", "ClipText": "$MPL" }
+{ "Name": "full path",         "ClipText": "$P$/$F" },
+{ "Name": "marked full paths", "ClipText": "$MPL" }
 ```
 
 Exactly one of `Command`, `Menu` and `ClipText` may be present; combining them is a
 startup config error rather than a silent precedence rule. The default
-`menu_copy_paths.json` collects these on `F6`.
+`menu_clip.json` collects these on `F6`, and the menu's own title supplies the verb —
+which is why the entries are named `full path` rather than `clip full path`.
+
+A menu entry's `Action` is looked up by function `Name`, so the two files must be
+renamed together: change only one and the entry silently does nothing. Editing
+either file takes effect on the next config reload (`Z`).
 
 **Clipboard backend** (`config.json`):
 

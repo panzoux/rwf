@@ -2492,6 +2492,87 @@ mod custom_function_validation_tests {
         assert!(validate_custom_functions(&fns).is_empty());
     }
 
+    /// Every `Action` in a shipped menu file must name a shipped function.
+    ///
+    /// A menu item is bound to its target by **name**, so renaming a function without
+    /// renaming the menu entry (or vice versa) does not fail to load, does not warn,
+    /// and does not error — the item simply does nothing when chosen. Exactly that
+    /// happened while the clip menu was being renamed by hand: `menu_clip.json` kept
+    /// `"Action": "clip marked file path"` after the function became
+    /// `marked full paths`.
+    ///
+    /// Built-in action names (`ReloadConfig`, `Delete`, …) are resolved by
+    /// `resolve_menu_item_action` in rwf-bin before any function lookup, so they are
+    /// not expected here; the check is that a *non-built-in* action resolves.
+    #[test]
+    fn shipped_menu_actions_all_resolve_to_a_shipped_function() {
+        let fns = parse(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS);
+        let names: std::collections::HashSet<&str> = fns.iter().map(|f| f.name.as_str()).collect();
+
+        // Kept in step with `resolve_menu_item_action`'s built-in table.
+        const BUILTINS: &[&str] = &[
+            "DeleteFile",
+            "Delete",
+            "MoveFile",
+            "Move",
+            "CopyFile",
+            "Copy",
+            "ViewFileAsText",
+            "View",
+            "ViewFileAsHex",
+            "ReloadConfiguration",
+            "ReloadConfig",
+            "EditConfigFile",
+        ];
+
+        let menus: &[(&str, &str)] = &[
+            ("menu_clip.json", crate::help_content::DEFAULT_MENU_CLIP),
+            ("menu_config.json", crate::help_content::DEFAULT_MENU_CONFIG),
+        ];
+
+        let mut dangling: Vec<String> = Vec::new();
+        for (file, body) in menus {
+            let parsed: MenuFile =
+                serde_json::from_str(body).unwrap_or_else(|e| panic!("{file}: {e}"));
+            for item in parsed.menus {
+                if item.is_separator() || BUILTINS.contains(&item.action.as_str()) {
+                    continue;
+                }
+                if !names.contains(item.action.as_str()) {
+                    dangling.push(format!(
+                        "{file}: item {:?} -> action {:?} names no function",
+                        item.name, item.action
+                    ));
+                }
+            }
+        }
+
+        assert!(
+            dangling.is_empty(),
+            "a menu item whose action names nothing does nothing, silently — rename              the menu file and default_custom_functions.json together:
+  {}",
+            dangling.join("
+  ")
+        );
+    }
+
+    /// The reverse direction: a `Menu:` reference must name a menu file we ship.
+    #[test]
+    fn shipped_menu_references_name_files_that_exist() {
+        let fns = parse(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS);
+        const SHIPPED: &[&str] = &["menu_clip.json", "menu_config.json"];
+        for f in &fns {
+            if let Some(MenuContent::File(name)) = &f.menu {
+                assert!(
+                    SHIPPED.contains(&name.as_str()),
+                    "{:?} opens {:?}, which is not a shipped menu file",
+                    f.name,
+                    name
+                );
+            }
+        }
+    }
+
     #[test]
     fn shipped_defaults_are_valid() {
         // Guards the files we actually ship: a typo in default_custom_functions.json
