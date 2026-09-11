@@ -67,9 +67,11 @@ jobs:
 
   # A real gate as of 2026-09-08. It started out advisory to measure the gap;
   # that came back as 9 failures, of which 1 was a genuine Windows-shaped test
-  # assumption (fixed) and 8 are the two tracked portability bugs in ROADMAP
-  # 7.18, whose tests are `#[cfg_attr(unix, ignore = "...")]` with the reason
-  # inline. Nothing is expected to fail here any more, so failures are real.
+  # assumption (fixed) and 8 were the two portability bugs of ROADMAP 7.18.
+  # Both are fixed (2026-09-11): the fallback trash no longer anchors at an
+  # unwritable `/`, and create_link snapshots render a platform-independent
+  # layout. The only remaining unix ignores are the three Junction snapshots,
+  # by design. Nothing is expected to fail here, so failures are real.
   test-linux:
     name: test (linux)
     runs-on: ubuntu-latest

@@ -33,7 +33,7 @@ pub fn move_to_trash_sync(path: &Path, force_fallback: bool) -> Result<TrashReco
         });
     }
 
-    fallback_move_to_trash(path, &volume_root(path).join(".rwf-trash"), size, modified)
+    fallback_move_to_first_usable(path, &fallback_dir_candidates(path), size, modified)
 }
 
 /// Look up the OS trash entry that `trash::delete(path)` just created, by
@@ -78,6 +78,46 @@ struct FallbackMeta {
 /// silently stop finding fallback-trashed files.
 pub(crate) fn volume_root(path: &Path) -> std::path::PathBuf {
     path.ancestors().last().unwrap_or(path).to_path_buf()
+}
+
+/// Name of the fallback tier's sidecar directory at a volume root.
+const FALLBACK_DIR_NAME: &str = ".rwf-trash";
+
+/// Where the fallback tier may put an item trashed from `path`, in order of preference.
+///
+/// The volume-root sidecar first — `C:\.rwf-trash` on Windows, which any user can
+/// create. On Unix the volume root is `/`, which a normal user cannot write, so until
+/// Phase 7.18 the whole fallback tier failed there with `Permission denied` — and it
+/// is the tier `move_to_trash_sync` drops to precisely when the OS trash has already
+/// failed. The per-user directory follows as the place that is always writable.
+fn fallback_dir_candidates(path: &Path) -> Vec<std::path::PathBuf> {
+    let mut dirs = vec![volume_root(path).join(FALLBACK_DIR_NAME)];
+    dirs.extend(user_fallback_dir());
+    dirs
+}
+
+/// The per-user fallback directory: `$XDG_DATA_HOME/rwf/trash` on Linux,
+/// `%LOCALAPPDATA%\rwf\trash` on Windows. Local, never roaming — a trash that syncs
+/// between machines would be a surprise.
+pub(crate) fn user_fallback_dir() -> Option<std::path::PathBuf> {
+    dirs::data_local_dir().map(|dir| dir.join("rwf").join("trash"))
+}
+
+/// Every fallback directory to sweep for items trashed from under `roots`: each
+/// root's sidecar, plus the per-user directory, once. `move_to_trash_sync`,
+/// `purge_fallback_dirs_sync`, `list_trash_sync` and the backend's `scan_trash` must
+/// all agree on this, or EmptyTrash silently stops finding what was trashed.
+pub(crate) fn fallback_dirs(roots: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+    let mut dirs: Vec<std::path::PathBuf> = roots
+        .iter()
+        .map(|root| root.join(FALLBACK_DIR_NAME))
+        .collect();
+    if let Some(user) = user_fallback_dir() {
+        if !dirs.contains(&user) {
+            dirs.push(user);
+        }
+    }
+    dirs
 }
 
 /// Restore a previously trashed item back to `record.original`.
@@ -188,8 +228,7 @@ pub fn scan_os_trash_sync() -> Result<(usize, u64)> {
 /// separately).
 pub fn purge_fallback_dirs_sync(roots: &[std::path::PathBuf]) -> Result<usize> {
     let mut purged = 0usize;
-    for root in roots {
-        let trash_dir = root.join(".rwf-trash");
+    for trash_dir in fallback_dirs(roots) {
         if !trash_dir.exists() {
             continue;
         }
@@ -252,8 +291,7 @@ pub fn list_trash_sync(fallback_roots: &[std::path::PathBuf]) -> Result<Vec<Tras
         }
     }
 
-    for root in fallback_roots {
-        let trash_dir = root.join(".rwf-trash");
+    for trash_dir in fallback_dirs(fallback_roots) {
         if !trash_dir.exists() {
             continue;
         }
@@ -326,44 +364,195 @@ fn sidecar_meta_path(trash_path: &Path) -> std::path::PathBuf {
     std::path::PathBuf::from(meta_os)
 }
 
+/// A fallback move that failed, split by whether the item had already left its
+/// original path. Only a failure *before* anything moved makes it safe to try the
+/// next candidate directory.
+enum FallbackFailure {
+    NotMoved(anyhow::Error),
+    Moved(anyhow::Error),
+}
+
+impl FallbackFailure {
+    #[cfg(test)]
+    fn into_inner(self) -> anyhow::Error {
+        match self {
+            Self::NotMoved(e) | Self::Moved(e) => e,
+        }
+    }
+}
+
+/// Trash `path` into the first candidate directory that works (see
+/// `fallback_dir_candidates`).
+fn fallback_move_to_first_usable(
+    path: &Path,
+    candidates: &[std::path::PathBuf],
+    size: u64,
+    modified: SystemTime,
+) -> Result<TrashRecord> {
+    let mut last_error = None;
+    for trash_dir in candidates {
+        match try_fallback_move(path, trash_dir, size, modified) {
+            Ok(record) => return Ok(record),
+            Err(FallbackFailure::NotMoved(e)) => {
+                tracing::debug!("fallback trash dir {:?} not usable: {e:#}", trash_dir);
+                last_error = Some(e);
+            }
+            Err(FallbackFailure::Moved(e)) => return Err(e),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no fallback trash directory is available")))
+}
+
+/// A single-directory fallback move, for tests that pin the move itself.
+#[cfg(test)]
 fn fallback_move_to_trash(
     path: &Path,
     trash_dir: &Path,
     size: u64,
     modified: SystemTime,
 ) -> Result<TrashRecord> {
-    std::fs::create_dir_all(trash_dir).context("failed to create .rwf-trash directory")?;
+    try_fallback_move(path, trash_dir, size, modified).map_err(FallbackFailure::into_inner)
+}
+
+fn try_fallback_move(
+    path: &Path,
+    trash_dir: &Path,
+    size: u64,
+    modified: SystemTime,
+) -> std::result::Result<TrashRecord, FallbackFailure> {
+    use FallbackFailure::{Moved, NotMoved};
+
+    std::fs::create_dir_all(trash_dir)
+        .context("failed to create .rwf-trash directory")
+        .map_err(NotMoved)?;
 
     let file_name = path
         .file_name()
-        .context("trash target has no file name")?
+        .context("trash target has no file name")
+        .map_err(NotMoved)?
         .to_string_lossy();
     let unique_name = format!("{}-{}", uuid::Uuid::new_v4(), file_name);
     let trash_path = trash_dir.join(&unique_name);
-
-    std::fs::rename(path, &trash_path).context("failed to move file into .rwf-trash fallback")?;
+    let meta_path = sidecar_meta_path(&trash_path);
 
     let trashed_at = chrono::Utc::now().timestamp();
-    let meta = FallbackMeta {
+    let meta_json = serde_json::to_string_pretty(&FallbackMeta {
         original: path.to_path_buf(),
         trashed_at,
-    };
-    let meta_path = sidecar_meta_path(&trash_path);
-    std::fs::write(
-        &meta_path,
-        serde_json::to_string_pretty(&meta).context("failed to serialize .rwf-trash metadata")?,
-    )
-    .context("failed to write .rwf-trash metadata")?;
+    })
+    .context("failed to serialize .rwf-trash metadata")
+    .map_err(NotMoved)?;
 
-    Ok(TrashRecord {
+    let record = TrashRecord {
         original: Location::Local(path.to_path_buf()),
         trash_location: TrashLocation::Fallback {
-            trash_path,
+            trash_path: trash_path.clone(),
             trashed_at,
         },
         size,
         modified,
-    })
+    };
+
+    match std::fs::rename(path, &trash_path) {
+        Ok(()) => {
+            std::fs::write(&meta_path, meta_json)
+                .context("failed to write .rwf-trash metadata")
+                .map_err(Moved)?;
+            Ok(record)
+        }
+        // The per-user directory is often on another filesystem than the item. Copy,
+        // record, and only then remove the original — so a failure at any step leaves
+        // at least one complete copy.
+        Err(e) if is_cross_device(&e) => {
+            if let Err(copy_error) = copy_recursively(path, &trash_path) {
+                let _ = remove_recursively(&trash_path);
+                return Err(NotMoved(
+                    anyhow::Error::new(copy_error).context("failed to copy into .rwf-trash"),
+                ));
+            }
+            if let Err(write_error) = std::fs::write(&meta_path, meta_json) {
+                let _ = remove_recursively(&trash_path);
+                return Err(NotMoved(
+                    anyhow::Error::new(write_error).context("failed to write .rwf-trash metadata"),
+                ));
+            }
+            remove_recursively(path)
+                .context("copied into .rwf-trash, but the original could not be removed")
+                .map_err(Moved)?;
+            Ok(record)
+        }
+        Err(e) => Err(NotMoved(
+            anyhow::Error::new(e).context("failed to move file into .rwf-trash fallback"),
+        )),
+    }
+}
+
+/// `rename` refused because source and destination are on different filesystems.
+fn is_cross_device(error: &std::io::Error) -> bool {
+    #[cfg(windows)]
+    const CROSS_DEVICE: i32 = 17; // ERROR_NOT_SAME_DEVICE
+    #[cfg(not(windows))]
+    const CROSS_DEVICE: i32 = 18; // EXDEV
+    error.raw_os_error() == Some(CROSS_DEVICE)
+}
+
+/// Move `from` to `to`, copying and removing when a rename cannot cross filesystems.
+fn move_path(from: &Path, to: &Path) -> std::io::Result<()> {
+    match std::fs::rename(from, to) {
+        Err(e) if is_cross_device(&e) => {
+            copy_recursively(from, to)?;
+            remove_recursively(from)
+        }
+        other => other,
+    }
+}
+
+/// Copy a file, a symlink (as a link) or a whole directory tree to `to`, which must
+/// not exist yet.
+fn copy_recursively(from: &Path, to: &Path) -> std::io::Result<()> {
+    let file_type = std::fs::symlink_metadata(from)?.file_type();
+    if file_type.is_symlink() {
+        let target = std::fs::read_link(from)?;
+        #[cfg(unix)]
+        {
+            return std::os::unix::fs::symlink(target, to);
+        }
+        #[cfg(windows)]
+        {
+            let points_at_dir = std::fs::metadata(from).is_ok_and(|m| m.is_dir());
+            return if points_at_dir {
+                std::os::windows::fs::symlink_dir(target, to)
+            } else {
+                std::os::windows::fs::symlink_file(target, to)
+            };
+        }
+    }
+    if file_type.is_dir() {
+        std::fs::create_dir(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_recursively(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        return Ok(());
+    }
+    std::fs::copy(from, to).map(|_| ())
+}
+
+/// Remove a file, symlink or directory tree.
+fn remove_recursively(path: &Path) -> std::io::Result<()> {
+    let file_type = std::fs::symlink_metadata(path)?.file_type();
+    if file_type.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        // A directory symlink on Windows is removed with `remove_dir`.
+        std::fs::remove_file(path).or_else(|e| {
+            if file_type.is_symlink() {
+                std::fs::remove_dir(path)
+            } else {
+                Err(e)
+            }
+        })
+    }
 }
 
 /// Restore a `.rwf-trash`-fallback-trashed item back to its original path.
@@ -378,7 +567,7 @@ fn restore_fallback(trash_path: &Path) -> Result<()> {
     if let Some(parent) = meta.original.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::rename(trash_path, &meta.original)
+    move_path(trash_path, &meta.original)
         .context("failed to restore file from .rwf-trash fallback")?;
     std::fs::remove_file(&meta_path).ok();
     Ok(())
@@ -387,6 +576,7 @@ fn restore_fallback(trash_path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
@@ -443,10 +633,6 @@ mod tests {
         }
     }
 
-    #[cfg_attr(
-        unix,
-        ignore = "Unix fallback trash anchors at / (unwritable) -- ROADMAP 7.18 Linux bug 2"
-    )]
     #[test]
     fn test_move_to_trash_force_fallback_skips_os_trash() {
         let dir = TempDir::new().unwrap();
@@ -721,10 +907,6 @@ mod tests {
         }
     }
 
-    #[cfg_attr(
-        unix,
-        ignore = "Unix fallback trash anchors at / (unwritable) -- ROADMAP 7.18 Linux bug 2"
-    )]
     #[test]
     fn test_list_trash_sync_lists_fallback_file_and_directory_with_sizes_and_original_paths() {
         let dir = TempDir::new().unwrap();
@@ -775,5 +957,96 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir(&trash_dir);
+    }
+
+    /// Phase 7.18: an unusable first candidate (on Unix, `/.rwf-trash`) must fall
+    /// through to the next one instead of failing the whole fallback tier. A sidecar
+    /// "under" a regular file can never be created, on any platform.
+    #[test]
+    fn an_unusable_fallback_dir_falls_through_to_the_next() {
+        let dir = TempDir::new().unwrap();
+        let blocker = dir.path().join("a_file_not_a_dir");
+        std::fs::write(&blocker, b"x").unwrap();
+        let file_path = dir.path().join("move_me.txt");
+        std::fs::write(&file_path, b"12345").unwrap();
+        let second = dir.path().join("second_choice");
+
+        let record = fallback_move_to_first_usable(
+            &file_path,
+            &[blocker.join(".rwf-trash"), second.clone()],
+            5,
+            SystemTime::now(),
+        )
+        .expect("the second candidate should take it");
+
+        assert!(!file_path.exists());
+        let TrashLocation::Fallback { trash_path, .. } = &record.trash_location else {
+            panic!("expected Fallback, got {:?}", record.trash_location);
+        };
+        assert!(trash_path.starts_with(&second), "{trash_path:?}");
+        assert!(sidecar_meta_path(trash_path).exists());
+    }
+
+    #[test]
+    fn when_no_fallback_dir_is_usable_the_item_stays_put() {
+        let dir = TempDir::new().unwrap();
+        let blocker = dir.path().join("a_file_not_a_dir");
+        std::fs::write(&blocker, b"x").unwrap();
+        let file_path = dir.path().join("stay.txt");
+        std::fs::write(&file_path, b"x").unwrap();
+
+        let result = fallback_move_to_first_usable(
+            &file_path,
+            &[blocker.join("one"), blocker.join("two")],
+            1,
+            SystemTime::now(),
+        );
+
+        assert!(result.is_err());
+        assert!(file_path.exists(), "a failed trash must not lose the file");
+    }
+
+    /// The cross-filesystem path cannot be provoked in a unit test, so its copy and
+    /// remove halves are exercised directly on a tree with a nested file.
+    #[test]
+    fn copy_then_remove_moves_a_directory_tree_intact() {
+        let dir = TempDir::new().unwrap();
+        let from = dir.path().join("tree");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("top.txt"), b"top").unwrap();
+        std::fs::write(from.join("sub").join("deep.txt"), b"deep").unwrap();
+        let to = dir.path().join("copied");
+
+        copy_recursively(&from, &to).unwrap();
+        remove_recursively(&from).unwrap();
+
+        assert!(!from.exists());
+        assert_eq!(std::fs::read(to.join("top.txt")).unwrap(), b"top");
+        assert_eq!(
+            std::fs::read(to.join("sub").join("deep.txt")).unwrap(),
+            b"deep"
+        );
+    }
+
+    #[test]
+    fn the_sweep_covers_each_root_sidecar_and_the_user_dir_once() {
+        let roots = vec![PathBuf::from("/a"), PathBuf::from("/b")];
+        let dirs = fallback_dirs(&roots);
+        assert_eq!(dirs[0], PathBuf::from("/a").join(".rwf-trash"));
+        assert_eq!(dirs[1], PathBuf::from("/b").join(".rwf-trash"));
+        if let Some(user) = user_fallback_dir() {
+            assert_eq!(dirs.iter().filter(|d| **d == user).count(), 1);
+        }
+    }
+
+    /// The per-user directory is a candidate, so what it holds must be swept.
+    #[test]
+    fn a_move_into_any_candidate_is_found_by_the_sweep() {
+        let file = PathBuf::from("/some/where/x.txt");
+        let root = volume_root(&file);
+        let swept = fallback_dirs(std::slice::from_ref(&root));
+        for candidate in fallback_dir_candidates(&file) {
+            assert!(swept.contains(&candidate), "{candidate:?} is never swept");
+        }
     }
 }

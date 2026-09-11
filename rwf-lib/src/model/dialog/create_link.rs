@@ -19,6 +19,11 @@ pub struct CreateLinkDialog {
     pub link_name_cursor_pos: usize,
     pub link_name_scroll_pos: usize,
     pub kind: LinkCreateKind,
+    /// The link kinds offered, in display order — `platform_kinds()` unless a test
+    /// says otherwise. Held here so the renderer and `cycle_kind` read one list (each
+    /// used to carry its own copy), and so the Unix layout, which has no Junction, can
+    /// be rendered and snapshotted on Windows too (Phase 7.18).
+    pub kinds: Vec<LinkCreateKind>,
     /// 0=Type, 1=link name, 2=OK, 3=Cancel
     pub focused_field: usize,
 }
@@ -46,6 +51,7 @@ impl CreateLinkDialog {
             link_name_cursor_pos,
             link_name_scroll_pos: 0,
             kind: LinkCreateKind::Symlink,
+            kinds: Self::platform_kinds().to_vec(),
             focused_field: 0,
         }
     }
@@ -72,7 +78,8 @@ impl CreateLinkDialog {
         }
     }
 
-    fn all_kinds() -> &'static [LinkCreateKind] {
+    /// Every link kind this platform can create, in display order.
+    pub fn platform_kinds() -> &'static [LinkCreateKind] {
         #[cfg(windows)]
         {
             &[
@@ -90,10 +97,13 @@ impl CreateLinkDialog {
     /// Move `kind` to the next available option (wrapping, skipping
     /// unavailable ones).
     pub fn cycle_kind(&mut self) {
-        let kinds = Self::all_kinds();
-        let current_idx = kinds.iter().position(|k| *k == self.kind).unwrap_or(0);
-        for offset in 1..=kinds.len() {
-            let candidate = kinds[(current_idx + offset) % kinds.len()];
+        let count = self.kinds.len();
+        if count == 0 {
+            return;
+        }
+        let current_idx = self.kinds.iter().position(|k| *k == self.kind).unwrap_or(0);
+        for offset in 1..=count {
+            let candidate = self.kinds[(current_idx + offset) % count];
             if self.is_kind_available(candidate) {
                 self.kind = candidate;
                 return;

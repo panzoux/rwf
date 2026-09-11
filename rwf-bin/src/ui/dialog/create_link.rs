@@ -85,21 +85,6 @@ fn kind_label(kind: LinkCreateKind) -> &'static str {
     }
 }
 
-fn all_kinds() -> &'static [LinkCreateKind] {
-    #[cfg(windows)]
-    {
-        &[
-            LinkCreateKind::Symlink,
-            LinkCreateKind::Hardlink,
-            LinkCreateKind::Junction,
-        ]
-    }
-    #[cfg(unix)]
-    {
-        &[LinkCreateKind::Symlink, LinkCreateKind::Hardlink]
-    }
-}
-
 pub(super) fn render_create_link_dialog(frame: &mut Frame, area: Rect, dialog: &CreateLinkDialog) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -114,7 +99,7 @@ pub(super) fn render_create_link_dialog(frame: &mut Frame, area: Rect, dialog: &
 
     // Row 0: Type selector
     let mut spans = vec![Span::styled("Type:  ", base_style)];
-    for kind in all_kinds() {
+    for kind in &dialog.kinds {
         let is_selected = *kind == dialog.kind;
         let is_available = dialog.is_kind_available(*kind);
         let marker = if is_selected { "(*)" } else { "( )" };
@@ -137,7 +122,8 @@ pub(super) fn render_create_link_dialog(frame: &mut Frame, area: Rect, dialog: &
     );
 
     // Row 1: unavailable-option reasons
-    let reasons: Vec<String> = all_kinds()
+    let reasons: Vec<String> = dialog
+        .kinds
         .iter()
         .filter_map(|k| {
             dialog

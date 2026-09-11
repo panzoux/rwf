@@ -656,11 +656,10 @@ impl FilesystemBackend for LocalFilesystemBackend {
 
         let mut fallback_count = 0usize;
         let mut fallback_size = 0u64;
-        for root in fallback_roots {
+        for trash_dir in crate::backend::trash::fallback_dirs(fallback_roots) {
             if cancel_token.is_cancelled() {
                 bail!("Operation cancelled");
             }
-            let trash_dir = root.join(".rwf-trash");
             if !trash_dir.exists() {
                 continue;
             }
@@ -1612,10 +1611,6 @@ mod tests {
         }
     }
 
-    #[cfg_attr(
-        unix,
-        ignore = "Unix fallback trash anchors at / (unwritable) -- ROADMAP 7.18 Linux bug 2"
-    )]
     #[tokio::test]
     async fn test_empty_trash_scoped_to_fallback_only() {
         let dir = TempDir::new().unwrap();
@@ -1631,8 +1626,14 @@ mod tests {
         // touch the real drive root, so `_cleanup` guarantees it's cleaned
         // up unconditionally, even if an assertion below panics.
         let volume_root = dir.path().ancestors().last().unwrap().to_path_buf();
-        let trash_dir = volume_root.join(".rwf-trash");
-        let _cleanup = RealTrashDirCleanup(trash_dir.clone());
+        // Every directory the fallback may have used: the volume-root sidecar, or the
+        // per-user directory where that root is unwritable (`/` on Unix).
+        let trash_dirs = crate::backend::trash::fallback_dirs(std::slice::from_ref(&volume_root));
+        let _cleanup: Vec<_> = trash_dirs
+            .iter()
+            .cloned()
+            .map(RealTrashDirCleanup)
+            .collect();
 
         backend
             .move_to_trash(
@@ -1653,26 +1654,30 @@ mod tests {
             .expect("empty_trash should succeed");
 
         assert!(purged >= 1);
-        assert!(
-            std::fs::read_dir(&trash_dir)
-                .map(|mut e| e.next().is_none())
-                .unwrap_or(true),
-            ".rwf-trash should be empty after purge"
-        );
+        for trash_dir in &trash_dirs {
+            assert!(
+                std::fs::read_dir(trash_dir)
+                    .map(|mut e| e.next().is_none())
+                    .unwrap_or(true),
+                "{trash_dir:?} should be empty after purge"
+            );
+        }
     }
 
-    #[cfg_attr(
-        unix,
-        ignore = "Unix fallback trash anchors at / (unwritable) -- ROADMAP 7.18 Linux bug 2"
-    )]
     #[tokio::test]
     async fn test_scan_trash_sums_fallback_files_and_recursive_dir_sizes() {
         let dir = TempDir::new().unwrap();
         let backend = LocalFilesystemBackend::new();
 
         let volume_root = dir.path().ancestors().last().unwrap().to_path_buf();
-        let trash_dir = volume_root.join(".rwf-trash");
-        let _cleanup = RealTrashDirCleanup(trash_dir.clone());
+        // Every directory the fallback may have used: the volume-root sidecar, or the
+        // per-user directory where that root is unwritable (`/` on Unix).
+        let trash_dirs = crate::backend::trash::fallback_dirs(std::slice::from_ref(&volume_root));
+        let _cleanup: Vec<_> = trash_dirs
+            .iter()
+            .cloned()
+            .map(RealTrashDirCleanup)
+            .collect();
 
         // Baseline before trashing anything — scan_trash also folds in the real
         // OS-managed trash, which may already hold unrelated items on a dev
