@@ -52,6 +52,10 @@ pub struct App {
     // Leap Navigation debounce
     leap_dirty: bool,
     last_leap_input_time: Option<Instant>,
+    /// When the last spinner frame was drawn, so an in-flight job animates at
+    /// `Display.SpinnerFrameMs` instead of forcing the main loop to spin at render
+    /// speed. `None` whenever no job is active.
+    last_spinner_frame: Option<Instant>,
     /// Set by Ctrl+L; consumed by the next `render()` call to force `terminal.clear()`
     /// before drawing. `terminal.draw()` alone is a diff against ratatui's own internal
     /// buffer — it can't detect (and so won't repaint) screen corruption written by an
@@ -134,6 +138,7 @@ impl App {
             last_cleanup_check: None,
             pending_conflict_job: None,
             pending_job_submission: Vec::new(),
+            last_spinner_frame: None,
             last_search_input_time: None,
             search_dirty: false,
             pattern_rename_dirty: false,
@@ -227,8 +232,114 @@ impl App {
         }
     }
 
+    /// Job kinds that must run on the main thread and never reach the worker pool.
+    ///
+    /// `JobExecutor` rejects `SetClipboard` and `SuspendAndRun` outright ("reached
+    /// worker pool unexpectedly"), and runs `ExecuteCustomFunction { suspend: true }`
+    /// without ever handing over the terminal. All three are handled by the
+    /// `pending_job_submission` drain in `run` instead.
+    fn needs_main_thread(kind: &JobKind) -> bool {
+        matches!(
+            kind,
+            JobKind::SetClipboard { .. }
+                | JobKind::SuspendAndRun { .. }
+                | JobKind::ExecuteCustomFunction { suspend: true, .. }
+        )
+    }
+
+    /// The one way a `JobSpec` produced outside the drain loop becomes running work.
+    ///
+    /// Submitting straight to the pool is what broke every clip menu: the main-thread
+    /// interception lives in `run`'s drain, so anything bypassing it hits the
+    /// executor's rejection arms. Queueing instead costs one main-loop tick.
+    fn submit_job(&mut self, job_spec: JobSpec) {
+        if Self::needs_main_thread(&job_spec.kind) {
+            // Not registered with `state.jobs` here: the drain runs these inline and
+            // never emits a `CompleteJob`, so a registration would never be cleared.
+            self.pending_job_submission.push(job_spec);
+            return;
+        }
+        self.state.jobs.start_job(job_spec.clone());
+        if let Some(ref pool) = self.worker_pool {
+            pool.submit_job(job_spec);
+        }
+    }
+
+    /// Ask a worker for the child counts of the directory under the cursor, when the
+    /// SideBySide viewer is showing its preview and we do not already have them.
+    ///
+    /// The preview used to count inline in `render_ui_inner`, so a cursor resting on a
+    /// directory on an unreachable mount blocked the draw path itself.
+    fn prefetch_dir_preview_counts(&mut self) {
+        use rwf_lib::model::ViewerLayout;
+        if self.state.viewer.is_none()
+            || self.state.ui.layout.viewer_layout != ViewerLayout::SideBySide
+        {
+            return;
+        }
+        let anchor = self.state.ui.layout.viewer_anchor_pane;
+        let tab = self.state.current_tab();
+        let pane = match anchor {
+            rwf_lib::model::ActivePane::Left => &tab.left_pane,
+            rwf_lib::model::ActivePane::Right => &tab.right_pane,
+        };
+        let Some(entry) = pane.current_entry() else {
+            return;
+        };
+        if !entry.is_dir {
+            return;
+        }
+        let location = entry.location.clone();
+        if self.state.dir_preview_counts.contains_key(&location) {
+            return;
+        }
+        // Already asked — the answer is on its way.
+        let in_flight = self.state.jobs.active.values().any(|j| {
+            matches!(
+                &j.spec.kind,
+                JobKind::CountDirectoryEntries { location: l } if *l == location
+            )
+        });
+        if in_flight {
+            return;
+        }
+        self.submit_job(JobSpec::new(JobKind::CountDirectoryEntries { location }));
+    }
+
+    /// Copy `text`, reporting the outcome where the user is looking.
+    ///
+    /// The session log alone was not feedback: every other job reports into the task
+    /// panel, and a clip that says nothing is indistinguishable from the failure this
+    /// replaced.
+    fn run_clipboard_job(&mut self, text: &str) {
+        let backend = self.state.config.clipboard.backend;
+        let chars = text.chars().count();
+        let stamp = chrono::Local::now().format("[%H:%M:%S]");
+        let (line, level) = match rwf_lib::clipboard::set_text(text, backend) {
+            Ok(via) => {
+                let msg = format!("Copied {chars} chars to clipboard ({via})");
+                self.state.log_manager.info(msg.clone());
+                (
+                    format!("{stamp} {msg}"),
+                    crate::ui::task_panel::LogLevel::Info,
+                )
+            }
+            Err(e) => {
+                let msg = format!("Clipboard copy failed: {e}");
+                self.state.log_manager.error(msg.clone());
+                (
+                    format!("{stamp} {msg}"),
+                    crate::ui::task_panel::LogLevel::Fail,
+                )
+            }
+        };
+        self.task_panel.add_log(line, level);
+        let h = self.state.ui.layout.task_panel_height;
+        self.task_panel.scroll_to_end(h);
+    }
+
     fn trigger_initial_directory_reads(&mut self) {
-        let worker_pool = self.worker_pool.as_ref().expect("Worker pool should exist");
+        let mut jobs: Vec<JobSpec> = Vec::new();
         for tab_index in 0..self.state.tabs.tabs.len() {
             let tab_id = self.state.tabs.tabs[tab_index].id;
             let left_loc = self.state.tabs.tabs[tab_index]
@@ -244,8 +355,7 @@ impl App {
                 .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left);
             self.state.tabs.tabs[tab_index].left_pane.is_loading = true;
             self.state.tabs.tabs[tab_index].left_pane.active_job_id = Some(job_l.id);
-            self.state.jobs.start_job(job_l.clone());
-            worker_pool.submit_job(job_l);
+            jobs.push(job_l);
 
             let job_r = JobSpec::new(JobKind::ReadDirectory {
                 location: right_loc,
@@ -253,8 +363,12 @@ impl App {
             .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right);
             self.state.tabs.tabs[tab_index].right_pane.is_loading = true;
             self.state.tabs.tabs[tab_index].right_pane.active_job_id = Some(job_r.id);
-            self.state.jobs.start_job(job_r.clone());
-            worker_pool.submit_job(job_r);
+            jobs.push(job_r);
+        }
+        // Submitted after the loop so this shares `submit_job` with every other
+        // caller rather than holding a `worker_pool` borrow across `&mut self`.
+        for job in jobs {
+            self.submit_job(job);
         }
     }
 
@@ -405,6 +519,9 @@ impl App {
                 ui_needs_update = false;
             }
 
+            // Set by step 4 when the spinner wants a frame that is not due yet.
+            let mut spinner_due_in: Option<Duration> = None;
+
             // Phase 7.15: the final snapshot has now been consumed by a render,
             // so the capture shows the pre-prompt screen. Only now put the
             // report prompt up.
@@ -443,6 +560,9 @@ impl App {
                 false
             };
 
+            // Jobs that completions ask for, submitted after the `worker_pool` borrow
+            // ends so they can go through `submit_job` (a `&mut self` method).
+            let mut follow_up_jobs: Vec<JobSpec> = Vec::new();
             if let Some(ref mut pool) = self.worker_pool {
                 let results = process_pending_events(pool, &mut self.state);
                 if !results.is_empty() {
@@ -481,14 +601,17 @@ impl App {
                                 self.state.tabs.tabs[tab_idx].right_pane.active_job_id =
                                     Some(job.id);
                             }
-                            self.state.jobs.start_job(job.clone());
-                            pool.submit_job(job);
+                            follow_up_jobs.push(job);
                         }
-                        for job_spec in &result.jobs_to_start {
-                            pool.submit_job(job_spec.clone());
-                        }
+                        // Not submitted inline: a completion can ask for a
+                        // `SetClipboard` (a `ClipText` PipeToAction) or an editor
+                        // `SuspendAndRun`, both of which the pool rejects.
+                        follow_up_jobs.extend(result.jobs_to_start.iter().cloned());
                     }
                 }
+            }
+            for job_spec in follow_up_jobs {
+                self.submit_job(job_spec);
             }
 
             // Re-apply leap filter immediately after active pane finishes loading a directory.
@@ -535,18 +658,8 @@ impl App {
                 // escape sequence to the terminal we own. Sub-millisecond, so there is
                 // nothing to gain from handing it to the pool.
                 if let JobKind::SetClipboard { text } = &job_spec.kind {
-                    let backend = self.state.config.clipboard.backend;
-                    let chars = text.chars().count();
-                    match rwf_lib::clipboard::set_text(text, backend) {
-                        Ok(via) => self
-                            .state
-                            .log_manager
-                            .info(format!("Copied {chars} chars to clipboard ({via})")),
-                        Err(e) => self
-                            .state
-                            .log_manager
-                            .error(format!("Clipboard copy failed: {e}")),
-                    }
+                    let text = text.clone();
+                    self.run_clipboard_job(&text);
                     ui_needs_update = true;
                     continue;
                 }
@@ -683,10 +796,35 @@ impl App {
                 ui_needs_update = true;
             }
 
-            // 4. Redraw while jobs are active so the spinner (wall-clock based) animates
+            // 4. Redraw while jobs are active so the spinner (wall-clock based) animates.
+            //
+            // Rate-limited to the spinner's own frame interval. Setting
+            // `ui_needs_update` unconditionally here forced the timeout below to zero
+            // on every iteration, so the loop never slept for as long as any job was
+            // running — diagnostic bundle 20260910-203646 recorded 1292 renders and
+            // *zero* `Wake` events across an 8.4 s network-share timeout (~154 fps of
+            // pure spin). The spinner only advances every `spinner_frame_ms`.
             if self.has_active_jobs() {
-                ui_needs_update = true;
+                let frame =
+                    Duration::from_millis(self.state.config.display.spinner_frame_ms.max(1));
+                match self.last_spinner_frame {
+                    Some(drawn) if drawn.elapsed() < frame => {
+                        // Sleep until the frame is actually due instead of spinning.
+                        spinner_due_in = Some(frame - drawn.elapsed());
+                    }
+                    _ => {
+                        self.last_spinner_frame = Some(Instant::now());
+                        ui_needs_update = true;
+                    }
+                }
+            } else {
+                self.last_spinner_frame = None;
             }
+
+            // 4b. Keep the SideBySide directory preview's counts warm, off the
+            // draw path. Cheap and idempotent: it returns immediately unless the
+            // cursor is on a directory whose counts are neither known nor pending.
+            self.prefetch_dir_preview_counts();
 
             // 5. Search Mode Timer-Only Trigger
             if self.state.ui.mode == rwf_lib::model::UIMode::Search && self.search_dirty {
@@ -791,6 +929,9 @@ impl App {
             // If UI needs update, render immediately without blocking
             if ui_needs_update {
                 next_wakeup = Duration::from_millis(0);
+            } else if let Some(due) = spinner_due_in {
+                // Wake exactly when the next spinner frame is due, no sooner.
+                next_wakeup = next_wakeup.min(due);
             }
 
             tracing::debug!(
@@ -1114,10 +1255,7 @@ impl App {
                                     tab_name,
                                     final_job.clone(),
                                 );
-                                self.state.jobs.start_job(final_job.clone());
-                                if let Some(ref pool) = self.worker_pool {
-                                    pool.submit_job(final_job);
-                                }
+                                self.submit_job(final_job);
                             }
                         }
                         _ => {
@@ -1219,10 +1357,7 @@ impl App {
                                     // once the worker pool picks the job up — don't
                                     // duplicate it here.
                                 }
-                                self.state.jobs.start_job(job_spec.clone());
-                                if let Some(ref pool) = self.worker_pool {
-                                    pool.submit_job(job_spec);
-                                }
+                                self.submit_job(job_spec);
                             }
                             // Drain jobs staged for a multi-job confirm (Phase 7.3 batch
                             // "Open With...": confirming a picker over a marked-file group
@@ -1248,10 +1383,7 @@ impl App {
                                 self.task_panel.scroll_to_end(h);
                             }
                             for job_spec in batch_jobs {
-                                self.state.jobs.start_job(job_spec.clone());
-                                if let Some(ref pool) = self.worker_pool {
-                                    pool.submit_job(job_spec);
-                                }
+                                self.submit_job(job_spec);
                             }
                         }
                     }
@@ -1322,10 +1454,7 @@ impl App {
                                 tab_name,
                                 final_job.clone(),
                             );
-                            self.state.jobs.start_job(final_job.clone());
-                            if let Some(ref pool) = self.worker_pool {
-                                pool.submit_job(final_job);
-                            }
+                            self.submit_job(final_job);
                         }
                     }
                     self.state.dialogs.pop();
@@ -2928,6 +3057,13 @@ mod leap_investigation {
     async fn flush_jobs(app: &mut App) {
         let jobs: Vec<JobSpec> = app.pending_job_submission.drain(..).collect();
         for job_spec in jobs {
+            // Mirrors the drain's main-thread interception. Without it this helper
+            // would hand `SetClipboard` to the pool — the very bug it should catch.
+            if let JobKind::SetClipboard { text } = &job_spec.kind {
+                let text = text.clone();
+                app.run_clipboard_job(&text);
+                continue;
+            }
             app.state.jobs.start_job(job_spec.clone());
             if let Some(pool) = app.worker_pool.as_ref() {
                 pool.submit_job(job_spec);
@@ -3717,5 +3853,118 @@ mod sbs_refresh_guard_tests {
             ViewerLayout::FullScreen,
             UIMode::Normal
         ));
+    }
+}
+
+/// The `F6` clip menu produced a modal "Copy to clipboard failed: SetClipboard reached
+/// worker pool unexpectedly" (diagnostic bundle 20260910-004934, seq 48).
+///
+/// `SetClipboard`, `SuspendAndRun` and `ExecuteCustomFunction { suspend: true }` can only
+/// run on the main thread, and `App::run`'s `pending_job_submission` drain is the only
+/// place that knows how. The dialog-confirm path called `pool.submit_job` directly
+/// instead, so every clip entry reached `JobExecutor`, which rejects the kind outright.
+/// The same bypass applies to the context menu, the `T` function selector and the `$I`
+/// input dialog — every clip route except a direct keybinding.
+#[cfg(test)]
+mod main_thread_job_routing_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::model::dialog::{CustomFunction, MenuItem};
+    use rwf_lib::model::Dialog;
+
+    /// Deliberately not a name from the shipped defaults: `AppState::new` loads the
+    /// developer's real custom_functions.json from the OS config dir, and name lookup
+    /// takes the first match.
+    const CLIP_FN: &str = "rwf test routing clip path";
+
+    fn app_with_clip_menu_open() -> App {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let mut func = CustomFunction::new(CLIP_FN, "unused");
+        func.command = None;
+        func.clip_text = Some("$P".to_string());
+        state.custom_functions.push(func);
+        state.dialogs.push(Dialog::custom_function_menu(
+            "menu_clip_paths".to_string(),
+            vec![MenuItem {
+                name: "clip path".to_string(),
+                action: CLIP_FN.to_string(),
+            }],
+        ));
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    #[tokio::test]
+    async fn confirming_a_clip_menu_item_keeps_the_job_off_the_worker_pool() {
+        let mut app = app_with_clip_menu_open();
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(
+            app.pending_job_submission
+                .iter()
+                .any(|j| matches!(j.kind, JobKind::SetClipboard { .. })),
+            "the clip job must be queued for the main-thread handler, not the pool"
+        );
+        assert!(
+            app.state
+                .jobs
+                .active
+                .values()
+                .all(|j| !matches!(j.spec.kind, JobKind::SetClipboard { .. })),
+            "a main-thread job must not be registered as pool work"
+        );
+
+        // What the drain in `run` then does with it.
+        let queued: Vec<JobSpec> = app.pending_job_submission.drain(..).collect();
+        for job in queued {
+            if let JobKind::SetClipboard { text } = &job.kind {
+                let text = text.clone();
+                app.run_clipboard_job(&text);
+            }
+        }
+
+        let logged: Vec<String> = (0..app.task_panel.log_count())
+            .filter_map(|i| app.task_panel.get_log_entry(i))
+            .map(|e| e.message.clone())
+            .collect();
+        assert!(
+            !logged.iter().any(|l| l.contains("reached worker pool")),
+            "the pool rejection must be gone, got: {logged:?}"
+        );
+        assert!(
+            logged.iter().any(|l| l.contains("clipboard")),
+            "the clip must report its outcome in the task panel, got: {logged:?}"
+        );
+        assert!(
+            app.state.dialogs.is_empty(),
+            "a successful clip must not leave a dialog on the stack"
+        );
+    }
+
+    #[test]
+    fn every_job_kind_the_pool_rejects_is_routed_to_the_main_thread() {
+        // Kept in lockstep with `JobExecutor::execute`'s "reached worker pool
+        // unexpectedly" arms and its `suspend: _` comment.
+        assert!(App::needs_main_thread(&JobKind::SetClipboard {
+            text: String::new()
+        }));
+        assert!(App::needs_main_thread(&JobKind::SuspendAndRun {
+            program: String::new(),
+            args: Vec::new(),
+        }));
+        assert!(App::needs_main_thread(&JobKind::ExecuteCustomFunction {
+            command: String::new(),
+            working_dir: rwf_lib::model::Location::Local(std::path::PathBuf::from("/")),
+            pipe_to_action: None,
+            shell: None,
+            suspend: true,
+        }));
+        assert!(!App::needs_main_thread(&JobKind::ExecuteCustomFunction {
+            command: String::new(),
+            working_dir: rwf_lib::model::Location::Local(std::path::PathBuf::from("/")),
+            pipe_to_action: None,
+            shell: None,
+            suspend: false,
+        }));
     }
 }

@@ -189,6 +189,29 @@ pub enum JobKind {
         /// pooled path does.
         suspend: bool,
     },
+    /// Shallow count of a directory's children, for the SideBySide viewer's
+    /// directory preview.
+    ///
+    /// A job because the preview used to call `std::fs::read_dir` from inside
+    /// `render_ui_inner` — in the draw path, on the cursor entry, which can sit on a
+    /// network share. The comment there claimed local reads are sub-millisecond and
+    /// that the render only fires on state changes; neither held once a background
+    /// job was running.
+    CountDirectoryEntries {
+        location: Location,
+    },
+    /// Find the nearest existing ancestor of a pane path that could not be read.
+    ///
+    /// The probing this does used to run synchronously in `session::restore_tabs`,
+    /// before the first frame was ever drawn — one `exists()` per restored path plus
+    /// one per ancestor. On a dead network share every one of those blocks for the
+    /// full name-resolution timeout, which is the "black screen for a few seconds at
+    /// startup" of diagnostic bundle 20260910-203646. Restoring no longer probes at
+    /// all; the pane's own `ReadDirectory` discovers the path is unreadable, and only
+    /// then does this job go looking for somewhere to land — on a worker thread.
+    ResolveFallbackPath {
+        requested: Location,
+    },
     /// Put `text` on the system clipboard. Intercepted on the main thread in the app
     /// layer: the OSC 52 fallback needs the terminal handle, and keeping it there
     /// leaves the state layer free of side effects.
@@ -379,7 +402,13 @@ pub enum SuccessData {
     SearchResults(Vec<crate::model::FileEntry>),
     FileContents(Vec<u8>),
     ComparisonResult(FileDiff),
-    JumpCandidates(Vec<String>),
+    /// Jump candidates as `(path, is_dir)`.
+    ///
+    /// The flag is carried rather than recomputed because the collector already
+    /// knows it (it decides whether to recurse), and the alternative was
+    /// `Path::is_dir()` per visible row **per frame** in the Jump-to-File renderer —
+    /// a blocking stat inside the draw path, which hangs the UI on a slow mount.
+    JumpCandidates(Vec<(String, bool)>),
     FileTypeDetected {
         kind: crate::magic::DetectedKind,
         header_bytes: Vec<u8>,
@@ -397,6 +426,14 @@ pub enum SuccessData {
         total_size: u64,
     },
     TrashListed(Vec<crate::model::TrashRecord>),
+    /// Shallow child counts for a directory preview.
+    DirectoryCounts {
+        files: usize,
+        dirs: usize,
+    },
+    /// Nearest existing ancestor of an unreadable pane path, or `None` when
+    /// nothing in the chain survives (an unmounted drive, an unreachable host).
+    FallbackPath(Option<Location>),
     /// Per-file breakdown for a completed Copy/Move/Rename/Delete/Mkdir/
     /// CreateFile/CreateLink/CreateArchive/ExecuteReversal job (Phase 7.6).
     OperationRecords(Vec<crate::model::OperationRecord>),

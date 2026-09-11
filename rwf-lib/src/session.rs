@@ -213,74 +213,60 @@ pub fn save_session(
     }
 }
 
-/// Substitute the nearest existing ancestor for a saved location that has since
-/// been deleted, returning the fallback and a message naming what vanished.
+/// Nearest existing ancestor of a path that could not be read, if any.
 ///
 /// A saved path can disappear between runs for entirely ordinary reasons — a
-/// removed git worktree, an unmounted drive, a cleaned build directory. Before
-/// this, restore kept the dead path and the startup `ReadDirectory` failed,
-/// producing a generic "Operation Failed" dialog that named neither the path nor
-/// the reason. Reported from a diagnostic bundle on 2026-08-12, where the user
-/// had to *infer* that a pane's directory no longer existed.
+/// removed git worktree, an unmounted drive, a cleaned build directory. Landing
+/// on the nearest surviving ancestor keeps the user near where they were: a
+/// deleted `…/worktrees/foo` opens `…/worktrees`, one step from the intent.
 ///
-/// The nearest existing ancestor is used rather than the home directory because
-/// it keeps the user near where they were: a deleted `…/worktrees/foo` lands in
-/// `…/worktrees`, one step from the intent.
-fn resolve_restored_location(saved: Location) -> (Location, Option<String>) {
-    let Some(path) = saved.path() else {
-        // Non-local (archive) locations are not checkable here; leave as-is.
-        return (saved, None);
-    };
+/// **This blocks and must never be called on the UI thread.** Every `exists()`
+/// here is a filesystem round trip, and on an unreachable network host each one
+/// costs a full name-resolution timeout — as does each ancestor above it. It ran
+/// eagerly inside `restore_tabs` until 2026-09-10, before the first frame was
+/// drawn, which is exactly the multi-second black screen at startup reported in
+/// diagnostic bundle `20260910-203646`. It is now reached only through
+/// `JobKind::ResolveFallbackPath`, on a worker thread, and only after a pane's
+/// own `ReadDirectory` has already failed.
+///
+/// Returns `None` when the path is readable after all, or when nothing in the
+/// chain survives — the caller then leaves the pane where it is so the error
+/// names the real path rather than silently landing somewhere unrelated.
+pub fn nearest_existing_ancestor(requested: &Location) -> Option<Location> {
+    let path = requested.path()?;
     if path.exists() {
-        return (saved, None);
+        return None;
     }
-
-    let original = path.display().to_string();
     let mut candidate = path.parent();
     while let Some(dir) = candidate {
         if dir.exists() {
-            let note = format!(
-                "Saved path no longer exists: {original} — opened {} instead",
-                dir.display()
-            );
-            return (Location::Local(dir.to_path_buf()), Some(note));
+            return Some(Location::Local(dir.to_path_buf()));
         }
         candidate = dir.parent();
     }
-
-    // Nothing in the chain survives (an unmounted drive, say). Leave the saved
-    // location in place so the pane reports the real error for the real path
-    // rather than silently landing somewhere unrelated.
-    (
-        saved,
-        Some(format!("Saved path no longer exists: {original}")),
-    )
+    None
 }
 
 /// Restore tab states from SessionState.
 ///
-/// Returns the tabs together with one message per saved path that no longer
-/// exists, for the caller to surface (see [`resolve_restored_location`]).
-pub fn restore_tabs(session: &SessionState) -> (Vec<TabState>, Vec<String>) {
-    let mut notes = Vec::new();
-
+/// Paths are restored exactly as saved, with **no filesystem access at all** —
+/// this runs before the first frame is drawn, so a single unreachable path here
+/// costs the user a black screen. A path that turns out to be unreadable is
+/// handled after the fact by [`nearest_existing_ancestor`], reached through
+/// `JobKind::ResolveFallbackPath` on a worker thread.
+pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
     if session.tabs.is_empty() {
         // If no saved tabs, create a default tab
-        (vec![TabState::new(0)], notes)
+        vec![TabState::new(0)]
     } else {
         let tabs = session
             .tabs
             .iter()
             .map(|saved_tab| {
                 let mut tab = TabState::new(saved_tab.id);
-                let (left, left_note) =
-                    resolve_restored_location(saved_tab.left_location.clone().into());
-                let (right, right_note) =
-                    resolve_restored_location(saved_tab.right_location.clone().into());
-                notes.extend(left_note);
-                notes.extend(right_note);
-                tab.left_pane.current_location = left;
-                tab.right_pane.current_location = right;
+                // Restored as saved, unprobed. See `nearest_existing_ancestor`.
+                tab.left_pane.current_location = saved_tab.left_location.clone().into();
+                tab.right_pane.current_location = saved_tab.right_location.clone().into();
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
                 tab.active_pane = saved_tab.active_pane.into();
@@ -292,7 +278,7 @@ pub fn restore_tabs(session: &SessionState) -> (Vec<TabState>, Vec<String>) {
                 tab
             })
             .collect();
-        (tabs, notes)
+        tabs
     }
 }
 
@@ -396,7 +382,7 @@ mod tests {
     #[test]
     fn test_restore_tabs_empty_session() {
         let session = SessionState::new();
-        let (tabs, _) = restore_tabs(&session);
+        let tabs = restore_tabs(&session);
 
         // Should create a default tab
         assert_eq!(tabs.len(), 1);
@@ -423,7 +409,7 @@ mod tests {
             active_pane: SavedActivePane::Left,
         });
 
-        let (tabs, _) = restore_tabs(&session);
+        let tabs = restore_tabs(&session);
 
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].id, 0);
@@ -537,7 +523,7 @@ mod tests {
         assert_eq!(loaded.marked_locations.len(), 2);
 
         // Restore tabs
-        let (tabs, _) = restore_tabs(&loaded);
+        let tabs = restore_tabs(&loaded);
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].left_pane.cursor, 5);
         assert_eq!(tabs[0].right_pane.cursor, 10);
@@ -606,7 +592,7 @@ mod tests {
         assert_eq!(session.tabs[0].left_cursor, 42);
         assert_eq!(session.tabs[0].right_cursor, 99);
 
-        let (restored_tabs, _) = restore_tabs(&session);
+        let restored_tabs = restore_tabs(&session);
         assert_eq!(restored_tabs[0].left_pane.cursor, 42);
         assert_eq!(restored_tabs[0].right_pane.cursor, 99);
     }
@@ -645,7 +631,7 @@ mod tests {
         tabs[2].active_pane = ActivePane::Left;
 
         let session = save_session(&tabs, 1, ActivePane::Right, &HashSet::new(), true, 5);
-        let (restored, _notes) = restore_tabs(&session);
+        let restored = restore_tabs(&session);
 
         assert_eq!(restored[0].active_pane, ActivePane::Left);
         assert_eq!(
@@ -703,7 +689,7 @@ mod tests {
         assert_eq!(session.tabs.len(), 5);
         assert_eq!(session.active_tab_index, 2);
 
-        let (restored_tabs, _) = restore_tabs(&session);
+        let restored_tabs = restore_tabs(&session);
         assert_eq!(restored_tabs.len(), 5);
 
         for (i, tab) in restored_tabs.iter().enumerate().take(5) {
@@ -729,12 +715,14 @@ mod restore_missing_path_tests {
         }
     }
 
-    /// Regression: a saved path that no longer exists used to be restored as-is,
-    /// so startup failed with a generic "Operation Failed" dialog naming neither
-    /// the path nor the reason. Reported from a diagnostic bundle on 2026-08-12
-    /// after a git worktree was deleted between runs.
+    /// A saved path that no longer exists is now restored **verbatim**, with no
+    /// filesystem access at all. Probing here used to happen before the first frame
+    /// was drawn, so one unreachable network path cost a multi-second black screen
+    /// at startup (diagnostic bundle `20260910-203646`). The repair moved to
+    /// `JobKind::ResolveFallbackPath`, on a worker thread, after the pane's own
+    /// `ReadDirectory` has failed.
     #[test]
-    fn missing_saved_path_falls_back_to_nearest_existing_ancestor() {
+    fn restore_does_not_probe_the_filesystem() {
         let temp = tempfile::tempdir().expect("tempdir");
         let existing = temp.path().to_path_buf();
         let vanished = existing.join("worktrees").join("deleted-one");
@@ -742,39 +730,38 @@ mod restore_missing_path_tests {
         let mut session = SessionState::new();
         session.tabs = vec![saved_tab(existing.clone(), vanished.clone())];
 
-        let (tabs, notes) = restore_tabs(&session);
+        let tabs = restore_tabs(&session);
 
         assert_eq!(
             tabs[0].left_pane.current_location,
-            Location::Local(existing.clone()),
+            Location::Local(existing),
             "an existing path must be restored untouched"
         );
         assert_eq!(
             tabs[0].right_pane.current_location,
-            Location::Local(existing),
-            "a vanished path must fall back to its nearest existing ancestor"
-        );
-
-        assert_eq!(notes.len(), 1, "exactly one note, for the vanished path");
-        assert!(
-            notes[0].contains("deleted-one"),
-            "the note must name what vanished, got: {}",
-            notes[0]
+            Location::Local(vanished),
+            "a vanished path must also be restored untouched — restore must not stat it"
         );
     }
 
+    /// The repair itself, now on the worker side: nearest surviving ancestor, so a
+    /// deleted `…/worktrees/foo` lands in `…/worktrees` rather than somewhere
+    /// unrelated.
     #[test]
-    fn existing_paths_produce_no_notes() {
+    fn nearest_existing_ancestor_walks_up_to_the_first_survivor() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let p = temp.path().to_path_buf();
+        let existing = temp.path().to_path_buf();
+        let vanished = existing.join("worktrees").join("deleted-one");
 
-        let mut session = SessionState::new();
-        session.tabs = vec![saved_tab(p.clone(), p)];
-
-        let (_, notes) = restore_tabs(&session);
-        assert!(
-            notes.is_empty(),
-            "no notes when every path exists: {notes:?}"
+        assert_eq!(
+            nearest_existing_ancestor(&Location::Local(vanished)),
+            Some(Location::Local(existing.clone())),
+            "must land on the nearest directory that still exists"
+        );
+        assert_eq!(
+            nearest_existing_ancestor(&Location::Local(existing)),
+            None,
+            "a readable path needs no fallback"
         );
     }
 }

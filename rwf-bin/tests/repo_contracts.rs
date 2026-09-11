@@ -640,3 +640,86 @@ fn cmd_exe_spawn_sites_are_confined_to_allowlisted_files() {
         stale.join("\n  ")
     );
 }
+
+/// Filesystem calls that block the thread they run on. `is_dir`/`is_file`/`exists`
+/// are `stat` in disguise, which is exactly how they slipped into a draw loop.
+const BLOCKING_FS_TOKENS: &[&str] = &[
+    "read_dir(",
+    ".is_dir()",
+    ".is_file()",
+    ".exists()",
+    "metadata(",
+    "File::open(",
+    "read_to_string(",
+];
+
+/// Modules that run inside `terminal.draw()`. Nothing here may touch the filesystem.
+///
+/// Two did, and both hung the UI on a slow mount: `ui.rs` counted a directory's
+/// children with `std::fs::read_dir` for the SideBySide preview, and
+/// `ui/dialog/jump_to_file.rs` called `is_dir()` once per visible row, every frame.
+/// Both facts were already known to a worker job and are now carried in state.
+///
+/// The draw path is called for every frame, on the thread that also reads input, so a
+/// blocking call here is not slow — it is a freeze, with no spinner and no way out.
+const RENDER_PATH_DIRS: &[&str] = &["rwf-bin/src/ui"];
+const RENDER_PATH_FILES: &[&str] = &["rwf-bin/src/ui.rs"];
+
+/// Files under `ui/` that are *not* reached from `terminal.draw()`.
+///
+/// `confirm.rs` lives there for cohesion but contains no `render_*` function at all —
+/// it is the Enter handler. Its path probes are one-shot and user-initiated, a
+/// different (and far milder) class than a blocking call in a draw loop: they can
+/// still stall on an unreachable UNC path the user typed, which is tracked as
+/// Phase 7.21 rather than fixed by this contract.
+const NOT_RENDER_PATH: &[&str] = &["rwf-bin/src/ui/dialog/confirm.rs"];
+
+#[test]
+fn the_render_path_does_not_touch_the_filesystem() {
+    let root = workspace_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for dir in RENDER_PATH_DIRS {
+        collect_files(&root.join(dir), "rs", &mut files);
+    }
+    for file in RENDER_PATH_FILES {
+        files.push(root.join(file));
+    }
+    files.sort();
+
+    let mut offenders: Vec<String> = Vec::new();
+    for file in &files {
+        let relative = rel(&root, file);
+        // Snapshot and unit tests build fixtures on disk; they are not the draw path.
+        if relative.contains("snapshot_tests") || NOT_RENDER_PATH.iter().any(|f| *f == relative) {
+            continue;
+        }
+        let contents = ok(
+            std::fs::read_to_string(file),
+            &format!("cannot read {:?}", file),
+        );
+        let mut in_tests = false;
+        for (index, line) in contents.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("#[cfg(test)]") || trimmed == "mod tests {" {
+                in_tests = true;
+            }
+            if in_tests || trimmed.starts_with("//") {
+                continue;
+            }
+            if BLOCKING_FS_TOKENS
+                .iter()
+                .any(|token| trimmed.contains(token))
+            {
+                offenders.push(format!("{}:{}: {}", relative, index + 1, trimmed));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "the render path must not block on the filesystem — it runs inside          terminal.draw(), on the thread that reads input, so a slow or unreachable          mount freezes the whole UI with no spinner and no escape. Compute the value          in a Job and read it from AppState instead (see JobKind::CountDirectoryEntries          and SuccessData::JumpCandidates for the two precedents):
+  {}",
+        offenders.join("
+  ")
+    );
+}

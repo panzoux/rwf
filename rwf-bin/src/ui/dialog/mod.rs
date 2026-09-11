@@ -908,23 +908,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 loading_job_id.is_some(),
             );
         }
-        DialogContent::JumpToFile(JumpToFileDialog {
-            query,
-            cursor_pos,
-            suggestions,
-            selected_index,
-            loading_job_id,
-            ..
-        }) => {
-            render_jump_to_file_dialog(
-                frame,
-                content_area,
-                query,
-                *cursor_pos,
-                suggestions,
-                *selected_index,
-                loading_job_id.is_some(),
-            );
+        DialogContent::JumpToFile(dialog) => {
+            render_jump_to_file_dialog(frame, content_area, dialog);
         }
         DialogContent::FileInfo(FileInfoDialog {
             file_name,

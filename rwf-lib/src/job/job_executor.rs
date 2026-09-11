@@ -265,6 +265,38 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     "SuspendAndRun reached worker pool unexpectedly".to_string(),
                 )
             }
+            JobKind::CountDirectoryEntries { location } => {
+                let counted = location.path().map(|p| {
+                    let mut files = 0usize;
+                    let mut dirs = 0usize;
+                    if let Ok(rd) = std::fs::read_dir(p) {
+                        for e in rd.flatten() {
+                            match e.file_type() {
+                                Ok(ft) if ft.is_dir() => dirs += 1,
+                                Ok(_) => files += 1,
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                    (files, dirs)
+                });
+                match counted {
+                    Some((files, dirs)) => {
+                        crate::job::OpResult::Success(crate::job::SuccessData::DirectoryCounts {
+                            files,
+                            dirs,
+                        })
+                    }
+                    None => crate::job::OpResult::Failed("not a local directory".to_string()),
+                }
+            }
+            JobKind::ResolveFallbackPath { requested } => {
+                // Blocking `exists()` walk — belongs here, on a worker, precisely
+                // because an unreachable host makes each step cost a full timeout.
+                crate::job::OpResult::Success(crate::job::SuccessData::FallbackPath(
+                    crate::session::nearest_existing_ancestor(requested),
+                ))
+            }
             JobKind::SetClipboard { .. } => {
                 // Also intercepted in the app layer: the OSC 52 fallback needs the
                 // terminal handle, which the pool does not own.
@@ -2662,7 +2694,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             ".venv",
         ];
 
-        let mut candidates: Vec<String> = Vec::new();
+        let mut candidates: Vec<(String, bool)> = Vec::new();
         let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(std::path::PathBuf::from(root), 0)];
 
         while let Some((dir, depth)) = stack.pop() {
@@ -2686,7 +2718,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                     let is_dir = path.is_dir();
                     if is_dir || include_files {
                         let p = path.to_string_lossy().into_owned();
-                        candidates.push(p);
+                        candidates.push((p, is_dir));
                         if candidates.len() >= max_results {
                             break;
                         }

@@ -269,6 +269,8 @@ impl AppState {
                     }
                 });
 
+                // Filled by the ReadDirectory arm below; pushed once `result_obj` exists.
+                let mut fallback_job: Option<crate::job::JobSpec> = None;
                 if let crate::job::OpResult::Failed(ref error_message) = result {
                     if let Some(ref spec) = job_spec {
                         // ExecuteCustomFunction failures go to the task panel log only (no
@@ -324,6 +326,12 @@ impl AppState {
                                 purpose: crate::job::DetectFileTypePurpose::ContextMenuLabel,
                                 ..
                             }
+                        ) || matches!(
+                            // A preview count that fails is not worth a modal: the
+                            // preview simply shows no counts. The user did not ask for
+                            // it — moving the cursor did.
+                            &spec.kind,
+                            crate::job::JobKind::CountDirectoryEntries { .. }
                         );
                         let op_name = match &spec.kind {
                             crate::job::JobKind::ReadDirectory { .. } => "Read directory",
@@ -360,6 +368,12 @@ impl AppState {
                             }
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
                             crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
+                            crate::job::JobKind::CountDirectoryEntries { .. } => {
+                                "Count directory entries"
+                            }
+                            crate::job::JobKind::ResolveFallbackPath { .. } => {
+                                "Locate nearest readable directory"
+                            }
                             crate::job::JobKind::SetClipboard { .. } => "Copy to clipboard",
                             // Phase 7.3 foundation (Task 1): nothing constructs these yet;
                             // completion routing lands in a later task.
@@ -367,9 +381,47 @@ impl AppState {
                             crate::job::JobKind::DetectFileTypesBatch { .. } => "Detect file types",
                             crate::job::JobKind::ExecuteReversal { .. } => "Execute reversal",
                         };
-                        if !skip_dialog {
-                            let error_dialog =
-                                crate::model::Dialog::from_job_failure(op_name, error_message);
+                        // A pane's ReadDirectory failure does not go straight to a modal.
+                        // The path may simply have moved or been deleted between runs, in
+                        // which case landing on the nearest surviving directory is the
+                        // right answer and a modal is noise. `ResolveFallbackPath` decides
+                        // which it is, on a worker thread; its completion either navigates
+                        // or raises the dialog this arm would have raised.
+                        let deferred_to_fallback =
+                            matches!(&spec.kind, crate::job::JobKind::ReadDirectory { .. })
+                                && spec.requesting_pane.is_some();
+                        if deferred_to_fallback {
+                            if let crate::job::JobKind::ReadDirectory { location } = &spec.kind {
+                                let mut fallback = crate::job::JobSpec::new(
+                                    crate::job::JobKind::ResolveFallbackPath {
+                                        requested: location.clone(),
+                                    },
+                                );
+                                if let Some((tab_id, side)) = spec.requesting_pane {
+                                    fallback = fallback.with_requesting_pane(tab_id, side);
+                                }
+                                self.pending_read_failures
+                                    .insert(fallback.id, error_message.clone());
+                                fallback_job = Some(fallback);
+                            }
+                        }
+                        if !skip_dialog && !deferred_to_fallback {
+                            // Name the pane that asked. `requesting_pane` holds the tab
+                            // *id*; the user counts tab positions, so report the index.
+                            let origin = spec.requesting_pane.and_then(|(tab_id, side)| {
+                                let position =
+                                    self.tabs.tabs.iter().position(|t| t.id == tab_id)?;
+                                let side = match side {
+                                    crate::model::ActivePane::Left => "left",
+                                    crate::model::ActivePane::Right => "right",
+                                };
+                                Some(format!("Tab {} {} pane", position + 1, side))
+                            });
+                            let error_dialog = crate::model::Dialog::from_job_failure_in(
+                                op_name,
+                                error_message,
+                                origin.as_deref(),
+                            );
                             self.dialogs.push(error_dialog);
                         }
                     }
@@ -438,6 +490,9 @@ impl AppState {
                 }
 
                 let mut result_obj = StateUpdateResult::with_ui_change();
+                if let Some(job) = fallback_job {
+                    result_obj.jobs_to_start.push(job);
+                }
                 match result {
                     crate::job::OpResult::Success(_) => result_obj.completed_jobs.push(*job_id),
                     crate::job::OpResult::Failed(_) => result_obj.failed_jobs.push(*job_id),
@@ -569,6 +624,91 @@ impl AppState {
                                             crate::model::ActivePane::Right => &mut tab.right_pane,
                                         };
                                         pane.is_loading = false;
+                                        // Release the job id too. Clearing only
+                                        // `is_loading` leaves the pane in the shape
+                                        // `docs/DIAGNOSTIC_BUNDLES.md` describes as
+                                        // still-working, and leaves a stale id for the
+                                        // ownership check above to compare against.
+                                        if pane.active_job_id == Some(*job_id) {
+                                            pane.active_job_id = None;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::CountDirectoryEntries { location } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::DirectoryCounts { files, dirs },
+                            ) = result
+                            {
+                                if self.dir_preview_counts.len() > 256 {
+                                    self.dir_preview_counts.clear();
+                                }
+                                self.dir_preview_counts
+                                    .insert(location.clone(), (*files, *dirs));
+                                result_obj.ui_changed = true;
+                            }
+                        }
+                        crate::job::JobKind::ResolveFallbackPath { requested } => {
+                            // The original ReadDirectory error, kept aside when this job
+                            // was created — reported here if nothing readable was found.
+                            let original = self.pending_read_failures.remove(job_id);
+                            let ancestor = match result {
+                                crate::job::OpResult::Success(
+                                    crate::job::SuccessData::FallbackPath(found),
+                                ) => found.clone(),
+                                _ => None,
+                            };
+                            match (ancestor, spec.requesting_pane) {
+                                (Some(dir), Some((tab_id, side))) => {
+                                    // Ordinary case: a deleted worktree, an unmounted
+                                    // drive. Land on the nearest surviving directory and
+                                    // say so in the task panel — no modal.
+                                    result_obj.task_panel_logs.push(format!(
+                                        "{} [Session] {} is unreadable — opened {} instead",
+                                        chrono::Local::now().format("[%H:%M:%S]"),
+                                        requested.display_path(),
+                                        dir.display_path()
+                                    ));
+                                    let refresh = update_state(
+                                        self,
+                                        Transition::ChangeLocation {
+                                            pane: side,
+                                            location: dir,
+                                        },
+                                    );
+                                    // Forward the ReadDirectory the navigation asks for,
+                                    // or the pane loads forever.
+                                    result_obj.jobs_to_start.extend(refresh.jobs_to_start);
+                                    let _ = tab_id;
+                                    result_obj.ui_changed = true;
+                                }
+                                _ => {
+                                    // Nothing in the chain survives — an unreachable host.
+                                    // Now the modal is the right answer, and it names the
+                                    // path the user actually asked for.
+                                    if let Some(message) = original {
+                                        let origin =
+                                            spec.requesting_pane.and_then(|(tab_id, side)| {
+                                                let position = self
+                                                    .tabs
+                                                    .tabs
+                                                    .iter()
+                                                    .position(|t| t.id == tab_id)?;
+                                                let side = match side {
+                                                    crate::model::ActivePane::Left => "left",
+                                                    crate::model::ActivePane::Right => "right",
+                                                };
+                                                Some(format!("Tab {} {} pane", position + 1, side))
+                                            });
+                                        self.dialogs.push(
+                                            crate::model::Dialog::from_job_failure_in(
+                                                "Read directory",
+                                                &message,
+                                                origin.as_deref(),
+                                            ),
+                                        );
+                                        result_obj.ui_changed = true;
                                     }
                                 }
                             }
@@ -1137,6 +1277,7 @@ impl AppState {
                                                 crate::model::dialog::JumpToFileDialog {
                                                     candidates,
                                                     suggestions,
+                                                    dir_paths,
                                                     loading_job_id,
                                                     query,
                                                     ..
@@ -1144,9 +1285,12 @@ impl AppState {
                                             ) => {
                                                 let mut seen: std::collections::HashSet<String> =
                                                     candidates.iter().cloned().collect();
-                                                for c in new_candidates {
+                                                for (c, is_dir) in new_candidates {
                                                     if seen.insert(c.clone()) {
                                                         candidates.push(c.clone());
+                                                        if *is_dir {
+                                                            dir_paths.insert(c.clone());
+                                                        }
                                                     }
                                                 }
                                                 *loading_job_id = None;
@@ -1164,7 +1308,9 @@ impl AppState {
                                             ) => {
                                                 let mut seen: std::collections::HashSet<String> =
                                                     candidates.iter().cloned().collect();
-                                                for c in new_candidates {
+                                                // JumpToPath collects directories only, so the
+                                                // flag carries no information here.
+                                                for (c, _is_dir) in new_candidates {
                                                     if seen.insert(c.clone()) {
                                                         candidates.push(c.clone());
                                                     }

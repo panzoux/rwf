@@ -70,6 +70,22 @@ pub struct AppState {
     /// job per file). Drained and submitted by app.rs each frame, mirroring
     /// `pending_confirmation_logs`. Not used by transition handlers — app-integration only.
     pub pending_confirmation_jobs: Vec<crate::job::JobSpec>,
+    /// Child counts for directories shown in the SideBySide viewer preview,
+    /// filled by `JobKind::CountDirectoryEntries`.
+    ///
+    /// Read by the renderer, never written by it — the preview must not touch the
+    /// filesystem from inside the draw path. Cleared wholesale when it grows past a
+    /// few hundred entries; the preview only ever needs the entry under the cursor,
+    /// so precision here buys nothing and a growing map would leak for a session
+    /// that browses a lot of directories.
+    pub dir_preview_counts: std::collections::HashMap<crate::model::Location, (usize, usize)>,
+    /// Error text of a failed pane `ReadDirectory`, keyed by the `ResolveFallbackPath`
+    /// job sent to look for somewhere to land instead.
+    ///
+    /// The message has to survive the round trip: if no ancestor is readable either,
+    /// the completion raises the dialog naming the *original* failure, not the
+    /// fallback's. Entries are removed when that job completes.
+    pub pending_read_failures: std::collections::HashMap<crate::job::JobId, String>,
     /// Staging: set true when a dialog confirmation triggered ReloadConfig (app.rs reloads keybindings)
     pub confirmation_needs_keybinding_reload: bool,
     /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
@@ -258,6 +274,8 @@ impl AppState {
             pending_confirmation_logs: Vec::new(),
             pending_confirmation_jobs: Vec::new(),
             confirmation_needs_keybinding_reload: false,
+            pending_read_failures: std::collections::HashMap::new(),
+            dir_preview_counts: std::collections::HashMap::new(),
             pending_custom_function_input: None,
             suppress_next_dialog_pop: false,
             leap: None,
@@ -521,16 +539,11 @@ impl AppState {
         let path = crate::session::SessionState::default_path();
         let session = crate::session::SessionState::load_from_file(&path)?;
 
-        // Restore tabs. Saved paths that no longer exist are replaced with their
-        // nearest surviving ancestor; the notes name what vanished so the user is
-        // told rather than left to infer it from a failed directory read.
-        let (tabs, notes) = crate::session::restore_tabs(&session);
-        self.tabs.tabs = tabs;
-        for note in notes {
-            tracing::warn!("[Session] {note}");
-            self.pending_confirmation_logs
-                .push(format!("[Session] {note}"));
-        }
+        // Restore tabs verbatim — no path probing here. A saved path that has since
+        // vanished is discovered by the pane's own ReadDirectory and repaired by
+        // `JobKind::ResolveFallbackPath`; doing it here blocked startup for the full
+        // network timeout on every unreachable path (bundle 20260910-203646).
+        self.tabs.tabs = crate::session::restore_tabs(&session);
 
         // Prevent duplicate IDs: next_tab_id must be greater than all restored IDs
         self.tabs.update_next_id_after_restore();

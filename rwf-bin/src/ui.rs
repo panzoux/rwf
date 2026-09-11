@@ -162,24 +162,13 @@ fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) 
 
         if let Some(entry) = anchor_entry {
             if entry.is_dir {
-                // Count directory contents inline — std::fs::read_dir on local FS
-                // is sub-millisecond and this render only fires on state changes.
-                let counts = entry
-                    .location
-                    .path()
-                    .and_then(|p| std::fs::read_dir(p).ok())
-                    .map(|rd| {
-                        let mut files = 0usize;
-                        let mut folders = 0usize;
-                        for e in rd.flatten() {
-                            match e.file_type() {
-                                Ok(ft) if ft.is_dir() => folders += 1,
-                                Ok(_) => files += 1,
-                                Err(_) => {}
-                            }
-                        }
-                        (files, folders)
-                    });
+                // Looked up, never counted here. This used to call std::fs::read_dir
+                // from inside the draw path, on the entry under the cursor — which can
+                // live on a network share, and which the old comment wrongly assumed
+                // was both local and rarely redrawn. `JobKind::CountDirectoryEntries`
+                // fills this map from a worker; `None` simply renders no counts until
+                // it arrives.
+                let counts = state.dir_preview_counts.get(&entry.location).copied();
                 viewer::render_dir_preview(
                     frame,
                     viewer_area,

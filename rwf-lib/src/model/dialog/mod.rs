@@ -1098,6 +1098,17 @@ impl Dialog {
 
     /// Create an operation failed error dialog from JobResult
     pub fn from_job_failure(operation: &str, error_message: &str) -> Self {
+        Self::from_job_failure_in(operation, error_message, None)
+    }
+
+    /// Same, but naming where the failed job came from — "Tab 3 right pane".
+    ///
+    /// A failed job whose `JobSpec::requesting_pane` is set belongs to one
+    /// specific pane, and with several tabs restored at startup the user
+    /// otherwise gets an unattributed modal: the path shows only when the
+    /// backend happened to put it in its error context, and the tab and side
+    /// never show at all.
+    pub fn from_job_failure_in(operation: &str, error_message: &str, origin: Option<&str>) -> Self {
         // Detect error type from message
         let error_type = if error_message.to_lowercase().contains("permission")
             || error_message.to_lowercase().contains("access denied")
@@ -1127,7 +1138,12 @@ impl Dialog {
         Self {
             title: title.to_string(),
             content: DialogContent::Error(ErrorDialog::new(
-                format!("{} failed: {}", operation, error_message),
+                match origin {
+                    Some(origin) => {
+                        format!("{origin}: {operation} failed: {error_message}")
+                    }
+                    None => format!("{operation} failed: {error_message}"),
+                },
                 details,
                 error_type,
             )),

@@ -107,12 +107,19 @@ pub(super) fn handle_input(
 pub(super) fn render_jump_to_file_dialog(
     frame: &mut Frame,
     area: Rect,
-    query: &str,
-    cursor_pos: usize,
-    suggestions: &[String],
-    selected_index: usize,
-    is_loading: bool,
+    dialog: &rwf_lib::model::dialog::JumpToFileDialog,
 ) {
+    let rwf_lib::model::dialog::JumpToFileDialog {
+        query,
+        cursor_pos,
+        suggestions,
+        dir_paths,
+        selected_index,
+        loading_job_id,
+        ..
+    } = dialog;
+    let (query, cursor_pos, selected_index) = (query.as_str(), *cursor_pos, *selected_index);
+    let is_loading = loading_job_id.is_some();
     let base_style = DIALOG_TEXT;
     let selected_style = DIALOG_SELECTED.add_modifier(Modifier::BOLD);
     let hint_style = DIALOG_DIM;
@@ -178,8 +185,11 @@ pub(super) fn render_jump_to_file_dialog(
             break;
         }
         let path = &suggestions[si];
-        // Show a trailing '/' hint for directories
-        let is_dir = std::path::Path::new(path.as_str()).is_dir();
+        // Show a trailing '/' hint for directories. Looked up, never stat-ed: this
+        // runs for every visible row on every frame, and a blocking `is_dir()` here
+        // freezes the whole UI when the candidates live on a slow or dead mount.
+        // The collector job already knew the answer (see `SuccessData::JumpCandidates`).
+        let is_dir = dir_paths.contains(path.as_str());
         let display = if is_dir {
             format!(
                 "{}/",

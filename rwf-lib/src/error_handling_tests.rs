@@ -294,4 +294,180 @@ mod tests {
         // Verify no error dialog was shown
         assert!(state.dialogs.is_empty());
     }
+
+    /// A failed job that belongs to a specific pane must say *which* pane in the
+    /// dialog. Reported from a diagnostic bundle: with five tabs restored at
+    /// startup and one dead network share, the modal read
+    /// "Read directory failed: Failed to read directory \\host\share: ..." —
+    /// the path was there only because the backend happens to put it in its
+    /// `with_context` string, and nothing said which of the ten panes had asked.
+    /// `JobSpec::requesting_pane` carries exactly that and was being discarded.
+    #[test]
+    fn job_failure_dialog_names_the_tab_and_pane_that_asked() {
+        let mut state = test_state();
+        // Two more tabs so the reported number is a position, not always "Tab 1".
+        state.tabs.tabs.push(crate::model::TabState::new(42));
+        state.tabs.tabs.push(crate::model::TabState::new(99));
+
+        // Deliberately not ReadDirectory: a failed *pane read* defers its modal to
+        // `ResolveFallbackPath` (see the two tests below). Every other kind still
+        // raises immediately, and must name the pane just the same.
+        let job_spec = JobSpec::new(JobKind::Delete {
+            targets: vec![Location::Local(PathBuf::from("/mnt/share/doomed.txt"))],
+        })
+        .with_requesting_pane(99, crate::model::ActivePane::Right);
+        let job_id = state.jobs.enqueue(job_spec.clone());
+        state.jobs.start_job(job_spec);
+
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("network name not resolved".to_string()),
+            },
+        );
+
+        let dialog = state
+            .dialogs
+            .current()
+            .expect("failure should show a dialog");
+        let DialogContent::Error(ErrorDialog { message, .. }) = &dialog.content else {
+            panic!("Expected Error dialog content");
+        };
+        assert!(
+            message.contains("Tab 3") && message.contains("right pane"),
+            "dialog should name the third tab's right pane, got: {message}"
+        );
+        assert!(
+            message.contains("network name not resolved"),
+            "dialog must still carry the underlying error, got: {message}"
+        );
+    }
+
+    /// A failed `ReadDirectory` must release the pane's `active_job_id`, not just
+    /// its `is_loading` flag. The failure arm cleared only the latter, so the
+    /// diagnostic bundle for the dead-share report showed the pane as
+    /// `is_loading: false` with a job id still attached — a state
+    /// `docs/DIAGNOSTIC_BUNDLES.md` teaches readers to read as "still working".
+    #[test]
+    fn failed_read_directory_releases_the_panes_job_id() {
+        let mut state = test_state();
+        let tab_id = state.tabs.tabs[0].id;
+
+        let job_spec = JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/mnt/share")),
+        })
+        .with_requesting_pane(tab_id, crate::model::ActivePane::Right);
+        let job_id = state.jobs.enqueue(job_spec.clone());
+        state.tabs.tabs[0].right_pane.is_loading = true;
+        state.tabs.tabs[0].right_pane.active_job_id = Some(job_spec.id);
+        state.jobs.start_job(job_spec);
+
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("network name not resolved".to_string()),
+            },
+        );
+
+        let pane = &state.tabs.tabs[0].right_pane;
+        assert!(!pane.is_loading, "a failed read must stop the spinner");
+        assert_eq!(
+            pane.active_job_id, None,
+            "a failed read must release the pane's job id"
+        );
+    }
+
+    /// A failed pane read no longer raises a modal on the spot: it asks
+    /// `ResolveFallbackPath` (a worker job) whether somewhere readable exists first.
+    /// Before this, the only way to know a saved path had vanished was a synchronous
+    /// `exists()` walk in `session::restore_tabs`, which ran before the first frame
+    /// and froze startup for the full network timeout on an unreachable host.
+    #[test]
+    fn failed_pane_read_asks_for_a_fallback_before_raising_a_dialog() {
+        let mut state = test_state();
+        let tab_id = state.tabs.tabs[0].id;
+
+        let job_spec = JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/mnt/share")),
+        })
+        .with_requesting_pane(tab_id, crate::model::ActivePane::Right);
+        let job_id = state.jobs.enqueue(job_spec.clone());
+        state.jobs.start_job(job_spec);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Failed("network name not resolved".to_string()),
+            },
+        );
+
+        assert!(
+            state.dialogs.is_empty(),
+            "no modal until the fallback search has answered"
+        );
+        let fallback = result
+            .jobs_to_start
+            .iter()
+            .find(|j| matches!(j.kind, JobKind::ResolveFallbackPath { .. }))
+            .expect("a fallback job must be started");
+        assert_eq!(
+            fallback.requesting_pane,
+            Some((tab_id, crate::model::ActivePane::Right)),
+            "the fallback must stay attached to the pane that asked"
+        );
+        assert_eq!(
+            state
+                .pending_read_failures
+                .get(&fallback.id)
+                .map(String::as_str),
+            Some("network name not resolved"),
+            "the original error must survive the round trip"
+        );
+    }
+
+    /// …and when nothing in the chain is readable either, the modal finally appears,
+    /// still naming the pane and the original error rather than the fallback's.
+    #[test]
+    fn fallback_finding_nothing_raises_the_original_error() {
+        let mut state = test_state();
+        let tab_id = state.tabs.tabs[0].id;
+
+        let fallback = JobSpec::new(JobKind::ResolveFallbackPath {
+            requested: Location::Local(PathBuf::from("/mnt/share")),
+        })
+        .with_requesting_pane(tab_id, crate::model::ActivePane::Right);
+        let job_id = state.jobs.enqueue(fallback.clone());
+        state
+            .pending_read_failures
+            .insert(fallback.id, "network name not resolved".to_string());
+        state.jobs.start_job(fallback);
+
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(crate::job::SuccessData::FallbackPath(None)),
+            },
+        );
+
+        let dialog = state.dialogs.current().expect("a dialog must appear now");
+        let DialogContent::Error(ErrorDialog { message, .. }) = &dialog.content else {
+            panic!("Expected Error dialog content");
+        };
+        assert!(
+            message.contains("Tab 1") && message.contains("right pane"),
+            "still names the pane, got: {message}"
+        );
+        assert!(
+            message.contains("network name not resolved"),
+            "reports the original read failure, not the fallback's, got: {message}"
+        );
+        assert!(
+            state.pending_read_failures.is_empty(),
+            "the stashed error must be consumed"
+        );
+    }
 }
