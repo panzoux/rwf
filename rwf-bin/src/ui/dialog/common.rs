@@ -20,6 +20,10 @@ pub const DIALOG_DIM: Style = Style::new().fg(Color::DarkGray).bg(Color::Gray);
 /// Focused/selected item: black on white.
 pub const DIALOG_SELECTED: Style = Style::new().fg(Color::Black).bg(Color::White);
 
+/// Secondary text inside a selected row (e.g. a menu item's description), so
+/// the white highlight stays unbroken across the row.
+pub const DIALOG_SELECTED_DIM: Style = Style::new().fg(Color::DarkGray).bg(Color::White);
+
 /// Active text-input field: white on black.
 pub const DIALOG_INPUT: Style = Style::new().fg(Color::White).bg(Color::Black);
 

@@ -559,12 +559,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog { items, .. }) => {
             // label fits with outer_width = max_label + 8 (2 border + 4 indent + 2 margin)
             // hint "[Enter] Execute  [Esc] Close" (29 chars) fits at offset+1 with width-2 when outer>=34
-            let max_label = items
-                .iter()
-                .filter(|i| i.is_selectable())
-                .map(|i| i.name.len())
-                .max()
-                .unwrap_or(10);
+            // max_label is display width (CJK = 2 columns), name + description columns.
+            let max_label = custom_function::menu_content_width(items);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
         }
         DialogContent::OpenWithPicker(OpenWithPickerDialog { candidates, .. }) => {
@@ -572,7 +568,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             // hint "[Enter] Open  [Esc] Cancel" fits at offset+1 with width-2 when outer>=34
             let max_label = candidates
                 .iter()
-                .map(|c| candidate_label(c).len())
+                .map(|c| unicode_width::UnicodeWidthStr::width(candidate_label(c)))
                 .max()
                 .unwrap_or(10);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))

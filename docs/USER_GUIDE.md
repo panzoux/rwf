@@ -414,9 +414,18 @@ startup config error rather than a silent precedence rule. The default
 `menu_clip.json` collects these on `F6`, and the menu's own title supplies the verb —
 which is why the entries are named `full path` rather than `clip full path`.
 
+Each menu entry shows its function's `Description` dimmed beside the label, so a label
+can stay short. To word one entry differently in one menu without touching the function,
+give the menu item its own `Description`:
+
+```json
+{ "Name": "full path", "Action": "full path", "Description": "for pasting into a shell" }
+```
+
 A menu entry's `Action` is looked up by function `Name`, so the two files must be
-renamed together: change only one and the entry silently does nothing. Editing
-either file takes effect on the next config reload (`Z`).
+renamed together: change only one and the entry silently does nothing. Descriptions are
+looked up once, when the configuration loads — editing either file, including a
+`Description`, takes effect on the next config reload (`Z`).
 
 **Clipboard backend** (`config.json`):
 

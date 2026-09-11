@@ -3885,10 +3885,7 @@ mod main_thread_job_routing_tests {
         state.custom_functions.push(func);
         state.dialogs.push(Dialog::custom_function_menu(
             "menu_clip_paths".to_string(),
-            vec![MenuItem {
-                name: "clip path".to_string(),
-                action: CLIP_FN.to_string(),
-            }],
+            vec![MenuItem::new("clip path", CLIP_FN)],
         ));
         App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
     }

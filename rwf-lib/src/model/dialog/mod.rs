@@ -361,16 +361,29 @@ pub enum DriveType {
 }
 
 /// A single item in a menu_xxx.json file.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct MenuItem {
     pub name: String,
     /// Custom function name or built-in action name. Empty string = separator.
     #[serde(default)]
     pub action: String,
+    /// Shown dimmed beside the name. Filled from the target function's own
+    /// description at load (`fill_menu_descriptions`) when the menu file does
+    /// not give one, so the common case needs no extra JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 impl MenuItem {
+    pub fn new(name: impl Into<String>, action: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            action: action.into(),
+            description: None,
+        }
+    }
+
     pub fn is_separator(&self) -> bool {
         self.name.starts_with("-----") || self.action.is_empty()
     }
@@ -2584,6 +2597,79 @@ mod custom_function_validation_tests {
             validate_custom_functions(&fns)
         );
     }
+
+    fn items_of<'a>(fns: &'a [CustomFunction], name: &str) -> &'a [MenuItem] {
+        fns.iter()
+            .find(|f| f.name == name)
+            .map(|f| f.menu_items())
+            .unwrap_or_else(|| panic!("no function {name:?}"))
+    }
+
+    #[test]
+    fn a_menu_item_takes_the_description_of_the_function_it_names() {
+        let mut fns = parse(
+            r#"[{"Name":"m","Menu":[{"Name":"label","Action":"target"}]},
+                {"Name":"target","ClipText":"$P","Description":"the directory"}]"#,
+        );
+        fill_menu_descriptions(&mut fns);
+        assert_eq!(
+            items_of(&fns, "m")[0].description.as_deref(),
+            Some("the directory")
+        );
+    }
+
+    #[test]
+    fn a_description_given_in_the_menu_file_beats_the_functions_own() {
+        let mut fns = parse(
+            r#"[{"Name":"m","Menu":[{"Name":"label","Action":"target","Description":"mine"}]},
+                {"Name":"target","ClipText":"$P","Description":"the directory"}]"#,
+        );
+        fill_menu_descriptions(&mut fns);
+        assert_eq!(items_of(&fns, "m")[0].description.as_deref(), Some("mine"));
+    }
+
+    #[test]
+    fn an_item_whose_action_names_no_function_keeps_no_description() {
+        let mut fns = parse(
+            r#"[{"Name":"m","Menu":[{"Name":"reload","Action":"ReloadConfig"},
+                                    {"Name":"-----","Action":""}]}]"#,
+        );
+        fill_menu_descriptions(&mut fns);
+        assert!(items_of(&fns, "m").iter().all(|i| i.description.is_none()));
+    }
+
+    /// End to end through the real loader and the files we ship: every clip-menu entry
+    /// arrives with a description, which is what lets its label stay short.
+    #[test]
+    fn loading_the_shipped_files_gives_every_clip_menu_entry_a_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let write = |name: &str, body: &str| {
+            std::fs::write(dir.path().join(name), body).expect("write fixture");
+        };
+        write(
+            "custom_functions.json",
+            crate::help_content::DEFAULT_CUSTOM_FUNCTIONS,
+        );
+        write("menu_clip.json", crate::help_content::DEFAULT_MENU_CLIP);
+        write("menu_config.json", crate::help_content::DEFAULT_MENU_CONFIG);
+
+        let fns = load_custom_functions(&dir.path().join("custom_functions.json")).expect("loads");
+
+        let clip = items_of(&fns, "clip menu");
+        assert!(!clip.is_empty());
+        for item in clip.iter().filter(|i| i.is_selectable()) {
+            assert!(
+                item.description.is_some(),
+                "{:?} has no description",
+                item.name
+            );
+        }
+        let reload = items_of(&fns, "config menu")
+            .iter()
+            .find(|i| i.action == "ReloadConfig")
+            .expect("config menu has reload");
+        assert_eq!(reload.description, None);
+    }
 }
 
 /// Resolve `Menu: "filename.json"` references into item lists.
@@ -2609,6 +2695,35 @@ fn resolve_menu_files(functions: &mut [CustomFunction], base_dir: &std::path::Pa
             }
         }
         // Inline Items stay as-is; no recursive nesting in 6.6
+    }
+    fill_menu_descriptions(functions);
+}
+
+/// Give every menu item without a `Description` the description of the function its
+/// `Action` names.
+///
+/// Runs once at load (and so again on every config reload) rather than at render
+/// time, so the menu renderer and its width calculation only read a field. An
+/// explicit `Description` in the menu file wins; an action that names no function
+/// (a built-in like `ReloadConfig`, or a stale menu file) keeps `None`. Name lookup
+/// takes the first match, the same rule the action dispatch uses.
+fn fill_menu_descriptions(functions: &mut [CustomFunction]) {
+    let mut by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for func in functions.iter() {
+        if let Some(desc) = func.description.as_ref().filter(|d| !d.is_empty()) {
+            by_name
+                .entry(func.name.clone())
+                .or_insert_with(|| desc.clone());
+        }
+    }
+    for func in functions.iter_mut() {
+        if let Some(MenuContent::Items(items)) = &mut func.menu {
+            for item in items.iter_mut() {
+                if item.description.is_none() && item.is_selectable() {
+                    item.description = by_name.get(&item.action).cloned();
+                }
+            }
+        }
     }
 }
 

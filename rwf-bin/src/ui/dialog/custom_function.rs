@@ -3,14 +3,53 @@
 //! Rendering split from dialog/mod.rs in M3 (move-only; snapshot-protected).
 //! Input handling moved from dialog/mod.rs in M4 S5.
 
-use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
+use ratatui::{
+    layout::Rect,
+    style::Modifier,
+    text::{Line, Span},
+    widgets::Paragraph,
+    Frame,
+};
+use unicode_width::UnicodeWidthStr;
 
 use crate::ui::smart_truncate;
+use crate::ui::unicode_utils::{pad_to_width, truncate_to_width};
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::{CustomFunctionMenuDialog, CustomFunctionSelectorContent};
+use rwf_lib::model::dialog::{CustomFunctionMenuDialog, CustomFunctionSelectorContent, MenuItem};
 
 use super::DialogAction;
+
+/// Blank columns between a menu item's name and its description.
+const MENU_GUTTER: usize = 2;
+
+/// A description column narrower than this is dropped rather than truncated to
+/// noise — names alone must stay readable on a narrow terminal. A column wide
+/// enough for every description is always shown, however narrow.
+const MIN_DESCRIPTION_COLUMNS: usize = 20;
+
+/// Display widths of the name column and of the widest description, over the
+/// selectable items (separators contribute neither).
+fn menu_column_widths(items: &[MenuItem]) -> (usize, usize) {
+    let selectable = || items.iter().filter(|i| i.is_selectable());
+    let name_w = selectable().map(|i| i.name.width()).max().unwrap_or(0);
+    let desc_w = selectable()
+        .filter_map(|i| i.description.as_deref())
+        .map(|d| d.width())
+        .max()
+        .unwrap_or(0);
+    (name_w, desc_w)
+}
+
+/// Display width of the widest menu row as it would render with room to spare:
+/// the name column, plus the gutter and description column when any item has a
+/// description. Drives the dialog's width so the box and the rows agree.
+pub(super) fn menu_content_width(items: &[MenuItem]) -> usize {
+    match menu_column_widths(items) {
+        (name_w, 0) => name_w,
+        (name_w, desc_w) => name_w + MENU_GUTTER + desc_w,
+    }
+}
 
 /// Handle key input for the Custom Function Selector: incremental search + arrow navigation.
 pub(super) fn handle_selector_input(
@@ -263,9 +302,18 @@ pub(super) fn render_custom_function_menu(
     let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
     let sep_style = crate::ui::dialog::common::DIALOG_DIM;
     let hint_style = crate::ui::dialog::common::DIALOG_DIM;
+    let desc_style = crate::ui::dialog::common::DIALOG_DIM;
+    let selected_desc_style =
+        crate::ui::dialog::common::DIALOG_SELECTED_DIM.remove_modifier(Modifier::BOLD);
 
     // item_width = inner width - 4 (2 left-indent + 2 right-margin for items)
     let item_width = area.width.saturating_sub(4) as usize;
+
+    // Two columns: name, then the description in whatever room is left after the
+    // leading space, the name column and the gutter.
+    let (name_w, desc_w) = menu_column_widths(items);
+    let desc_room = item_width.saturating_sub(1 + name_w + MENU_GUTTER);
+    let show_desc = desc_w > 0 && (desc_room >= desc_w || desc_room >= MIN_DESCRIPTION_COLUMNS);
 
     // Hint at offset+1 with full inner width-2 — avoids the 1-char right clip from offset+2
     let hint_y = area.y + area.height.saturating_sub(1);
@@ -295,14 +343,22 @@ pub(super) fn render_custom_function_menu(
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
             );
         } else {
-            // No truncation: dialog is sized to fit the longest label
-            let style = if ii == selected_index {
-                selected_style
+            // Names are not truncated: the dialog is sized to fit the longest one.
+            let (style, item_desc_style) = if ii == selected_index {
+                (selected_style, selected_desc_style)
             } else {
-                base_style
+                (base_style, desc_style)
+            };
+            let line = match item.description.as_deref() {
+                Some(desc) if show_desc => Line::from(vec![
+                    Span::raw(format!(" {}", pad_to_width(&item.name, name_w))),
+                    Span::raw(" ".repeat(MENU_GUTTER)),
+                    Span::styled(truncate_to_width(desc, desc_room, "…"), item_desc_style),
+                ]),
+                _ => Line::from(format!(" {}", item.name)),
             };
             frame.render_widget(
-                Paragraph::new(format!(" {}", item.name)).style(style),
+                Paragraph::new(line).style(style),
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
             );
         }
