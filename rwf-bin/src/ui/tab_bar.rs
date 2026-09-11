@@ -63,8 +63,9 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         let tab = &state.tabs.tabs[idx];
         let is_active = idx == state.tabs.active_index;
 
-        // Check if tab has active jobs using BackgroundJobManager
-        let job_count = state.background_jobs.get_active_job_count(idx);
+        // Background jobs are keyed by tab id, not position: a position names a
+        // different tab once one to its left closes.
+        let job_count = state.background_jobs.get_active_job_count(tab.id);
         let has_jobs = job_count > 0;
 
         // Get shortened paths for left and right panes

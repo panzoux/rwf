@@ -31,13 +31,19 @@ impl AppState {
                     job.started_at = Some(SystemTime::now());
                 }
 
+                // A quiet job (a pane read) is marked running but not logged here: it
+                // gets a line only once it proves slow (`AnnounceQuietJobs`) or fails.
+                let quiet = self
+                    .background_jobs
+                    .get_job(*job_id)
+                    .is_some_and(|j| j.quiet);
                 let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
                     let timestamp = chrono::Local::now().format("[%H:%M:%S]");
                     format!(
                         "{} [Job {}] [Tab {}] {}: Started",
                         timestamp,
                         bg_job.id.short_id,
-                        bg_job.tab_id + 1,
+                        self.tab_label(bg_job.tab_id),
                         bg_job.name
                     )
                 });
@@ -51,7 +57,7 @@ impl AppState {
                         failed_jobs: Vec::new(),
                         cancelled_jobs: Vec::new(),
                         started_jobs: vec![*job_id],
-                        task_panel_logs: vec![log],
+                        task_panel_logs: if quiet { Vec::new() } else { vec![log] },
                         panes_to_refresh: Vec::new(),
                         ui_changed: true,
                         reload_keybindings: false,
@@ -202,72 +208,82 @@ impl AppState {
                     }
                 );
 
-                let log_entry = self.background_jobs.get_job(*job_id).map(|bg_job| {
-                    let timestamp = chrono::Local::now().format("[%H:%M:%S]");
-                    match result {
-                        crate::job::OpResult::Success(_) => match &record_failure {
-                            None => format!(
-                                "{} [Job {}] [Tab {}] {}: [OK]",
+                let log_entry = self
+                    .background_jobs
+                    .get_job(*job_id)
+                    // A quiet job (a pane read) that finished before it was ever
+                    // announced stays silent — unless it failed, which always earns a line.
+                    .filter(|bg_job| {
+                        !bg_job.quiet
+                            || bg_job.announced
+                            || matches!(result, crate::job::OpResult::Failed(_))
+                    })
+                    .map(|bg_job| {
+                        let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+                        match result {
+                            crate::job::OpResult::Success(_) => match &record_failure {
+                                None => format!(
+                                    "{} [Job {}] [Tab {}] {}: [OK]",
+                                    timestamp,
+                                    bg_job.id.short_id,
+                                    self.tab_label(bg_job.tab_id),
+                                    bg_job.name
+                                ),
+                                Some((failed, total, reason)) if failed == total => format!(
+                                    "{} [Job {}] [Tab {}] {}: [FAIL]{}",
+                                    timestamp,
+                                    bg_job.id.short_id,
+                                    self.tab_label(bg_job.tab_id),
+                                    bg_job.name,
+                                    reason
+                                        .as_deref()
+                                        .map(|r| format!(" — {r}"))
+                                        .unwrap_or_default()
+                                ),
+                                Some((failed, total, reason)) => format!(
+                                    "{} [Job {}] [Tab {}] {}: [WARN] {}/{} failed{}",
+                                    timestamp,
+                                    bg_job.id.short_id,
+                                    self.tab_label(bg_job.tab_id),
+                                    bg_job.name,
+                                    failed,
+                                    total,
+                                    reason
+                                        .as_deref()
+                                        .map(|r| format!(" — {r}"))
+                                        .unwrap_or_default()
+                                ),
+                            },
+                            crate::job::OpResult::Failed(e) => {
+                                let detail = e.trim();
+                                if detail.is_empty() {
+                                    format!(
+                                        "{} [Job {}] [Tab {}] {}: [FAIL]",
+                                        timestamp,
+                                        bg_job.id.short_id,
+                                        self.tab_label(bg_job.tab_id),
+                                        bg_job.name
+                                    )
+                                } else {
+                                    format!(
+                                        "{} [Job {}] [Tab {}] {}: [FAIL] — {}",
+                                        timestamp,
+                                        bg_job.id.short_id,
+                                        self.tab_label(bg_job.tab_id),
+                                        bg_job.name,
+                                        detail
+                                    )
+                                }
+                            }
+                            crate::job::OpResult::Cancelled => format!(
+                                "{} [Job {}] [Tab {}] {}: [WARN] Cancelled",
                                 timestamp,
                                 bg_job.id.short_id,
-                                bg_job.tab_id + 1,
+                                self.tab_label(bg_job.tab_id),
                                 bg_job.name
                             ),
-                            Some((failed, total, reason)) if failed == total => format!(
-                                "{} [Job {}] [Tab {}] {}: [FAIL]{}",
-                                timestamp,
-                                bg_job.id.short_id,
-                                bg_job.tab_id + 1,
-                                bg_job.name,
-                                reason
-                                    .as_deref()
-                                    .map(|r| format!(" — {r}"))
-                                    .unwrap_or_default()
-                            ),
-                            Some((failed, total, reason)) => format!(
-                                "{} [Job {}] [Tab {}] {}: [WARN] {}/{} failed{}",
-                                timestamp,
-                                bg_job.id.short_id,
-                                bg_job.tab_id + 1,
-                                bg_job.name,
-                                failed,
-                                total,
-                                reason
-                                    .as_deref()
-                                    .map(|r| format!(" — {r}"))
-                                    .unwrap_or_default()
-                            ),
-                        },
-                        crate::job::OpResult::Failed(e) => {
-                            let detail = e.trim();
-                            if detail.is_empty() {
-                                format!(
-                                    "{} [Job {}] [Tab {}] {}: [FAIL]",
-                                    timestamp,
-                                    bg_job.id.short_id,
-                                    bg_job.tab_id + 1,
-                                    bg_job.name
-                                )
-                            } else {
-                                format!(
-                                    "{} [Job {}] [Tab {}] {}: [FAIL] — {}",
-                                    timestamp,
-                                    bg_job.id.short_id,
-                                    bg_job.tab_id + 1,
-                                    bg_job.name,
-                                    detail
-                                )
-                            }
                         }
-                        crate::job::OpResult::Cancelled => format!(
-                            "{} [Job {}] [Tab {}] {}: [WARN] Cancelled",
-                            timestamp,
-                            bg_job.id.short_id,
-                            bg_job.tab_id + 1,
-                            bg_job.name
-                        ),
-                    }
-                });
+                    });
 
                 // Filled by the ReadDirectory arm below; pushed once `result_obj` exists.
                 let mut fallback_job: Option<crate::job::JobSpec> = None;
@@ -400,6 +416,9 @@ impl AppState {
                                 if let Some((tab_id, side)) = spec.requesting_pane {
                                     fallback = fallback.with_requesting_pane(tab_id, side);
                                 }
+                                // Carried so the dialog, if it comes to one, can still say
+                                // "while restoring your session".
+                                fallback = fallback.with_origin(spec.origin);
                                 self.pending_read_failures
                                     .insert(fallback.id, error_message.clone());
                                 fallback_job = Some(fallback);
@@ -688,26 +707,39 @@ impl AppState {
                                     // Now the modal is the right answer, and it names the
                                     // path the user actually asked for.
                                     if let Some(message) = original {
-                                        let origin =
+                                        let pane =
                                             spec.requesting_pane.and_then(|(tab_id, side)| {
-                                                let position = self
-                                                    .tabs
-                                                    .tabs
-                                                    .iter()
-                                                    .position(|t| t.id == tab_id)?;
-                                                let side = match side {
+                                                Some((tab_id, side, self.tab_number(tab_id)?))
+                                            });
+                                        match pane {
+                                            Some((tab_id, side, number)) => {
+                                                let side_word = match side {
                                                     crate::model::ActivePane::Left => "left",
                                                     crate::model::ActivePane::Right => "right",
                                                 };
-                                                Some(format!("Tab {} {} pane", position + 1, side))
-                                            });
-                                        self.dialogs.push(
-                                            crate::model::Dialog::from_job_failure_in(
-                                                "Read directory",
-                                                &message,
-                                                origin.as_deref(),
-                                            ),
-                                        );
+                                                self.dialogs
+                                                    .push(crate::model::Dialog::read_failure(
+                                                    crate::model::dialog::ReadFailureDialog::new(
+                                                        tab_id,
+                                                        side,
+                                                        format!("Tab {number}, {side_word} pane"),
+                                                        spec.origin,
+                                                        requested.clone(),
+                                                        &message,
+                                                    ),
+                                                ));
+                                            }
+                                            None => {
+                                                // The tab closed while the search ran: there is
+                                                // no pane to retry into, so no modal either.
+                                                result_obj.task_panel_logs.push(format!(
+                                                    "{} [FAIL] Read {}: {}",
+                                                    chrono::Local::now().format("[%H:%M:%S]"),
+                                                    requested.display_path(),
+                                                    message
+                                                ));
+                                            }
+                                        }
                                         result_obj.ui_changed = true;
                                     }
                                 }
@@ -1867,7 +1899,58 @@ impl AppState {
             }
             Transition::AcknowledgeCancel { job_id } => {
                 self.jobs.acknowledge_cancel(*job_id);
+                // The background list must hear about it too. Before pane reads were
+                // registered there this only left the odd cancelled copy "active"; now
+                // every read superseded by navigation would spin its tab forever.
+                if self
+                    .background_jobs
+                    .get_job(*job_id)
+                    .is_some_and(|j| j.is_active())
+                {
+                    self.background_jobs.mark_job_cancelled(*job_id);
+                }
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::AnnounceQuietJobs { job_ids } => {
+                let mut result = StateUpdateResult::none();
+                for job_id in job_ids {
+                    let Some(bg_job) = self.background_jobs.get_job(*job_id) else {
+                        continue;
+                    };
+                    if !bg_job.quiet || bg_job.announced || !bg_job.is_active() {
+                        continue;
+                    }
+                    let line = format!(
+                        "{} [Job {}] [Tab {}] {}: Started",
+                        chrono::Local::now().format("[%H:%M:%S]"),
+                        bg_job.id.short_id,
+                        self.tab_label(bg_job.tab_id),
+                        bg_job.name
+                    );
+                    self.background_jobs.mark_announced(*job_id);
+                    result.task_panel_logs.push(line);
+                }
+                result.ui_changed = !result.task_panel_logs.is_empty();
+                Some(result)
+            }
+            Transition::RetryPaneRead { tab_id, side } => {
+                let Some(tab) = self.tabs.tabs.iter_mut().find(|t| t.id == *tab_id) else {
+                    // The tab closed while the dialog was up; nothing to retry into.
+                    return Some(StateUpdateResult::none());
+                };
+                let pane = match side {
+                    crate::model::ActivePane::Left => &mut tab.left_pane,
+                    crate::model::ActivePane::Right => &mut tab.right_pane,
+                };
+                let job = JobSpec::new(crate::job::JobKind::ReadDirectory {
+                    location: pane.current_location.clone(),
+                })
+                .with_requesting_pane(*tab_id, *side);
+                pane.is_loading = true;
+                pane.active_job_id = Some(job.id);
+                let mut result = StateUpdateResult::with_job(job);
+                result.ui_changed = true;
+                Some(result)
             }
             Transition::NavigateToHistoryIndex { pane, index } => {
                 let location = {

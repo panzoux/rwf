@@ -43,9 +43,10 @@ pub fn render_dialog_buttons(
 
     let mut current_x = start_x as u16;
 
+    let default_button = default_button_index(content);
     for (i, button_label) in buttons.iter().enumerate() {
         let is_focused = i == focused_button;
-        let is_default = i == 0; // First button (OK) is default
+        let is_default = i == default_button;
 
         // Format button text:
         // [*Label*] for default button (asterisks denote Enter shortcut)
@@ -86,7 +87,18 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
         DialogContent::CloseTabWithActiveJob(_) => vec!["OK", "Cancel"],
         // Error dialogs: OK only — Cancel has no distinct meaning
         DialogContent::Error(_) => vec!["OK"],
+        DialogContent::ReadFailure(_) => vec!["Retry", "Dismiss"],
         _ => vec!["OK", "Cancel"],
+    }
+}
+
+/// The button a dialog opens focused on — drawn `[*Label*]`. The first one, except
+/// where that would make `Enter` the risky choice.
+fn default_button_index(content: &DialogContent) -> usize {
+    match content {
+        // Retrying a dead network path blocks a worker for another full timeout.
+        DialogContent::ReadFailure(_) => rwf_lib::model::dialog::READ_FAILURE_DISMISS,
+        _ => 0,
     }
 }
 

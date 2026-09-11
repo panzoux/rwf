@@ -259,6 +259,9 @@ impl App {
             self.pending_job_submission.push(job_spec);
             return;
         }
+        // A pane read registers as a quiet background job, so its tab spins while it
+        // runs (Phase 7.22 §2). Every read reaches the pool through here.
+        self.state.track_directory_read(&job_spec);
         self.state.jobs.start_job(job_spec.clone());
         if let Some(ref pool) = self.worker_pool {
             pool.submit_job(job_spec);
@@ -352,7 +355,8 @@ impl App {
                 .clone();
 
             let job_l = JobSpec::new(JobKind::ReadDirectory { location: left_loc })
-                .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left);
+                .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Left)
+                .with_origin(rwf_lib::job::JobOrigin::SessionRestore);
             self.state.tabs.tabs[tab_index].left_pane.is_loading = true;
             self.state.tabs.tabs[tab_index].left_pane.active_job_id = Some(job_l.id);
             jobs.push(job_l);
@@ -360,7 +364,8 @@ impl App {
             let job_r = JobSpec::new(JobKind::ReadDirectory {
                 location: right_loc,
             })
-            .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right);
+            .with_requesting_pane(tab_id, rwf_lib::model::ActivePane::Right)
+            .with_origin(rwf_lib::job::JobOrigin::SessionRestore);
             self.state.tabs.tabs[tab_index].right_pane.is_loading = true;
             self.state.tabs.tabs[tab_index].right_pane.active_job_id = Some(job_r.id);
             jobs.push(job_r);
@@ -592,7 +597,8 @@ impl App {
                                     .clone()
                             };
                             let job = JobSpec::new(JobKind::ReadDirectory { location })
-                                .with_requesting_pane(tab_id, refresh.pane);
+                                .with_requesting_pane(tab_id, refresh.pane)
+                                .with_origin(rwf_lib::job::JobOrigin::Refresh);
                             // Keep showing old entries during refresh (no loading indicator)
                             if refresh.pane == rwf_lib::model::ActivePane::Left {
                                 self.state.tabs.tabs[tab_idx].left_pane.active_job_id =
@@ -612,6 +618,21 @@ impl App {
             }
             for job_spec in follow_up_jobs {
                 self.submit_job(job_spec);
+            }
+
+            // A pane read still running after the quiet period gets its task-panel line
+            // now (Phase 7.22 §2.3): the read stuck on a dead share is the one the user
+            // needs to see, and a local read is long finished by then.
+            let quiet_due = self.state.quiet_jobs_due();
+            if !quiet_due.is_empty() {
+                let announced = rwf_lib::state::update_state(
+                    &mut self.state,
+                    rwf_lib::state::Transition::AnnounceQuietJobs { job_ids: quiet_due },
+                );
+                for log_msg in announced.task_panel_logs {
+                    self.task_panel.add_pending_log(log_msg);
+                }
+                ui_needs_update = true;
             }
 
             // Re-apply leap filter immediately after active pane finishes loading a directory.
@@ -720,7 +741,7 @@ impl App {
                                 self.state.background_jobs.start_job(
                                     job_name.clone(),
                                     job_name.clone(),
-                                    self.state.tabs.active_index,
+                                    self.state.current_tab().id,
                                     String::new(),
                                     job_spec.clone(),
                                 );
@@ -1234,7 +1255,7 @@ impl App {
 
                                 let mut final_job = job_spec.clone();
                                 final_job.conflict_decisions = Some(conflict_decisions);
-                                let tab_id = self.state.tabs.active_index;
+                                let tab_id = self.state.current_tab().id;
                                 let tab_name = format!(
                                     "{}|{}",
                                     self.state
@@ -1332,7 +1353,7 @@ impl App {
                                     _ => None,
                                 };
                                 if let Some(job_name) = delete_or_trash_job_name {
-                                    let tab_id = self.state.tabs.active_index;
+                                    let tab_id = self.state.current_tab().id;
                                     let tab_name = format!(
                                         "{}|{}",
                                         self.state
@@ -1433,7 +1454,7 @@ impl App {
                             }).collect();
                             let mut final_job = job_spec.clone();
                             final_job.conflict_decisions = Some(conflict_decisions);
-                            let tab_id = self.state.tabs.active_index;
+                            let tab_id = self.state.current_tab().id;
                             let tab_name = format!(
                                 "{}|{}",
                                 self.state
@@ -3963,5 +3984,47 @@ mod main_thread_job_routing_tests {
             shell: None,
             suspend: false,
         }));
+    }
+}
+
+#[cfg(test)]
+mod pane_read_visibility_tests {
+    use super::*;
+
+    /// Phase 7.22 §2.4: at startup every restored pane's read fires at once, and none
+    /// used to show — the tab spinner and the task panel both read `background_jobs`,
+    /// which pane reads never joined. Diagnostic bundle `20260910-203646` caught two
+    /// reads running against `jobs.background = []`.
+    #[tokio::test]
+    async fn startup_reads_spin_their_own_tabs_and_know_they_are_a_restore() {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.tabs.create_tab();
+        let ids: Vec<usize> = state.tabs.tabs.iter().map(|t| t.id).collect();
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        app.trigger_initial_directory_reads();
+
+        for id in ids {
+            assert_eq!(
+                app.state.background_jobs.get_active_job_count(id),
+                2,
+                "tab id {id}: both panes' reads must spin that tab"
+            );
+        }
+        let reads: Vec<_> = app
+            .state
+            .jobs
+            .active
+            .values()
+            .filter(|j| matches!(j.spec.kind, JobKind::ReadDirectory { .. }))
+            .collect();
+        assert!(!reads.is_empty());
+        assert!(
+            reads
+                .iter()
+                .all(|j| j.spec.origin == rwf_lib::job::JobOrigin::SessionRestore),
+            "a failure dialog must be able to say \"while restoring your session\""
+        );
     }
 }

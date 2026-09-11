@@ -32,6 +32,7 @@ mod open_with_picker;
 mod operation_report;
 mod pattern_rename;
 mod progress;
+mod read_failure;
 mod registered_folder_selector;
 mod simple_rename;
 mod sort;
@@ -70,6 +71,7 @@ pub use open_with_picker::OpenWithPickerDialog;
 pub use operation_report::OperationReportDialogContent;
 pub use pattern_rename::PatternRenameContent;
 pub use progress::ProgressDialog;
+pub use read_failure::{ReadFailureDialog, READ_FAILURE_DISMISS, READ_FAILURE_RETRY};
 pub use registered_folder_selector::RegisteredFolderSelectorContent;
 pub use simple_rename::SimpleRenameDialog;
 pub use sort::SortDialog;
@@ -230,6 +232,9 @@ pub enum DialogContent {
     TabSelector(TabSelectorContent),
     PatternRename(PatternRenameContent),
     Error(ErrorDialog),
+    /// A pane directory that could not be read, with `[Retry]` / `[Dismiss]`
+    /// (Phase 7.22 §3.4).
+    ReadFailure(ReadFailureDialog),
     ComparisonView(ComparisonViewDialog),
     SplitJoinDialog(SplitJoinDialogContent),
     ContextMenu(ContextMenuDialog),
@@ -1122,30 +1127,28 @@ impl Dialog {
     /// backend happened to put it in its error context, and the tab and side
     /// never show at all.
     pub fn from_job_failure_in(operation: &str, error_message: &str, origin: Option<&str>) -> Self {
-        // Detect error type from message
-        let error_type = if error_message.to_lowercase().contains("permission")
-            || error_message.to_lowercase().contains("access denied")
-        {
-            ErrorType::Permission
-        } else if error_message.to_lowercase().contains("not found") {
-            ErrorType::FileNotFound
-        } else if error_message.to_lowercase().contains("invalid") {
-            ErrorType::InvalidPath
-        } else {
-            ErrorType::OperationFailed
+        // Classified by OS error code / io::ErrorKind, not by the message's words:
+        // the words are localized, and on a Japanese Windows every failure used to
+        // fall through to "Operation Failed" (Phase 7.22 §3.2).
+        let kind = crate::job::FailureKind::classify(error_message);
+        let error_type = match kind {
+            crate::job::FailureKind::PermissionDenied => ErrorType::Permission,
+            crate::job::FailureKind::NotFound => ErrorType::FileNotFound,
+            crate::job::FailureKind::InvalidPath => ErrorType::InvalidPath,
+            crate::job::FailureKind::NetworkUnavailable
+            | crate::job::FailureKind::TimedOut
+            | crate::job::FailureKind::Other => ErrorType::OperationFailed,
         };
+        let title = kind.title();
 
-        let title = match error_type {
-            ErrorType::Permission => "Permission Denied",
-            ErrorType::FileNotFound => "File Not Found",
-            ErrorType::InvalidPath => "Invalid Path",
-            _ => "Operation Failed",
-        };
-
-        let details = if error_type == ErrorType::Permission {
-            Some("This operation requires elevated privileges.".to_string())
-        } else {
-            None
+        let details = match kind {
+            crate::job::FailureKind::PermissionDenied => {
+                Some("This operation requires elevated privileges.".to_string())
+            }
+            crate::job::FailureKind::NetworkUnavailable | crate::job::FailureKind::TimedOut => {
+                kind.hint().map(str::to_string)
+            }
+            _ => None,
         };
 
         Self {
@@ -1160,6 +1163,14 @@ impl Dialog {
                 details,
                 error_type,
             )),
+        }
+    }
+
+    /// The pane-read failure dialog; its title names the failure class.
+    pub fn read_failure(dialog: ReadFailureDialog) -> Self {
+        Self {
+            title: dialog.kind.read_title().to_string(),
+            content: DialogContent::ReadFailure(dialog),
         }
     }
 

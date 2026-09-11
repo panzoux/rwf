@@ -13,6 +13,11 @@ use tokio::sync::{mpsc, Semaphore};
 use crate::job::{BackgroundJob, BackgroundJobId, JobId, JobProgress, JobSpec, JobStatus};
 use std::fmt;
 
+/// How long a quiet job (a pane read) runs before the task panel mentions it. A local
+/// read is long done by then; a read stuck on an unreachable share is exactly what the
+/// user needs to see (Phase 7.22 §2.3).
+pub const QUIET_JOB_ANNOUNCE_AFTER: Duration = Duration::from_millis(500);
+
 /// Events from BackgroundJobManager to UI
 #[derive(Debug, Clone)]
 pub enum BackgroundJobEvent {
@@ -111,7 +116,7 @@ impl BackgroundJobManager {
         self.semaphore.clone()
     }
 
-    /// Start a new background job
+    /// Start a new background job. `tab_id` is the tab's **id**, not its position.
     pub fn start_job(
         &mut self,
         name: String,
@@ -119,6 +124,38 @@ impl BackgroundJobManager {
         tab_id: usize,
         tab_name: String,
         job_spec: JobSpec,
+    ) -> BackgroundJobId {
+        self.insert_job(name, description, tab_id, tab_name, job_spec, false)
+    }
+
+    /// Start a job that stays out of the task panel until it proves slow — see
+    /// `BackgroundJob::quiet`. It still spins the tab and lists in the job manager.
+    pub fn start_quiet_job(
+        &mut self,
+        name: String,
+        description: String,
+        tab_id: usize,
+        tab_name: String,
+        job_spec: JobSpec,
+    ) -> BackgroundJobId {
+        self.insert_job(name, description, tab_id, tab_name, job_spec, true)
+    }
+
+    /// Record that a quiet job's "still running" line has been written.
+    pub fn mark_announced(&mut self, job_id: JobId) {
+        if let Some(job) = self.jobs.get_mut(&job_id) {
+            job.announced = true;
+        }
+    }
+
+    fn insert_job(
+        &mut self,
+        name: String,
+        description: String,
+        tab_id: usize,
+        tab_name: String,
+        job_spec: JobSpec,
+        quiet: bool,
     ) -> BackgroundJobId {
         let short_id = self.next_short_id;
         self.next_short_id += 1;
@@ -141,6 +178,8 @@ impl BackgroundJobManager {
             cancel_token: job_spec.cancel_token.clone(),
             tab_id,
             tab_name,
+            quiet,
+            announced: false,
         };
 
         // Send Started event
@@ -416,6 +455,8 @@ mod tests {
             cancel_token: CancellationToken::new(),
             tab_id: 0,
             tab_name: String::new(),
+            quiet: false,
+            announced: false,
         };
 
         assert!(job.is_active());
@@ -445,6 +486,8 @@ mod tests {
             cancel_token: CancellationToken::new(),
             tab_id: 0,
             tab_name: String::new(),
+            quiet: false,
+            announced: false,
         };
 
         assert_eq!(job.status_char(), 'P');

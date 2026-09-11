@@ -216,6 +216,14 @@ Example: [*OK*] vs [Cancel]
          [*OK*] (focused, white bg) vs [Cancel] (gray bg)
 ```
 
+The default is the first button **unless that would make `Enter` the risky choice**.
+`render_dialog_buttons` asks `default_button_index` (`rwf-bin/src/ui/dialog/frame.rs`);
+the one exception today is the pane read-failure dialog (Phase 7.22), laid out
+`[Retry]  [*Dismiss*]` and opening with focus on Dismiss — retrying a dead network path
+blocks a worker for another full timeout, so a reflexive `Enter` must not do it. A dialog
+that overrides the default must also *open* focused on it, or the asterisks and the white
+highlight disagree.
+
 ## 2.4 Common Key Bindings
 
 | Key | Action | Scope |

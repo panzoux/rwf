@@ -439,6 +439,22 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 }
                 return None;
             }
+            DialogContent::ReadFailure(rwf_lib::model::dialog::ReadFailureDialog {
+                tab_id,
+                side,
+                focused_button,
+                ..
+            }) => {
+                if *focused_button != rwf_lib::model::dialog::READ_FAILURE_RETRY {
+                    return None;
+                }
+                let (tab_id, side) = (*tab_id, *side);
+                let result = rwf_lib::state::update_state(
+                    state,
+                    rwf_lib::state::Transition::RetryPaneRead { tab_id, side },
+                );
+                return result.jobs_to_start.into_iter().next();
+            }
             DialogContent::JumpToPath(rwf_lib::model::dialog::JumpToPathDialog {
                 suggestions,
                 selected_index,
@@ -1415,6 +1431,49 @@ mod tests {
             }
             other => panic!("expected Mkdir, got {:?}", other),
         }
+    }
+
+    fn state_with_read_failure(focused_button: usize) -> (rwf_lib::AppState, usize) {
+        let mut state = test_state();
+        let tab_id = state.tabs.tabs[0].id;
+        let mut dialog = rwf_lib::model::dialog::ReadFailureDialog::new(
+            tab_id,
+            rwf_lib::model::ActivePane::Left,
+            "Tab 1, left pane".to_string(),
+            rwf_lib::job::JobOrigin::SessionRestore,
+            state.tabs.tabs[0].left_pane.current_location.clone(),
+            "network name not resolved",
+        );
+        dialog.focused_button = focused_button;
+        state.dialogs.push(Dialog::read_failure(dialog));
+        (state, tab_id)
+    }
+
+    /// Phase 7.22 §3.5: `[Retry]` re-reads the pane that failed.
+    #[test]
+    fn confirming_retry_on_a_read_failure_starts_a_read_of_that_pane() {
+        let (mut state, tab_id) =
+            state_with_read_failure(rwf_lib::model::dialog::READ_FAILURE_RETRY);
+
+        let job = process_dialog_confirmation(&mut state).expect("retry starts a read");
+
+        assert!(matches!(
+            job.kind,
+            rwf_lib::job::JobKind::ReadDirectory { .. }
+        ));
+        assert_eq!(
+            job.requesting_pane,
+            Some((tab_id, rwf_lib::model::ActivePane::Left))
+        );
+        assert_eq!(state.tabs.tabs[0].left_pane.active_job_id, Some(job.id));
+    }
+
+    /// Dismiss is the default focus, so a reflexive Enter never re-blocks a worker on
+    /// the same dead path.
+    #[test]
+    fn confirming_dismiss_on_a_read_failure_starts_nothing() {
+        let (mut state, _) = state_with_read_failure(rwf_lib::model::dialog::READ_FAILURE_DISMISS);
+        assert!(process_dialog_confirmation(&mut state).is_none());
     }
 
     // ── Create File / Create Directory inline validation ──────────────────

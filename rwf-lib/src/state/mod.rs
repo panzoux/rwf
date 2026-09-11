@@ -677,6 +677,18 @@ pub enum Transition {
     AcknowledgeCancel {
         job_id: JobId,
     },
+    /// Write the task-panel line for quiet jobs (pane reads) that have now run past
+    /// `QUIET_JOB_ANNOUNCE_AFTER`. The app loop fires this only when
+    /// `AppState::quiet_jobs_due` is non-empty, so it does not flood diagnostics.
+    AnnounceQuietJobs {
+        job_ids: Vec<JobId>,
+    },
+    /// Read a pane's directory again — the read-failure dialog's `[Retry]`.
+    /// `tab_id` is the tab's id, not its position.
+    RetryPaneRead {
+        tab_id: usize,
+        side: crate::model::ActivePane,
+    },
     CreateBackgroundJob {
         spec: JobSpec,
         name: String,

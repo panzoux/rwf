@@ -186,6 +186,20 @@ All key bindings are configurable via `keybindings.json`. Below are the default 
 | `Alt+Up` | Scroll Up | Scroll task panel up |
 | `Alt+Down` | Scroll Down | Scroll task panel down |
 
+**Directory reads.** While a pane is reading its directory, that pane's tab shows a spinner
+(`/`, one per running job) and the read is listed in the job manager. It reaches the task
+panel only if it is still running after half a second, or if it fails — a local directory
+is long read by then, so ordinary navigation writes nothing, while a read stuck on an
+unreachable share shows up as `Read \\host\share: Started`.
+
+**When a directory cannot be read** and no directory above it can be read either, a dialog
+names the failure (*Directory Unavailable*, *Directory Not Found*, *Permission Denied*, …),
+the tab and pane, whether it happened while restoring your session, the path, the
+system's own error text and a hint. `[Retry]` reads it again; `[Dismiss]` (the default, so
+`Enter` never re-waits on a dead share by accident) closes it. `←`/`→` or `Tab` move between
+them, `r` retries directly. If only the directory itself is gone, rwf instead opens the
+nearest readable directory above it and says so in the task panel.
+
 ### Viewer Mode Keys
 
 When in text/hex viewer:

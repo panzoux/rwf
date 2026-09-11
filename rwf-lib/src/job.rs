@@ -35,7 +35,24 @@ pub struct JobSpec {
     pub created_at: SystemTime,
     pub cancel_token: CancellationToken,
     pub conflict_decisions: Option<Vec<ConflictDecision>>,
+    /// The tab **id** (not position) and side of the pane this job serves.
     pub requesting_pane: Option<(usize, crate::model::ActivePane)>,
+    /// Why this job exists — lets a failure say "while restoring your session"
+    /// instead of implying the user did something (Phase 7.22 §3.3).
+    pub origin: JobOrigin,
+}
+
+/// What started a job. Defaults to [`JobOrigin::UserAction`], so only the call sites
+/// that know better have to say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JobOrigin {
+    /// Restoring saved tabs at startup — the user has operated nothing yet.
+    SessionRestore,
+    /// A direct consequence of a keypress.
+    #[default]
+    UserAction,
+    /// An automatic re-read after a file operation.
+    Refresh,
 }
 
 /// Decision for resolving a file conflict
@@ -65,12 +82,23 @@ impl JobSpec {
             cancel_token: CancellationToken::new(),
             conflict_decisions: None,
             requesting_pane: None,
+            origin: JobOrigin::default(),
         }
     }
 
-    /// Set the tab and pane that requested this job (for targeting results)
-    pub fn with_requesting_pane(mut self, tab_idx: usize, pane: crate::model::ActivePane) -> Self {
-        self.requesting_pane = Some((tab_idx, pane));
+    /// Set the tab and pane that requested this job (for targeting results).
+    ///
+    /// `tab_id` is the tab's **id**, never its position — positions shift when a tab
+    /// to the left closes. (This parameter used to be named `tab_idx` while every
+    /// caller passed an id.)
+    pub fn with_requesting_pane(mut self, tab_id: usize, pane: crate::model::ActivePane) -> Self {
+        self.requesting_pane = Some((tab_id, pane));
+        self
+    }
+
+    /// Record what started this job.
+    pub fn with_origin(mut self, origin: JobOrigin) -> Self {
+        self.origin = origin;
         self
     }
 
@@ -501,8 +529,17 @@ pub struct BackgroundJob {
     pub start_time: SystemTime,
     pub end_time: Option<SystemTime>,
     pub cancel_token: CancellationToken,
+    /// The tab's **id** (as in `JobSpec::requesting_pane`), never its position — a
+    /// position names a different tab once a tab to its left closes.
     pub tab_id: usize,
     pub tab_name: String,
+    /// A quiet job — a pane's directory read — writes nothing to the task panel until
+    /// it has run for `QUIET_JOB_ANNOUNCE_AFTER`, or fails. Most reads finish in
+    /// milliseconds; logging every one would bury the panel.
+    pub quiet: bool,
+    /// Set once a quiet job has been announced. From then on it logs its outcome like
+    /// any other job.
+    pub announced: bool,
 }
 
 impl BackgroundJob {
@@ -781,6 +818,7 @@ pub struct JobManagerStats {
 }
 
 pub mod background_job_manager;
+pub mod failure_kind;
 pub mod job_executor;
 pub mod report_builder;
 pub mod undo_preflight;
@@ -789,6 +827,7 @@ pub mod undo_preflight;
 mod job_properties;
 
 pub use background_job_manager::{BackgroundJobEvent, BackgroundJobManager, BackgroundJobStats};
+pub use failure_kind::FailureKind;
 pub use job_executor::detect_conflicts;
 pub use job_executor::JobExecutor;
 pub use report_builder::build_operation_report;

@@ -2,6 +2,76 @@ use crate::state::{AppState, StateUpdateResult, Transition};
 use tracing::debug;
 
 impl AppState {
+    /// The 1-based position of the tab with this id — the number the user sees.
+    ///
+    /// Background jobs and `JobSpec::requesting_pane` key tabs by **id**, which stays
+    /// put when a tab to the left closes; a position does not. Convert only at the
+    /// point of display.
+    pub fn tab_number(&self, tab_id: usize) -> Option<usize> {
+        self.tabs
+            .tabs
+            .iter()
+            .position(|t| t.id == tab_id)
+            .map(|p| p + 1)
+    }
+
+    /// [`tab_number`](Self::tab_number) for a log line; `?` once the tab has closed.
+    pub(crate) fn tab_label(&self, tab_id: usize) -> String {
+        self.tab_number(tab_id)
+            .map_or_else(|| "?".to_string(), |n| n.to_string())
+    }
+
+    /// Register a pane's `ReadDirectory` as a quiet background job, so its tab shows a
+    /// spinner and the job manager lists it while it runs (Phase 7.22 §2).
+    ///
+    /// Reads never registered before, which is why a tab stuck on a dead share showed
+    /// no spinner and the task panel said "No active tasks" with two reads running.
+    /// Called from `App::submit_job`, the one path every job takes to the pool.
+    pub fn track_directory_read(&mut self, spec: &crate::job::JobSpec) {
+        let crate::job::JobKind::ReadDirectory { location } = &spec.kind else {
+            return;
+        };
+        if self.background_jobs.get_job(spec.id).is_some() {
+            return;
+        }
+        // A read with no requesting pane refreshes every pane on that path; the active
+        // tab is where the user is looking.
+        let tab_id = spec
+            .requesting_pane
+            .map_or_else(|| self.current_tab().id, |(tab_id, _)| tab_id);
+        let name = format!("Read {}", location.display_path());
+        self.background_jobs.start_quiet_job(
+            name.clone(),
+            name,
+            tab_id,
+            String::new(),
+            spec.clone(),
+        );
+    }
+
+    /// Quiet jobs that have been running for `QUIET_JOB_ANNOUNCE_AFTER` without being
+    /// announced. Timed from `Job::started_at` — when a worker actually picked the job
+    /// up — so a read waiting for a free worker is not called slow. Cheap enough for
+    /// every loop iteration.
+    pub fn quiet_jobs_due(&self) -> Vec<crate::job::JobId> {
+        let now = std::time::SystemTime::now();
+        self.background_jobs
+            .get_active_jobs()
+            .filter(|j| j.quiet && !j.announced)
+            .filter(|j| {
+                self.jobs
+                    .active
+                    .get(&j.id.uuid)
+                    .and_then(|job| job.started_at)
+                    .and_then(|started| now.duration_since(started).ok())
+                    .is_some_and(|ran| {
+                        ran >= crate::job::background_job_manager::QUIET_JOB_ANNOUNCE_AFTER
+                    })
+            })
+            .map(|j| j.id.uuid)
+            .collect()
+    }
+
     pub(crate) fn handle_job_management_transition(
         &mut self,
         transition: &Transition,
@@ -18,7 +88,7 @@ impl AppState {
                     tab.left_pane.current_location.display_path(),
                     tab.right_pane.current_location.display_path()
                 );
-                let tab_id = self.tabs.active_index;
+                let tab_id = self.current_tab().id;
 
                 self.background_jobs.start_job(
                     name.clone(),
@@ -45,7 +115,7 @@ impl AppState {
                     tab.left_pane.current_location.display_path(),
                     tab.right_pane.current_location.display_path()
                 );
-                let tab_id = self.tabs.active_index;
+                let tab_id = self.current_tab().id;
 
                 self.background_jobs.start_job(
                     name.clone(),

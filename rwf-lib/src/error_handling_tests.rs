@@ -454,20 +454,196 @@ mod tests {
         );
 
         let dialog = state.dialogs.current().expect("a dialog must appear now");
-        let DialogContent::Error(ErrorDialog { message, .. }) = &dialog.content else {
-            panic!("Expected Error dialog content");
+        let DialogContent::ReadFailure(d) = &dialog.content else {
+            panic!(
+                "Expected ReadFailure dialog content, got {:?}",
+                dialog.content
+            );
         };
-        assert!(
-            message.contains("Tab 1") && message.contains("right pane"),
-            "still names the pane, got: {message}"
+        assert_eq!(d.where_label, "Tab 1, right pane", "still names the pane");
+        assert_eq!(
+            (d.tab_id, d.side),
+            (tab_id, crate::model::ActivePane::Right)
         );
         assert!(
-            message.contains("network name not resolved"),
-            "reports the original read failure, not the fallback's, got: {message}"
+            d.cause.contains("network name not resolved"),
+            "reports the original read failure, not the fallback's, got: {}",
+            d.cause
         );
         assert!(
             state.pending_read_failures.is_empty(),
             "the stashed error must be consumed"
+        );
+    }
+
+    /// Run a pane read that fails and whose fallback search finds nothing, returning
+    /// the state with the resulting dialog (if any) on the stack.
+    fn read_fails_and_nothing_survives(
+        origin: crate::job::JobOrigin,
+        error: &str,
+    ) -> crate::state::AppState {
+        let mut state = test_state();
+        let tab_id = state.tabs.tabs[0].id;
+        let read = JobSpec::new(JobKind::ReadDirectory {
+            location: Location::Local(PathBuf::from("/mnt/share")),
+        })
+        .with_requesting_pane(tab_id, crate::model::ActivePane::Left)
+        .with_origin(origin);
+        let read_id = state.jobs.enqueue(read.clone());
+        state.jobs.start_job(read);
+        let failed = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: read_id,
+                result: OpResult::Failed(error.to_string()),
+            },
+        );
+        let fallback = failed
+            .jobs_to_start
+            .into_iter()
+            .find(|j| matches!(j.kind, JobKind::ResolveFallbackPath { .. }))
+            .expect("fallback job");
+        assert_eq!(
+            fallback.origin, origin,
+            "the fallback must carry the read's origin, or the dialog cannot say when"
+        );
+        let fallback_id = state.jobs.enqueue(fallback.clone());
+        state.jobs.start_job(fallback);
+        update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: fallback_id,
+                result: OpResult::Success(crate::job::SuccessData::FallbackPath(None)),
+            },
+        );
+        state
+    }
+
+    /// Phase 7.22 §3.3: at startup the user has operated nothing, and the dialog must
+    /// say so rather than imply an operation of theirs failed.
+    #[test]
+    fn a_read_failing_during_session_restore_says_so() {
+        let state = read_fails_and_nothing_survives(
+            crate::job::JobOrigin::SessionRestore,
+            "network name not resolved",
+        );
+        let DialogContent::ReadFailure(d) = &state.dialogs.current().expect("dialog").content
+        else {
+            panic!("expected ReadFailure");
+        };
+        assert_eq!(
+            d.context_line(),
+            "Tab 1, left pane — while restoring your session"
+        );
+    }
+
+    /// Phase 7.22 §3.2, the reported bug: the OS text is localized, so the old
+    /// substring match titled every failure on a Japanese Windows "Operation Failed".
+    #[cfg(windows)]
+    #[test]
+    fn a_localized_network_error_gets_a_real_title() {
+        // The backend's context names the same path the pane asked for.
+        let path = Location::Local(PathBuf::from("/mnt/share")).display_path();
+        let message = format!(
+            "Failed to read directory {path}: ネットワーク名が見つかりません。 (os error 67)"
+        );
+        let generic = Dialog::from_job_failure("Copy", &message);
+        assert_eq!(generic.title, "Network Location Unavailable");
+
+        let state = read_fails_and_nothing_survives(crate::job::JobOrigin::UserAction, &message);
+        let dialog = state.dialogs.current().expect("dialog");
+        assert_eq!(dialog.title, "Directory Unavailable");
+        let DialogContent::ReadFailure(d) = &dialog.content else {
+            panic!("expected ReadFailure");
+        };
+        assert_eq!(
+            d.cause, "ネットワーク名が見つかりません。 (os error 67)",
+            "the localized text stays verbatim — it is what the user searches for"
+        );
+    }
+
+    /// `[Retry]` re-reads the pane in the tab that failed, which need not be the
+    /// active one, and puts that pane back into its loading state.
+    #[test]
+    fn retry_rereads_the_failed_pane_in_its_own_tab() {
+        let mut state = test_state();
+        state.tabs.create_tab();
+        let other = state.tabs.tabs[1].id;
+        state.tabs.tabs[1].right_pane.current_location =
+            Location::Local(PathBuf::from("/mnt/share"));
+
+        let result = update_state(
+            &mut state,
+            Transition::RetryPaneRead {
+                tab_id: other,
+                side: crate::model::ActivePane::Right,
+            },
+        );
+
+        let job = result.jobs_to_start.first().expect("a read must start");
+        assert_eq!(
+            job.kind,
+            JobKind::ReadDirectory {
+                location: Location::Local(PathBuf::from("/mnt/share"))
+            }
+        );
+        assert_eq!(
+            job.requesting_pane,
+            Some((other, crate::model::ActivePane::Right))
+        );
+        let pane = &state.tabs.tabs[1].right_pane;
+        assert!(pane.is_loading);
+        assert_eq!(
+            pane.active_job_id,
+            Some(job.id),
+            "ReadDirectory contract: the pane must own the job or it loads forever"
+        );
+    }
+
+    #[test]
+    fn retry_for_a_tab_that_has_closed_does_nothing() {
+        let mut state = test_state();
+        let result = update_state(
+            &mut state,
+            Transition::RetryPaneRead {
+                tab_id: 9999,
+                side: crate::model::ActivePane::Left,
+            },
+        );
+        assert!(result.jobs_to_start.is_empty());
+    }
+
+    /// A tab closed while the fallback search ran has no pane to retry into: the
+    /// failure goes to the task panel instead of a modal nobody can act on.
+    #[test]
+    fn a_fallback_for_a_closed_tab_logs_instead_of_raising_a_dialog() {
+        let mut state = test_state();
+        let fallback = JobSpec::new(JobKind::ResolveFallbackPath {
+            requested: Location::Local(PathBuf::from("/mnt/share")),
+        })
+        .with_requesting_pane(9999, crate::model::ActivePane::Right);
+        let job_id = state.jobs.enqueue(fallback.clone());
+        state
+            .pending_read_failures
+            .insert(fallback.id, "network name not resolved".to_string());
+        state.jobs.start_job(fallback);
+
+        let result = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id,
+                result: OpResult::Success(crate::job::SuccessData::FallbackPath(None)),
+            },
+        );
+
+        assert!(state.dialogs.is_empty());
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.contains("[FAIL]") && l.contains("network name not resolved")),
+            "{:?}",
+            result.task_panel_logs
         );
     }
 }

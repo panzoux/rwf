@@ -97,7 +97,14 @@ pub fn render_job_manager_dialog(
     frame.render_widget(detail_label, chunks[2]);
 
     // Render detail view (chunk[3]) - Gray background, Black text (Part 2.2, 6.11)
-    render_job_detail(frame, chunks[3], &jobs, dialog_state.selected_index, colors);
+    render_job_detail(
+        frame,
+        chunks[3],
+        state,
+        &jobs,
+        dialog_state.selected_index,
+        colors,
+    );
 
     // Render buttons (chunk[5] - WITHIN content area per Part 1.3)
     render_buttons(frame, chunks[5], dialog_state.focused_field, colors);
@@ -204,6 +211,7 @@ fn render_job_list(
 fn render_job_detail(
     frame: &mut Frame,
     area: Rect,
+    state: &AppState,
     jobs: &[BackgroundJob],
     selected_index: usize,
     _colors: &rwf_lib::config::ColorScheme,
@@ -214,7 +222,11 @@ fn render_job_detail(
         let time_str = start_time_local.format("%H:%M:%S").to_string();
 
         // Show which tab the job is running on
-        let location_info = format!("Tab: {}", job.tab_id + 1);
+        // `tab_id` is the tab's id; show the position the user counts by.
+        let location_info = match state.tab_number(job.tab_id) {
+            Some(number) => format!("Tab: {number}"),
+            None => "Tab: (closed)".to_string(),
+        };
 
         format!(
             "Job ID: {:?}\n\

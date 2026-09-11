@@ -29,6 +29,7 @@ mod multiline_input;
 mod open_with_picker;
 mod operation_report;
 mod pattern_rename;
+mod read_failure;
 mod registered_folder;
 mod simple_rename;
 #[cfg(test)]
@@ -473,6 +474,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let stats_lines = if stats.is_some() { 2 } else { 0 };
             (visible_lines + truncated_indicator + stats_lines + 3).max(8)
         }
+        DialogContent::ReadFailure(d) => read_failure::content_height(d, frame.area().width),
         _ => 8u16, // Default
     };
 
@@ -524,6 +526,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
         | DialogContent::FileInfo { .. }
         | DialogContent::ExtractionConfirm(_)
         | DialogContent::Error(_)
+        | DialogContent::ReadFailure(_)
         | DialogContent::TypeMismatchWarning(_)
         | DialogContent::Confirmation(_)
         | DialogContent::Input { .. } => {
@@ -563,6 +566,7 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let max_label = custom_function::menu_content_width(items);
             ((max_label as u16 + 8).max(34)).min(screen_width.saturating_sub(2))
         }
+        DialogContent::ReadFailure(d) => read_failure::dialog_width(d, screen_width),
         DialogContent::OpenWithPicker(OpenWithPickerDialog { candidates, .. }) => {
             // label fits with outer_width = max_label + 8 (2 border + 4 indent + 2 margin)
             // hint "[Enter] Open  [Esc] Cancel" fits at offset+1 with width-2 when outer>=34
@@ -1128,6 +1132,9 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
                 detected.label(),
             );
         }
+        DialogContent::ReadFailure(d) => {
+            read_failure::render_read_failure_dialog(frame, &dialog.content, content_area, d);
+        }
         DialogContent::Input { .. } => {
             // No separate button row; Enter/Esc are the controls
             render_dialog_content(frame, &dialog.content, content_area, true);
@@ -1196,6 +1203,11 @@ pub fn handle_dialog_input(
         } else {
             return DialogAction::Confirm;
         }
+    }
+
+    // ReadFailure dialog — arrows/Tab move between Retry and Dismiss, r retries
+    if let DialogContent::ReadFailure(d) = &mut dialog.content {
+        return read_failure::handle_input(d, key);
     }
 
     // CloseTabWithActiveJob dialog - Enter confirms, Escape cancels, Tab cycles

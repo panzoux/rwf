@@ -48,6 +48,7 @@ mod open_with_picker;
 mod operation_report;
 mod pattern_rename;
 mod progress;
+mod read_failure;
 mod registered_folder_selector;
 mod simple_rename;
 mod sort;
