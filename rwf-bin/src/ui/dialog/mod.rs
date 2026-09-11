@@ -333,9 +333,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             };
             (len as u16 + 2).max(5)
         }
-        DialogContent::DriveSelection(DriveSelectionDialog { drives, .. }) => {
-            // list + hint(1) + search(1)
-            (drives.len() as u16 + 2).max(6)
+        DialogContent::DriveSelection(DriveSelectionDialog {
+            drives,
+            loading_job_id,
+            ..
+        }) => {
+            // list (+ "listing drives…") + hint(1) + search(1)
+            (drives.len() as u16 + 2 + u16::from(loading_job_id.is_some())).max(6)
         }
         DialogContent::TrashBrowser(TrashBrowserDialog { records, .. }) => {
             // list + restore-destination(1) + hint(1)
@@ -824,8 +828,16 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             drives,
             selected_index,
             filter,
+            loading_job_id,
         }) => {
-            render_drive_selection_dialog(frame, content_area, drives, *selected_index, filter);
+            render_drive_selection_dialog(
+                frame,
+                content_area,
+                drives,
+                *selected_index,
+                filter,
+                loading_job_id.is_some(),
+            );
         }
         DialogContent::TrashBrowser(TrashBrowserDialog {
             records,

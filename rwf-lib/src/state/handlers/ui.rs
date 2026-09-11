@@ -302,6 +302,7 @@ impl AppState {
                                 drives,
                                 selected_index,
                                 filter,
+                                ..
                             },
                         ) => {
                             let lower = filter.to_lowercase();
@@ -580,12 +581,21 @@ impl AppState {
                     });
                 }
 
-                // 3. System drives
-                entries.extend(crate::volume_info::get_all_drives());
-
-                let dialog = crate::model::Dialog::drive_selection(entries, self.ui.active_pane);
+                // 3. System drives — listed by a worker and appended when they arrive.
+                // Enumerating them asks every drive for its label and free space, and
+                // a disconnected network drive answers only after a timeout; this used
+                // to run right here, on the input thread (Phase 7.21-B).
+                let job = crate::job::JobSpec::new(crate::job::JobKind::ListDrives);
+                let mut dialog =
+                    crate::model::Dialog::drive_selection(entries, self.ui.active_pane);
+                if let crate::model::dialog::DialogContent::DriveSelection(d) = &mut dialog.content
+                {
+                    d.loading_job_id = Some(job.id);
+                }
                 self.dialogs.push(dialog);
-                Some(StateUpdateResult::with_ui_change())
+                let mut result = StateUpdateResult::with_job(job);
+                result.ui_changed = true;
+                Some(result)
             }
             Transition::ShowFileInfo => {
                 if let Some(entry) = self.active_pane().current_entry() {
@@ -901,12 +911,27 @@ impl AppState {
                         max_depth: self.config.jump_nav.jump_file_max_depth,
                     });
                 let job_id = job_spec.id;
+                // Which fast candidates are directories, straight from the pane's own
+                // entries. The Enter handler reads this instead of stat-ing the target
+                // on the input thread (Phase 7.21-B); the collector job adds its own.
+                let fast_dirs: std::collections::HashSet<String> = self
+                    .active_pane()
+                    .entries
+                    .iter()
+                    .filter(|e| e.is_dir && e.name != "..")
+                    .map(|e| e.location.display_path())
+                    .collect();
                 let mut dialog = crate::model::Dialog::jump_to_file(root, fast_candidates);
                 if let crate::model::dialog::DialogContent::JumpToFile(
-                    crate::model::dialog::JumpToFileDialog { loading_job_id, .. },
+                    crate::model::dialog::JumpToFileDialog {
+                        loading_job_id,
+                        dir_paths,
+                        ..
+                    },
                 ) = &mut dialog.content
                 {
                     *loading_job_id = Some(job_id);
+                    *dir_paths = fast_dirs;
                 }
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_job(job_spec))

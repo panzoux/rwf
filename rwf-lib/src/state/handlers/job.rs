@@ -348,6 +348,13 @@ impl AppState {
                             // it — moving the cursor did.
                             &spec.kind,
                             crate::job::JobKind::CountDirectoryEntries { .. }
+                        ) || matches!(
+                            // A failed drive listing just leaves the dialog with the
+                            // entries it opened with; a pipe target that does not resolve
+                            // is reported in the task panel by its completion arm below.
+                            &spec.kind,
+                            crate::job::JobKind::ListDrives
+                                | crate::job::JobKind::ResolvePipeTarget { .. }
                         );
                         let op_name = match &spec.kind {
                             crate::job::JobKind::ReadDirectory { .. } => "Read directory",
@@ -396,6 +403,11 @@ impl AppState {
                             crate::job::JobKind::DetectFileType { .. } => "Detect file type",
                             crate::job::JobKind::DetectFileTypesBatch { .. } => "Detect file types",
                             crate::job::JobKind::ExecuteReversal { .. } => "Execute reversal",
+                            crate::job::JobKind::ListDrives => "List drives",
+                            crate::job::JobKind::ResolvePipeTarget { .. } => {
+                                "Resolve command output"
+                            }
+                            crate::job::JobKind::PreflightReversal { .. } => "Check undo",
                         };
                         // A pane's ReadDirectory failure does not go straight to a modal.
                         // The path may simply have moved or been deleted between runs, in
@@ -743,6 +755,150 @@ impl AppState {
                                         result_obj.ui_changed = true;
                                     }
                                 }
+                            }
+                        }
+                        crate::job::JobKind::ListDrives => {
+                            // Append to the dialog that asked, if it is still open. A failed
+                            // listing still ends its "listing drives…" row.
+                            let drives = match result {
+                                crate::job::OpResult::Success(
+                                    crate::job::SuccessData::Drives(drives),
+                                ) => drives.clone(),
+                                _ => Vec::new(),
+                            };
+                            for dialog in self.dialogs.stack.iter_mut() {
+                                if let crate::model::dialog::DialogContent::DriveSelection(d) =
+                                    &mut dialog.content
+                                {
+                                    if d.loading_job_id == Some(*job_id) {
+                                        d.drives.extend(drives.iter().cloned());
+                                        d.loading_job_id = None;
+                                        result_obj.ui_changed = true;
+                                    }
+                                }
+                            }
+                        }
+                        crate::job::JobKind::ResolvePipeTarget { .. } => match result {
+                            crate::job::OpResult::Success(crate::job::SuccessData::PipeTarget(
+                                target,
+                            )) => match target.clone() {
+                                crate::pipe_to_action::PipeToActionResult::JumpToPath {
+                                    location,
+                                    cursor_name,
+                                } => {
+                                    // Navigate the active pane to the target location
+                                    let pane = self.ui.active_pane;
+                                    let tab = self.current_tab_mut();
+                                    let tab_id = tab.id;
+                                    let pane_model = match pane {
+                                        crate::model::ActivePane::Left => &mut tab.left_pane,
+                                        crate::model::ActivePane::Right => &mut tab.right_pane,
+                                    };
+                                    pane_model.current_location = location.clone();
+                                    pane_model.entries.clear();
+                                    pane_model.is_loading = true;
+                                    pane_model.cursor = 0;
+                                    pane_model.scroll_offset = 0;
+                                    // Set when the picker returned a file: park the cursor on it
+                                    // once the parent directory finishes loading.
+                                    pane_model.pending_cursor_name = cursor_name;
+                                    let job_spec = crate::job::JobSpec::new(
+                                        crate::job::JobKind::ReadDirectory { location },
+                                    )
+                                    .with_requesting_pane(tab_id, pane);
+                                    // ReadDirectory contract: the pane owns its read.
+                                    pane_model.active_job_id = Some(job_spec.id);
+                                    result_obj.jobs_to_start.push(job_spec);
+                                    result_obj.ui_changed = true;
+                                }
+                                crate::pipe_to_action::PipeToActionResult::ClipText(text) => {
+                                    result_obj.jobs_to_start.push(crate::job::JobSpec::new(
+                                        crate::job::JobKind::SetClipboard { text },
+                                    ));
+                                }
+                                crate::pipe_to_action::PipeToActionResult::ExecuteFile(path) => {
+                                    let job_spec = crate::job::JobSpec::new(
+                                        crate::job::JobKind::ExecuteCustomFunction {
+                                            command: path.to_string_lossy().to_string(),
+                                            working_dir: self
+                                                .active_pane()
+                                                .current_location
+                                                .clone(),
+                                            pipe_to_action: None,
+                                            shell: None,
+                                            suspend: false,
+                                        },
+                                    );
+                                    result_obj.jobs_to_start.push(job_spec);
+                                }
+                                crate::pipe_to_action::PipeToActionResult::ExecuteFileWithEditor(
+                                    path,
+                                ) => {
+                                    let kind = Self::editor_job(
+                                        &self.config,
+                                        path.to_string_lossy().to_string(),
+                                        false,
+                                    );
+                                    result_obj.jobs_to_start.push(crate::job::JobSpec::new(kind));
+                                }
+                            },
+                            crate::job::OpResult::Failed(e) => {
+                                tracing::warn!("[CompleteJob] PipeToAction failed: {}", e);
+                                result_obj
+                                    .task_panel_logs
+                                    .push(format!("  PipeToAction error: {}", e));
+                                result_obj.ui_changed = true;
+                            }
+                            _ => {}
+                        },
+                        crate::job::JobKind::PreflightReversal {
+                            actions,
+                            operation_name,
+                            resulting_is_undo,
+                        } => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::ReversalPreflight { ready, blocked },
+                            ) = result
+                            {
+                                let verb = if *resulting_is_undo { "Undo" } else { "Redo" };
+                                let title = format!("{verb} {operation_name}");
+                                if blocked.is_empty() {
+                                    let job = crate::job::JobSpec::new(
+                                        crate::job::JobKind::ExecuteReversal {
+                                            actions: ready.clone(),
+                                            operation_name: operation_name.clone(),
+                                            resulting_is_undo: *resulting_is_undo,
+                                        },
+                                    );
+                                    let tab_id = self.current_tab().id;
+                                    self.background_jobs.start_job(
+                                        title.clone(),
+                                        title,
+                                        tab_id,
+                                        String::new(),
+                                        job.clone(),
+                                    );
+                                    result_obj.jobs_to_start.push(job);
+                                } else {
+                                    // Some rows are blocked — say which, and let the user
+                                    // decide whether to run just the ready ones.
+                                    self.dialogs.push(crate::model::Dialog::action_confirm(
+                                        title,
+                                        crate::job::blocked_summary(
+                                            ready.len(),
+                                            actions.len(),
+                                            *resulting_is_undo,
+                                            blocked,
+                                        ),
+                                        None,
+                                        crate::model::ConfirmableAction::ExecuteReversal {
+                                            actions: ready.clone(),
+                                            operation_name: operation_name.clone(),
+                                            resulting_is_undo: *resulting_is_undo,
+                                        },
+                                    ));
+                                }
+                                result_obj.ui_changed = true;
                             }
                         }
                         crate::job::JobKind::LoadFileForViewer { .. } => {
@@ -1187,54 +1343,25 @@ impl AppState {
                                         crate::model::Location::Local(p) => p.clone(),
                                         other => std::path::PathBuf::from(other.display_path()),
                                     };
-                                    match crate::pipe_to_action::process_pipe_to_action(action, output, &cwd) {
-                                        Ok(crate::pipe_to_action::PipeToActionResult::JumpToPath { location, cursor_name }) => {
-                                            // Navigate the active pane to the target location
-                                            let pane = self.ui.active_pane;
-                                            let tab = self.current_tab_mut();
-                                            let tab_id = tab.id;
-                                            let pane_model = match pane {
-                                                crate::model::ActivePane::Left  => &mut tab.left_pane,
-                                                crate::model::ActivePane::Right => &mut tab.right_pane,
-                                            };
-                                            pane_model.current_location = location.clone();
-                                            pane_model.entries.clear();
-                                            pane_model.is_loading = true;
-                                            pane_model.cursor = 0;
-                                            pane_model.scroll_offset = 0;
-                                            // Set when the picker returned a file: park the cursor on it
-                                            // once the parent directory finishes loading.
-                                            pane_model.pending_cursor_name = cursor_name;
-                                            let job_spec = crate::job::JobSpec::new(
-                                                crate::job::JobKind::ReadDirectory { location }
-                                            ).with_requesting_pane(tab_id, pane);
-                                            result_obj.jobs_to_start.push(job_spec);
-                                            result_obj.ui_changed = true;
-                                        }
-                                        Ok(crate::pipe_to_action::PipeToActionResult::ClipText(text)) => {
-                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(
-                                                crate::job::JobKind::SetClipboard { text }
-                                            ));
-                                        }
-                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFile(path)) => {
-                                            let job_spec = crate::job::JobSpec::new(crate::job::JobKind::ExecuteCustomFunction {
-                                                command: path.to_string_lossy().to_string(),
-                                                working_dir: self.active_pane().current_location.clone(),
-                                                pipe_to_action: None,
-                                                shell: None,
-                                                suspend: false,
-                                            });
-                                            result_obj.jobs_to_start.push(job_spec);
-                                        }
-                                        Ok(crate::pipe_to_action::PipeToActionResult::ExecuteFileWithEditor(path)) => {
-                                            let kind = Self::editor_job(&self.config, path.to_string_lossy().to_string(), false);
-                                            result_obj.jobs_to_start.push(crate::job::JobSpec::new(kind));
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("[CompleteJob] PipeToAction failed: {}", e);
-                                            result_obj.task_panel_logs.push(format!("  PipeToAction error: {}", e));
-                                            result_obj.ui_changed = true;
-                                        }
+                                    if matches!(action, crate::job::PipeToAction::ClipText) {
+                                        // Text, not a path: nothing to check.
+                                        result_obj.jobs_to_start.push(crate::job::JobSpec::new(
+                                            crate::job::JobKind::SetClipboard {
+                                                text: output.to_string(),
+                                            },
+                                        ));
+                                    } else {
+                                        // Deciding what the printed path *is* takes a stat, and
+                                        // the path may sit on a dead mount: a worker resolves it
+                                        // and the `ResolvePipeTarget` arm below acts on the answer.
+                                        // This used to run right here (Phase 7.21-B).
+                                        result_obj.jobs_to_start.push(crate::job::JobSpec::new(
+                                            crate::job::JobKind::ResolvePipeTarget {
+                                                action: action.clone(),
+                                                output: output.to_string(),
+                                                working_dir: cwd,
+                                            },
+                                        ));
                                     }
                                 } else {
                                     // No pipe_to_action: check for editor-closed reload prompt,

@@ -102,6 +102,25 @@ fn drive_selection_with_filter() {
     snapshot_dialog("drive_selection_with_filter", &dialog, &state);
 }
 
+/// Phase 7.21-B: the dialog opens with the home and network entries while a worker
+/// lists the system drives, and says so under them.
+#[test]
+fn drive_selection_while_listing_drives() {
+    let state = test_state();
+    let drives = vec![DriveInfo {
+        path: "C:\\Users\\me".to_string(),
+        label: "~ User Directory".to_string(),
+        drive_type: DriveType::Local,
+        total_space: None,
+        free_space: None,
+    }];
+    let mut dialog = Dialog::drive_selection(drives, ActivePane::Left);
+    if let rwf_lib::model::dialog::DialogContent::DriveSelection(d) = &mut dialog.content {
+        d.loading_job_id = Some(rwf_lib::job::JobId::new());
+    }
+    snapshot_dialog("drive_selection_while_listing_drives", &dialog, &state);
+}
+
 #[test]
 fn drive_selection_empty_drives() {
     let state = test_state();

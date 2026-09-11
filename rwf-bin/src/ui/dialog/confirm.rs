@@ -176,6 +176,22 @@ fn set_input_dialog_error(state: &mut rwf_lib::AppState, message: String) {
 
 /// Process dialog confirmation and create transitions
 /// Returns the job spec if a job was created, so it can be submitted to the worker pool
+/// A path typed into a jump dialog, resolved against `search_root` without touching the
+/// filesystem. `has_root()`, not `is_absolute()`: on Windows `\foo` is rooted but not
+/// absolute, and joining it would silently re-anchor it onto `search_root`'s drive —
+/// the same rule as `pipe_to_action::resolve_against`.
+fn resolve_typed_path(search_root: &str, query: &str) -> String {
+    let typed = std::path::Path::new(query);
+    if typed.has_root() {
+        query.to_string()
+    } else {
+        std::path::Path::new(search_root)
+            .join(typed)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_lib::job::JobSpec> {
     debug!("process_dialog_confirmation called");
 
@@ -387,6 +403,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 drives,
                 selected_index,
                 filter,
+                ..
             }) => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::DriveInfo> = if filter.is_empty() {
@@ -467,19 +484,12 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                     if !suggestions.is_empty() && *selected_index < suggestions.len() {
                         Some(suggestions[*selected_index].clone())
                     } else if !query.is_empty() {
-                        // Fallback: interpret typed text as a direct path
-                        let candidate = std::path::PathBuf::from(query.as_str());
-                        if candidate.is_absolute() && candidate.is_dir() {
-                            Some(query.clone())
-                        } else {
-                            let combined =
-                                std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
-                            if combined.is_dir() {
-                                Some(combined.to_string_lossy().into_owned())
-                            } else {
-                                None
-                            }
-                        }
+                        // Typed text is taken as a path without asking the filesystem
+                        // (Phase 7.21-B): `is_dir()` on an unreachable UNC path blocks this
+                        // thread for the full network timeout. A path that does not exist
+                        // fails its ReadDirectory, and ResolveFallbackPath lands on the
+                        // nearest readable ancestor — on a worker.
+                        Some(resolve_typed_path(search_root, query))
                     } else {
                         None
                     };
@@ -505,49 +515,44 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 query,
                 search_root,
                 loading_job_id,
+                dir_paths,
                 ..
             }) => {
                 let path_str: Option<String> =
                     if !suggestions.is_empty() && *selected_index < suggestions.len() {
                         Some(suggestions[*selected_index].clone())
                     } else if !query.is_empty() {
-                        // Fallback: interpret typed text as a direct path
-                        let candidate = std::path::PathBuf::from(query.as_str());
-                        if candidate.is_absolute() && (candidate.is_file() || candidate.is_dir()) {
-                            Some(query.clone())
-                        } else {
-                            let combined =
-                                std::path::PathBuf::from(search_root.as_str()).join(query.as_str());
-                            if combined.is_file() || combined.is_dir() {
-                                Some(combined.to_string_lossy().into_owned())
-                            } else {
-                                None
-                            }
-                        }
+                        // Resolved without a stat — see the JumpToPath arm above.
+                        Some(resolve_typed_path(search_root, query))
                     } else {
                         None
                     };
                 let pending_job = *loading_job_id;
-                // For a file selection, record the filename to position cursor after navigation.
-                let target_file_name: Option<String> = path_str.as_ref().and_then(|p| {
-                    let pb = std::path::Path::new(p);
-                    if pb.is_file() {
-                        pb.file_name().map(|n| n.to_string_lossy().into_owned())
-                    } else {
-                        None
-                    }
+                // Directory or file, known without a stat (Phase 7.21-B): candidates carry
+                // it in `dir_paths` (from the pane's entries and the collector job), and
+                // typed text is a directory when it ends in a separator. Anything else is
+                // treated as a file — its parent opens with the cursor on it, which for a
+                // directory typed without a separator still lands the user looking at it.
+                let is_dir = path_str.as_deref().is_some_and(|p| {
+                    dir_paths.contains(p)
+                        || p.ends_with('/')
+                        || p.ends_with(std::path::MAIN_SEPARATOR)
                 });
+                // For a file selection, record the filename to position cursor after navigation.
+                let target_file_name: Option<String> = path_str
+                    .as_deref()
+                    .filter(|_| !is_dir)
+                    .and_then(|p| std::path::Path::new(p).file_name())
+                    .map(|n| n.to_string_lossy().into_owned());
                 if let Some(path) = path_str {
                     // For files: navigate to the parent directory. For dirs: navigate into them.
-                    let nav_path = {
-                        let pb = std::path::PathBuf::from(&path);
-                        if pb.is_dir() {
-                            path.clone()
-                        } else {
-                            pb.parent()
-                                .map(|p| p.to_string_lossy().into_owned())
-                                .unwrap_or(path.clone())
-                        }
+                    let nav_path = if is_dir {
+                        path.clone()
+                    } else {
+                        std::path::Path::new(&path)
+                            .parent()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or(path.clone())
                     };
                     let location = rwf_lib::Location::Local(std::path::PathBuf::from(&nav_path));
                     let pane = state.ui.active_pane;
@@ -995,58 +1000,20 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 let operation_name = content.report.operation_name.clone();
                 let resulting_is_undo = !content.report.is_undo;
 
-                let (ready, blocked) = rwf_lib::job::preflight_check(&actions);
-                if blocked.is_empty() {
-                    // Keep the Operation Report dialog open — once the job
-                    // completes, `Transition::CompleteJob` refreshes it to
-                    // show the new live target, so the user can keep
-                    // undoing/redoing continually without reopening Alt+o.
-                    state.suppress_next_dialog_pop = true;
-                    return Some(rwf_lib::job::JobSpec::new(
-                        rwf_lib::job::JobKind::ExecuteReversal {
-                            actions: ready,
-                            operation_name,
-                            resulting_is_undo,
-                        },
-                    ));
-                }
-
-                // Some rows are currently blocked — show the pre-flight
-                // summary and let the user decide whether to proceed with
-                // just the ready ones.
-                let mut message = format!(
-                    "{} of {} rows can be {}.\n{} blocked:\n",
-                    ready.len(),
-                    actions.len(),
-                    if resulting_is_undo {
-                        "undone"
-                    } else {
-                        "redone"
-                    },
-                    blocked.len()
-                );
-                for (_, reason) in &blocked {
-                    message.push_str("  - ");
-                    message.push_str(reason);
-                    message.push('\n');
-                }
-
-                state.dialogs.push(rwf_lib::model::Dialog::action_confirm(
-                    format!(
-                        "{} {}",
-                        if resulting_is_undo { "Undo" } else { "Redo" },
-                        operation_name
-                    ),
-                    message,
-                    None,
-                    ConfirmableAction::ExecuteReversal {
-                        actions: ready,
+                // The rows are checked against the filesystem on a worker — one stat
+                // each, which used to run right here on Enter (Phase 7.21-B). The
+                // `PreflightReversal` completion either starts `ExecuteReversal` or
+                // pushes the blocked-rows summary. Either way the Operation Report
+                // dialog stays open, so the user can keep undoing/redoing without
+                // reopening Alt+o.
+                state.suppress_next_dialog_pop = true;
+                return Some(rwf_lib::job::JobSpec::new(
+                    rwf_lib::job::JobKind::PreflightReversal {
+                        actions,
                         operation_name,
                         resulting_is_undo,
                     },
                 ));
-                state.suppress_next_dialog_pop = true;
-                return None;
             }
             DialogContent::TrashBrowser(TrashBrowserDialog {
                 records,
@@ -1466,6 +1433,75 @@ mod tests {
             Some((tab_id, rwf_lib::model::ActivePane::Left))
         );
         assert_eq!(state.tabs.tabs[0].left_pane.active_job_id, Some(job.id));
+    }
+
+    fn active_pane(state: &rwf_lib::AppState) -> &rwf_lib::model::PaneModel {
+        match state.ui.active_pane {
+            rwf_lib::model::ActivePane::Left => &state.current_tab().left_pane,
+            rwf_lib::model::ActivePane::Right => &state.current_tab().right_pane,
+        }
+    }
+
+    fn read_location(job: &rwf_lib::job::JobSpec) -> &Location {
+        match &job.kind {
+            rwf_lib::job::JobKind::ReadDirectory { location } => location,
+            other => panic!("expected ReadDirectory, got {other:?}"),
+        }
+    }
+
+    /// Phase 7.21-B: typed text is not stat-ed on Enter. `is_dir()` on an unreachable
+    /// UNC path the user typed blocked the input thread for a full timeout; now a
+    /// missing path simply fails its read and the fallback search takes over.
+    #[test]
+    fn jump_to_path_takes_typed_text_without_checking_it_exists() {
+        let mut state = test_state();
+        let mut dialog = Dialog::jump_to_path("/root".to_string(), vec![]);
+        if let rwf_lib::model::dialog::DialogContent::JumpToPath(d) = &mut dialog.content {
+            d.query = "does/not/exist".to_string();
+        }
+        state.dialogs.push(dialog);
+
+        let job = process_dialog_confirmation(&mut state).expect("navigates without a stat");
+
+        assert_eq!(
+            read_location(&job),
+            &Location::Local(PathBuf::from("/root").join("does/not/exist"))
+        );
+    }
+
+    #[test]
+    fn jump_to_file_opens_a_listed_directory_from_its_candidate_flag() {
+        let mut state = test_state();
+        let mut dialog = Dialog::jump_to_file("/root".to_string(), vec!["/root/sub".to_string()]);
+        if let rwf_lib::model::dialog::DialogContent::JumpToFile(d) = &mut dialog.content {
+            d.dir_paths.insert("/root/sub".to_string());
+        }
+        state.dialogs.push(dialog);
+
+        let job = process_dialog_confirmation(&mut state).expect("navigates");
+
+        assert_eq!(
+            read_location(&job),
+            &Location::Local(PathBuf::from("/root/sub"))
+        );
+    }
+
+    #[test]
+    fn jump_to_file_opens_a_files_parent_with_the_cursor_on_it() {
+        let mut state = test_state();
+        let dialog = Dialog::jump_to_file("/root".to_string(), vec!["/root/a.txt".to_string()]);
+        state.dialogs.push(dialog);
+
+        let job = process_dialog_confirmation(&mut state).expect("navigates");
+
+        assert_eq!(
+            read_location(&job),
+            &Location::Local(PathBuf::from("/root"))
+        );
+        assert_eq!(
+            active_pane(&state).pending_cursor_name.as_deref(),
+            Some("a.txt")
+        );
     }
 
     /// Dismiss is the default focus, so a reflexive Enter never re-blocks a worker on

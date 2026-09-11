@@ -312,6 +312,51 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 self.execute_detect_file_types_batch(paths, &spec).await
             }
             JobKind::ExecuteReversal { actions, .. } => self.execute_reversal(actions, &spec).await,
+            JobKind::ListDrives => {
+                // Asks every drive for its label and free space; a disconnected
+                // network drive answers each only after a timeout.
+                match tokio::task::spawn_blocking(crate::volume_info::get_all_drives).await {
+                    Ok(drives) => {
+                        crate::job::OpResult::Success(crate::job::SuccessData::Drives(drives))
+                    }
+                    Err(e) => crate::job::OpResult::Failed(format!("drive listing failed: {e}")),
+                }
+            }
+            JobKind::ResolvePipeTarget {
+                action,
+                output,
+                working_dir,
+            } => {
+                let (action, output, working_dir) =
+                    (action.clone(), output.clone(), working_dir.clone());
+                match tokio::task::spawn_blocking(move || {
+                    crate::pipe_to_action::process_pipe_to_action(&action, &output, &working_dir)
+                })
+                .await
+                {
+                    Ok(Ok(target)) => {
+                        crate::job::OpResult::Success(crate::job::SuccessData::PipeTarget(target))
+                    }
+                    Ok(Err(e)) => crate::job::OpResult::Failed(e),
+                    Err(e) => crate::job::OpResult::Failed(format!(
+                        "resolving command output failed: {e}"
+                    )),
+                }
+            }
+            JobKind::PreflightReversal { actions, .. } => {
+                let actions = actions.clone();
+                match tokio::task::spawn_blocking(move || crate::job::preflight_check(&actions))
+                    .await
+                {
+                    Ok((ready, blocked)) => {
+                        crate::job::OpResult::Success(crate::job::SuccessData::ReversalPreflight {
+                            ready,
+                            blocked,
+                        })
+                    }
+                    Err(e) => crate::job::OpResult::Failed(format!("undo pre-flight failed: {e}")),
+                }
+            }
         };
 
         // Send completion event based on result

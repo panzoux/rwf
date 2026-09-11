@@ -2165,6 +2165,7 @@ impl DialogContent {
                 drives,
                 selected_index,
                 filter,
+                ..
             }) => Some((drives, *selected_index, filter.as_str())),
             _ => None,
         }
@@ -2179,6 +2180,7 @@ impl DialogContent {
                 drives,
                 selected_index,
                 filter,
+                ..
             }) => Some((drives, selected_index, filter)),
             _ => None,
         }

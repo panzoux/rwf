@@ -668,11 +668,65 @@ const RENDER_PATH_FILES: &[&str] = &["rwf-bin/src/ui.rs"];
 /// Files under `ui/` that are *not* reached from `terminal.draw()`.
 ///
 /// `confirm.rs` lives there for cohesion but contains no `render_*` function at all —
-/// it is the Enter handler. Its path probes are one-shot and user-initiated, a
-/// different (and far milder) class than a blocking call in a draw loop: they can
-/// still stall on an unreachable UNC path the user typed, which is tracked as
-/// Phase 7.21 rather than fixed by this contract.
+/// it is the Enter handler. Its jump-dialog and Undo probes moved off this thread in
+/// Phase 7.21-B; what remains is the Create File/Directory name check, one stat in
+/// the pane's own already-listed directory (see docs/IMPLICIT_CONTRACTS.md §8).
 const NOT_RENDER_PATH: &[&str] = &["rwf-bin/src/ui/dialog/confirm.rs"];
+
+/// Helpers that block on the filesystem without a telltale token at the call site.
+const BLOCKING_HELPERS: &[&str] = &[
+    "get_all_drives(",
+    "process_pipe_to_action(",
+    "preflight_check(",
+];
+
+/// Transition handlers run inside `update_state`, on the thread that reads input. The
+/// audit behind Phase 7.21 found two blocking calls reached from here — enumerating the
+/// drives for the drive dialog, and a stat of a custom function's printed path — and
+/// both are now jobs (`ListDrives`, `ResolvePipeTarget`). A helper that blocks hides
+/// the stat from a token scan, so the known ones are named in `BLOCKING_HELPERS`.
+#[test]
+fn state_transitions_do_not_touch_the_filesystem() {
+    let root = workspace_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    collect_files(&root.join("rwf-lib/src/state/handlers"), "rs", &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "no handler files found");
+
+    let mut offenders: Vec<String> = Vec::new();
+    for file in &files {
+        let relative = rel(&root, file);
+        let contents = ok(
+            std::fs::read_to_string(file),
+            &format!("cannot read {:?}", file),
+        );
+        for (index, line) in contents.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("#[cfg(test)]") || trimmed == "mod tests {" {
+                break;
+            }
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if BLOCKING_FS_TOKENS
+                .iter()
+                .chain(BLOCKING_HELPERS)
+                .any(|token| trimmed.contains(token))
+            {
+                offenders.push(format!("{}:{}: {}", relative, index + 1, trimmed));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "a transition handler must not block on the filesystem — update_state runs on the \
+         thread that reads input, so an unreachable network path freezes the UI for a full \
+         timeout. Do the work in a Job and act on its CompleteJob (see JobKind::ListDrives \
+         and JobKind::ResolvePipeTarget):\n  {}",
+        offenders.join("\n  ")
+    );
+}
 
 #[test]
 fn the_render_path_does_not_touch_the_filesystem() {

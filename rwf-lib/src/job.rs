@@ -240,6 +240,29 @@ pub enum JobKind {
     ResolveFallbackPath {
         requested: Location,
     },
+    /// Enumerate drives and mounted volumes for the drive-selection dialog.
+    ///
+    /// `volume_info::get_all_drives` asks every drive for its label and free space, and
+    /// a disconnected network drive answers each only after a timeout. It used to run
+    /// inside `update_state`, on the input thread, while the dialog opened (Phase
+    /// 7.21-B); now the dialog opens at once and the drives arrive.
+    ListDrives,
+    /// Decide what a custom function's printed path is — a directory to open, a file to
+    /// run or edit — for its `PipeToAction`. That takes a stat of whatever the command
+    /// printed, possibly on a dead mount, and used to run inside `update_state`.
+    ResolvePipeTarget {
+        action: PipeToAction,
+        output: String,
+        working_dir: std::path::PathBuf,
+    },
+    /// Check Undo/Redo rows against the filesystem before running them. One stat per
+    /// row, which used to run on Enter in the confirm handler; the completion either
+    /// starts `ExecuteReversal` or shows the blocked-rows summary.
+    PreflightReversal {
+        actions: Vec<crate::model::ReversalAction>,
+        operation_name: String,
+        resulting_is_undo: bool,
+    },
     /// Put `text` on the system clipboard. Intercepted on the main thread in the app
     /// layer: the OSC 52 fallback needs the terminal handle, and keeping it there
     /// leaves the state layer free of side effects.
@@ -462,6 +485,15 @@ pub enum SuccessData {
     /// Nearest existing ancestor of an unreadable pane path, or `None` when
     /// nothing in the chain survives (an unmounted drive, an unreachable host).
     FallbackPath(Option<Location>),
+    /// Every drive and mounted volume, for the drive-selection dialog.
+    Drives(Vec<crate::model::dialog::DriveInfo>),
+    /// What a custom function's printed path resolved to.
+    PipeTarget(crate::pipe_to_action::PipeToActionResult),
+    /// Undo/Redo rows split into those that can run now and those blocked, with why.
+    ReversalPreflight {
+        ready: Vec<crate::model::ReversalAction>,
+        blocked: Vec<(crate::model::ReversalAction, String)>,
+    },
     /// Per-file breakdown for a completed Copy/Move/Rename/Delete/Mkdir/
     /// CreateFile/CreateLink/CreateArchive/ExecuteReversal job (Phase 7.6).
     OperationRecords(Vec<crate::model::OperationRecord>),
@@ -831,4 +863,4 @@ pub use failure_kind::FailureKind;
 pub use job_executor::detect_conflicts;
 pub use job_executor::JobExecutor;
 pub use report_builder::build_operation_report;
-pub use undo_preflight::{preflight_check, PreflightOutcome};
+pub use undo_preflight::{blocked_summary, preflight_check, PreflightOutcome};

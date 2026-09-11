@@ -36,6 +36,33 @@ pub fn preflight_check(
     (ready, blocked)
 }
 
+/// The pre-flight summary shown when some rows are blocked: "N of M rows can be
+/// undone. K blocked:" and one reason per line.
+pub fn blocked_summary(
+    ready: usize,
+    total: usize,
+    resulting_is_undo: bool,
+    blocked: &[(ReversalAction, String)],
+) -> String {
+    let mut message = format!(
+        "{} of {} rows can be {}.\n{} blocked:\n",
+        ready,
+        total,
+        if resulting_is_undo {
+            "undone"
+        } else {
+            "redone"
+        },
+        blocked.len()
+    );
+    for (_, reason) in blocked {
+        message.push_str("  - ");
+        message.push_str(reason);
+        message.push('\n');
+    }
+    message
+}
+
 fn check_one(action: &ReversalAction) -> PreflightOutcome {
     match action {
         ReversalAction::Copy { to, .. } | ReversalAction::CreateArchive { dest: to, .. } => {

@@ -18,6 +18,7 @@ pub(super) fn handle_input(dialog: &mut DriveSelectionDialog, key: KeyEvent) -> 
         drives,
         selected_index,
         filter,
+        ..
     } = dialog;
     use crossterm::event::KeyCode;
     let filtered_count = if filter.is_empty() {
@@ -87,6 +88,7 @@ pub(super) fn render_drive_selection_dialog(
     drives: &[rwf_lib::model::dialog::DriveInfo],
     selected_index: usize,
     filter: &str,
+    loading: bool,
 ) {
     let base_style = crate::ui::dialog::common::DIALOG_TEXT;
     let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);
@@ -149,5 +151,17 @@ pub(super) fn render_drive_selection_dialog(
             Paragraph::new(format!(" {}", label)).style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
         );
+    }
+
+    // The system drives come from a worker (a dead network drive answers only after a
+    // timeout); say so under the entries that are already here.
+    if loading {
+        let row = filtered.len().saturating_sub(scroll_start);
+        if row < list_height {
+            frame.render_widget(
+                Paragraph::new("  listing drives…").style(hint_style),
+                Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
+            );
+        }
     }
 }

@@ -19,6 +19,7 @@ add its guard; a rule that lives only in prose is a rule that will be broken.
 | 5 | [cmd.exe needs `/D /C`](#5-cmdexe-is-invoked-as-cmd-d-c) | Guarded — file allowlist + unit test | **Yes — 3 sites in `state/helpers.rs`** |
 | 6 | [config keys are PascalCase](#6-configjson-keys-are-pascalcase) | Guarded — 2 tests | **Yes — `ArchiveConfig`, `TextInputConfig`** |
 | 7 | [every config field is optional](#7-every-configjson-field-is-optional) | Guarded — 2 tests | **Yes — 16 mandatory fields across 4 structs** |
+| 8 | [no blocking filesystem calls on the input thread](#8-no-blocking-filesystem-calls-on-the-input-thread) | Guarded — 2 tests (render path, transition handlers) | **Yes — 2 in the draw path, 4 in handlers/confirm (Phase 7.21)** |
 | — | [`with_ui_change()` on visible changes](#transitions-that-change-visible-state-must-call-with_ui_change) | Not guardable cheaply | — |
 | — | [`ReadDirectory` / `active_job_id`](#readdirectory-jobs-must-set-active_job_id) | Not guardable cheaply; audited clean | No |
 | — | [Four more, deliberately skipped](#considered-and-deliberately-skipped) | See table | Two have live violations |
@@ -245,6 +246,34 @@ config, then removes each key in turn and re-parses, so a single field losing it
 default is reported by name.
 
 ---
+
+## 8. No blocking filesystem calls on the input thread
+
+**Rule.** The draw path (`rwf-bin/src/ui`, `ui.rs`) and transition handlers
+(`rwf-lib/src/state/handlers`) never stat, open, read or enumerate the filesystem.
+Compute the fact in a `Job` and read it from `AppState` or act on it in `CompleteJob`.
+
+**Why.** Both run on the thread that reads input. On a local disk a stat is invisible;
+on an unreachable network share it blocks for the full name-resolution timeout, and the
+whole UI freezes with no spinner and no way out. The Phase 7.21 audit found six:
+`read_dir` and a per-row `is_dir()` in the draw path, and — reached from handlers or the
+Enter handler — the drive enumeration, a stat of a custom function's printed path, the
+Jump dialogs' Enter validation and the Undo pre-flight.
+
+**Guard.** `the_render_path_does_not_touch_the_filesystem` and
+`state_transitions_do_not_touch_the_filesystem` in `rwf-bin/tests/repo_contracts.rs`
+scan for `BLOCKING_FS_TOKENS` (`read_dir(`, `.is_dir()`, `.exists()`, `metadata(`, …).
+A helper that blocks hides its stat from a token scan, so the handler scan also names
+`BLOCKING_HELPERS` (`get_all_drives(`, `process_pipe_to_action(`, `preflight_check(`).
+Precedents for the fix: `JobKind::CountDirectoryEntries`, `ListDrives`,
+`ResolvePipeTarget`, `PreflightReversal`, and `is_dir` carried in
+`SuccessData::JumpCandidates`.
+
+**Not covered.** `rwf-bin/src/ui/dialog/confirm.rs` is exempt from the render scan (it
+draws nothing). Its jump and undo probes are gone; the Create File/Directory name check
+(`symlink_metadata`) remains — one stat of a name in the pane's own, already-listed
+directory. Startup config loading (`state/mod.rs`) is also outside both scans: it reads
+small local files that rwf cannot start without.
 
 ## Known contracts that are *not* guarded here
 

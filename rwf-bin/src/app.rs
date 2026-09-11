@@ -1195,6 +1195,9 @@ impl App {
                         rwf_lib::model::dialog::DialogContent::JumpToPath(
                             rwf_lib::model::dialog::JumpToPathDialog { loading_job_id, .. },
                         ) => *loading_job_id,
+                        rwf_lib::model::dialog::DialogContent::DriveSelection(
+                            rwf_lib::model::dialog::DriveSelectionDialog { loading_job_id, .. },
+                        ) => *loading_job_id,
                         _ => None,
                     };
                     if let Some(job_id) = loading_job {
@@ -3570,6 +3573,34 @@ mod operation_report_confirm_tests {
         App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
     }
 
+    /// Run the pre-flight job the confirm started, as a worker and the event loop would.
+    /// The check itself is a stat per row, so it no longer runs on Enter (Phase 7.21-B).
+    fn complete_preflight(app: &mut App) {
+        let (job_id, actions) = app
+            .state
+            .jobs
+            .active
+            .values()
+            .find_map(|j| match &j.spec.kind {
+                JobKind::PreflightReversal { actions, .. } => Some((j.spec.id, actions.clone())),
+                _ => None,
+            })
+            .expect("confirming the report must start the pre-flight job");
+        let (ready, blocked) = rwf_lib::job::preflight_check(&actions);
+        let result = rwf_lib::state::update_state(
+            &mut app.state,
+            rwf_lib::state::Transition::CompleteJob {
+                job_id,
+                result: rwf_lib::job::OpResult::Success(
+                    rwf_lib::job::SuccessData::ReversalPreflight { ready, blocked },
+                ),
+            },
+        );
+        for job in result.jobs_to_start {
+            app.submit_job(job);
+        }
+    }
+
     #[tokio::test]
     async fn confirming_operation_report_with_all_rows_ready_starts_reversal_job_directly() {
         let dir = TempDir::new().unwrap();
@@ -3595,6 +3626,7 @@ mod operation_report_confirm_tests {
         let mut app = test_app_with_operation_report_dialog(report);
 
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        complete_preflight(&mut app);
 
         // No pre-flight blockers, so the job should start immediately, and
         // the Operation Report dialog stays open (not popped) so the user
@@ -3677,12 +3709,17 @@ mod operation_report_confirm_tests {
         let mut app = test_app_with_operation_report_dialog(report);
 
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        complete_preflight(&mut app);
 
-        // One row is blocked (target no longer exists) — no job should have
+        // One row is blocked (target no longer exists) — no reversal should have
         // started yet, and a summary confirm dialog should now sit on top of
         // the (not-popped) Operation Report dialog.
         assert!(
-            app.state.jobs.active.is_empty(),
+            !app.state
+                .jobs
+                .active
+                .values()
+                .any(|j| matches!(j.spec.kind, JobKind::ExecuteReversal { .. })),
             "a blocked row must not start a job before the user confirms the summary"
         );
         assert_eq!(
