@@ -154,3 +154,58 @@ handlers) and were considered for sub-struct extraction during M5; none of
 them decomposed cleanly enough to be worth the churn, so no sub-struct split
 was made. New fields should still note their owning handler (or "cross-cutting")
 in the field's doc comment.
+
+> Moved from `plan/ROADMAP.md` on 2026-09-15 (verbatim, Japanese). Layer 2 polling is roadmap item 7.5.
+
+## 設計決定事項 — ペイン更新機構
+
+### 更新機構の2層モデル
+
+ファイラーとして「本来あるべきファイルが見えない」状況は最大級のストレス。
+効率より表示正確性を優先し、以下の2層で対応する。
+
+#### Layer 1 — 操作起因の即時リフレッシュ
+
+各操作完了後に、影響範囲に該当するペインへ `ReadDirectory` を投入する。
+
+| 操作の種類 | アプリが知っていること | 更新方式 |
+|-----------|-------------------|---------|
+| Rename（単体） | from→to が完全既知 | インメモリ更新（フラッシュなし） |
+| Copy / Move / Delete / Mkdir | 変化したディレクトリが既知 | ReadDirectory（同パスの全ペイン） |
+| PatternRename | 変化したディレクトリが既知 | ReadDirectory（アクティブペイン） |
+| ExtractArchive / CreateArchive | dest ディレクトリが既知 | ReadDirectory（同パスの全ペイン） |
+| **外部コマンド（カスタム関数）** | **不明** | **アクティブペインを ReadDirectory** |
+
+**外部コマンドの扱いに関する設計決定（2026-05-24）**:  
+`refresh_after` のような影響範囲宣言をユーザーに求める案も検討したが採用しない。
+定義漏れ・誤設定のリスクがあり、ユーザビリティを低下させる。
+外部コマンドは「OS/外部プロセスによる変化」と同等に扱い、完了後に
+アクティブペインを無条件リフレッシュする。効率は若干犠牲になるが、
+表示正確性・公平性・設定の単純さを優先する。
+
+#### Layer 2 — バックグラウンドポーリング（外部変化の追跡）
+
+Layer 1 が捉えられない外部プロセス・他アプリによる変化を補完する。
+
+- 方式: 表示中エントリのメタデータ（サイズ・更新日時）をタイマーで定期チェック（twf の `PerformSmartRefresh` 相当）
+- 差分があれば ReadDirectory を投入
+- 対象: ローカルドライブ、ネットワークドライブ、SDカード、クラウド同期ドライブ（Box・OneDrive等）
+- twf での実績: 比較的遅いネットワーク/クラウドドライブでも安定動作を確認
+
+**FSWatcher（notify クレート）は採用しない理由**:  
+ネットワークドライブ・仮想FSでのイベント欠落が実用上の問題になりやすく、
+ポーリングより信頼性が低い場面がある。ポーリングで十分な精度が得られる。
+
+#### 例外 — アーカイブ仮想FS
+
+- FSWatcher の対象外（実ファイルシステムではない）
+- Layer 2 のポーリング対象外
+- アーカイブ操作完了後の Layer 1 リフレッシュのみ適用
+
+#### 実装優先度
+
+| 機構 | フェーズ | 状態 |
+|------|---------|------|
+| Layer 1: 内部ジョブ後リフレッシュ | Phase 1〜5 | 既存 ✅ |
+| Layer 1: 外部コマンド後アクティブペインリフレッシュ | Phase 1.4.1 | 実装済み ✅ |
+| Layer 2: バックグラウンドポーリング | Phase 7.5 | `[ ]` |

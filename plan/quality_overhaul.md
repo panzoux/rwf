@@ -317,3 +317,42 @@ M1〜M7 全完了。**機能開発凍結解除**（詳細は ROADMAP.md の宣�
 
 unsafe_code は `rwf-lib/src/volume_info.rs` のみ `#![allow(unsafe_code)]`（Win32 API、
 全 4 ブロックに SAFETY コメント付与済み）。これは恒久的な scoped allow であり ratchet 対象外。
+
+## Roadmap notes (moved from ROADMAP.md, 2026-09-15)
+
+> ROADMAP.md の表セルに蓄積していた経緯・実装メモを、ROADMAP を簡潔に保つためここへ移動。当時の文面をそのまま転記（リンクは ROADMAP と同じ plan/ 基準なのでそのまま有効）。
+
+<!-- roadmap-row:M1 -->
+### M1 ガードレール導入 — 状態 `[x]`
+
+**完了（2026-07-05）** rustfmt.toml + cargo fmt 一括適用（独立コミット 2f34739, blame-ignore 登録）/ clippy.toml（allow-unwrap-in-tests）/ workspace lints（unsafe_code deny + volume_info.rs のみ SAFETY 付き allow, unwrap_used deny + 9 モジュール allow ratchet）/ CI に fmt --check 追加
+
+<!-- roadmap-row:M2 -->
+### M2 共有部品・ドキュメント基盤 — 状態 `[x]`
+
+**完了（2026-07-05）** rwf-lib test_utils 新設 + 40 テストファイル fixture 移行（テスト件数 1043 不変。カスタム config・実 FS セットアップ持ち約 10 ファイルは意図的に未移行）/ ui/dialog/common.rs（スタイル定数 + titled_block、frame.rs 適用）+ ConflictInputHarness / ルート CLAUDE.md / ARCHITECTURE.md / TESTING.md / recipes ドラフト / stale 参照修正（two-pane-fm→rwf）
+
+<!-- roadmap-row:M3 -->
+### M3 dialog/mod.rs 分割 — 状態 `[x]`
+
+**完了（2026-07-05）** insta スナップショット安全網（全 29 バリアント × 2 サイズ = 94 テスト/188 snap、決定性 3 回検証）→ ダイアログ単位に 17 ファイルへ move-only 分割（mod.rs 5,409→2,024 行。残りは render_dialog/handle_dialog_input の dispatch — 腕本体の関数化は M4 の struct 化後が合理的なため M4 へ）+ common.rs 定数 81 箇所適用（snap 差分ゼロ）+ conflict テストを ConflictInputHarness へ移行・file_conflict.rs へ同居
+
+<!-- roadmap-row:M4 -->
+### M4 model/dialog.rs 分割 — 状態 `[x]`
+
+**完了（2026-07-07）** 全29バリアントを struct 化（enum は維持。`DialogContent::Foo(FooDialog)`）/ `DialogUiState`（cursor_pos/scroll_pos/focused_field）を FileMask・WildcardMark・SimpleRename に導入 / `handle_dialog_input` の腕本体を各ダイアログファイルの `handle_input()` へ移動（rwf-bin/ui/dialog/mod.rs: 2,145→1,045 行、`handle_dialog_input` 自体は 1,322→222 行。残る腕はクロスカッティングな dispatch ロジックのみ）/ DIALOG_DESIGN_SPEC.md・add-a-dialog.md 更新 / unwrap allow スコープ確認（11箇所すべて `expand_env_vars` にあり、struct化ファイルには0件）。詳細は `plan/M4_handoff.md` 参照
+
+<!-- roadmap-row:M5 -->
+### M5 state.rs 分割 — 状態 `[x]`
+
+**完了（2026-07-07）** state.rs(4,741行)を `state/` ディレクトリへ move-only 分割:実測 10 個の `handle_*_transition` を `state/handlers/{navigation,tab,marking,job,job_management,ui,view,search,viewer,advanced}.rs` へ(dialog 系は ui.rs 内に同居のまま、分離は判断コスト増のため見送り)/ 共有ヘルパは `state/helpers.rs`(editor_job のみ該当、他は実測で単一所有と判明)/ AppState 本体・unwrap 4箇所は不分割(mod.rs 残留)/ `docs/ARCHITECTURE.md` にフィールド所有権マップ追記 / `cargo test -p rwf-lib -- --list` 件数 1043 不変・フルテスト 1043 passed 確認。詳細は `plan/M5_handoff.md` 参照
+
+<!-- roadmap-row:M6 -->
+### M6 unwrap/clone 監査 — 状態 `[x]`
+
+**完了（2026-07-12）** 非テスト unwrap 35 箇所・9 モジュール全て分類・処置(infallible→expect 24 箇所 / lock poisoning→expect 11 箇所 / エラー伝播への変更 0 箇所)、`#![allow(clippy::unwrap_used)]` 全撤去。clone 799 のうち FileEntry 系・ホットパス上位候補を Explore×haiku 2 体並列で調査 → 7 箇所を借用化で修正(marking ハンドラ 4 / search フィルタ 1 / pattern_rename 2)、6 系統はアーキテクチャ変更が必要なため churn 回避方針により見送り(理由は M6_handoff.md 参照)。検証一式(fmt/clippy/rwf 145/rwf-lib 1043)全緑。詳細は `plan/M6_handoff.md` 参照
+
+<!-- roadmap-row:M7 -->
+### M7 仕上げ — 状態 `[x]`
+
+**完了（2026-07-13）** add-a-dialog.md / add-a-transition.md を最終構造で確定（SortDialog で手順検証済み）/ backend・job・model に rustdoc 約50箇所追加（haiku×3並列 → sonnet レビューで1件の誤解を招く記述を修正）/ archive.rs の ZIP タイムスタンプ TODO 修正（**本計画唯一の挙動変更**、テスト追加）/ rwf-bin UI 未テスト4ファイル（panes/task_panel/viewer/tab_bar）へ TestBackend スモーク+スナップショット 11 件追加 / ルート `*_SUMMARY.md`/`BUGFIX_*.md` 11 件を `docs/history/` へ整理 / `#![warn(missing_docs)]` 導入は見送り（`model/dialog/` 約262項目・`rwf-bin/src/ui/` 約65項目が未着手のため、Phase 8+ 送り）/ **凍結解除宣言**。詳細は `plan/M7_handoff.md` 参照
