@@ -57,16 +57,20 @@ Re-baselined 2026-07-03 (dev-environment inventory + SpawnProcess `wait` fix).
   `SpawnProcess`) and were fixed by adding `wait: bool` to `JobKind::SpawnProcess`.
 - **Regressions**: Any test failure is a new regression. Don't dismiss "known failing" tests without
   tracing the root cause — these 5 encoded genuinely broken product behavior for weeks.
-- **Counts** (2026-09-01, measured locally): rwf-lib **1361** tests, rwf-bin **322** tests (+11 integration: 4 config_contracts, 7 repo_contracts).
-  (CI run 32384451630 saw 1351/309 — the working tree carries a few more.)
+- **Counts** (2026-09-15, measured locally): rwf-lib **1460** passed + 1 ignored (+4 integration), rwf-bin **356** tests (+13 integration: 4 config_contracts, 9 repo_contracts).
+  CI run 34607332535 (Windows) saw the same counts.
 - **Execution rules**:
   - Always `--test-threads=1` (filesystem race conditions).
   - The full rwf-lib suite takes **257s warm** (252.93s execution) single-threaded,
     down from **2206s (36.8 min)**. Measured at `PROPTEST_CASES=32` it was 509s
     (114s compile + 391s execution), of which **132 property tests were 330s — 84%**;
     the default is now 16. All figures 2026-09-01/02, 1360 passed / 0 failed / 1 ignored.
-    `cargo test -p rwf-lib -- --test-threads=1 --skip propert` runs the other 1228 tests
-    in ~61s and is the right everyday full-ish run.
+    `cargo test -p rwf-lib -- --test-threads=1 --skip propert` runs the other tests
+    and is the right everyday full-ish run.
+  - **Re-measured 2026-09-15**: rwf-lib 291s execution (property ~153s, other 1328 tests 138s),
+    `--skip propert` 2m21s wall, rwf-bin 82s execution (1m34s wall), test build 1m56s.
+    Non-property time doubled from ~61s with only ~100 more tests — unexplained; check
+    Defender exclusions / background load before trusting these as the new normal.
 - **Machine setup — do this first on any new dev machine** (2026-09-01):
   Measured here, in order of impact:
   1. **Windows Defender exclusions: 2206s -> 294s (7.5x).** The single biggest win, and it

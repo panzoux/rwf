@@ -23,8 +23,8 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 cargo build                                        # build
 cargo fmt --all -- --check                         # formatting (CI-enforced)
 cargo clippy --all-targets -- -D warnings          # lints (CI-enforced)
-cargo test -p rwf -- --test-threads=1              # rwf-bin tests (322, ~58s) — incl. repo-wide contract guards
-cargo test -p rwf-lib -- --test-threads=1          # rwf-lib tests (1361, ~4.3 min)
+cargo test -p rwf -- --test-threads=1              # rwf-bin tests (356, ~1.5 min) — incl. repo-wide contract guards
+cargo test -p rwf-lib -- --test-threads=1          # rwf-lib tests (1460, ~5 min)
 cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during development
 ```
 
@@ -34,8 +34,8 @@ cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during deve
   stale references in rwf-bin UI tests have broken the whole workspace test build before.
 - `/project:check` runs the full verification pipeline.
 - Tiers (inner loop / pre-commit / pre-push / phase close) are in
-  [docs/TESTING.md](docs/TESTING.md). **132 property tests are 84% of the runtime**
-  (330s of 391s); `--skip propert` cuts a full run to ~1 min. Before blaming the
+  [docs/TESTING.md](docs/TESTING.md). **132 property tests are about half the runtime**
+  (~153s of 291s, 2026-09-15); `--skip propert` cuts a full run to ~2.3 min. Before blaming the
   machine, read *Where the time actually goes* there — antivirus exclusions were
   worth 7.5x and proptest depth is the other big lever.
 - **CI is the gate.** It runs the full suite on every push in ~4 min; a red run blocks

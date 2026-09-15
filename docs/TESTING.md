@@ -7,8 +7,10 @@ write new tests. Architecture context: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Suite | Where | Count | Command |
 |---|---|---|---|
-| rwf-lib | `rwf-lib/src/*_tests.rs`, `src/input/*_tests.rs`, inline `#[cfg(test)]` modules | 1361 | `cargo test -p rwf-lib -- --test-threads=1` (~8.5 min; see *Where the time actually goes*) |
-| rwf-bin | inline `#[cfg(test)]` modules under `rwf-bin/src/`, plus `rwf-bin/tests/` | 322 (+11) | `cargo test -p rwf -- --test-threads=1` (~58s) |
+| rwf-lib | `rwf-lib/src/*_tests.rs`, `src/input/*_tests.rs`, inline `#[cfg(test)]` modules | 1460 (+4) | `cargo test -p rwf-lib -- --test-threads=1` (~5 min; see *Where the time actually goes*) |
+| rwf-bin | inline `#[cfg(test)]` modules under `rwf-bin/src/`, plus `rwf-bin/tests/` | 356 (+13) | `cargo test -p rwf -- --test-threads=1` (~1.5 min) |
+
+Counts and times measured locally 2026-09-15 (CI runs the same suites in ~15s each on its runners).
 
 Full verification (fmt + clippy + both suites) is bundled in `/project:check`.
 
@@ -21,7 +23,7 @@ the full run is unaffordable.
 | Tier | When | What |
 |---|---|---|
 | Inner loop | every edit | `cargo check -p rwf-lib`, then a name-filtered subset: `cargo test -p rwf-lib marking -- --test-threads=1` |
-| Pre-commit | every commit | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p rwf -- --test-threads=1` (322 tests in ~58s, and it carries the repo-wide contract guards) |
+| Pre-commit | every commit | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p rwf -- --test-threads=1` (356 tests in ~1.5 min, and it carries the repo-wide contract guards) |
 | Pre-push | every push | both packages in full |
 | Phase close | end of a 7.x item | both packages with `PROPTEST_CASES=256` (see *Property-based tests*) |
 
@@ -57,6 +59,12 @@ in `PROPTEST_CASES`, measured on the same subset:
 
 So the first question about any slow local run is *what proptest depth am I
 running*, not *how fast is this machine*.
+
+**Re-measured 2026-09-15** (same machine, `PROPTEST_CASES=16`, 1460 tests): 291s
+execution, of which the 132 property tests are ~153s and the other 1328 tests
+138s. The non-property share more than doubled from ~61s while growing only
+~100 tests, so it is not explained by test count — if a run feels slow, check the
+antivirus exclusions below and background load before anything else.
 
 For reference, CI runs the **entire** rwf-lib suite at `PROPTEST_CASES=16` in 12.65s,
 against 138s here for the property subset alone. Part of that gap is hardware,
