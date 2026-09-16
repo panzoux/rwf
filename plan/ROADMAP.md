@@ -133,7 +133,7 @@
 | 7.2 | **コマンドパレット** | `[-]` | ヘルプビューアの検索結果から Enter でアクションを直接実行 | [7.2.command_palette.md](7.2.command_palette.md) |
 | 7.3 | **スマート・ファイルオープナー** | `[x]` | マジックバイト判定・Open With ピッカー・検出タイプ優先の関連付け解決（7.3b 含む） | [7.3.smart_file_opener.md](7.3.smart_file_opener.md) |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[-]` | Shift+S で再帰サイズを非同期計算し段階的に表示 | [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) |
-| 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | 可視エントリのメタデータを `polling_interval_ms` 間隔で定期チェック | [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
+| 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | アクティブタブの可視ペインをバックグラウンド再読込（ドライブ単位のバックオフ・自動停止） | [7.5.background_polling.md](7.5.background_polling.md) · [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
 | 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[x]` | 操作を Operation Record 化、`Alt+o` の Operation Report から LIFO で Undo/Redo | [UI](7.6.operation_report_ui.md) · [力学](7.6.transactional_rollback.md) |
 | 7.7 | **スマート・トラッシュ** | `[x]` | OS ゴミ箱への移動・復元・空にする・一覧 UI | [7.7.smart_trash.md](7.7.smart_trash.md) |
 | 7.10 | **SSH/SFTP対応** | `[-]` | リモートファイルシステム（大規模追加） | — |
