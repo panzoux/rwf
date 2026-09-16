@@ -46,7 +46,13 @@ mod tests {
         update_state(state, Transition::JobStarted { job_id: job.id });
         let key = state.polling.owns(job.id).expect("poll in flight");
         let poll = state.polling.in_flight.get_mut(&key).expect("in flight");
-        poll.started_at = Some(Instant::now() - ago);
+        // `Instant` counts from boot on Windows: a freshly started CI runner cannot
+        // represent a time long ago, so keep `ago` small.
+        poll.started_at = Some(
+            Instant::now()
+                .checked_sub(ago)
+                .expect("`ago` fits in the machine's uptime"),
+        );
     }
 
     fn complete(state: &mut AppState, job: &JobSpec, result: OpResult) -> StateUpdateResult {
@@ -203,7 +209,8 @@ mod tests {
         state.config.polling_disable_after_ms = 0;
         let ticked = tick_at(&mut state, Instant::now());
         let left = poll_for(&ticked, ActivePane::Left).expect("left");
-        started(&mut state, &left, Duration::from_secs(3600));
+        // Well past any limit a non-zero setting would impose in these tests (2 s).
+        started(&mut state, &left, Duration::from_secs(5));
 
         tick_at(&mut state, Instant::now());
         complete(&mut state, &left, empty_listing());
