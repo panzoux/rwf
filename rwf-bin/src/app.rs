@@ -554,6 +554,10 @@ impl App {
         }
 
         self.trigger_initial_directory_reads();
+        // Phase 7.5 D10a: background polling keys Unix paths by mount point. Windows
+        // keys by drive letter or share, straight from the path.
+        #[cfg(unix)]
+        self.submit_job(JobSpec::new(JobKind::LoadMountTable));
 
         // Initial render
         let mut ui_needs_update = true;

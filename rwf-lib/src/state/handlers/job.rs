@@ -41,6 +41,7 @@ impl AppState {
                     job.state = crate::job::ExecutionState::Running;
                     job.started_at = Some(SystemTime::now());
                 }
+                self.note_poll_started(*job_id);
 
                 // A quiet job (a pane read) is marked running but not logged here: it
                 // gets a line only once it proves slow (`AnnounceQuietJobs`) or fails.
@@ -382,6 +383,11 @@ impl AppState {
                             &spec.kind,
                             crate::job::JobKind::ListDrives
                                 | crate::job::JobKind::ResolvePipeTarget { .. }
+                        ) || matches!(
+                            // Without a mount table polling keys every path as `/`;
+                            // not worth interrupting the user for.
+                            &spec.kind,
+                            crate::job::JobKind::LoadMountTable
                         );
                         let op_name = match &spec.kind {
                             crate::job::JobKind::ReadDirectory { .. } => "Read directory",
@@ -431,6 +437,7 @@ impl AppState {
                             crate::job::JobKind::DetectFileTypesBatch { .. } => "Detect file types",
                             crate::job::JobKind::ExecuteReversal { .. } => "Execute reversal",
                             crate::job::JobKind::ListDrives => "List drives",
+                            crate::job::JobKind::LoadMountTable => "Load mount table",
                             crate::job::JobKind::ResolvePipeTarget { .. } => {
                                 "Resolve command output"
                             }
@@ -769,6 +776,14 @@ impl AppState {
                                         result_obj.ui_changed = true;
                                     }
                                 }
+                            }
+                        }
+                        crate::job::JobKind::LoadMountTable => {
+                            if let crate::job::OpResult::Success(
+                                crate::job::SuccessData::MountTable(mounts),
+                            ) = result
+                            {
+                                self.polling.mounts = mounts.clone();
                             }
                         }
                         crate::job::JobKind::ListDrives => {

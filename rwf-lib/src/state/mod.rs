@@ -1295,6 +1295,13 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             let config_result = match config_manager.load_config() {
                 Ok(new_config) => {
                     state.config = new_config;
+                    // Phase 7.5: intervals restart from the new base; stopped drives stay
+                    // stopped.
+                    state
+                        .polling
+                        .reset_intervals(crate::model::polling::PollingState::interval(
+                            state.config.polling_interval_ms,
+                        ));
                     crate::config::ConfigLoadResult::ok(config_path)
                 }
                 Err(e) => {
@@ -1427,6 +1434,11 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         Transition::UpdateConfig { config } => {
             state.jobs.max_parallel = config.worker_pool_size;
             state.config = *config;
+            state
+                .polling
+                .reset_intervals(crate::model::polling::PollingState::interval(
+                    state.config.polling_interval_ms,
+                ));
             StateUpdateResult::with_ui_change()
         }
 

@@ -2,7 +2,7 @@
 //! result. Pure — the App loop supplies the time and runs the jobs.
 
 use crate::job::{JobId, JobKind, JobOrigin, JobSpec, OpResult, SuccessData};
-use crate::model::polling::{PaneKey, PollInFlight, PollingState, POLL_POOL_WORKERS};
+use crate::model::polling::{PaneKey, PollInFlight, PollingState, StopReason, POLL_POOL_WORKERS};
 use crate::model::{ActivePane, Location, UIMode, ViewerLayout};
 use crate::state::{update_state, AppState, StateUpdateResult, Transition};
 use std::time::{Duration, Instant};
@@ -20,18 +20,75 @@ impl AppState {
 
     /// How long until the next visible pane is due for a poll: `Some(ZERO)` when one is
     /// due now, `None` when nothing is eligible (polling off, paused, every pane busy).
+    ///
+    /// A poll in flight that will reach `PollingDisableAfterMs` also counts: the tick is
+    /// what switches its drive off (D10c), and with the poll pool full nothing else would
+    /// send one.
     pub fn poll_due_in(&self, now: Instant) -> Option<Duration> {
         PollingState::interval(self.config.polling_interval_ms)?;
+        let switch_off = self
+            .polls_to_switch_off_at()
+            .into_iter()
+            .map(|deadline| deadline.saturating_duration_since(now))
+            .min();
         if self.polling.in_flight.len() >= POLL_POOL_WORKERS {
-            return None;
+            return switch_off;
         }
         self.pollable_panes()
             .into_iter()
-            .map(|(key, _)| match self.polling.next_due.get(&key) {
+            .map(|(key, _, _)| match self.polling.next_due.get(&key) {
                 Some(due) => due.saturating_duration_since(now),
                 None => Duration::ZERO,
             })
+            .chain(switch_off)
             .min()
+    }
+
+    /// `PollingDisableAfterMs`, or `None` when switch-off is disabled (0).
+    fn poll_disable_after(&self) -> Option<Duration> {
+        match self.config.polling_disable_after_ms {
+            0 => None,
+            ms => Some(Duration::from_millis(u64::from(ms))),
+        }
+    }
+
+    /// When each started poll on a still-polled drive reaches the switch-off limit.
+    fn polls_to_switch_off_at(&self) -> Vec<Instant> {
+        let Some(limit) = self.poll_disable_after() else {
+            return Vec::new();
+        };
+        self.polling
+            .in_flight
+            .values()
+            .filter(|poll| !self.polling.is_stopped(&poll.drive))
+            .filter_map(|poll| poll.started_at.map(|started| started + limit))
+            .collect()
+    }
+
+    /// A worker picked up `job_id`; if it is a poll, timing starts now (D10b, D10c).
+    pub(crate) fn note_poll_started(&mut self, job_id: JobId) {
+        if let Some(key) = self.polling.owns(job_id) {
+            if let Some(poll) = self.polling.in_flight.get_mut(&key) {
+                poll.started_at.get_or_insert_with(Instant::now);
+            }
+        }
+    }
+
+    /// Switch `drive` off for the session and say so once (D10d).
+    fn switch_drive_off(&mut self, drive: &str, took: Duration, result: &mut StateUpdateResult) {
+        let base = PollingState::interval(self.config.polling_interval_ms).unwrap_or_default();
+        let state = self.polling.drive_mut(drive, base);
+        if state.stopped.is_some() {
+            return;
+        }
+        state.stopped = Some(StopReason::Auto);
+        result.task_panel_logs.push(format!(
+            "{} [WARN] Polling stopped for {} (listing took {} s) — StartPolling to resume",
+            chrono::Local::now().format("[%H:%M:%S]"),
+            drive,
+            took.as_secs()
+        ));
+        result.ui_changed = true;
     }
 
     /// Whether any poll is still running, so the loop should wake to collect it.
@@ -44,7 +101,7 @@ impl AppState {
     /// Pauses (D4, D15): a FullScreen viewer hides both panes; a SideBySide viewer hides
     /// all but its anchor; range marking and leap mode hold row indices of the active
     /// pane. `SuspendAndRun` needs no rule — it blocks the App loop, so no tick is sent.
-    fn pollable_panes(&self) -> Vec<(PaneKey, Location)> {
+    fn pollable_panes(&self) -> Vec<(PaneKey, Location, String)> {
         let viewer_layout = self.viewer.as_ref().map(|_| self.ui.layout.viewer_layout);
         if viewer_layout == Some(ViewerLayout::FullScreen) {
             return Vec::new();
@@ -68,20 +125,36 @@ impl AppState {
                     ActivePane::Right => &tab.right_pane,
                 };
                 let key = (tab.id, side);
-                let eligible = matches!(pane.current_location, Location::Local(_))
-                    && pane.active_job_id.is_none()
-                    && !self.polling.in_flight.contains_key(&key);
-                eligible.then(|| (key, pane.current_location.clone()))
+                let drive = self.polling.drive_of(&pane.current_location)?;
+                let eligible = pane.active_job_id.is_none()
+                    && !self.polling.in_flight.contains_key(&key)
+                    && !self.polling.is_stopped(&drive);
+                eligible.then(|| (key, pane.current_location.clone(), drive))
             })
             .collect()
     }
 
     fn poll_tick(&mut self, now: Instant) -> StateUpdateResult {
         let mut result = StateUpdateResult::none();
-        if PollingState::interval(self.config.polling_interval_ms).is_none() {
+        let Some(base) = PollingState::interval(self.config.polling_interval_ms) else {
             return result;
+        };
+        // A hung read trips the switch without ever completing (D10c).
+        if let Some(limit) = self.poll_disable_after() {
+            let hung: Vec<(String, Duration)> = self
+                .polling
+                .in_flight
+                .values()
+                .filter_map(|poll| {
+                    let took = now.saturating_duration_since(poll.started_at?);
+                    (took >= limit).then(|| (poll.drive.clone(), took))
+                })
+                .collect();
+            for (drive, took) in hung {
+                self.switch_drive_off(&drive, took, &mut result);
+            }
         }
-        for (key, location) in self.pollable_panes() {
+        for (key, location, drive) in self.pollable_panes() {
             if self.polling.in_flight.len() >= POLL_POOL_WORKERS {
                 break;
             }
@@ -101,13 +174,16 @@ impl AppState {
             })
             .with_requesting_pane(key.0, key.1)
             .with_origin(JobOrigin::Poll);
+            self.polling.drive_mut(&drive, base);
             self.polling.in_flight.insert(
                 key,
                 PollInFlight {
                     job_id: job.id,
                     location,
+                    drive,
                     generation,
                     submitted_at: now,
+                    started_at: None,
                 },
             );
             result.jobs_to_start.push(job);
@@ -135,11 +211,35 @@ impl AppState {
     /// from now (D10b). Returns the in-flight record when the pane may still take the
     /// result: same directory, no user read started meanwhile, listing unchanged since
     /// submission (D12).
-    fn finish_poll(&mut self, job_id: JobId) -> Option<(PaneKey, PollInFlight, bool)> {
+    ///
+    /// Also applies the per-drive rules (D10b, D10c): the drive's interval adapts to how
+    /// long the read took from worker start, and a read past `PollingDisableAfterMs`
+    /// switches the drive off.
+    fn finish_poll(
+        &mut self,
+        job_id: JobId,
+        result: &OpResult,
+        result_obj: &mut StateUpdateResult,
+    ) -> Option<(PaneKey, PollInFlight, bool)> {
         let key = self.polling.owns(job_id)?;
         let poll = self.polling.in_flight.remove(&key)?;
-        if let Some(interval) = PollingState::interval(self.config.polling_interval_ms) {
-            self.polling.next_due.insert(key, Instant::now() + interval);
+        let now = Instant::now();
+        if let Some(base) = PollingState::interval(self.config.polling_interval_ms) {
+            let took = poll.started_at.map_or(Duration::ZERO, |started| {
+                now.saturating_duration_since(started)
+            });
+            if !matches!(result, OpResult::Cancelled) {
+                let failed = matches!(result, OpResult::Failed(_));
+                self.polling.adapt_interval(&poll.drive, base, took, failed);
+                let drive = self.polling.drive_mut(&poll.drive, base);
+                drive.failing = failed;
+                drive.last_poll = Some(now);
+            }
+            if self.poll_disable_after().is_some_and(|limit| took >= limit) {
+                self.switch_drive_off(&poll.drive, took, result_obj);
+            }
+            let interval = self.polling.drive_mut(&poll.drive, base).interval;
+            self.polling.next_due.insert(key, now + interval);
         }
         let current = self.pane_by_key(key).is_some_and(|pane| {
             pane.current_location == poll.location
@@ -161,7 +261,7 @@ impl AppState {
         result: &OpResult,
         result_obj: &mut StateUpdateResult,
     ) {
-        let Some((key, poll, current)) = self.finish_poll(job_id) else {
+        let Some((key, poll, current)) = self.finish_poll(job_id, result, result_obj) else {
             return;
         };
         match result {

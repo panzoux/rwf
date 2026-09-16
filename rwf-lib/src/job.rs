@@ -130,6 +130,9 @@ pub enum JobKind {
     ReadDirectory {
         location: Location,
     },
+    /// Read the mount table once at startup (Unix), so background polling can key a
+    /// path by the mount it lives on (Phase 7.5 D10a).
+    LoadMountTable,
     Copy {
         sources: Vec<Location>,
         dest: Location,
@@ -451,6 +454,8 @@ pub enum OpResult {
 #[derive(Debug, Clone)]
 pub enum SuccessData {
     DirectoryRead(Vec<crate::model::FileEntry>),
+    /// Mount points, for keying polled paths by drive on Unix (Phase 7.5 D10a).
+    MountTable(Vec<std::path::PathBuf>),
     SizeCalculated(u64),
     CustomFunctionOutput(String),
     SearchResults(Vec<crate::model::FileEntry>),

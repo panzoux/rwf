@@ -312,6 +312,9 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 self.execute_detect_file_types_batch(paths, &spec).await
             }
             JobKind::ExecuteReversal { actions, .. } => self.execute_reversal(actions, &spec).await,
+            JobKind::LoadMountTable => crate::job::OpResult::Success(
+                crate::job::SuccessData::MountTable(load_mount_table().await),
+            ),
             JobKind::ListDrives => {
                 // Asks every drive for its label and free space; a disconnected
                 // network drive answers each only after a timeout.
@@ -2911,6 +2914,38 @@ fn calculate_destination_path(source: &Location, dest: &Location) -> Location {
     }
 }
 
+/// Mount points for keying polled paths by drive (Phase 7.5 D10a). Empty where there is
+/// no mount table to read (Windows keys paths by letter or share instead), which keys
+/// everything as `/`.
+async fn load_mount_table() -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        match tokio::fs::read_to_string("/proc/self/mounts").await {
+            Ok(text) => crate::model::polling::parse_proc_mounts(&text),
+            Err(e) => {
+                tracing::warn!("[Poll] cannot read /proc/self/mounts: {e}");
+                Vec::new()
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        match tokio::process::Command::new("mount").output().await {
+            Ok(output) => {
+                crate::model::polling::parse_mount_output(&String::from_utf8_lossy(&output.stdout))
+            }
+            Err(e) => {
+                tracing::warn!("[Poll] cannot run mount: {e}");
+                Vec::new()
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        Vec::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2944,6 +2979,31 @@ mod tests {
             event,
             Some(JobEvent::Completed(_, SuccessData::DirectoryRead(_)))
         ));
+    }
+
+    /// Phase 7.5 D10a: the mount table keys polled paths by drive on Linux.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn load_mount_table_lists_the_root_mount_on_linux() {
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let executor = JobExecutor::new(backend, archive_handler, event_tx);
+
+        executor
+            .execute(JobSpec::new(JobKind::LoadMountTable))
+            .await;
+
+        let _started = event_rx.recv().await;
+        match event_rx.recv().await {
+            Some(JobEvent::Completed(_, SuccessData::MountTable(mounts))) => {
+                assert!(
+                    mounts.contains(&std::path::PathBuf::from("/")),
+                    "{mounts:?}"
+                );
+            }
+            other => panic!("expected a mount table, got {other:?}"),
+        }
     }
 
     #[tokio::test]

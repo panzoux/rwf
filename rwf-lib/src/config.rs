@@ -96,6 +96,11 @@ pub struct AppConfig {
     #[serde(default = "default_polling_interval_ms")]
     pub polling_interval_ms: u32,
 
+    /// A background poll listing that runs longer than this (from worker start) switches
+    /// polling off for its whole drive for the session (Phase 7.5 D10c). 0 = never.
+    #[serde(default = "default_polling_disable_after_ms")]
+    pub polling_disable_after_ms: u32,
+
     /// Memory threshold for loading files into RAM for viewing.
     /// Files larger than this (in MB) use Seekable (seek+read) mode instead of
     /// reading everything into RAM. Reduce on memory-constrained systems.
@@ -128,6 +133,9 @@ pub struct AppConfig {
 
 fn default_polling_interval_ms() -> u32 {
     1000
+}
+fn default_polling_disable_after_ms() -> u32 {
+    30_000
 }
 fn default_magic_byte_detection_enabled() -> bool {
     true
@@ -548,6 +556,7 @@ impl Default for AppConfig {
             diagnostics: DiagnosticsConfig::default(),
             clipboard: ClipboardConfig::default(),
             polling_interval_ms: default_polling_interval_ms(),
+            polling_disable_after_ms: default_polling_disable_after_ms(),
             viewer_large_file_threshold_mb: default_viewer_large_file_threshold_mb(),
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
             trash: TrashConfig::default(),

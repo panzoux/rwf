@@ -57,6 +57,9 @@ mod refresh_correctness_tests;
 mod polling_tests;
 
 #[cfg(test)]
+mod polling_drive_tests;
+
+#[cfg(test)]
 mod main_thread_io_tests;
 
 #[cfg(test)]

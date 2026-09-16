@@ -112,5 +112,6 @@
     "HistorySize": 10
   },
   "PollingIntervalMs": 1000,
+  "PollingDisableAfterMs": 30000,
   "ViewerLargeFileThresholdMb": 100
 }
