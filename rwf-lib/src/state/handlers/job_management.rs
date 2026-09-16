@@ -31,6 +31,11 @@ impl AppState {
         let crate::job::JobKind::ReadDirectory { location } = &spec.kind else {
             return;
         };
+        // A poll is silent (Phase 7.5 D11): the pane stays populated, so there is
+        // nothing to spin for or explain.
+        if spec.origin == crate::job::JobOrigin::Poll {
+            return;
+        }
         if self.background_jobs.get_job(spec.id).is_some() {
             return;
         }

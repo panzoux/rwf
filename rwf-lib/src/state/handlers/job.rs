@@ -1,4 +1,15 @@
 use crate::job::JobSpec;
+
+/// `tracing::info!`, or `debug!` for a background poll.
+macro_rules! job_trace {
+    ($poll:expr, $($arg:tt)+) => {
+        if $poll {
+            tracing::debug!($($arg)+)
+        } else {
+            tracing::info!($($arg)+)
+        }
+    };
+}
 use crate::state::{update_state, AppState, PaneRefresh, StateUpdateResult, Transition};
 
 impl AppState {
@@ -96,11 +107,17 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::CompleteJob { job_id, result } => {
-                tracing::info!(
+                let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
+                // A poll completes every second per visible pane; its tracing stays at
+                // debug so session.log is not buried in it (Phase 7.5 D11).
+                let is_poll = job_spec
+                    .as_ref()
+                    .is_some_and(|spec| spec.origin == crate::job::JobOrigin::Poll);
+                job_trace!(
+                    is_poll,
                     "[CompleteJob] Received completion event for job={:?}",
                     job_id
                 );
-                let job_spec = self.jobs.active.get(job_id).map(|job| job.spec.clone());
                 // Per-record failure summary for the task panel log below.
                 // execute_delete/execute_rename/etc. (Phase 7.6) always
                 // return `OpResult::Success` wrapping per-file
@@ -428,7 +445,8 @@ impl AppState {
                         let deferred_to_fallback =
                             matches!(&spec.kind, crate::job::JobKind::ReadDirectory { .. })
                                 && spec.requesting_pane.is_some();
-                        if deferred_to_fallback {
+                        // A poll's failure is handled by `complete_poll_read` below (D9).
+                        if deferred_to_fallback && spec.origin != crate::job::JobOrigin::Poll {
                             if let crate::job::JobKind::ReadDirectory { location } = &spec.kind {
                                 let mut fallback = crate::job::JobSpec::new(
                                     crate::job::JobKind::ResolveFallbackPath {
@@ -541,12 +559,19 @@ impl AppState {
                 }
 
                 if let Some(spec) = job_spec {
-                    tracing::info!(
+                    job_trace!(
+                        is_poll,
                         "[CompleteJob] Job spec kind={:?}, requesting_pane={:?}",
                         spec.kind,
                         spec.requesting_pane
                     );
                     match &spec.kind {
+                        crate::job::JobKind::ReadDirectory { .. } if is_poll => {
+                            self.complete_poll_read(*job_id, result, &mut result_obj);
+                        }
+                        crate::job::JobKind::ResolveFallbackPath { requested } if is_poll => {
+                            self.complete_poll_fallback(&spec, requested, result, &mut result_obj);
+                        }
                         crate::job::JobKind::ReadDirectory { location } => {
                             tracing::info!("[CompleteJob::ReadDirectory] location={}, requesting_pane={:?}, success={}", location.display_path(), spec.requesting_pane, matches!(result, crate::job::OpResult::Success(_)));
                             if let crate::job::OpResult::Success(

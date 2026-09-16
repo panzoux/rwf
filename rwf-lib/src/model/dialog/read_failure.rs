@@ -74,6 +74,8 @@ impl ReadFailureDialog {
         match self.origin {
             JobOrigin::SessionRestore => Some("while restoring your session"),
             JobOrigin::Refresh => Some("while refreshing the pane"),
+            // A failed poll never raises this dialog (Phase 7.5 D9); listed for totality.
+            JobOrigin::Poll => Some("while checking the pane for changes"),
             JobOrigin::UserAction => None,
         }
     }

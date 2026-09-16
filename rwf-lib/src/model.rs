@@ -13,6 +13,7 @@ pub mod navigation;
 pub mod navigation_cache;
 pub mod operation_report;
 pub mod pane;
+pub mod polling;
 pub mod search;
 pub mod tab;
 pub mod trash;

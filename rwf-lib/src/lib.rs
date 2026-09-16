@@ -54,6 +54,9 @@ mod pane_read_dedup_tests;
 mod refresh_correctness_tests;
 
 #[cfg(test)]
+mod polling_tests;
+
+#[cfg(test)]
 mod main_thread_io_tests;
 
 #[cfg(test)]

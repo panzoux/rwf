@@ -86,6 +86,9 @@ pub struct AppState {
     /// the completion raises the dialog naming the *original* failure, not the
     /// fallback's. Entries are removed when that job completes.
     pub pending_read_failures: std::collections::HashMap<crate::job::JobId, String>,
+    /// Background polling bookkeeping (Phase 7.5): polls in flight, when each visible
+    /// pane is next due, and which panes' polls are failing.
+    pub polling: crate::model::polling::PollingState,
     /// Staging: set true when a dialog confirmation triggered ReloadConfig (app.rs reloads keybindings)
     pub confirmation_needs_keybinding_reload: bool,
     /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
@@ -275,6 +278,7 @@ impl AppState {
             pending_confirmation_jobs: Vec::new(),
             confirmation_needs_keybinding_reload: false,
             pending_read_failures: std::collections::HashMap::new(),
+            polling: crate::model::polling::PollingState::default(),
             dir_preview_counts: std::collections::HashMap::new(),
             pending_custom_function_input: None,
             suppress_next_dialog_pop: false,
@@ -685,6 +689,11 @@ pub enum Transition {
     },
     /// Read a pane's directory again — the read-failure dialog's `[Retry]`.
     /// `tab_id` is the tab's id, not its position.
+    /// Time has passed: poll whichever visible panes are due (Phase 7.5 D5). The App loop
+    /// sends this only when `AppState::poll_due_in` says a pane is due.
+    PollTick {
+        now: std::time::Instant,
+    },
     RetryPaneRead {
         tab_id: usize,
         side: crate::model::ActivePane,
@@ -1247,6 +1256,10 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
     }
 
     if let Some(result) = state.handle_advanced_transition(&transition) {
+        return result;
+    }
+
+    if let Some(result) = state.handle_polling_transition(&transition) {
         return result;
     }
 

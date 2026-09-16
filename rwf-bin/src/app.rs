@@ -32,6 +32,9 @@ pub struct App {
     should_quit: bool,
     should_exit_and_cd: bool,
     worker_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
+    /// Phase 7.5 D14: a small fixed pool that runs only background polls, so a poll
+    /// hung on an unreachable share can stall polling but never a user operation.
+    poll_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
     /// Keys with a Press seen but no matching Release yet (i.e. currently physically held).
     /// Used to tell a genuine OS auto-repeat burst (no Release in between) apart from two
@@ -85,6 +88,11 @@ impl App {
     ) -> Self {
         let backend = Arc::new(LocalFilesystemBackend::new());
         let archive_handler = Arc::new(MultiFormatArchiveHandler::new());
+        let poll_pool = WorkerPool::new(
+            rwf_lib::model::polling::POLL_POOL_WORKERS,
+            Arc::clone(&backend),
+            Arc::clone(&archive_handler),
+        );
         let worker_pool = WorkerPool::new(state.config.worker_pool_size, backend, archive_handler);
         let mut task_panel = TaskPanel::new();
 
@@ -132,6 +140,7 @@ impl App {
             should_quit: false,
             should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
+            poll_pool: Some(poll_pool),
             last_key_press: None,
             keys_currently_held: std::collections::HashSet::new(),
             task_panel,
@@ -263,9 +272,33 @@ impl App {
         // runs (Phase 7.22 §2). Every read reaches the pool through here.
         self.state.track_directory_read(&job_spec);
         self.state.jobs.start_job(job_spec.clone());
-        if let Some(ref pool) = self.worker_pool {
+        let pool = if job_spec.origin == rwf_lib::job::JobOrigin::Poll {
+            self.poll_pool.as_ref()
+        } else {
+            self.worker_pool.as_ref()
+        };
+        if let Some(pool) = pool {
             pool.submit_job(job_spec);
         }
+    }
+
+    /// Send `PollTick` when a visible pane is due and submit the polls it asks for
+    /// (Phase 7.5 D5). The tick is sent only when something is due, so an idle loop
+    /// does not record a transition per iteration. Returns whether a poll started.
+    fn poll_if_due(&mut self, now: Instant) -> bool {
+        if self.state.poll_due_in(now) != Some(Duration::ZERO) {
+            return false;
+        }
+        let jobs = rwf_lib::state::update_state(
+            &mut self.state,
+            rwf_lib::state::Transition::PollTick { now },
+        )
+        .jobs_to_start;
+        let started = !jobs.is_empty();
+        for job in jobs {
+            self.submit_job(job);
+        }
+        started
     }
 
     /// Ask a worker for the child counts of the directory under the cursor, when the
@@ -472,7 +505,14 @@ impl App {
     }
 
     fn has_active_jobs(&self) -> bool {
-        let active = !self.state.jobs.active.is_empty();
+        // A background poll is invisible (Phase 7.5 D11): it must not keep the spinner
+        // redrawing every frame.
+        let active = self
+            .state
+            .jobs
+            .active
+            .values()
+            .any(|job| job.spec.origin != rwf_lib::job::JobOrigin::Poll);
         let background = self
             .state
             .background_jobs
@@ -565,13 +605,20 @@ impl App {
                 false
             };
 
-            let results = match self.worker_pool {
+            let mut results = match self.worker_pool {
                 Some(ref mut pool) => process_pending_events(pool, &mut self.state),
                 None => Vec::new(),
             };
+            if let Some(ref mut pool) = self.poll_pool {
+                results.extend(process_pending_events(pool, &mut self.state));
+            }
             if self.apply_worker_results(&results) {
                 ui_needs_update = true;
             }
+
+            // 1b. Background polling (Phase 7.5): after completions, so a poll that just
+            // finished has scheduled its pane's next one.
+            self.poll_if_due(Instant::now());
 
             // A pane read still running after the quiet period gets its task-panel line
             // now (Phase 7.22 §2.3): the read stuck on a dead share is the one the user
@@ -900,6 +947,16 @@ impl App {
                 next_wakeup = next_wakeup.min(Duration::from_millis(poll_ms));
             }
 
+            // Wake when the next pane is due for a poll, and promptly while a poll runs so
+            // its result is picked up without waiting out the safety interval.
+            if let Some(due) = self.state.poll_due_in(Instant::now()) {
+                next_wakeup = next_wakeup.min(due);
+            }
+            if self.state.poll_in_flight() {
+                let poll_ms = self.state.config.job_manager.loading_poll_interval_ms;
+                next_wakeup = next_wakeup.min(Duration::from_millis(poll_ms));
+            }
+
             // If UI needs update, render immediately without blocking
             if ui_needs_update {
                 next_wakeup = Duration::from_millis(0);
@@ -957,6 +1014,9 @@ impl App {
                     self.state.background_jobs.cancel_job(id);
                 }
                 if let Some(pool) = self.worker_pool.take() {
+                    pool.shutdown().await;
+                }
+                if let Some(pool) = self.poll_pool.take() {
                     pool.shutdown().await;
                 }
                 break;
@@ -2552,7 +2612,8 @@ impl App {
         let mut follow_up_jobs: Vec<JobSpec> = Vec::new();
         let mut ui_changed = false;
         if !results.is_empty() {
-            tracing::info!("[AppLoop] Processed {} events", results.len());
+            // debug, not info: background polls produce events every interval.
+            tracing::debug!("[AppLoop] Processed {} events", results.len());
             ui_changed = true;
             for result in results {
                 tracing::debug!(
@@ -3025,6 +3086,69 @@ mod key_repeat_debounce_tests {
         assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
         let t1 = t0 + Duration::from_millis(10);
         assert!(app.should_process_key_repeat("Up", KeyEventKind::Press, t1));
+    }
+}
+
+#[cfg(test)]
+mod polling_loop_tests {
+    use super::*;
+    use rwf_lib::model::Location;
+
+    /// Phase 7.5 D14: a due poll goes to the dedicated poll pool, never the user pool,
+    /// and its result reaches the pane through the normal event path.
+    #[tokio::test]
+    async fn a_due_poll_runs_on_the_poll_pool_and_updates_the_pane() {
+        let left = tempfile::TempDir::new().expect("temp dir");
+        let right = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(left.path().join("outside.txt"), b"x").expect("write");
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.config.polling_interval_ms = 1000;
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.current_location = Location::Local(left.path().to_path_buf());
+            tab.right_pane.current_location = Location::Local(right.path().to_path_buf());
+        }
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+
+        assert!(
+            app.poll_if_due(Instant::now()),
+            "both panes are due at start"
+        );
+        assert!(
+            !app.has_active_jobs(),
+            "polls do not keep the spinner running"
+        );
+
+        let mut user_pool_events = 0;
+        for _ in 0..400 {
+            if let Some(pool) = app.worker_pool.as_mut() {
+                user_pool_events += rwf_lib::process_pending_events(pool, &mut app.state).len();
+            }
+            if let Some(pool) = app.poll_pool.as_mut() {
+                rwf_lib::process_pending_events(pool, &mut app.state);
+            }
+            if !app.state.poll_in_flight() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        assert!(!app.state.poll_in_flight(), "both polls completed");
+        assert_eq!(user_pool_events, 0, "nothing ran on the user pool");
+        let names: Vec<_> = app
+            .state
+            .current_tab()
+            .left_pane
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert_eq!(names, vec!["outside.txt".to_string()]);
+        assert!(
+            !app.poll_if_due(Instant::now()),
+            "not due again until the interval passes"
+        );
     }
 }
 

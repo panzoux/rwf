@@ -53,6 +53,9 @@ pub enum JobOrigin {
     UserAction,
     /// An automatic re-read after a file operation.
     Refresh,
+    /// A background poll of a visible pane (Phase 7.5). Silent: not a background job,
+    /// never owns the pane, runs on its own worker pool.
+    Poll,
 }
 
 /// Decision for resolving a file conflict

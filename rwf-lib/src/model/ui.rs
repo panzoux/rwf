@@ -83,7 +83,7 @@ impl Default for LayoutState {
 }
 
 /// Active pane identifier
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ActivePane {
     #[default]
     Left,
