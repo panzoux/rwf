@@ -20,6 +20,7 @@
     "DirectoryBackgroundColor": "Black",
     "InactiveDirectoryColor": "Cyan",
     "InactiveDirectoryBackgroundColor": "Black",
+    "StaleSizeForegroundColor": "DarkGray",
     "PaneInfoForegroundColor": "Black",
     "PaneInfoBackgroundColor": "DarkGray",
     "FilenameLabelForegroundColor": "White",

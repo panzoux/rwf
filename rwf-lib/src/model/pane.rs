@@ -2,6 +2,7 @@
 
 use super::{FileEntry, Location, MarkingModel};
 use regex;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Represents the state of a single pane
@@ -23,6 +24,13 @@ pub struct PaneModel {
     pub marking: MarkingModel,
     /// After JumpToFile navigation: filename to select once ReadDirectory completes.
     pub pending_cursor_name: Option<String>,
+    /// Phase 7.5 D12: bumped whenever the listing changes (a read that returned a
+    /// different listing, or an in-memory rename/delete). A background read submitted
+    /// under an older value must not overwrite what the pane shows now.
+    pub listing_generation: u64,
+    /// Phase 7.5 D8b: the `listing_generation` at which each calculated directory size
+    /// was measured. A size whose generation is behind the pane's is stale.
+    pub size_generations: HashMap<Location, u64>,
 }
 
 impl PaneModel {
@@ -42,6 +50,8 @@ impl PaneModel {
             active_job_id: None,
             marking: MarkingModel::new(),
             pending_cursor_name: None,
+            listing_generation: 0,
+            size_generations: HashMap::new(),
         }
     }
 
@@ -56,6 +66,117 @@ impl PaneModel {
             );
         }
         self.is_loading = loading;
+    }
+
+    /// Whether `entry`'s calculated size was measured before the listing last changed.
+    pub fn is_size_stale(&self, entry: &FileEntry) -> bool {
+        entry.calculated_size.is_some()
+            && self
+                .size_generations
+                .get(&entry.location)
+                .is_some_and(|measured| *measured < self.listing_generation)
+    }
+
+    /// Record that what the pane lists has changed (Phase 7.5 D12).
+    pub fn mark_listing_changed(&mut self) {
+        self.listing_generation = self.listing_generation.wrapping_add(1);
+    }
+
+    /// Store a calculated directory size on the entry at `location`, measured now.
+    /// Returns whether this pane lists that entry.
+    pub fn set_calculated_size(&mut self, location: &Location, size: u64) -> bool {
+        let mut found = false;
+        for entry in self
+            .raw_entries
+            .iter_mut()
+            .chain(self.entries.iter_mut())
+            .filter(|e| e.location == *location)
+        {
+            entry.calculated_size = Some(size);
+            found = true;
+        }
+        if found {
+            self.size_generations
+                .insert(location.clone(), self.listing_generation);
+        }
+        found
+    }
+
+    /// Apply a completed read of `location` (Phase 7.5 T1). Returns whether what the pane
+    /// shows changed.
+    ///
+    /// Calculated sizes are carried over by `Location` before comparing, so a read that
+    /// only lacks them is not a change (D8b). On a change the cursor stays on the file it
+    /// was on and keeps its screen row (D7); if that file is gone the old index is kept,
+    /// clamped. An explicit `pending_cursor_name` still wins.
+    pub fn apply_directory_listing(
+        &mut self,
+        location: &Location,
+        mut incoming: Vec<FileEntry>,
+        visible_height: usize,
+        scroll_margin: usize,
+    ) -> bool {
+        let carried: HashMap<&Location, u64> = self
+            .raw_entries
+            .iter()
+            .filter_map(|e| e.calculated_size.map(|size| (&e.location, size)))
+            .collect();
+        if !carried.is_empty() {
+            for entry in incoming.iter_mut() {
+                if entry.calculated_size.is_none() {
+                    entry.calculated_size = carried.get(&entry.location).copied();
+                }
+            }
+        }
+        let (mode, order) = (self.sort_mode, self.sort_order);
+        incoming.sort_by(|a, b| cmp_entries(a, b, mode, order));
+
+        self.is_loading = false;
+        let changed = self.raw_entries != incoming;
+        // Re-entering the directory already shown clears `entries` but not `raw_entries`,
+        // so an identical read can still have something to show.
+        let needs_refill = self.entries.is_empty() && !incoming.is_empty();
+        if !changed && !needs_refill {
+            self.pending_cursor_name = None;
+            return false;
+        }
+
+        // Only a cursor on an entry of the directory just read can be "its file".
+        let anchor = self
+            .current_entry()
+            .filter(|e| e.location.parent().as_ref() == Some(location))
+            .map(|e| {
+                (
+                    e.name.clone(),
+                    self.cursor.saturating_sub(self.scroll_offset),
+                )
+            });
+
+        // `apply_current_filter` leaves `entries` alone when `raw_entries` is empty, so
+        // an emptied directory must be copied in explicitly.
+        self.entries = incoming.clone();
+        self.raw_entries = incoming;
+        self.apply_current_filter();
+        if changed {
+            self.mark_listing_changed();
+            let listed: std::collections::HashSet<&Location> =
+                self.raw_entries.iter().map(|e| &e.location).collect();
+            self.size_generations.retain(|loc, _| listed.contains(loc));
+        }
+
+        if let Some(name) = self.pending_cursor_name.take() {
+            if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
+                self.cursor = pos;
+            }
+        } else if let Some((name, row)) = anchor {
+            if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
+                self.cursor = pos;
+                let max_offset = self.entries.len().saturating_sub(visible_height);
+                self.scroll_offset = pos.saturating_sub(row).min(max_offset);
+            }
+        }
+        self.update_scroll(visible_height, scroll_margin);
+        true
     }
 
     /// Get the current entry under cursor

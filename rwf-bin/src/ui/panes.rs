@@ -162,6 +162,7 @@ fn create_list_item(
     entry: &FileEntry,
     is_cursor: bool,
     is_marked: bool,
+    size_is_stale: bool,
     colors: &ColorScheme,
     is_active: bool,
     name_width: usize,
@@ -239,10 +240,17 @@ fn create_list_item(
         name
     };
 
-    let size = if entry.is_dir {
-        "<DIR>".to_string()
+    let size = match (entry.is_dir, entry.calculated_size) {
+        (true, Some(calculated)) => format_size(calculated),
+        (true, None) => "<DIR>".to_string(),
+        (false, _) => format_size(entry.size),
+    };
+    // Phase 7.5 D8c: a size measured before the listing last changed. The cursor row
+    // keeps its cursor colours so the highlight stays readable.
+    let size_style = if size_is_stale && !is_cursor {
+        style.fg(parse_color(&colors.stale_size_foreground_color))
     } else {
-        format_size(entry.size)
+        style
     };
     let date = format_date(&entry.modified);
 
@@ -254,7 +262,7 @@ fn create_list_item(
             pad_to_width(&smart_truncate(&name, name_width, ellipsis), name_width),
             style,
         ),
-        Span::styled(format!("{:>10}", size), style),
+        Span::styled(format!("{:>10}", size), size_style),
         Span::styled(format!("  {}", date), style),
     ]);
 
@@ -295,6 +303,7 @@ fn render_detailed_mode(
                 entry,
                 is_cursor,
                 is_marked,
+                pane.is_size_stale(entry),
                 colors,
                 is_active,
                 name_width,
@@ -535,6 +544,70 @@ mod tests {
                 render_active_pane_only(frame, area, &state, ActivePane::Left);
             })
             .expect("draw");
+    }
+
+    /// Foreground colour of the first cell of `needle` on the row containing `row_text`.
+    fn fg_of(
+        buffer: &ratatui::buffer::Buffer,
+        row_text: &str,
+        needle: &str,
+    ) -> ratatui::style::Color {
+        let area = buffer.area;
+        for y in 0..area.height {
+            let line: String = (0..area.width)
+                .map(|x| buffer[(x, y)].symbol().to_string())
+                .collect();
+            let (Some(_), Some(col)) = (line.find(row_text), line.find(needle)) else {
+                continue;
+            };
+            return buffer[(col as u16, y)].fg;
+        }
+        panic!("no row with {row_text:?} and {needle:?}");
+    }
+
+    /// Phase 7.5 D8b/D8c: a directory shows its calculated size instead of `<DIR>`, and a
+    /// size measured before the listing last changed is drawn in the stale colour —
+    /// except on the cursor row, which keeps the cursor colours.
+    #[test]
+    fn calculated_sizes_render_and_stale_ones_are_dimmed_off_the_cursor_row() {
+        assert_eq!(
+            ColorScheme::default().stale_size_foreground_color,
+            "DarkGray"
+        );
+        let mut state = smoke_state();
+        let stale_colour = parse_color(&state.config.display.colors.stale_size_foreground_color);
+        {
+            let pane = &mut state.current_tab_mut().left_pane;
+            let mut old = test_entry("old", true, 0, false);
+            old.calculated_size = Some(5000);
+            let mut new = test_entry("new", true, 0, false);
+            new.calculated_size = Some(7000);
+            pane.size_generations.insert(old.location.clone(), 0);
+            pane.size_generations.insert(new.location.clone(), 1);
+            pane.listing_generation = 1;
+            pane.entries = vec![new, old, test_entry("readme.txt", false, 1234, false)];
+            pane.cursor = 2;
+        }
+
+        let draw = |state: &AppState| {
+            let mut terminal = Terminal::new(TestBackend::new(100, 10)).expect("terminal");
+            terminal
+                .draw(|frame| render_panes(frame, frame.area(), state))
+                .expect("draw");
+            terminal.backend().buffer().clone()
+        };
+
+        let buffer = draw(&state);
+        assert_eq!(fg_of(&buffer, "old/", &format_size(5000)), stale_colour);
+        assert_ne!(fg_of(&buffer, "new/", &format_size(7000)), stale_colour);
+
+        state.current_tab_mut().left_pane.cursor = 1;
+        let buffer = draw(&state);
+        assert_ne!(
+            fg_of(&buffer, "old/", &format_size(5000)),
+            stale_colour,
+            "the cursor row keeps its cursor colours"
+        );
     }
 
     /// M7 S2-2: representative snapshot of the two-pane layout.

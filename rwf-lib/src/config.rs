@@ -656,6 +656,9 @@ pub struct ColorScheme {
     pub directory_background_color: String,
     pub inactive_directory_color: String,
     pub inactive_directory_background_color: String,
+    /// A calculated directory size measured before the listing last changed
+    /// (Phase 7.5 D8c). The cursor row keeps its cursor colours.
+    pub stale_size_foreground_color: String,
 
     // Pane info bar colors (UI area 5)
     pub pane_info_foreground_color: Option<String>,
@@ -714,6 +717,7 @@ impl Default for ColorScheme {
             directory_background_color: "Black".to_string(),
             inactive_directory_color: "Cyan".to_string(),
             inactive_directory_background_color: "Black".to_string(),
+            stale_size_foreground_color: "DarkGray".to_string(),
             pane_info_foreground_color: Some("Black".to_string()),
             pane_info_background_color: Some("DarkGray".to_string()),
             filename_label_foreground_color: "White".to_string(),

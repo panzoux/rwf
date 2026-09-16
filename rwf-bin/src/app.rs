@@ -565,59 +565,12 @@ impl App {
                 false
             };
 
-            // Jobs that completions ask for, submitted after the `worker_pool` borrow
-            // ends so they can go through `submit_job` (a `&mut self` method).
-            let mut follow_up_jobs: Vec<JobSpec> = Vec::new();
-            if let Some(ref mut pool) = self.worker_pool {
-                let results = process_pending_events(pool, &mut self.state);
-                if !results.is_empty() {
-                    tracing::info!("[AppLoop] Processed {} events", results.len());
-                    ui_needs_update = true;
-                    for result in &results {
-                        tracing::debug!(
-                            "[AppLoop] Result: ui_changed={}, started_jobs={}",
-                            result.ui_changed,
-                            result.jobs_to_start.len()
-                        );
-                        for log_msg in &result.task_panel_logs {
-                            self.task_panel.add_pending_log(log_msg.clone());
-                        }
-                        for refresh in &result.panes_to_refresh {
-                            let tab_idx = refresh.tab_id; // array index stored by file-op handlers
-                            let tab_id = self.state.tabs.tabs[tab_idx].id;
-                            let location = if refresh.pane == rwf_lib::model::ActivePane::Left {
-                                self.state.tabs.tabs[tab_idx]
-                                    .left_pane
-                                    .current_location
-                                    .clone()
-                            } else {
-                                self.state.tabs.tabs[tab_idx]
-                                    .right_pane
-                                    .current_location
-                                    .clone()
-                            };
-                            let job = JobSpec::new(JobKind::ReadDirectory { location })
-                                .with_requesting_pane(tab_id, refresh.pane)
-                                .with_origin(rwf_lib::job::JobOrigin::Refresh);
-                            // Keep showing old entries during refresh (no loading indicator)
-                            if refresh.pane == rwf_lib::model::ActivePane::Left {
-                                self.state.tabs.tabs[tab_idx].left_pane.active_job_id =
-                                    Some(job.id);
-                            } else {
-                                self.state.tabs.tabs[tab_idx].right_pane.active_job_id =
-                                    Some(job.id);
-                            }
-                            follow_up_jobs.push(job);
-                        }
-                        // Not submitted inline: a completion can ask for a
-                        // `SetClipboard` (a `ClipText` PipeToAction) or an editor
-                        // `SuspendAndRun`, both of which the pool rejects.
-                        follow_up_jobs.extend(result.jobs_to_start.iter().cloned());
-                    }
-                }
-            }
-            for job_spec in follow_up_jobs {
-                self.submit_job(job_spec);
+            let results = match self.worker_pool {
+                Some(ref mut pool) => process_pending_events(pool, &mut self.state),
+                None => Vec::new(),
+            };
+            if self.apply_worker_results(&results) {
+                ui_needs_update = true;
             }
 
             // A pane read still running after the quiet period gets its task-panel line
@@ -2592,6 +2545,66 @@ impl App {
         }
     }
 
+    /// Apply the results of worker events: task-panel lines, requested pane refreshes,
+    /// and the jobs completions ask for. Returns whether anything visible changed.
+    fn apply_worker_results(&mut self, results: &[rwf_lib::state::StateUpdateResult]) -> bool {
+        // Jobs that completions ask for, submitted at the end through `submit_job`.
+        let mut follow_up_jobs: Vec<JobSpec> = Vec::new();
+        let mut ui_changed = false;
+        if !results.is_empty() {
+            tracing::info!("[AppLoop] Processed {} events", results.len());
+            ui_changed = true;
+            for result in results {
+                tracing::debug!(
+                    "[AppLoop] Result: ui_changed={}, started_jobs={}",
+                    result.ui_changed,
+                    result.jobs_to_start.len()
+                );
+                for log_msg in &result.task_panel_logs {
+                    self.task_panel.add_pending_log(log_msg.clone());
+                }
+                for refresh in &result.panes_to_refresh {
+                    let tab_idx = refresh.tab_id; // array index stored by file-op handlers
+                    let tab_id = self.state.tabs.tabs[tab_idx].id;
+                    let location = if refresh.pane == rwf_lib::model::ActivePane::Left {
+                        self.state.tabs.tabs[tab_idx]
+                            .left_pane
+                            .current_location
+                            .clone()
+                    } else {
+                        self.state.tabs.tabs[tab_idx]
+                            .right_pane
+                            .current_location
+                            .clone()
+                    };
+                    let job = JobSpec::new(JobKind::ReadDirectory { location })
+                        .with_requesting_pane(tab_id, refresh.pane)
+                        .with_origin(rwf_lib::job::JobOrigin::Refresh);
+                    // Keep showing old entries during refresh (no loading indicator)
+                    if refresh.pane == rwf_lib::model::ActivePane::Left {
+                        self.state.tabs.tabs[tab_idx].left_pane.active_job_id = Some(job.id);
+                    } else {
+                        self.state.tabs.tabs[tab_idx].right_pane.active_job_id = Some(job.id);
+                    }
+                    follow_up_jobs.push(job);
+                }
+                // Not submitted inline: a completion can ask for a
+                // `SetClipboard` (a `ClipText` PipeToAction) or an editor
+                // `SuspendAndRun`, both of which the pool rejects.
+                follow_up_jobs.extend(result.jobs_to_start.iter().cloned());
+            }
+        }
+        for job_spec in follow_up_jobs {
+            self.submit_job(job_spec);
+        }
+        // Phase 7.5 D16: a refresh can move or remove the file the SideBySide viewer is
+        // previewing, so re-run the same sync the cursor keys run.
+        if !results.is_empty() && self.refresh_sbs_preview() {
+            ui_changed = true;
+        }
+        ui_changed
+    }
+
     /// Called whenever the cursor might have moved in SideBySide file-pane mode.
     /// For files: reloads the viewer if the location changed.
     /// Directory preview counts are computed inline in render_ui (no state needed).
@@ -3012,6 +3025,77 @@ mod key_repeat_debounce_tests {
         assert!(app.should_process_key_repeat("Down", KeyEventKind::Press, t0));
         let t1 = t0 + Duration::from_millis(10);
         assert!(app.should_process_key_repeat("Up", KeyEventKind::Press, t1));
+    }
+}
+
+#[cfg(test)]
+mod sbs_refresh_sync_tests {
+    use super::*;
+    use rwf_lib::model::{ActivePane, FileEntry, Location, ViewerMode};
+    use rwf_lib::state::{update_state, Transition};
+
+    fn file(name: &str) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            location: Location::Local(format!("/test/{name}").into()),
+            size: 1,
+            is_dir: false,
+            is_hidden: false,
+            modified: std::time::SystemTime::UNIX_EPOCH,
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    /// Phase 7.5 D16: when a refresh removes the file the SideBySide viewer previews,
+    /// the preview follows the cursor instead of showing the deleted file.
+    #[tokio::test]
+    async fn a_refresh_that_removes_the_previewed_file_moves_the_preview() {
+        let state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+        update_state(
+            &mut app.state,
+            Transition::OpenSideBySideViewer {
+                location: file("a.txt").location,
+                mode: ViewerMode::Text,
+            },
+        );
+        let anchor = app.state.ui.layout.viewer_anchor_pane;
+        {
+            let tab = app.state.current_tab_mut();
+            let pane = match anchor {
+                ActivePane::Left => &mut tab.left_pane,
+                ActivePane::Right => &mut tab.right_pane,
+            };
+            pane.current_location = Location::Local("/test".into());
+            pane.raw_entries = vec![file("a.txt"), file("b.txt")];
+            pane.entries = pane.raw_entries.clone();
+            pane.cursor = 0;
+        }
+
+        let read = update_state(&mut app.state, Transition::Refresh { pane: anchor })
+            .jobs_to_start
+            .remove(0);
+        app.state.jobs.start_job(read.clone());
+        let completed = update_state(
+            &mut app.state,
+            Transition::CompleteJob {
+                job_id: read.id,
+                result: rwf_lib::job::OpResult::Success(rwf_lib::job::SuccessData::DirectoryRead(
+                    vec![file("b.txt")],
+                )),
+            },
+        );
+        app.apply_worker_results(&[completed]);
+
+        assert_eq!(
+            app.state.viewer.as_ref().map(|v| v.location.clone()),
+            Some(file("b.txt").location)
+        );
     }
 }
 

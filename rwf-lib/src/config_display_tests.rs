@@ -761,6 +761,7 @@ mod tests {
             directory_background_color: "Black".to_string(),
             inactive_directory_color: "Cyan".to_string(),
             inactive_directory_background_color: "Black".to_string(),
+            stale_size_foreground_color: "DarkGray".to_string(),
             filename_label_foreground_color: "White".to_string(),
             filename_label_background_color: "Blue".to_string(),
             pane_border_color: "Gray".to_string(),

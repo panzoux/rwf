@@ -221,6 +221,16 @@ impl AppState {
                     .map(|bg_job| {
                         let timestamp = chrono::Local::now().format("[%H:%M:%S]");
                         match result {
+                            crate::job::OpResult::Success(
+                                crate::job::SuccessData::SizeCalculated(size),
+                            ) if record_failure.is_none() => format!(
+                                "{} [Job {}] [Tab {}] {} — {} [OK]",
+                                timestamp,
+                                bg_job.id.short_id,
+                                self.tab_label(bg_job.tab_id),
+                                bg_job.name,
+                                crate::model::file_entry::format_size(*size)
+                            ),
                             crate::job::OpResult::Success(_) => match &record_failure {
                                 None => format!(
                                     "{} [Job {}] [Tab {}] {}: [OK]",
@@ -571,34 +581,13 @@ impl AppState {
                                                 crate::model::ActivePane::Right => "Right",
                                             };
                                             tracing::info!("[CompleteJob::ReadDirectory] Found tab! Updating {} pane with {} entries", pane_name, entries.len());
-                                            if pane.raw_entries != *entries {
-                                                pane.raw_entries = entries.clone();
-                                                pane.entries = entries.clone();
-                                                pane.is_loading = false;
-                                                pane.apply_sort();
-                                                pane.apply_current_filter();
-                                                pane.update_scroll(
-                                                    self.ui.layout.pane_height,
-                                                    self.config.ui.scroll_offset,
-                                                );
-                                                if let Some(name) = pane.pending_cursor_name.take()
-                                                {
-                                                    if let Some(pos) = pane
-                                                        .entries
-                                                        .iter()
-                                                        .position(|e| e.name == name)
-                                                    {
-                                                        pane.cursor = pos;
-                                                        pane.update_scroll(
-                                                            self.ui.layout.pane_height,
-                                                            self.config.ui.scroll_offset,
-                                                        );
-                                                    }
-                                                }
+                                            if pane.apply_directory_listing(
+                                                location,
+                                                entries.clone(),
+                                                self.ui.layout.pane_height,
+                                                self.config.ui.scroll_offset,
+                                            ) {
                                                 result_obj.ui_changed = true;
-                                            } else {
-                                                pane.is_loading = false;
-                                                pane.pending_cursor_name = None;
                                             }
                                             pane.active_job_id = None; // Job complete
                                         } else {
@@ -1074,6 +1063,13 @@ impl AppState {
                                             {
                                                 e.name = new_name.clone();
                                                 e.location = to.clone();
+                                                if let Some(measured) =
+                                                    pane.size_generations.remove(from)
+                                                {
+                                                    pane.size_generations
+                                                        .insert(to.clone(), measured);
+                                                }
+                                                pane.mark_listing_changed();
                                             }
                                             pane.apply_sort();
                                             pane.apply_current_filter();
@@ -1123,6 +1119,7 @@ impl AppState {
                                                     pane.cursor.min(pane.entries.len() - 1);
                                             }
                                             pane.update_scroll(pane_height, scroll_offset);
+                                            pane.mark_listing_changed();
                                             any_changed = true;
                                         }
                                     }
@@ -1175,6 +1172,7 @@ impl AppState {
                                                     pane.cursor.min(pane.entries.len() - 1);
                                             }
                                             pane.update_scroll(pane_height, scroll_offset);
+                                            pane.mark_listing_changed();
                                             any_changed = true;
                                         }
                                     }
@@ -1289,23 +1287,11 @@ impl AppState {
                                 crate::job::SuccessData::SizeCalculated(size),
                             ) = result
                             {
+                                // Written to `raw_entries` too: `entries` is rebuilt from
+                                // it on every filter/sort, which used to wipe the size.
                                 for tab in self.tabs.tabs.iter_mut() {
-                                    if let Some(entry) = tab
-                                        .left_pane
-                                        .entries
-                                        .iter_mut()
-                                        .find(|e| e.location == *location)
-                                    {
-                                        entry.calculated_size = Some(*size);
-                                    }
-                                    if let Some(entry) = tab
-                                        .right_pane
-                                        .entries
-                                        .iter_mut()
-                                        .find(|e| e.location == *location)
-                                    {
-                                        entry.calculated_size = Some(*size);
-                                    }
+                                    tab.left_pane.set_calculated_size(location, *size);
+                                    tab.right_pane.set_calculated_size(location, *size);
                                 }
                             }
                         }

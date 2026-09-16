@@ -1675,12 +1675,17 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             // Calculate directory size for the current cursor entry
             if let Some(entry) = state.active_pane().current_entry() {
                 if entry.is_dir {
-                    // Create a job to calculate directory size
                     let job_spec = crate::job::JobSpec::new(crate::job::JobKind::CalculateSize {
                         location: entry.location.clone(),
                     });
-
-                    vec![Transition::EnqueueJob { spec: job_spec }]
+                    // Started directly, not `EnqueueJob`: nothing drains `jobs.queue`, so
+                    // an enqueued size job never ran. The name carries the directory so
+                    // the completion line says what was measured (Phase 7.5 D8a).
+                    vec![Transition::CreateAndStartFileJob {
+                        spec: job_spec,
+                        name: format!("Calculate size: {}", entry.name),
+                        description: entry.location.display_path(),
+                    }]
                 } else {
                     // Not a directory, do nothing
                     vec![]
