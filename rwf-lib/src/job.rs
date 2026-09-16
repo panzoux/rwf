@@ -680,30 +680,17 @@ impl JobManager {
     pub fn start_job(&mut self, spec: JobSpec) {
         // Phase 7.15: single observation point for job submission — every
         // `pool.submit_job` path in rwf-bin routes through here first.
-        // Recorded on entry, so submissions dropped by the deduplication below
-        // still appear; the drop itself is visible via the `tracing::info!`
-        // that stage 4 mirrors into `logs.jsonl`.
         crate::diagnostics::observe(|| crate::diagnostics::DiagnosticEvent::JobSubmit {
             job_id: format!("{:?}", spec.id),
             kind: crate::diagnostics::variant_name(&format!("{:?}", spec.kind)).to_string(),
         });
 
-        // Deduplication: Avoid duplicate ReadDirectory jobs for the same pane.
-        if let JobKind::ReadDirectory { .. } = &spec.kind {
-            if self
-                .active
-                .values()
-                .any(|j| j.spec.kind == spec.kind && j.spec.requesting_pane == spec.requesting_pane)
-            {
-                tracing::info!(
-                    "[JobManager] Job {:?} (kind={:?}, pane={:?}) already active, skipping.",
-                    spec.id,
-                    spec.kind,
-                    spec.requesting_pane
-                );
-                return;
-            }
-        }
+        // Every job is registered, including a second read of a pane whose first read is
+        // still running. This used to be dropped as a duplicate, but callers submit to
+        // the pool regardless and the transition has already moved the pane's
+        // `active_job_id` to the new read — so its completion found no spec and the pane
+        // stayed loading forever (Phase 7.5 D13). The superseded read's result is
+        // discarded on completion by the `active_job_id` ownership check instead.
 
         let job = Job {
             spec: spec.clone(),

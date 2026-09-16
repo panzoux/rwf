@@ -48,6 +48,9 @@ mod error_handling_tests;
 mod pane_read_visibility_tests;
 
 #[cfg(test)]
+mod pane_read_dedup_tests;
+
+#[cfg(test)]
 mod main_thread_io_tests;
 
 #[cfg(test)]
