@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use crossterm::{
+    event::{DisableFocusChange, EnableFocusChange},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -25,6 +26,10 @@ impl TerminalManager {
         // Enable raw mode for character-by-character input
         enable_raw_mode()?;
 
+        // Report focus changes, so regaining focus can poll the panes at once (Phase 7.5
+        // D17). Terminals that do not support it simply never send the events.
+        execute!(stdout, EnableFocusChange)?;
+
         // Create ratatui terminal
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
@@ -42,6 +47,10 @@ impl TerminalManager {
 
     /// Restore terminal to original state
     pub fn restore(&mut self) -> Result<()> {
+        // Stop focus reporting first: left on, the shell receives `ESC [ I` / `ESC [ O`
+        // whenever its window gains or loses focus.
+        execute!(self.terminal.backend_mut(), DisableFocusChange)?;
+
         // Disable raw mode
         disable_raw_mode()?;
 

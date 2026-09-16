@@ -17,6 +17,10 @@ impl AppState {
             Transition::StopPolling => Some(self.set_active_drive_polling(Some(false))),
             Transition::StartPolling => Some(self.set_active_drive_polling(Some(true))),
             Transition::TogglePolling => Some(self.set_active_drive_polling(None)),
+            Transition::TerminalFocusGained => {
+                self.polling.last_visible.clear();
+                Some(StateUpdateResult::none())
+            }
             _ => None,
         }
     }
@@ -29,6 +33,11 @@ impl AppState {
     /// send one.
     pub fn poll_due_in(&self, now: Instant) -> Option<Duration> {
         PollingState::interval(self.config.polling_interval_ms)?;
+        // What is on screen changed (in either direction): one tick records it, and polls
+        // whatever just came into view.
+        if self.visible_panes() != self.polling.last_visible {
+            return Some(Duration::ZERO);
+        }
         let switch_off = self
             .polls_to_switch_off_at()
             .into_iter()
@@ -40,6 +49,7 @@ impl AppState {
         self.pollable_panes()
             .into_iter()
             .map(|(key, _, _)| match self.polling.next_due.get(&key) {
+                _ if self.polling.immediate.contains(&key) => Duration::ZERO,
                 Some(due) => due.saturating_duration_since(now),
                 None => Duration::ZERO,
             })
@@ -181,23 +191,28 @@ impl AppState {
         !self.polling.in_flight.is_empty()
     }
 
+    /// The panes of the active tab on screen: a FullScreen viewer hides both, a SideBySide
+    /// viewer all but its anchor (D4).
+    fn visible_panes(&self) -> std::collections::HashSet<PaneKey> {
+        let tab_id = self.current_tab().id;
+        match self.viewer.as_ref().map(|_| self.ui.layout.viewer_layout) {
+            Some(ViewerLayout::FullScreen) => std::collections::HashSet::new(),
+            Some(ViewerLayout::SideBySide) => [(tab_id, self.ui.layout.viewer_anchor_pane)].into(),
+            None => [(tab_id, ActivePane::Left), (tab_id, ActivePane::Right)].into(),
+        }
+    }
+
     /// Visible panes of the active tab that may be polled right now, ignoring timing.
     ///
-    /// Pauses (D4, D15): a FullScreen viewer hides both panes; a SideBySide viewer hides
-    /// all but its anchor; range marking and leap mode hold row indices of the active
-    /// pane. `SuspendAndRun` needs no rule — it blocks the App loop, so no tick is sent.
+    /// Beyond visibility (D15): range marking and leap mode hold row indices of the
+    /// active pane. `SuspendAndRun` needs no rule — it blocks the App loop, so no tick is
+    /// sent.
     fn pollable_panes(&self) -> Vec<(PaneKey, Location, String)> {
-        let viewer_layout = self.viewer.as_ref().map(|_| self.ui.layout.viewer_layout);
-        if viewer_layout == Some(ViewerLayout::FullScreen) {
-            return Vec::new();
-        }
+        let visible = self.visible_panes();
         let tab = self.current_tab();
         [ActivePane::Left, ActivePane::Right]
             .into_iter()
-            .filter(|side| {
-                viewer_layout != Some(ViewerLayout::SideBySide)
-                    || *side == self.ui.layout.viewer_anchor_pane
-            })
+            .filter(|side| visible.contains(&(tab.id, *side)))
             .filter(|side| {
                 *side != self.ui.active_pane
                     || (self.ui.range_marking_start.is_none()
@@ -239,16 +254,25 @@ impl AppState {
                 self.switch_drive_off(&drive, took, &mut result);
             }
         }
+        let visible = self.visible_panes();
+        self.polling.immediate.retain(|key| visible.contains(key));
         for (key, location, drive) in self.pollable_panes() {
+            let just_appeared =
+                !self.polling.last_visible.contains(&key) || self.polling.immediate.contains(&key);
             if self.polling.in_flight.len() >= POLL_POOL_WORKERS {
-                break;
+                // Keep its immediacy for when a worker frees, without re-waking the loop
+                // until then.
+                if just_appeared {
+                    self.polling.immediate.insert(key);
+                }
+                continue;
             }
-            if self
+            let not_due = self
                 .polling
                 .next_due
                 .get(&key)
-                .is_some_and(|due| now < *due)
-            {
+                .is_some_and(|due| now < *due);
+            if not_due && !just_appeared {
                 continue;
             }
             let Some(generation) = self.pane_by_key(key).map(|p| p.listing_generation) else {
@@ -260,6 +284,7 @@ impl AppState {
             .with_requesting_pane(key.0, key.1)
             .with_origin(JobOrigin::Poll);
             self.polling.drive_mut(&drive, base);
+            self.polling.immediate.remove(&key);
             self.polling.in_flight.insert(
                 key,
                 PollInFlight {
@@ -273,6 +298,7 @@ impl AppState {
             );
             result.jobs_to_start.push(job);
         }
+        self.polling.last_visible = visible;
         result
     }
 

@@ -509,7 +509,53 @@ const TERMINAL_MODE_TOKENS: &[&str] = &[
     "disable_raw_mode",
     "EnterAlternateScreen",
     "LeaveAlternateScreen",
+    // Phase 7.5 D17: focus reporting is terminal mode too — left on, the user's shell
+    // receives `ESC [ I` / `ESC [ O` whenever its window gains or loses focus.
+    "EnableFocusChange",
+    "DisableFocusChange",
 ];
+
+/// Each owning file must pair every mode it enables with the matching disable, so a
+/// reviewer checking "is every enter paired with a leave" has both halves in one file.
+const TERMINAL_MODE_PAIRS: &[(&str, &str)] = &[
+    ("enable_raw_mode", "disable_raw_mode"),
+    ("EnterAlternateScreen", "LeaveAlternateScreen"),
+    ("EnableFocusChange", "DisableFocusChange"),
+];
+
+#[test]
+fn terminal_mode_owners_pair_every_enable_with_its_disable() {
+    let root = workspace_root();
+    let mut unpaired = Vec::new();
+    for file in ALLOWED_TERMINAL_MODE_FILES {
+        let contents = ok(
+            std::fs::read_to_string(root.join(file)),
+            &format!("cannot read {file}"),
+        );
+        let code: Vec<&str> = contents
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect();
+        let count = |token: &str| {
+            code.iter()
+                .filter(|line| contains_token(line, token))
+                .count()
+        };
+        for (enable, disable) in TERMINAL_MODE_PAIRS {
+            let (enables, disables) = (count(enable), count(disable));
+            if enables != disables {
+                unpaired.push(format!(
+                    "{file}: {enable} x{enables} but {disable} x{disables}"
+                ));
+            }
+        }
+    }
+    assert!(
+        unpaired.is_empty(),
+        "a terminal mode is enabled without a matching disable in the same file:\n  {}",
+        unpaired.join("\n  ")
+    );
+}
 
 #[test]
 fn terminal_mode_transitions_are_confined_to_allowlisted_files() {

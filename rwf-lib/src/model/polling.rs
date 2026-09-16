@@ -6,7 +6,7 @@
 
 use super::{ActivePane, Location};
 use crate::job::JobId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -86,6 +86,13 @@ pub struct PollingState {
     /// Mount points, longest-prefix matched by [`drive_key`] on Unix. Loaded once by a
     /// worker job at startup; empty until then, which keys everything as `/`.
     pub mounts: Vec<PathBuf>,
+    /// The panes that were on screen at the last tick (D17). A pane that is visible now
+    /// but was not — a tab switch, a viewer closing — is polled at once; clearing this is
+    /// how terminal focus gained asks for the same.
+    pub last_visible: HashSet<PaneKey>,
+    /// Panes that came into view while the poll pool was full: polled as soon as a worker
+    /// frees, instead of waiting out their interval.
+    pub immediate: HashSet<PaneKey>,
 }
 
 impl PollingState {

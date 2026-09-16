@@ -425,6 +425,9 @@ impl App {
     ) -> Result<String, String> {
         use std::process::Stdio;
 
+        // Focus reporting off too: the child owns the console and must not receive our
+        // focus escape sequences as input.
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
         let _ = crossterm::terminal::disable_raw_mode();
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen,);
 
@@ -441,6 +444,7 @@ impl App {
         // Restore before interpreting the result, so an error still leaves a usable screen.
         let _ = crossterm::terminal::enable_raw_mode();
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen,);
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange);
         let _ = terminal.clear();
 
         match outcome {
@@ -1035,27 +1039,8 @@ impl App {
         if event::poll(timeout)? {
             // Read ALL pending events to clear queue
             loop {
-                let ev = event::read()?;
-                match ev {
-                    Event::Key(key) => {
-                        // Release is observed too (not just Press) so the repeat-debounce below
-                        // can tell a genuine held key apart from two distinct fast keypresses.
-                        if matches!(
-                            key.kind,
-                            crossterm::event::KeyEventKind::Press
-                                | crossterm::event::KeyEventKind::Release
-                        ) && self.handle_key_event(key)
-                        {
-                            any_event = true;
-                        }
-                    }
-                    Event::Resize(_, _) => {
-                        // Recalculate task panel view on terminal resize
-                        let h = self.state.ui.layout.task_panel_height;
-                        self.task_panel.scroll_to_end(h);
-                        any_event = true;
-                    }
-                    _ => {}
+                if self.handle_terminal_event(event::read()?) {
+                    any_event = true;
                 }
 
                 if !event::poll(Duration::from_millis(0))? {
@@ -1064,6 +1049,36 @@ impl App {
             }
         }
         Ok(any_event)
+    }
+
+    /// Handle one terminal event. Returns whether the screen needs redrawing.
+    fn handle_terminal_event(&mut self, ev: Event) -> bool {
+        match ev {
+            // Release is observed too (not just Press) so the repeat-debounce can tell a
+            // genuine held key apart from two distinct fast keypresses.
+            Event::Key(key) => {
+                matches!(
+                    key.kind,
+                    crossterm::event::KeyEventKind::Press | crossterm::event::KeyEventKind::Release
+                ) && self.handle_key_event(key)
+            }
+            Event::Resize(_, _) => {
+                // Recalculate task panel view on terminal resize
+                let h = self.state.ui.layout.task_panel_height;
+                self.task_panel.scroll_to_end(h);
+                true
+            }
+            // Phase 7.5 D17: the user may have just changed files in another window. The
+            // next loop pass polls; nothing to redraw yet.
+            Event::FocusGained => {
+                rwf_lib::state::update_state(
+                    &mut self.state,
+                    rwf_lib::state::Transition::TerminalFocusGained,
+                );
+                false
+            }
+            _ => false,
+        }
     }
 
     /// Decides whether a keypress should be processed or dropped as a repeat/debounce.
@@ -3152,6 +3167,45 @@ mod polling_loop_tests {
         assert!(
             !app.poll_if_due(Instant::now()),
             "not due again until the interval passes"
+        );
+    }
+
+    /// Phase 7.5 D17: a `FocusGained` terminal event polls the visible panes at once.
+    #[tokio::test]
+    async fn focus_gained_makes_the_visible_panes_due_at_once() {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        state.config.polling_interval_ms = 1000;
+        {
+            let tab = state.current_tab_mut();
+            tab.left_pane.current_location = Location::Local(r"C:\work".into());
+            tab.right_pane.current_location = Location::Local(r"D:\data".into());
+        }
+        let mut app =
+            App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default());
+        app.poll_if_due(Instant::now());
+        let polls: Vec<_> = app
+            .state
+            .polling
+            .in_flight
+            .values()
+            .map(|p| p.job_id)
+            .collect();
+        for job_id in polls {
+            rwf_lib::state::update_state(
+                &mut app.state,
+                rwf_lib::state::Transition::CompleteJob {
+                    job_id,
+                    result: rwf_lib::job::OpResult::Cancelled,
+                },
+            );
+        }
+        assert!(!app.poll_if_due(Instant::now()), "settled");
+
+        app.handle_terminal_event(Event::FocusGained);
+
+        assert!(
+            app.poll_if_due(Instant::now()),
+            "focus gained polls at once"
         );
     }
 }

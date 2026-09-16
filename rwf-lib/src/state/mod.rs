@@ -702,6 +702,9 @@ pub enum Transition {
     StartPolling,
     /// `StopPolling` if the active pane's drive is polled, else `StartPolling`.
     TogglePolling,
+    /// The terminal regained focus: poll the visible panes at once, since the user may
+    /// have just changed something in another window (Phase 7.5 D17).
+    TerminalFocusGained,
     RetryPaneRead {
         tab_id: usize,
         side: crate::model::ActivePane,

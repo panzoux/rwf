@@ -15,7 +15,7 @@ add its guard; a rule that lives only in prose is a rule that will be broken.
 | 1 | [stdout is a data channel](#1-stdout-is-a-data-channel-not-a-message-channel) | Guarded — test | Yes, in Phase 7.15 (fixed in `d538295`) |
 | 2 | [`.gitignore` must not shadow source](#2-gitignore-patterns-must-never-shadow-a-source-path) | Guarded — 2 tests + anchored patterns | Yes — `logs/`, `sample/` and four more were unanchored |
 | 3 | [Rust/manifest files are LF](#3-rust-sources-and-cargo-manifests-are-lf) | Guarded — `.gitattributes` + test | Yes — 4 files had drifted to CRLF |
-| 4 | [Terminal mode confined to 2 files](#4-terminal-mode-transitions-live-in-two-files) | Guarded — test | No |
+| 4 | [Terminal mode confined to 2 files](#4-terminal-mode-transitions-live-in-two-files) | Guarded — 2 tests | No |
 | 5 | [cmd.exe needs `/D /C`](#5-cmdexe-is-invoked-as-cmd-d-c) | Guarded — file allowlist + unit test | **Yes — 3 sites in `state/helpers.rs`** |
 | 6 | [config keys are PascalCase](#6-configjson-keys-are-pascalcase) | Guarded — 2 tests | **Yes — `ArchiveConfig`, `TextInputConfig`** |
 | 7 | [every config field is optional](#7-every-configjson-field-is-optional) | Guarded — 2 tests | **Yes — 16 mandatory fields across 4 structs** |
@@ -151,7 +151,9 @@ test's file list together.
 ## 4. Terminal mode transitions live in two files
 
 **The rule.** Only `rwf-bin/src/terminal.rs` and `rwf-bin/src/app.rs` may call
-`enable_raw_mode` / `disable_raw_mode` or enter/leave the alternate screen.
+`enable_raw_mode` / `disable_raw_mode`, enter/leave the alternate screen, or turn focus
+reporting on/off (`EnableFocusChange` / `DisableFocusChange`, Phase 7.5). Each of those
+files pairs every enable with its disable.
 
 **Why.** Raw mode and the alternate screen are *process-global* state that outlives
 the process's own view of itself. `terminal.rs` owns setup and teardown (including a
@@ -161,11 +163,14 @@ takes it back.
 
 **What breaks.** A path that leaves raw mode and fails to restore it — an early
 return, a `?`, an error branch — hands the user back a shell that no longer echoes
-keystrokes. Nothing can test that: it happens after teardown, in a terminal the test
+keystrokes. Focus reporting left on is subtler: the shell (or a `SuspendAndRun` child
+such as fzf) receives `ESC [ I` / `ESC [ O` as input every time its window gains or
+loses focus, so it is switched off before the handoff and at teardown. Nothing can test that: it happens after teardown, in a terminal the test
 harness does not own. Confining the transitions to two files is what makes "is every
 enter paired with a leave" a question a reviewer can answer by reading.
 
-**Enforced by.** `terminal_mode_transitions_are_confined_to_allowlisted_files`.
+**Enforced by.** `terminal_mode_transitions_are_confined_to_allowlisted_files`, and
+`terminal_mode_owners_pair_every_enable_with_its_disable` for the pairing.
 
 ## 5. cmd.exe is invoked as `cmd /D /C`
 
