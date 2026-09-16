@@ -508,6 +508,11 @@ pub enum Action {
     OpenWith, // open cursor entry via ExtensionAssociation lookup, picker if 2+ matches (Phase 7.3)
     ShowVersion,
     ReloadConfig,
+    // Background polling control for the active pane's drive (Phase 7.5 D10e). No default
+    // key binding; meant for a custom menu.
+    StopPolling,
+    StartPolling,
+    TogglePolling,
     ShowVersionInfo,        // compact version/system info (backtick key)
     ShowVersionInfoVerbose, // verbose version/system info including config file status (F2)
     SaveLog,
@@ -1710,6 +1715,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 description: "Countdown test job".to_string(),
             }]
         }
+        Action::StopPolling => vec![Transition::StopPolling],
+        Action::StartPolling => vec![Transition::StartPolling],
+        Action::TogglePolling => vec![Transition::TogglePolling],
         Action::Refresh => {
             // Refresh the current pane by clearing cache and reloading directory
             vec![Transition::Refresh {

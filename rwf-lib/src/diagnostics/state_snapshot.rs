@@ -54,12 +54,28 @@ pub struct DiagnosticStateSnapshot {
     pub leap: Option<LeapSnapshot>,
     /// Viewer position and metadata, when open. Never file contents.
     pub viewer: Option<ViewerSnapshot>,
+    /// Background polling, one entry per drive seen this session (Phase 7.5 D22).
+    #[serde(default)]
+    pub polling: Vec<DrivePollingSnapshot>,
     /// Dialog stack, outermost first — **variant titles only**.
     ///
     /// Payloads are excluded on purpose: they hold in-progress user text
     /// (rename targets, search queries, custom-function `$I` input). The title
     /// answers "which dialog was up" without dumping half-typed content.
     pub dialogs: Vec<String>,
+}
+
+/// One drive's background polling state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrivePollingSnapshot {
+    /// Drive key: `C:\`, `\\server\share`, or a Unix mount point.
+    pub drive: String,
+    /// Current (possibly backed-off) interval.
+    pub interval_ms: u64,
+    /// `active`, `stopped-manual`, `stopped-auto` or `failing`.
+    pub state: String,
+    /// How long ago its last poll completed; `None` if never.
+    pub last_poll_ms_ago: Option<u64>,
 }
 
 /// UI mode and layout.
@@ -306,6 +322,30 @@ impl DiagnosticStateSnapshot {
                 is_loading: viewer.is_loading,
                 is_searching: viewer.is_searching,
             }),
+            polling: {
+                use crate::model::polling::StopReason;
+                let mut drives: Vec<DrivePollingSnapshot> = state
+                    .polling
+                    .drives
+                    .iter()
+                    .map(|(drive, polled)| DrivePollingSnapshot {
+                        drive: drive.clone(),
+                        interval_ms: polled.interval.as_millis() as u64,
+                        state: match (polled.stopped, polled.failing) {
+                            (Some(StopReason::Manual), _) => "stopped-manual",
+                            (Some(StopReason::Auto), _) => "stopped-auto",
+                            (None, true) => "failing",
+                            (None, false) => "active",
+                        }
+                        .to_string(),
+                        last_poll_ms_ago: polled
+                            .last_poll
+                            .map(|at| at.elapsed().as_millis() as u64),
+                    })
+                    .collect();
+                drives.sort_by(|a, b| a.drive.cmp(&b.drive));
+                drives
+            },
             dialogs: state
                 .dialogs
                 .stack

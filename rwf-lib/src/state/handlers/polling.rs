@@ -14,6 +14,9 @@ impl AppState {
     ) -> Option<StateUpdateResult> {
         match transition {
             Transition::PollTick { now } => Some(self.poll_tick(*now)),
+            Transition::StopPolling => Some(self.set_active_drive_polling(Some(false))),
+            Transition::StartPolling => Some(self.set_active_drive_polling(Some(true))),
+            Transition::TogglePolling => Some(self.set_active_drive_polling(None)),
             _ => None,
         }
     }
@@ -89,6 +92,88 @@ impl AppState {
             took.as_secs()
         ));
         result.ui_changed = true;
+    }
+
+    /// `StopPolling` / `StartPolling` / `TogglePolling` on the active pane's drive.
+    /// `enable`: `Some(true)` start, `Some(false)` stop, `None` toggle.
+    fn set_active_drive_polling(&mut self, enable: Option<bool>) -> StateUpdateResult {
+        let mut result = StateUpdateResult::with_ui_change();
+        let timestamp = chrono::Local::now().format("[%H:%M:%S]");
+        let Some(drive) = self.polling.drive_of(&self.active_pane().current_location) else {
+            result.task_panel_logs.push(format!(
+                "{timestamp} Polling not available for this location"
+            ));
+            return result;
+        };
+        let base = PollingState::interval(self.config.polling_interval_ms).unwrap_or(
+            Duration::from_millis(crate::model::polling::MIN_POLLING_INTERVAL_MS),
+        );
+        let start = enable.unwrap_or_else(|| self.polling.is_stopped(&drive));
+
+        if start {
+            let state = self.polling.drive_mut(&drive, base);
+            state.stopped = None;
+            state.interval = base;
+            // Poll the drive's visible panes at once rather than after a stale due time.
+            let on_drive: Vec<PaneKey> = self
+                .polling
+                .next_due
+                .keys()
+                .copied()
+                .filter(|key| {
+                    self.pane_by_key(*key)
+                        .and_then(|pane| self.polling.drive_of(&pane.current_location))
+                        .is_some_and(|d| d == drive)
+                })
+                .collect();
+            for key in on_drive {
+                self.polling.next_due.remove(&key);
+            }
+            result
+                .task_panel_logs
+                .push(format!("{timestamp} Polling resumed for {drive}"));
+        } else {
+            self.polling.drive_mut(&drive, base).stopped = Some(StopReason::Manual);
+            let running: Vec<(PaneKey, JobId)> = self
+                .polling
+                .in_flight
+                .iter()
+                .filter(|(_, poll)| poll.drive == drive)
+                .map(|(key, poll)| (*key, poll.job_id))
+                .collect();
+            for (key, job_id) in running {
+                // Forgetting the poll discards its result when it completes anyway.
+                self.polling.in_flight.remove(&key);
+                self.jobs.request_cancel(job_id);
+            }
+            result.task_panel_logs.push(format!(
+                "{timestamp} Polling stopped for {drive} (StopPolling)"
+            ));
+        }
+        result
+    }
+
+    /// The path-line indicator for a visible pane of the active tab (D21): `[no poll]`
+    /// while its drive is stopped, `[offline]` while its polls are failing. Nothing when
+    /// polling is off altogether or the location is never polled.
+    pub fn poll_indicator(&self, side: ActivePane) -> Option<&'static str> {
+        PollingState::interval(self.config.polling_interval_ms)?;
+        let tab = self.current_tab();
+        let pane = match side {
+            ActivePane::Left => &tab.left_pane,
+            ActivePane::Right => &tab.right_pane,
+        };
+        let drive = self
+            .polling
+            .drives
+            .get(&self.polling.drive_of(&pane.current_location)?)?;
+        if drive.stopped.is_some() {
+            Some("[no poll]")
+        } else if drive.failing {
+            Some("[offline]")
+        } else {
+            None
+        }
     }
 
     /// Whether any poll is still running, so the loop should wake to collect it.

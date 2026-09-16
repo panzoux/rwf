@@ -60,6 +60,9 @@ mod polling_tests;
 mod polling_drive_tests;
 
 #[cfg(test)]
+mod polling_control_tests;
+
+#[cfg(test)]
 mod main_thread_io_tests;
 
 #[cfg(test)]

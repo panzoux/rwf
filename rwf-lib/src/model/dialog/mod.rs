@@ -2549,6 +2549,9 @@ mod custom_function_validation_tests {
             "ReloadConfiguration",
             "ReloadConfig",
             "EditConfigFile",
+            "StopPolling",
+            "StartPolling",
+            "TogglePolling",
         ];
 
         let menus: &[(&str, &str)] = &[

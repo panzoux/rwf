@@ -39,6 +39,24 @@
       "Name": "File Operations",
       "Description": "File operation actions submenu",
       "Menu": "menu_file_operations.json"
+    },
+    {
+      "Name": "Polling",
+      "Description": "Background polling of the current drive",
+      "Menu": [
+        {
+          "Name": "Stop polling this drive",
+          "Action": "StopPolling"
+        },
+        {
+          "Name": "Resume polling this drive",
+          "Action": "StartPolling"
+        },
+        {
+          "Name": "Toggle polling this drive",
+          "Action": "TogglePolling"
+        }
+      ]
     }
   ]
 }

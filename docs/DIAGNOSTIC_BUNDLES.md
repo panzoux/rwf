@@ -191,6 +191,7 @@ fields:
 | `…cursor_entry` | the filename under the cursor, usually the fastest way to orient |
 | `dialogs` | dialog stack, outermost first, **titles only** — payloads hold half-typed user text |
 | `viewer` | position and metadata only; never file contents |
+| `polling` | per drive seen this session: `interval_ms` (backed off if slow), `state` (`active` / `stopped-manual` / `stopped-auto` / `failing`), `last_poll_ms_ago` — why a pane did or did not pick up an outside change (Phase 7.5) |
 
 ---
 

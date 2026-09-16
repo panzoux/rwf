@@ -1113,6 +1113,9 @@ fn resolve_menu_item_action(
         "ViewFileAsHex" => Some(rwf_lib::input::Action::OpenHexViewer),
         "ReloadConfiguration" => Some(rwf_lib::input::Action::ReloadConfig),
         "EditConfigFile" => Some(rwf_lib::input::Action::EditConfigFile),
+        "StopPolling" => Some(rwf_lib::input::Action::StopPolling),
+        "StartPolling" => Some(rwf_lib::input::Action::StartPolling),
+        "TogglePolling" => Some(rwf_lib::input::Action::TogglePolling),
         _ => None,
     };
 
@@ -1208,6 +1211,29 @@ mod tests {
             }
             other => panic!("expected ExecuteCustomFunction, got {other:?}"),
         }
+    }
+
+    /// Phase 7.5 D18: the shipped "Polling" submenu names the polling actions directly.
+    #[test]
+    fn menu_items_naming_polling_actions_run_them() {
+        let mut state = test_state();
+        state.config.polling_interval_ms = 1000;
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from(r"C:\work"));
+        state.ui.active_pane = rwf_lib::model::ActivePane::Left;
+
+        assert!(resolve_menu_item_action(&mut state, "StopPolling").is_none());
+        assert!(state.polling.is_stopped(r"C:\"));
+        assert!(state
+            .pending_confirmation_logs
+            .iter()
+            .any(|l| l.contains("Polling stopped")));
+
+        resolve_menu_item_action(&mut state, "TogglePolling");
+        assert!(!state.polling.is_stopped(r"C:\"));
+        resolve_menu_item_action(&mut state, "TogglePolling");
+        resolve_menu_item_action(&mut state, "StartPolling");
+        assert!(!state.polling.is_stopped(r"C:\"));
     }
 
     #[test]

@@ -694,6 +694,14 @@ pub enum Transition {
     PollTick {
         now: std::time::Instant,
     },
+    /// Stop polling the active pane's drive for the session; a poll running on it is
+    /// cancelled and its result discarded (Phase 7.5 D10e, D18).
+    StopPolling,
+    /// Resume polling the active pane's drive after a manual or automatic stop, from the
+    /// base interval, polling at once.
+    StartPolling,
+    /// `StopPolling` if the active pane's drive is polled, else `StartPolling`.
+    TogglePolling,
     RetryPaneRead {
         tab_id: usize,
         side: crate::model::ActivePane,
