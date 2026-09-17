@@ -191,7 +191,7 @@ fields:
 | `…cursor_entry` | the filename under the cursor, usually the fastest way to orient |
 | `dialogs` | dialog stack, outermost first, **titles only** — payloads hold half-typed user text |
 | `viewer` | position and metadata only; never file contents |
-| `polling` | per drive seen this session: `interval_ms` (backed off if slow), `state` (`active` / `stopped-manual` / `stopped-auto` / `failing`), `last_poll_ms_ago` — why a pane did or did not pick up an outside change (Phase 7.5) |
+| `polling` | per drive seen this session: `interval_ms` (backed off if slow), `state` (`active` / `stopped-manual` / `stopped-auto` / `failing`), `last_poll_ms_ago`, and how fast it lists a directory — `polls`, `last_/average_/slowest_poll_duration_ms` (worker-measured, successful polls only). Why a pane did or did not pick up an outside change, and how slow the drive is (Phase 7.5). Every interval change is also an `INFO` log line, `[Poll] C:\ poll interval 1000 ms -> 2000 ms: listing took 1523 ms (slower than 1000 ms)`; with `RUST_LOG=debug`, each poll logs its path, duration and next interval |
 
 ---
 

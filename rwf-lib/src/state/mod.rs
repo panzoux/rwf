@@ -694,6 +694,11 @@ pub enum Transition {
     PollTick {
         now: std::time::Instant,
     },
+    /// A worker reports how long a background poll took (Phase 7.5), just before its result.
+    JobElapsed {
+        job_id: crate::job::JobId,
+        elapsed: std::time::Duration,
+    },
     /// Stop polling the active pane's drive for the session; a poll running on it is
     /// cancelled and its result discarded (Phase 7.5 D10e, D18).
     StopPolling,
@@ -1308,11 +1313,13 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     state.config = new_config;
                     // Phase 7.5: intervals restart from the new base; stopped drives stay
                     // stopped.
-                    state
-                        .polling
-                        .reset_intervals(crate::model::polling::PollingState::interval(
+                    for change in state.polling.reset_intervals(
+                        crate::model::polling::PollingState::interval(
                             state.config.polling_interval_ms,
-                        ));
+                        ),
+                    ) {
+                        tracing::info!("[Poll] {change}");
+                    }
                     crate::config::ConfigLoadResult::ok(config_path)
                 }
                 Err(e) => {
@@ -1445,11 +1452,15 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
         Transition::UpdateConfig { config } => {
             state.jobs.max_parallel = config.worker_pool_size;
             state.config = *config;
-            state
-                .polling
-                .reset_intervals(crate::model::polling::PollingState::interval(
-                    state.config.polling_interval_ms,
-                ));
+            for change in
+                state
+                    .polling
+                    .reset_intervals(crate::model::polling::PollingState::interval(
+                        state.config.polling_interval_ms,
+                    ))
+            {
+                tracing::info!("[Poll] {change}");
+            }
             StateUpdateResult::with_ui_change()
         }
 

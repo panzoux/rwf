@@ -40,6 +40,42 @@ pub struct PollInFlight {
     /// When a worker picked it up. Timing (D10b, D10c) runs from here, so a poll
     /// waiting for a free worker is not called slow.
     pub started_at: Option<Instant>,
+    /// The worker's own measurement, reported just before the result. Preferred over
+    /// `started_at` once it arrives.
+    pub elapsed: Option<Duration>,
+}
+
+/// How long a drive takes to list a directory, from successful polls (Phase 7.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PollTiming {
+    pub last: Duration,
+    /// Exponentially weighted (each new sample counts 1/4), so it follows a drive that
+    /// gets slower or faster without being thrown by one outlier.
+    pub average: Duration,
+    pub slowest: Duration,
+    pub count: u64,
+}
+
+impl PollTiming {
+    fn first(took: Duration) -> Self {
+        Self {
+            last: took,
+            average: took,
+            slowest: took,
+            count: 1,
+        }
+    }
+
+    fn record(&mut self, took: Duration) {
+        self.last = took;
+        self.average = if took >= self.average {
+            self.average + (took - self.average) / 4
+        } else {
+            self.average - (self.average - took) / 4
+        };
+        self.slowest = self.slowest.max(took);
+        self.count += 1;
+    }
 }
 
 /// Why a drive is not being polled.
@@ -60,15 +96,26 @@ pub struct DriveState {
     /// Its last poll failed (cleared by the next successful one).
     pub failing: bool,
     pub last_poll: Option<Instant>,
+    /// Listing times of its successful polls; `None` until the first one.
+    pub timing: Option<PollTiming>,
 }
 
 impl DriveState {
+    /// Record the listing time of a successful poll.
+    pub fn record_listing_time(&mut self, took: Duration) {
+        match &mut self.timing {
+            Some(timing) => timing.record(took),
+            None => self.timing = Some(PollTiming::first(took)),
+        }
+    }
+
     fn new(base: Duration) -> Self {
         Self {
             interval: base,
             stopped: None,
             failing: false,
             last_poll: None,
+            timing: None,
         }
     }
 }
@@ -132,26 +179,109 @@ impl PollingState {
     }
 
     /// Config reload: every drive's interval returns to the new base; stopped drives
-    /// stay stopped.
-    pub fn reset_intervals(&mut self, base: Option<Duration>) {
-        if let Some(base) = base {
-            for drive in self.drives.values_mut() {
-                drive.interval = base;
-            }
-        }
+    /// stay stopped. Returns the changes, for the log.
+    pub fn reset_intervals(&mut self, base: Option<Duration>) -> Vec<IntervalChange> {
+        let Some(base) = base else {
+            return Vec::new();
+        };
+        let mut changes: Vec<IntervalChange> = self
+            .drives
+            .iter_mut()
+            .filter(|(_, state)| state.interval != base)
+            .map(|(drive, state)| {
+                let change = IntervalChange {
+                    drive: drive.clone(),
+                    from: state.interval,
+                    to: base,
+                    reason: IntervalReason::ConfigReloaded,
+                };
+                state.interval = base;
+                change
+            })
+            .collect();
+        changes.sort_by(|a, b| a.drive.cmp(&b.drive));
+        changes
     }
 
     /// Adapt `drive`'s interval to a completed poll (D10b): slower than [`SLOW_POLL`] or
     /// failed doubles it, up to `max(BACKOFF_CEILING, base)`; otherwise it halves, never
-    /// below `base`.
-    pub fn adapt_interval(&mut self, drive: &str, base: Duration, took: Duration, failed: bool) {
+    /// below `base`. Returns the change, if the interval moved, for the log.
+    pub fn adapt_interval(
+        &mut self,
+        drive: &str,
+        base: Duration,
+        took: Duration,
+        failed: bool,
+    ) -> Option<IntervalChange> {
         let ceiling = BACKOFF_CEILING.max(base);
         let state = self.drive_mut(drive, base);
-        state.interval = if failed || took > SLOW_POLL {
-            (state.interval * 2).min(ceiling)
+        let from = state.interval;
+        let (to, reason) = if failed {
+            ((from * 2).min(ceiling), IntervalReason::PollFailed)
+        } else if took > SLOW_POLL {
+            ((from * 2).min(ceiling), IntervalReason::SlowListing(took))
         } else {
-            (state.interval / 2).max(base)
+            ((from / 2).max(base), IntervalReason::FastListing(took))
         };
+        state.interval = to;
+        (to != from).then(|| IntervalChange {
+            drive: drive.to_string(),
+            from,
+            to,
+            reason,
+        })
+    }
+}
+
+/// Why a drive's poll interval changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntervalReason {
+    /// A listing took longer than [`SLOW_POLL`].
+    SlowListing(Duration),
+    /// A listing finished within [`SLOW_POLL`], so the interval recovers toward base.
+    FastListing(Duration),
+    PollFailed,
+    ConfigReloaded,
+    /// `StartPolling` resumed the drive at the base interval.
+    Resumed,
+}
+
+/// A change to a drive's poll interval, logged at `info` so a slow or recovering drive is
+/// visible in `session.log` and in diagnostic bundles. `Display` is the log line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntervalChange {
+    pub drive: String,
+    pub from: Duration,
+    pub to: Duration,
+    pub reason: IntervalReason,
+}
+
+impl std::fmt::Display for IntervalChange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} poll interval {} ms -> {} ms: ",
+            self.drive,
+            self.from.as_millis(),
+            self.to.as_millis()
+        )?;
+        match &self.reason {
+            IntervalReason::SlowListing(took) => write!(
+                f,
+                "listing took {} ms (slower than {} ms)",
+                took.as_millis(),
+                SLOW_POLL.as_millis()
+            ),
+            IntervalReason::FastListing(took) => write!(
+                f,
+                "listing took {} ms (within {} ms)",
+                took.as_millis(),
+                SLOW_POLL.as_millis()
+            ),
+            IntervalReason::PollFailed => write!(f, "poll failed"),
+            IntervalReason::ConfigReloaded => write!(f, "configuration reloaded"),
+            IntervalReason::Resumed => write!(f, "polling resumed"),
+        }
     }
 }
 
@@ -307,6 +437,54 @@ mod tests {
         polling.adapt_interval("C:\\", base, fast, false);
         polling.adapt_interval("C:\\", base, fast, false);
         assert_eq!(polling.drives["C:\\"].interval, base, "never below base");
+    }
+
+    /// Every interval decision is logged with the drive and the reason; the log line is
+    /// the change's `Display`.
+    #[test]
+    fn interval_changes_say_which_drive_and_why() {
+        let base = Duration::from_millis(1000);
+        let mut polling = PollingState::default();
+
+        let slower = polling
+            .adapt_interval("C:\\", base, Duration::from_millis(1523), false)
+            .expect("backed off");
+        assert_eq!(
+            slower.to_string(),
+            "C:\\ poll interval 1000 ms -> 2000 ms: listing took 1523 ms (slower than 1000 ms)"
+        );
+
+        let failed = polling
+            .adapt_interval("C:\\", base, Duration::ZERO, true)
+            .expect("backed off");
+        assert_eq!(
+            failed.to_string(),
+            "C:\\ poll interval 2000 ms -> 4000 ms: poll failed"
+        );
+
+        assert_eq!(
+            polling.adapt_interval("C:\\", base, Duration::from_secs(2), false),
+            None,
+            "already at the ceiling: no change, nothing to log"
+        );
+
+        let faster = polling
+            .adapt_interval("C:\\", base, Duration::from_millis(12), false)
+            .expect("recovering");
+        assert_eq!(
+            faster.to_string(),
+            "C:\\ poll interval 4000 ms -> 2000 ms: listing took 12 ms (within 1000 ms)"
+        );
+
+        let reset = polling.reset_intervals(Some(Duration::from_millis(500)));
+        assert_eq!(reset.len(), 1);
+        assert_eq!(
+            reset[0].to_string(),
+            "C:\\ poll interval 2000 ms -> 500 ms: configuration reloaded"
+        );
+        assert!(polling
+            .reset_intervals(Some(Duration::from_millis(500)))
+            .is_empty());
     }
 
     #[test]

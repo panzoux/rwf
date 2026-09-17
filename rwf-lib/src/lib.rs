@@ -66,6 +66,9 @@ mod polling_control_tests;
 mod polling_immediate_tests;
 
 #[cfg(test)]
+mod polling_timing_tests;
+
+#[cfg(test)]
 mod main_thread_io_tests;
 
 #[cfg(test)]

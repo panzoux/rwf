@@ -76,6 +76,18 @@ pub struct DrivePollingSnapshot {
     pub state: String,
     /// How long ago its last poll completed; `None` if never.
     pub last_poll_ms_ago: Option<u64>,
+    /// Successful polls timed so far.
+    #[serde(default)]
+    pub polls: u64,
+    /// Listing time of the last successful poll, measured by the worker.
+    #[serde(default)]
+    pub last_poll_duration_ms: Option<u64>,
+    /// Exponentially weighted average listing time.
+    #[serde(default)]
+    pub average_poll_duration_ms: Option<u64>,
+    /// Slowest listing time this session.
+    #[serde(default)]
+    pub slowest_poll_duration_ms: Option<u64>,
 }
 
 /// UI mode and layout.
@@ -341,6 +353,14 @@ impl DiagnosticStateSnapshot {
                         last_poll_ms_ago: polled
                             .last_poll
                             .map(|at| at.elapsed().as_millis() as u64),
+                        polls: polled.timing.map_or(0, |t| t.count),
+                        last_poll_duration_ms: polled.timing.map(|t| t.last.as_millis() as u64),
+                        average_poll_duration_ms: polled
+                            .timing
+                            .map(|t| t.average.as_millis() as u64),
+                        slowest_poll_duration_ms: polled
+                            .timing
+                            .map(|t| t.slowest.as_millis() as u64),
                     })
                     .collect();
                 drives.sort_by(|a, b| a.drive.cmp(&b.drive));

@@ -69,6 +69,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if let Err(e) = self.event_sender.send(JobEvent::Started(job_id)) {
             tracing::error!("Failed to send job started event for {:?}: {}", job_id, e);
         }
+        let started = std::time::Instant::now();
 
         let result = match &spec.kind {
             JobKind::ReadDirectory { location } => {
@@ -361,6 +362,13 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 }
             }
         };
+
+        // Phase 7.5: a poll's listing time, measured where it happened.
+        if spec.origin == crate::job::JobOrigin::Poll {
+            let _ = self
+                .event_sender
+                .send(JobEvent::Elapsed(job_id, started.elapsed()));
+        }
 
         // Send completion event based on result
         let event = match result {

@@ -2052,6 +2052,7 @@ impl AppState {
             }
             Transition::AcknowledgeCancel { job_id } => {
                 self.jobs.acknowledge_cancel(*job_id);
+                self.forget_cancelled_poll(*job_id);
                 // The background list must hear about it too. Before pane reads were
                 // registered there this only left the odd cancelled copy "active"; now
                 // every read superseded by navigation would spin its tab forever.

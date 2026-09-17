@@ -17,6 +17,14 @@ impl AppState {
             Transition::StopPolling => Some(self.set_active_drive_polling(Some(false))),
             Transition::StartPolling => Some(self.set_active_drive_polling(Some(true))),
             Transition::TogglePolling => Some(self.set_active_drive_polling(None)),
+            Transition::JobElapsed { job_id, elapsed } => {
+                if let Some(key) = self.polling.owns(*job_id) {
+                    if let Some(poll) = self.polling.in_flight.get_mut(&key) {
+                        poll.elapsed = Some(*elapsed);
+                    }
+                }
+                Some(StateUpdateResult::none())
+            }
             Transition::TerminalFocusGained => {
                 self.polling.last_visible.clear();
                 Some(StateUpdateResult::none())
@@ -95,6 +103,11 @@ impl AppState {
             return;
         }
         state.stopped = Some(StopReason::Auto);
+        tracing::warn!(
+            "[Poll] {drive} polling stopped: listing took {} ms (limit {} ms, PollingDisableAfterMs)",
+            took.as_millis(),
+            self.config.polling_disable_after_ms
+        );
         result.task_panel_logs.push(format!(
             "{} [WARN] Polling stopped for {} (listing took {} s) — StartPolling to resume",
             chrono::Local::now().format("[%H:%M:%S]"),
@@ -123,7 +136,19 @@ impl AppState {
         if start {
             let state = self.polling.drive_mut(&drive, base);
             state.stopped = None;
+            if state.interval != base {
+                tracing::info!(
+                    "[Poll] {}",
+                    crate::model::polling::IntervalChange {
+                        drive: drive.clone(),
+                        from: state.interval,
+                        to: base,
+                        reason: crate::model::polling::IntervalReason::Resumed,
+                    }
+                );
+            }
             state.interval = base;
+            tracing::info!("[Poll] {drive} polling resumed (StartPolling)");
             // Poll the drive's visible panes at once rather than after a stale due time.
             let on_drive: Vec<PaneKey> = self
                 .polling
@@ -144,6 +169,7 @@ impl AppState {
                 .push(format!("{timestamp} Polling resumed for {drive}"));
         } else {
             self.polling.drive_mut(&drive, base).stopped = Some(StopReason::Manual);
+            tracing::info!("[Poll] {drive} polling stopped (StopPolling)");
             let running: Vec<(PaneKey, JobId)> = self
                 .polling
                 .in_flight
@@ -183,6 +209,25 @@ impl AppState {
             Some("[offline]")
         } else {
             None
+        }
+    }
+
+    /// Listing times of the drive a visible pane of the active tab is on, once it has been
+    /// polled successfully — how fast (or slow) that drive is.
+    pub fn poll_timing(&self, side: ActivePane) -> Option<crate::model::polling::PollTiming> {
+        let tab = self.current_tab();
+        let pane = match side {
+            ActivePane::Left => &tab.left_pane,
+            ActivePane::Right => &tab.right_pane,
+        };
+        let drive = self.polling.drive_of(&pane.current_location)?;
+        self.polling.drives.get(&drive)?.timing
+    }
+
+    /// A poll the worker acknowledged as cancelled frees its slot; its result never comes.
+    pub(crate) fn forget_cancelled_poll(&mut self, job_id: JobId) {
+        if let Some(key) = self.polling.owns(job_id) {
+            self.polling.in_flight.remove(&key);
         }
     }
 
@@ -294,6 +339,7 @@ impl AppState {
                     generation,
                     submitted_at: now,
                     started_at: None,
+                    elapsed: None,
                 },
             );
             result.jobs_to_start.push(job);
@@ -336,15 +382,32 @@ impl AppState {
         let poll = self.polling.in_flight.remove(&key)?;
         let now = Instant::now();
         if let Some(base) = PollingState::interval(self.config.polling_interval_ms) {
-            let took = poll.started_at.map_or(Duration::ZERO, |started| {
-                now.saturating_duration_since(started)
+            // The worker's measurement when it arrived; else loop-side timing from the
+            // start event (coarser — a fast poll can read as 0).
+            let took = poll.elapsed.unwrap_or_else(|| {
+                poll.started_at.map_or(Duration::ZERO, |started| {
+                    now.saturating_duration_since(started)
+                })
             });
             if !matches!(result, OpResult::Cancelled) {
                 let failed = matches!(result, OpResult::Failed(_));
-                self.polling.adapt_interval(&poll.drive, base, took, failed);
+                if let Some(change) = self.polling.adapt_interval(&poll.drive, base, took, failed) {
+                    tracing::info!("[Poll] {change}");
+                }
                 let drive = self.polling.drive_mut(&poll.drive, base);
                 drive.failing = failed;
                 drive.last_poll = Some(now);
+                if !failed {
+                    drive.record_listing_time(took);
+                }
+                tracing::debug!(
+                    "[Poll] {} on {}: {} ms, {}, next in {} ms",
+                    poll.location.display_path(),
+                    poll.drive,
+                    took.as_millis(),
+                    if failed { "failed" } else { "ok" },
+                    drive.interval.as_millis()
+                );
             }
             if self.poll_disable_after().is_some_and(|limit| took >= limit) {
                 self.switch_drive_off(&poll.drive, took, result_obj);

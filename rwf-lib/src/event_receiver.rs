@@ -30,6 +30,8 @@ pub fn map_job_event_to_transition(event: JobEvent) -> Transition {
             Transition::JobStarted { job_id }
         }
 
+        JobEvent::Elapsed(job_id, elapsed) => Transition::JobElapsed { job_id, elapsed },
+
         JobEvent::Progress(job_id, progress) => Transition::UpdateJobProgress { job_id, progress },
 
         JobEvent::ProgressWithDetail(job_id, progress, progress_message, operation_detail) => {
@@ -92,6 +94,7 @@ pub fn process_pending_events<
             "process_pending_events: Received event {:?}",
             match &event {
                 JobEvent::Started(_) => "Started",
+                JobEvent::Elapsed(_, _) => "Elapsed",
                 JobEvent::Progress(_, _) => "Progress",
                 JobEvent::ProgressWithDetail(_, _, _, _) => "ProgressWithDetail",
                 JobEvent::Completed(_, _) => "Completed",

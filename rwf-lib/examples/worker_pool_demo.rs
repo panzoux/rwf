@@ -38,6 +38,9 @@ async fn main() {
                 JobEvent::Started(job_id) => {
                     println!("Job {:?} started", job_id);
                 }
+                JobEvent::Elapsed(job_id, elapsed) => {
+                    println!("Job {:?} took {:?}", job_id, elapsed);
+                }
                 JobEvent::Progress(job_id, progress) => {
                     println!("Job {:?} progress: {:.1}%", job_id, progress * 100.0);
                 }

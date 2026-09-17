@@ -14,6 +14,10 @@ use tokio::sync::mpsc;
 pub enum JobEvent {
     /// Job has started execution
     Started(JobId),
+    /// How long the worker spent executing a background poll (Phase 7.5), sent just before
+    /// its result. Timed here because the App loop often receives a fast poll's start and
+    /// result in the same batch.
+    Elapsed(JobId, std::time::Duration),
     /// Job progress update (job_id, progress 0.0-1.0)
     Progress(JobId, f64),
     /// Job progress update with detail messages (job_id, progress, progress_message, operation_detail)
