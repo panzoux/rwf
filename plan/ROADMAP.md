@@ -1,7 +1,7 @@
 # rwf 強化ロードマップ
 
 **目標**: rwf を twf（C#プロトタイプ）と同等以上の機能・安定性に引き上げ、さらに rwf 独自の強みを確立する
-**現在**: Phase 7（残: 7.5 バックグラウンドポーリング、7.24 画像プレビュー）— 最終更新 2026-09-15
+**現在**: Phase 7（残: 7.5 実機検証、7.5b ネイティブ FS 監視トリガー、7.24 画像プレビュー）— 最終更新 2026-09-17
 
 > **この文書の書き方**: 各行は 1 行の概要とリンクだけにする。経緯・実装メモ・検証記録は
 > 項目ごとの詳細ファイル（`plan/<番号>.<名前>.md`）へ書く。セッションの引き継ぎ・日誌はここに書かない
@@ -133,7 +133,8 @@
 | 7.2 | **コマンドパレット** | `[-]` | ヘルプビューアの検索結果から Enter でアクションを直接実行 | [7.2.command_palette.md](7.2.command_palette.md) |
 | 7.3 | **スマート・ファイルオープナー** | `[x]` | マジックバイト判定・Open With ピッカー・検出タイプ優先の関連付け解決（7.3b 含む） | [7.3.smart_file_opener.md](7.3.smart_file_opener.md) |
 | 7.4 | **バックグラウンド・ディレクトリサイズ計算** | `[-]` | Shift+S で再帰サイズを非同期計算し段階的に表示 | [7.4.calculate_directory_size.md](7.4.calculate_directory_size.md) |
-| 7.5 | **バックグラウンドポーリング（Layer 2）** | `[ ]` | アクティブタブの可視ペインをバックグラウンド再読込（ドライブ単位のバックオフ・自動停止） | [7.5.background_polling.md](7.5.background_polling.md) · [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
+| 7.5 | **バックグラウンドポーリング（Layer 2）** | `[~]` | アクティブタブの可視ペインをバックグラウンド再読込（ドライブ単位のバックオフ・自動停止）。実装済み、§4 実機検証待ち | [7.5.background_polling.md](7.5.background_polling.md) · [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
+| 7.5b | **ネイティブ FS 監視をポーリングのトリガーに** | `[ ]` | ローカル固定ドライブで `notify` の通知を「今すぐ再読込」の合図に使う（ブランチで検証。7.5 の計測が前提） | [7.5b.native_fs_watcher.md](7.5b.native_fs_watcher.md) |
 | 7.6 | **Undo/Redo（トランザクション・ロールバック）** | `[x]` | 操作を Operation Record 化、`Alt+o` の Operation Report から LIFO で Undo/Redo | [UI](7.6.operation_report_ui.md) · [力学](7.6.transactional_rollback.md) |
 | 7.7 | **スマート・トラッシュ** | `[x]` | OS ゴミ箱への移動・復元・空にする・一覧 UI | [7.7.smart_trash.md](7.7.smart_trash.md) |
 | 7.10 | **SSH/SFTP対応** | `[-]` | リモートファイルシステム（大規模追加） | — |
@@ -188,7 +189,7 @@
 | 案 | 理由（1 行） | 決定 | 詳細 |
 |----|-------------|------|------|
 | **7.9 シンタックスハイライト（`syntect`）** | ビューアのランダムアクセス設計と逐次・ステートフルなパーサが非適合。コード閲覧は外部ツールへ委譲（サイズは理由ではない） | 2026-08-29 | [7.9.syntax_highlighting.NOT_ADOPTED.md](7.9.syntax_highlighting.NOT_ADOPTED.md) |
-| **FSWatcher（`notify` クレート）によるペイン更新** | ネットワークドライブ・仮想FSでイベントが欠落する。ポーリング（7.5）で代替 | 2026-05-24 | [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
+| **FSWatcher（`notify` クレート）を更新の基盤にする** | ネットワークドライブ・仮想FSでイベントが欠落する。基盤は再読込（7.5）。再読込の**トリガー**としては 7.5b で再検討（2026-09-17） | 2026-05-24 | [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) · [7.5b](7.5b.native_fs_watcher.md) |
 | **外部コマンドの影響範囲宣言（`refresh_after`）** | 定義漏れ・誤設定のリスク。完了後にアクティブペインを無条件リフレッシュする | 2026-05-24 | [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
 | **JobProgress の常時記録（診断）** | 大きなコピー 1 回で数千レコード。オプトイン（旧 7.16）に限定 | 2026-08-12 | [7.15.diagnostic_report.md](7.15.diagnostic_report.md) |
 | **libmagic の必須依存化（7.3）** | Windows 非対応。任意依存としては Phase 8.8 候補 | 2026-07-18 | [7.3.smart_file_opener.md](7.3.smart_file_opener.md) |
