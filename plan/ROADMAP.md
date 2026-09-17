@@ -152,6 +152,7 @@
 | 7.22 | **起動時ジョブの可視化とエラーダイアログの情報設計** | `[x]` | 読み込みのスピナー表示・構造化エラー種別・読み込み失敗ダイアログ | [7.22.startup_job_visibility.md](7.22.startup_job_visibility.md) |
 | 7.23 | **メインスレッド非ブロッキング化とクリップボード経路の修正** | `[x]` | ジョブ投入口の一本化・セッション復元の FS 排除・ビジーループ解消 | [7.23.main_thread_nonblocking.md](7.23.main_thread_nonblocking.md) |
 | 7.24 | **画像プレビュー・動画サムネイル** | `[ ]` | ffmpeg から生 RGB を受け半ブロックで描画（Rust クレート追加ゼロ案、zrr 由来） | [7.24.media_preview.md](7.24.media_preview.md) |
+| 7.25 | **ペイン幅の変更（キー操作）** | `[ ]` | `Ctrl+Left/Right` で境界を 2 列ずつ移動・`Ctrl+\|` で均等に戻す（タブ切替から付け替え）、SideBySide にも適用 | [7.25.pane_width_resize.md](7.25.pane_width_resize.md) |
 
 ---
 
@@ -170,7 +171,7 @@
 | **診断: JobProgress のオプトイン記録** | `AtomicU64` 1 個で間引く設計（[詳細](7.15.diagnostic_report.md)） | 旧 7.16 |
 | **ディスク使用量可視化（グラフ）** | サイズ計算結果を円グラフ/棒グラフで表示。ncdu 風のビジュアル分析 | Phase 8.1 |
 | **永続サイズキャッシュ** | `~/.rwf/size_cache.json` に計算結果を保存。ディレクトリ mtime で無効化判定 | Phase 8.2 |
-| **動的ペイン幅調整** | マウス・キーでペイン幅を変更（左右均等分割 → カスタム比率） | Phase 8.3 |
+| **動的ペイン幅調整（マウス）** | 境界のドラッグで幅を変更。キー操作分は 7.25 へ前倒し（[詳細](7.25.pane_width_resize.md)） | Phase 8.3 |
 | **Escape キャンセル** | バックグラウンドジョブ実行中に Escape で即座にキャンセル | Phase 8.4 |
 | **Git ステータス表示** | ペイン内で Git ファイル状態（modified/staged等）を色分け表示 | Phase 8.5 |
 | **Registered Folder へのコピー/移動** | **CopyToRegisteredFolder** / **MoveToRegisteredFolder**。大量の登録フォルダから高速に絞り込み・選択して整理する機能 | Phase 8.6 |
