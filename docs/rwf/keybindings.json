@@ -117,8 +117,11 @@
     "Ctrl+PageUp": "NextTab",
     "Ctrl+Enter": "HandleCtrlEnter",
     "Ctrl+Shift+Enter": "ExecuteFile",
-    "Ctrl+Right": "NextTab",
-    "Ctrl+Left": "PreviousTab",
+    "Ctrl+Right": "WidenLeftPane",
+    "Ctrl+Left": "WidenRightPane",
+    "Ctrl+\\": "ResetPaneSplit",
+    "Ctrl+|": "ResetPaneSplit",
+    "Ctrl+4": "ResetPaneSplit",
     "Ctrl+Up": "ResizeTaskPanelUp",
     "Ctrl+Down": "ResizeTaskPanelDown",
     "Escape": "Quit"

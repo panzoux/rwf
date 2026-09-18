@@ -152,7 +152,7 @@
 | 7.22 | **起動時ジョブの可視化とエラーダイアログの情報設計** | `[x]` | 読み込みのスピナー表示・構造化エラー種別・読み込み失敗ダイアログ | [7.22.startup_job_visibility.md](7.22.startup_job_visibility.md) |
 | 7.23 | **メインスレッド非ブロッキング化とクリップボード経路の修正** | `[x]` | ジョブ投入口の一本化・セッション復元の FS 排除・ビジーループ解消 | [7.23.main_thread_nonblocking.md](7.23.main_thread_nonblocking.md) |
 | 7.24 | **画像プレビュー・動画サムネイル** | `[ ]` | ffmpeg から生 RGB を受け半ブロックで描画（Rust クレート追加ゼロ案、zrr 由来） | [7.24.media_preview.md](7.24.media_preview.md) |
-| 7.25 | **ペイン幅の変更（キー操作）** | `[ ]` | `Ctrl+Left/Right` で境界を 2 列ずつ移動・`Ctrl+\|` で均等に戻す（タブ切替から付け替え）、SideBySide にも適用 | [7.25.pane_width_resize.md](7.25.pane_width_resize.md) |
+| 7.25 | **ペイン幅の変更（キー操作）** | `[~]` | `Ctrl+Left/Right` で境界を 2 列ずつ移動・`Ctrl+\|` で均等に戻す（タブ切替から付け替え）、SideBySide にも適用。実装済み、T8 実機確認待ち | [7.25.pane_width_resize.md](7.25.pane_width_resize.md) |
 
 ---
 

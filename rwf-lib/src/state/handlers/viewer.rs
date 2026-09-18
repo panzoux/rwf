@@ -145,6 +145,7 @@ impl AppState {
                     return Some(StateUpdateResult::none());
                 }
                 self.viewer_search_job_id = None;
+                let text_width = self.viewer_text_width();
                 if let Some(ref mut viewer) = self.viewer {
                     viewer.is_searching = false;
                     viewer.search_matches = matches.clone();
@@ -162,7 +163,7 @@ impl AppState {
                         };
                         viewer.search_match_index = Some(start_idx);
                         if viewer.address_query.is_none() {
-                            viewer.jump_to_match(start_idx);
+                            viewer.jump_to_match(start_idx, text_width);
                         }
                     }
                 }
@@ -259,14 +260,16 @@ impl AppState {
                 Some(result)
             }
             Transition::ViewerFindNext => {
+                let text_width = self.viewer_text_width();
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.find_next_in_dir();
+                    viewer.find_next_in_dir(text_width);
                 }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ViewerFindPrev => {
+                let text_width = self.viewer_text_width();
                 if let Some(ref mut viewer) = self.viewer {
-                    viewer.find_prev_in_dir();
+                    viewer.find_prev_in_dir(text_width);
                 }
                 Some(StateUpdateResult::with_ui_change())
             }

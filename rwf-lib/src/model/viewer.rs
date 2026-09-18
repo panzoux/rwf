@@ -231,14 +231,32 @@ pub struct ViewerState {
     pub search_matches: Vec<(usize, usize, usize)>,
     pub case_sensitive: bool,
     pub search_forward: bool,
-    /// Decoded content width in display columns, updated by UpdatePaneWidth.
-    pub content_width: usize,
     pub is_loading: bool,
     /// Set when the search was an address jump (hex mode). Holds the raw typed query
     /// so the renderer can highlight the matching digit suffix within the address label.
     pub address_query: Option<String>,
     /// True while a background search job is running.
     pub is_searching: bool,
+}
+
+/// Digits in the viewer's line-number column for a file of `line_count` lines.
+pub fn line_number_digits(line_count: usize) -> usize {
+    if line_count >= 10000 {
+        5
+    } else if line_count >= 1000 {
+        4
+    } else {
+        3
+    }
+}
+
+/// Columns of file text in a text viewer whose inner (inside-the-border) width is
+/// `inner_width`: what is left after the `" {NNN} | "` line-number prefix (digits + 4).
+/// The renderer and the search jump both use this, so a jump scrolls to exactly what
+/// is drawn. (The renderer used to count the prefix as digits + 3, so the last text
+/// column was always clipped by the border.)
+pub fn viewer_text_columns(inner_width: usize, line_count: usize) -> usize {
+    inner_width.saturating_sub(line_number_digits(line_count) + 4)
 }
 
 impl ViewerState {
@@ -256,7 +274,6 @@ impl ViewerState {
             search_matches: Vec::new(),
             case_sensitive: false,
             search_forward: true,
-            content_width: 70,
             is_loading: true,
             address_query: None,
             is_searching: false,
@@ -479,7 +496,9 @@ impl ViewerState {
     /// Run a search. `migemo_pattern` is a pre-built regex string from the migemo
     /// library; when present it overrides the plain-text query for matching but
     /// the query is still stored for display purposes.
-    pub fn start_search(&mut self, query: String, migemo_pattern: Option<&str>) {
+    /// `text_width` is the viewer's current [`viewer_text_columns`], used to scroll the
+    /// first hit into view.
+    pub fn start_search(&mut self, query: String, migemo_pattern: Option<&str>, text_width: usize) {
         self.search_query = Some(query.clone());
         self.search_matches.clear();
         self.search_match_index = None;
@@ -536,7 +555,7 @@ impl ViewerState {
                     .unwrap_or(self.search_matches.len() - 1)
             };
             self.search_match_index = Some(start_idx);
-            self.jump_to_match(start_idx);
+            self.jump_to_match(start_idx, text_width);
         }
     }
 
@@ -643,8 +662,11 @@ impl ViewerState {
                 };
                 self.search_match_index = Some(start_idx);
                 // Address searches already set line_offset; don't override with byte match jump.
+                // Hex rows are fixed-width, so the jump needs no text width.
                 if self.address_query.is_none() {
-                    self.jump_to_match(start_idx);
+                    if let Some(&(line, _, _)) = self.search_matches.get(start_idx) {
+                        self.line_offset = line;
+                    }
                 }
             }
         }
@@ -652,7 +674,8 @@ impl ViewerState {
 
     // ── Hex byte access ───────────────────────────────────────────────────────
 
-    pub fn find_next(&mut self) {
+    /// `text_width` for this and the other `find_*`: see [`Self::jump_to_match`].
+    pub fn find_next(&mut self, text_width: usize) {
         if self.search_matches.is_empty() {
             return;
         }
@@ -661,10 +684,10 @@ impl ViewerState {
             None => 0,
         };
         self.search_match_index = Some(next);
-        self.jump_to_match(next);
+        self.jump_to_match(next, text_width);
     }
 
-    pub fn find_prev(&mut self) {
+    pub fn find_prev(&mut self, text_width: usize) {
         if self.search_matches.is_empty() {
             return;
         }
@@ -673,34 +696,38 @@ impl ViewerState {
             _ => self.search_matches.len() - 1,
         };
         self.search_match_index = Some(prev);
-        self.jump_to_match(prev);
+        self.jump_to_match(prev, text_width);
     }
 
     /// `n` key: forward in search direction, backward if search_forward=false.
-    pub fn find_next_in_dir(&mut self) {
+    pub fn find_next_in_dir(&mut self, text_width: usize) {
         if self.search_forward {
-            self.find_next()
+            self.find_next(text_width)
         } else {
-            self.find_prev()
+            self.find_prev(text_width)
         }
     }
 
     /// `N` key: backward in search direction, forward if search_forward=false.
-    pub fn find_prev_in_dir(&mut self) {
+    pub fn find_prev_in_dir(&mut self, text_width: usize) {
         if self.search_forward {
-            self.find_prev()
+            self.find_prev(text_width)
         } else {
-            self.find_next()
+            self.find_next(text_width)
         }
     }
 
-    pub fn jump_to_match(&mut self, match_idx: usize) {
+    /// Scroll to a match. `text_width` is how many columns of file text are on screen
+    /// ([`viewer_text_columns`] of the viewer's current frame); it is passed in rather
+    /// than stored because it depends on the layout, the pane split and the line count,
+    /// all of which change without the viewer hearing about it.
+    pub fn jump_to_match(&mut self, match_idx: usize, text_width: usize) {
         if let Some(&(line, byte_start, byte_end)) = self.search_matches.get(match_idx) {
             self.line_offset = line;
             if self.mode == ViewerMode::Hex {
                 return;
             } // hex is fixed-width, no horiz scroll
-            let cw = self.content_width.max(1);
+            let cw = text_width.max(1);
             let col = self.column_offset;
             if byte_end <= cw {
                 self.column_offset = 0;
@@ -1359,14 +1386,14 @@ mod tests {
         let mut v = ViewerState::new(loc());
         v.set_contents(b"Hello World\nHello Rust\nGoodbye World\n".to_vec());
 
-        v.start_search("Hello".to_string(), None);
+        v.start_search("Hello".to_string(), None, 70);
         assert_eq!(v.search_matches.len(), 2);
         assert_eq!(v.search_match_index, Some(0));
 
-        v.find_next();
+        v.find_next(70);
         assert_eq!(v.search_match_index, Some(1));
 
-        v.find_prev();
+        v.find_prev(70);
         assert_eq!(v.search_match_index, Some(0));
     }
 
@@ -1547,10 +1574,10 @@ mod tests {
         let mut vs = ViewerState::new(loc());
         vs.buffer = Some(buffer);
 
-        vs.start_search("Hello".to_string(), None);
+        vs.start_search("Hello".to_string(), None, 70);
         assert_eq!(vs.search_matches.len(), 2);
         assert_eq!(vs.search_match_index, Some(0));
-        vs.find_next();
+        vs.find_next(70);
         assert_eq!(vs.search_match_index, Some(1));
     }
 

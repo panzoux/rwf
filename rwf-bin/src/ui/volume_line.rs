@@ -4,13 +4,7 @@
 //! **Validates: Requirements 39A.1-39A.14**
 
 use super::parse_color;
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
-    text::Span,
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, text::Span, widgets::Paragraph, Frame};
 use rwf_lib::{
     calculate_marked_stats, format_top_separator_info, get_drive_or_share_name, AppState,
 };
@@ -47,10 +41,7 @@ pub fn render_volume_line(
     if let Some(pane) = single_pane {
         render_one(frame, area, pane);
     } else {
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
+        let halves = super::panes::split_left_right(area, state);
         render_one(frame, halves[0], rwf_lib::model::ActivePane::Left);
         render_one(frame, halves[1], rwf_lib::model::ActivePane::Right);
     }

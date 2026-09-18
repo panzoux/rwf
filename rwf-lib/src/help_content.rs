@@ -470,11 +470,11 @@ impl HelpContent {
                             description: "Close tab".to_string(),
                         },
                         KeyBinding {
-                            key: "Ctrl+Right".to_string(),
+                            key: "Ctrl+PageDown/Alt+L".to_string(),
                             description: "Next tab".to_string(),
                         },
                         KeyBinding {
-                            key: "Ctrl+Left".to_string(),
+                            key: "Ctrl+PageUp/Alt+H".to_string(),
                             description: "Previous tab".to_string(),
                         },
                     ],
@@ -493,6 +493,18 @@ impl HelpContent {
                         KeyBinding {
                             key: "Ctrl+J".to_string(),
                             description: "Job manager".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+Up/Ctrl+Down".to_string(),
+                            description: "Task panel taller / shorter".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+Right/Ctrl+Left".to_string(),
+                            description: "Move pane divider right / left".to_string(),
+                        },
+                        KeyBinding {
+                            key: "Ctrl+|".to_string(),
+                            description: "Even pane split".to_string(),
                         },
                         KeyBinding {
                             key: "L".to_string(),

@@ -35,11 +35,9 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::UpdatePaneWidth { width } => {
+                // `left_pane_width` is deliberately left alone: it is scaled to the new
+                // width at render time (see `split_columns`).
                 self.ui.layout.pane_width = *width;
-                let content_w = width.saturating_sub(10);
-                if let Some(ref mut viewer) = self.viewer {
-                    viewer.content_width = content_w;
-                }
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ShowDialog { dialog } => {
@@ -65,6 +63,19 @@ impl AppState {
                     self.ui.layout.task_panel_height -= 1;
                 }
                 Some(StateUpdateResult::with_ui_change())
+            }
+            Transition::WidenLeftPane => {
+                Some(self.shift_pane_split(i32::from(crate::model::PANE_SPLIT_STEP)))
+            }
+            Transition::WidenRightPane => {
+                Some(self.shift_pane_split(-i32::from(crate::model::PANE_SPLIT_STEP)))
+            }
+            Transition::ResetPaneSplit => {
+                Some(if self.current_tab_mut().left_pane_width.take().is_some() {
+                    StateUpdateResult::with_ui_change()
+                } else {
+                    StateUpdateResult::none()
+                })
             }
             Transition::ScrollTaskPanelUp => {
                 if self.ui.layout.task_panel_scroll_offset > 0 {
@@ -1079,5 +1090,62 @@ impl AppState {
             .map(|r| self.is_undo_redo_target(r.id))
             .collect();
         crate::model::Dialog::operation_report_view_at(slots, actionable, cursor)
+    }
+}
+
+// 7.25: left/right pane split.
+impl AppState {
+    /// Terminal width as the renderer sees it (`Frame::area().width`).
+    fn terminal_columns(&self) -> u16 {
+        u16::try_from(self.ui.layout.pane_width).unwrap_or(u16::MAX)
+    }
+
+    /// Move the divider `delta` columns from where it is *drawn* now, and store the
+    /// result against the current terminal width. Starting from the drawn width (not
+    /// the stored one) means a key press on a narrow terminal never changes the value
+    /// without visibly moving the divider.
+    fn shift_pane_split(&mut self, delta: i32) -> StateUpdateResult {
+        use crate::model::{split_columns, PaneSplit, MIN_PANE_COLUMNS};
+        let total = self.terminal_columns();
+        if total < 2 * MIN_PANE_COLUMNS {
+            return StateUpdateResult::none();
+        }
+        let (current, _) = split_columns(total, self.current_tab().left_pane_width);
+        let target = (i32::from(current) + delta).clamp(
+            i32::from(MIN_PANE_COLUMNS),
+            i32::from(total - MIN_PANE_COLUMNS),
+        );
+        let Ok(target) = u16::try_from(target) else {
+            return StateUpdateResult::none();
+        };
+        if target == current {
+            return StateUpdateResult::none();
+        }
+        self.current_tab_mut().left_pane_width = Some(PaneSplit {
+            left: target,
+            at_total: total,
+        });
+        StateUpdateResult::with_ui_change()
+    }
+
+    /// Columns of file text the open text viewer shows right now (7.25 §3.4): its
+    /// frame (the whole terminal, or its side of the split in SideBySide) minus the
+    /// border and the line-number prefix. Computed on demand for the search jump.
+    pub(crate) fn viewer_text_width(&self) -> usize {
+        use crate::model::{split_columns, viewer_text_columns, ActivePane, ViewerLayout};
+        let total = self.terminal_columns();
+        let frame = match self.ui.layout.viewer_layout {
+            ViewerLayout::FullScreen => total,
+            ViewerLayout::SideBySide => {
+                let (left, right) = split_columns(total, self.current_tab().left_pane_width);
+                // The viewer sits opposite the anchored file pane.
+                match self.ui.layout.viewer_anchor_pane {
+                    ActivePane::Left => right,
+                    ActivePane::Right => left,
+                }
+            }
+        };
+        let lines = self.viewer.as_ref().map_or(0, |v| v.line_count());
+        viewer_text_columns(usize::from(frame).saturating_sub(2), lines)
     }
 }

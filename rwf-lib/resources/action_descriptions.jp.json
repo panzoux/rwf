@@ -128,6 +128,9 @@
           "ToggleTaskPanel":            { "description": "タスクパネルの表示 / 非表示を切り替え" },
           "IncreaseTaskPanelHeight":    { "description": "タスクパネルの高さを増やす" },
           "DecreaseTaskPanelHeight":    { "description": "タスクパネルの高さを減らす" },
+          "WidenLeftPane":              { "description": "ペインの境界を右へ移動（左ペインを広げる）" },
+          "WidenRightPane":             { "description": "ペインの境界を左へ移動（右ペインを広げる）" },
+          "ResetPaneSplit":             { "description": "ペインの境界を中央に戻す" },
           "ScrollTaskPanelUp":          { "description": "タスクパネルを上にスクロール" },
           "ScrollTaskPanelDown":        { "description": "タスクパネルを下にスクロール" }
         }

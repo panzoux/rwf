@@ -542,12 +542,17 @@ impl AppState {
     pub fn restore_session(&mut self) -> Result<(), crate::session::SessionError> {
         let path = crate::session::SessionState::default_path();
         let session = crate::session::SessionState::load_from_file(&path)?;
+        self.apply_session(&session);
+        Ok(())
+    }
 
+    /// Apply a loaded session to this state (the file-free half of `restore_session`).
+    pub(crate) fn apply_session(&mut self, session: &crate::session::SessionState) {
         // Restore tabs verbatim — no path probing here. A saved path that has since
         // vanished is discovered by the pane's own ReadDirectory and repaired by
         // `JobKind::ResolveFallbackPath`; doing it here blocked startup for the full
         // network timeout on every unreachable path (bundle 20260910-203646).
-        self.tabs.tabs = crate::session::restore_tabs(&session);
+        self.tabs.tabs = crate::session::restore_tabs(session);
 
         // Prevent duplicate IDs: next_tab_id must be greater than all restored IDs
         self.tabs.update_next_id_after_restore();
@@ -570,8 +575,6 @@ impl AppState {
         // Restore task panel settings
         self.ui.layout.show_task_panel = session.show_task_panel;
         self.ui.layout.task_panel_height = session.task_panel_height;
-
-        Ok(())
     }
 
     /// Create a new AppState with session restoration
@@ -788,6 +791,12 @@ pub enum Transition {
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,
     DecreaseTaskPanelHeight,
+    /// Move the left/right pane divider right by `PANE_SPLIT_STEP` columns (7.25).
+    WidenLeftPane,
+    /// Move the left/right pane divider left by `PANE_SPLIT_STEP` columns (7.25).
+    WidenRightPane,
+    /// Return the left/right pane divider to the even split (7.25).
+    ResetPaneSplit,
     ScrollTaskPanelUp,
     ScrollTaskPanelDown,
     ShowContextMenu,

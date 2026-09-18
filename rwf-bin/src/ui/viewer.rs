@@ -322,15 +322,10 @@ fn render_text_content(frame: &mut Frame, area: Rect, viewer: &ViewerState, fg: 
         return;
     }
 
-    let num_digits = if indexed_count >= 10000 {
-        5
-    } else if indexed_count >= 1000 {
-        4
-    } else {
-        3
-    };
-    let prefix_width = num_digits + 3; // " NNN | "
-    let content_width = viewport_width.saturating_sub(prefix_width);
+    // Shared with the search jump (`AppState::viewer_text_width`) so a jump scrolls
+    // to exactly what is drawn here.
+    let num_digits = rwf_lib::model::line_number_digits(indexed_count);
+    let content_width = rwf_lib::model::viewer_text_columns(viewport_width, indexed_count);
 
     let mut rendered: Vec<Line> = Vec::with_capacity(viewport_height);
 

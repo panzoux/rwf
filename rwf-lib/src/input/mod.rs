@@ -529,6 +529,11 @@ pub enum Action {
     /// Capture the current screen and state into the running session.
     DiagnosticSnapshot,
 
+    // Pane width (7.25)
+    WidenLeftPane,
+    WidenRightPane,
+    ResetPaneSplit,
+
     // Task panel operations
     ToggleTaskPanel,
     IncreaseTaskPanelHeight,
@@ -1842,6 +1847,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::DecreaseTaskPanelHeight => {
             vec![Transition::DecreaseTaskPanelHeight]
         }
+        Action::WidenLeftPane => vec![Transition::WidenLeftPane],
+        Action::WidenRightPane => vec![Transition::WidenRightPane],
+        Action::ResetPaneSplit => vec![Transition::ResetPaneSplit],
         Action::ScrollTaskPanelUp => {
             vec![Transition::ScrollTaskPanelUp]
         }

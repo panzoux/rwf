@@ -126,8 +126,8 @@ All key bindings are configurable via `keybindings.json`. Below are the default 
 |-----|--------|-------------|
 | `Ctrl+N` / `Ctrl+T` | New Tab | Create new tab |
 | `Ctrl+W` | Close Tab | Close current tab (if not last) |
-| `Ctrl+Right` / `Ctrl+PageDown` | Next Tab | Switch to next tab |
-| `Ctrl+Left` / `Ctrl+PageUp` | Previous Tab | Switch to previous tab |
+| `Ctrl+PageDown` / `Alt+L` | Next Tab | Switch to next tab |
+| `Ctrl+PageUp` / `Alt+H` | Previous Tab | Switch to previous tab |
 | `Ctrl+T` / `Ctrl+B` | Tab Selector | Show tab selector dialog |
 
 ### Custom Functions and Folders
@@ -185,6 +185,18 @@ All key bindings are configurable via `keybindings.json`. Below are the default 
 | `Ctrl+Down` | Decrease Panel | Decrease task panel height |
 | `Alt+Up` | Scroll Up | Scroll task panel up |
 | `Alt+Down` | Scroll Down | Scroll task panel down |
+
+### Pane Width
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `Ctrl+Right` | Widen Left Pane | Move the divider 2 columns right |
+| `Ctrl+Left` | Widen Right Pane | Move the divider 2 columns left |
+| `Ctrl+\|` | Reset Split | Back to an even split. Windows Terminal drops `Shift` from `Ctrl+Shift+\`, so plain `Ctrl+\` works too; on Unix terminals it arrives as `Ctrl+4` |
+
+Each tab has its own width (a new tab starts even), which the side-by-side viewer
+shares. It is remembered across restarts and keeps its proportion when the terminal
+is resized. Each side keeps at least 16 columns.
 
 **Directory reads.** While a pane is reading its directory, that pane's tab shows a spinner
 (`/`, one per running job) and the read is listed in the job manager. It reaches the task
@@ -628,7 +640,7 @@ When executed, this will prompt for commit message (`$I` macro).
 
 1. Press `Ctrl+N` to create a new tab
 2. Navigate to different directories in each tab
-3. Use `Ctrl+Right`/`Ctrl+Left` to switch between tabs
+3. Use `Ctrl+PageDown`/`Ctrl+PageUp` (or `Alt+L`/`Alt+H`) to switch between tabs
 4. Each tab maintains independent pane states
 5. Tabs with active operations show a busy indicator (~)
 

@@ -1,6 +1,6 @@
 //! Tab management
 
-use super::ui::{ActivePane, ViewerLayout};
+use super::ui::{ActivePane, PaneSplit, ViewerLayout};
 use super::{Location, NavigationHistory, PaneModel};
 use std::path::PathBuf;
 
@@ -38,6 +38,13 @@ pub struct TabState {
     pub history: NavigationHistory,
     /// Viewer state saved while this tab is not active.
     pub tab_viewer: TabViewerState,
+    /// Width of this tab's left file pane, set with `Ctrl+Left/Right` (7.25).
+    /// `None` = even split; a new tab starts even. The SideBySide viewer uses the
+    /// same divider. Never rewritten on terminal resize — see `split_columns`.
+    ///
+    /// Unlike `active_pane` this needs no parking: nothing reads it except through
+    /// `current_tab()`, so the live value simply is the active tab's.
+    pub left_pane_width: Option<PaneSplit>,
 }
 
 impl TabState {
@@ -56,6 +63,7 @@ impl TabState {
             active_pane: ActivePane::Left,
             history: NavigationHistory::new(),
             tab_viewer: TabViewerState::default(),
+            left_pane_width: None,
         }
     }
 }

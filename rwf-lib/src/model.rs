@@ -65,5 +65,11 @@ pub use pane::{DisplayMode, PaneModel, SortMode, SortOrder};
 pub use search::SearchModel;
 pub use tab::{TabManager, TabState, TabViewerState};
 pub use trash::{EmptyTrashScope, RestoreOutcome, TrashLocation, TrashOutcome, TrashRecord};
-pub use ui::{ActivePane, UIMode, UIState, ViewerLayout};
-pub use viewer::{FileBytes, LineIndex, TextEncoding, ViewerBuffer, ViewerMode, ViewerState};
+pub use ui::{
+    split_columns, ActivePane, PaneSplit, UIMode, UIState, ViewerLayout, MIN_PANE_COLUMNS,
+    PANE_SPLIT_STEP,
+};
+pub use viewer::{
+    line_number_digits, viewer_text_columns, FileBytes, LineIndex, TextEncoding, ViewerBuffer,
+    ViewerMode, ViewerState,
+};

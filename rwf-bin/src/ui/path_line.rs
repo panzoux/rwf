@@ -4,7 +4,7 @@
 
 use super::{parse_color, shorten_path};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::Style,
     text::{Line, Span},
     widgets::Paragraph,
@@ -62,10 +62,7 @@ pub fn render_path_line(
     if let Some(pane) = single_pane {
         render_one(frame, area, pane);
     } else {
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
+        let halves = super::panes::split_left_right(area, state);
         render_one(frame, halves[0], ActivePane::Left);
         render_one(frame, halves[1], ActivePane::Right);
     }

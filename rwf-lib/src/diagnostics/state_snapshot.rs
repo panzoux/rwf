@@ -139,6 +139,11 @@ pub struct TabSnapshot {
     pub left: PaneSnapshot,
     /// Right pane.
     pub right: PaneSnapshot,
+    /// This tab's stored left/right split (7.25); `None` is the even split. The drawn
+    /// widths are `split_columns(layout.pane_width, left_pane_width)`. Defaulted so
+    /// bundles recorded before 7.25 still load.
+    #[serde(default)]
+    pub left_pane_width: Option<crate::model::PaneSplit>,
 }
 
 /// One pane, without its entry lists.
@@ -283,6 +288,7 @@ impl DiagnosticStateSnapshot {
                         id: tab.id,
                         left: PaneSnapshot::capture(&tab.left_pane),
                         right: PaneSnapshot::capture(&tab.right_pane),
+                        left_pane_width: tab.left_pane_width,
                     })
                     .collect(),
             },

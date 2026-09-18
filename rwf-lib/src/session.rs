@@ -3,7 +3,7 @@
 //! This module handles saving and restoring application state across sessions,
 //! including tab states, pane locations, and marked files.
 
-use crate::model::{ActivePane, Location, TabState};
+use crate::model::{ActivePane, Location, PaneSplit, TabState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -53,6 +53,10 @@ pub struct SavedTabState {
     /// `SessionState::active_pane` for the active tab (see `AppState::restore_session`).
     #[serde(default)]
     pub active_pane: SavedActivePane,
+    /// This tab's left pane width and the terminal width it was set at (7.25).
+    /// Absent from session files written before 7.25: those tabs restore even.
+    #[serde(default)]
+    pub left_pane_width: Option<PaneSplit>,
 }
 
 /// Saved location (simplified for serialization)
@@ -198,6 +202,7 @@ pub fn save_session(
             left_cursor: tab.left_pane.cursor,
             right_cursor: tab.right_pane.cursor,
             active_pane: tab.active_pane.into(),
+            left_pane_width: tab.left_pane_width,
         })
         .collect();
 
@@ -270,6 +275,7 @@ pub fn restore_tabs(session: &SessionState) -> Vec<TabState> {
                 tab.left_pane.cursor = saved_tab.left_cursor;
                 tab.right_pane.cursor = saved_tab.right_cursor;
                 tab.active_pane = saved_tab.active_pane.into();
+                tab.left_pane_width = saved_tab.left_pane_width;
 
                 // Don't adjust scroll_offset here - let the normal scrolling logic
                 // handle it when entries are loaded via CompleteJob transition.
@@ -319,6 +325,7 @@ mod tests {
             left_cursor: 5,
             right_cursor: 10,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         });
         session.active_tab_index = 0;
         session.active_pane = SavedActivePane::Right;
@@ -399,6 +406,7 @@ mod tests {
             left_cursor: 0,
             right_cursor: 0,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         });
         session.tabs.push(SavedTabState {
             id: 1,
@@ -407,6 +415,7 @@ mod tests {
             left_cursor: 0,
             right_cursor: 0,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         });
 
         let tabs = restore_tabs(&session);
@@ -492,6 +501,7 @@ mod tests {
             left_cursor: 5,
             right_cursor: 10,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         });
         session.tabs.push(SavedTabState {
             id: 1,
@@ -500,6 +510,7 @@ mod tests {
             left_cursor: 3,
             right_cursor: 7,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         });
         session.active_tab_index = 1;
         session.active_pane = SavedActivePane::Right;
@@ -712,6 +723,7 @@ mod restore_missing_path_tests {
             left_cursor: 0,
             right_cursor: 0,
             active_pane: SavedActivePane::Left,
+            left_pane_width: None,
         }
     }
 

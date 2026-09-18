@@ -1039,3 +1039,94 @@ fn test_viewer_ready_reaches_the_tab_that_started_the_load() {
         "the tab that started the load never received its contents"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 7.25 §3.4: the search jump must use the width the viewer actually shows.
+// `jump_to_match` scrolls horizontally only when the hit ends past the text width.
+// That width used to be `terminal width - 10` in every layout, so in SideBySide a
+// hit at bytes 80..85 of a 120-column terminal "fit" in 110 columns while only 51
+// were on screen, and the jump left it off-screen.
+// ---------------------------------------------------------------------------
+
+/// Open a viewer in `layout` on a 120-column terminal whose line 1 has a hit at
+/// bytes 80..85, then jump to that hit and return the resulting `column_offset`.
+fn column_offset_after_jump_to_byte_80(
+    layout: crate::model::ViewerLayout,
+    left_pane_width: Option<crate::model::PaneSplit>,
+) -> usize {
+    use crate::model::{ViewerLayout, ViewerMode};
+
+    let mut state = test_state();
+    update_state(&mut state, Transition::UpdatePaneWidth { width: 120 });
+    state.current_tab_mut().left_pane_width = left_pane_width;
+    let location = Location::Local(PathBuf::from("/test/long_line.txt"));
+    match layout {
+        ViewerLayout::SideBySide => update_state(
+            &mut state,
+            Transition::OpenSideBySideViewer {
+                location,
+                mode: ViewerMode::Text,
+            },
+        ),
+        ViewerLayout::FullScreen => {
+            update_state(&mut state, Transition::OpenTextViewer { location })
+        }
+    };
+    let long_line = format!("{}needle", "x".repeat(80));
+    update_state(
+        &mut state,
+        Transition::ViewerLoadComplete {
+            contents: format!("short\n{long_line}\n").into_bytes(),
+        },
+    );
+    let start = update_state(
+        &mut state,
+        Transition::ViewerStartSearch {
+            query: "needl".to_string(),
+        },
+    );
+    let job_id = start.jobs_to_start[0].id;
+    update_state(
+        &mut state,
+        Transition::ViewerSearchComplete {
+            job_id,
+            matches: vec![(1, 80, 85)],
+        },
+    );
+    state.viewer.as_ref().unwrap().column_offset
+}
+
+#[test]
+fn test_search_jump_uses_side_by_side_viewer_width() {
+    use crate::model::ViewerLayout;
+    // Viewer half = 60 columns: 60 - 2 (border) - 7 (" NNN | ") = 51 text columns,
+    // so the hit ending at 85 is brought to the right edge: 85 - 51 = 34.
+    assert_eq!(
+        column_offset_after_jump_to_byte_80(ViewerLayout::SideBySide, None),
+        34
+    );
+}
+
+#[test]
+fn test_search_jump_follows_a_narrowed_side_by_side_viewer() {
+    use crate::model::{PaneSplit, ViewerLayout};
+    // File pane (left anchor) widened to 74 -> viewer 46 -> 37 text columns: 85 - 37 = 48.
+    let split = Some(PaneSplit {
+        left: 74,
+        at_total: 120,
+    });
+    assert_eq!(
+        column_offset_after_jump_to_byte_80(ViewerLayout::SideBySide, split),
+        48
+    );
+}
+
+#[test]
+fn test_search_jump_full_screen_keeps_hit_without_scrolling() {
+    use crate::model::ViewerLayout;
+    // Full screen: 120 - 2 - 7 = 111 text columns; 85 fits, so no horizontal scroll.
+    assert_eq!(
+        column_offset_after_jump_to_byte_80(ViewerLayout::FullScreen, None),
+        0
+    );
+}

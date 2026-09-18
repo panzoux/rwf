@@ -3,13 +3,7 @@
 //! Displays file/directory counts and sizes for both panes
 
 use super::{leap_bar, parse_color};
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
-    text::Span,
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, text::Span, widgets::Paragraph, Frame};
 use rwf_lib::{model::ActivePane, model::PaneModel, model::UIMode, AppState};
 
 /// Render the pane info line.
@@ -60,10 +54,7 @@ pub fn render_pane_info_line(
     if let Some(pane) = single_pane {
         render_one(frame, area, pane);
     } else {
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
+        let halves = super::panes::split_left_right(area, state);
         render_one(frame, halves[0], ActivePane::Left);
         render_one(frame, halves[1], ActivePane::Right);
     }

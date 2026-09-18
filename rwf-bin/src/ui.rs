@@ -125,17 +125,14 @@ fn render_ui_inner(frame: &mut Frame, state: &AppState, task_panel: &TaskPanel) 
         let anchor_on_left = anchor == rwf_lib::model::ActivePane::Left;
 
         // Viewer goes on the opposite side from the anchored file pane.
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(content_area);
+        let halves = panes::split_left_right(content_area, state);
         let (pane_area, viewer_area) = if anchor_on_left {
             (halves[0], halves[1]) // file pane left, viewer right
         } else {
             (halves[1], halves[0]) // viewer left, file pane right
         };
 
-        // Render file-pane side: only the anchored pane fills the full 50%.
+        // Render file-pane side: only the anchored pane fills its side of the split.
         let pane_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -370,5 +367,234 @@ mod side_by_side_layout_tests {
             !back_on_tab0.contains("2 Dirs"),
             "tab 0 redrew the left pane -- the anchor followed tab 1"
         );
+    }
+}
+
+/// 7.25: every row split between the panes must put its divider in the same column.
+#[cfg(test)]
+mod pane_split_layout_tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rwf_lib::model::{
+        ActivePane, FileEntry, Location, PaneSplit, ViewerLayout, ViewerMode, ViewerState,
+    };
+    use rwf_lib::{AppConfig, AppState};
+    use std::path::PathBuf;
+
+    const W: u16 = 120;
+    const H: u16 = 12;
+    // Tab bar on, task panel off: path, volume, list..., pane info, filename.
+    const PATH_ROW: usize = 1;
+    const VOLUME_ROW: usize = 2;
+    const LIST_ROW: usize = 3;
+    const INFO_ROW: usize = H as usize - 2;
+
+    fn entry(name: &str) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            location: Location::Local(PathBuf::from(format!("/test/{name}"))),
+            size: 0,
+            is_dir: false,
+            is_hidden: false,
+            modified: std::time::SystemTime::UNIX_EPOCH,
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    fn state(split: Option<PaneSplit>) -> AppState {
+        let mut state = AppState::new(AppConfig::default());
+        state.ui.layout.show_tab_bar = true;
+        state.ui.layout.show_task_panel = false;
+        state.current_tab_mut().left_pane_width = split;
+        let tab = state.current_tab_mut();
+        tab.left_pane.current_location = Location::Local(PathBuf::from("/test/LEFTDIR"));
+        tab.right_pane.current_location = Location::Local(PathBuf::from("/test/RIGHTDIR"));
+        tab.left_pane.entries = vec![entry("LLLL.txt")];
+        tab.right_pane.entries = vec![entry("RRRR.txt"), entry("RRRR2.txt")];
+        state
+    }
+
+    fn side_by_side(mut state: AppState, anchor: ActivePane) -> AppState {
+        state.ui.active_pane = anchor;
+        state.ui.layout.viewer_layout = ViewerLayout::SideBySide;
+        state.ui.layout.viewer_anchor_pane = anchor;
+        let mut viewer = ViewerState::new(Location::Local(PathBuf::from("/test/v.txt")));
+        viewer.mode = ViewerMode::Text;
+        state.viewer = Some(viewer);
+        state
+    }
+
+    /// Rendered cell symbols, row by row.
+    fn draw(state: &AppState) -> Vec<Vec<String>> {
+        let mut terminal = Terminal::new(TestBackend::new(W, H)).expect("terminal");
+        let task_panel = task_panel::TaskPanel::new();
+        terminal
+            .draw(|frame| render_ui(frame, state, &task_panel))
+            .expect("draw");
+        let buf = terminal.backend().buffer();
+        (0..H)
+            .map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect())
+            .collect()
+    }
+
+    fn seg(screen: &[Vec<String>], row: usize, from: usize, len: usize) -> String {
+        screen[row][from..from + len].concat()
+    }
+
+    /// `None` must reproduce the `Percentage(50)` split it replaced, column for column.
+    #[test]
+    fn even_split_matches_the_old_percentage_layout_at_every_width() {
+        use ratatui::layout::{Constraint, Direction, Layout, Rect};
+        use rwf_lib::model::split_columns;
+        for width in 0..=400u16 {
+            let old = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(Rect::new(0, 0, width, 1));
+            assert_eq!(
+                split_columns(width, None),
+                (old[0].width, old[1].width),
+                "width {width}"
+            );
+        }
+    }
+
+    /// Moving the divider from 60 to 64 shifts the right half of every split row by
+    /// exactly 4 columns — path, volume, file list and pane info all agree.
+    #[test]
+    fn all_split_rows_share_the_moved_divider() {
+        let even = draw(&state(None));
+        let moved = draw(&state(Some(PaneSplit {
+            left: 64,
+            at_total: W,
+        })));
+        for (name, row) in [
+            ("path", PATH_ROW),
+            ("volume", VOLUME_ROW),
+            ("list", LIST_ROW),
+            ("pane info", INFO_ROW),
+        ] {
+            assert_eq!(
+                seg(&moved, row, 0, 8),
+                seg(&even, row, 0, 8),
+                "{name} row: left half should still start at column 0"
+            );
+            assert_eq!(
+                seg(&moved, row, 64, 8),
+                seg(&even, row, 60, 8),
+                "{name} row: right half should start at column 64"
+            );
+        }
+        // File names are drawn one column in from their pane's edge.
+        assert_eq!(seg(&moved, LIST_ROW, 65, 4), "RRRR");
+    }
+
+    /// The SideBySide viewer takes the side of the split opposite its anchor, and
+    /// `Ctrl+Right` widens whatever is on the left in both arrangements.
+    #[test]
+    fn side_by_side_uses_the_same_divider_for_both_anchors() {
+        let split = Some(PaneSplit {
+            left: 64,
+            at_total: W,
+        });
+        // File pane left (0..64), viewer right (64..120).
+        let screen = draw(&side_by_side(state(split), ActivePane::Left));
+        assert_eq!(seg(&screen, LIST_ROW, 1, 4), "LLLL");
+        assert_eq!(
+            screen[PATH_ROW][64], "┌",
+            "viewer frame should open at column 64"
+        );
+        assert_eq!(screen[PATH_ROW][119], "┐");
+
+        // Viewer left (0..64), file pane right (64..120).
+        let screen = draw(&side_by_side(state(split), ActivePane::Right));
+        assert_eq!(screen[PATH_ROW][0], "┌");
+        assert_eq!(
+            screen[PATH_ROW][63], "┐",
+            "viewer frame should close at column 63"
+        );
+        assert_eq!(seg(&screen, LIST_ROW, 65, 4), "RRRR");
+    }
+
+    /// 7.25 §3.4 end to end: after a search jump in a narrowed SideBySide viewer, the
+    /// hit is on screen, ending at the viewer's right border. The jump computes the
+    /// text width in rwf-lib; this checks it agrees with what the renderer draws.
+    #[test]
+    fn search_jump_in_a_narrowed_side_by_side_viewer_lands_on_screen() {
+        use rwf_lib::state::{update_state, Transition};
+
+        for split in [
+            None,
+            Some(PaneSplit {
+                left: 74,
+                at_total: W,
+            }),
+        ] {
+            let mut state = state(split);
+            update_state(
+                &mut state,
+                Transition::UpdatePaneWidth { width: W as usize },
+            );
+            state.ui.active_pane = ActivePane::Left;
+            update_state(
+                &mut state,
+                Transition::OpenSideBySideViewer {
+                    location: Location::Local(PathBuf::from("/test/long.txt")),
+                    mode: ViewerMode::Text,
+                },
+            );
+            let long_line = format!("{}needle", "x".repeat(80));
+            update_state(
+                &mut state,
+                Transition::ViewerLoadComplete {
+                    contents: format!(
+                        "short
+{long_line}
+"
+                    )
+                    .into_bytes(),
+                },
+            );
+            let start = update_state(
+                &mut state,
+                Transition::ViewerStartSearch {
+                    query: "needl".to_string(),
+                },
+            );
+            let job_id = start.jobs_to_start[0].id;
+            update_state(
+                &mut state,
+                Transition::ViewerSearchComplete {
+                    job_id,
+                    matches: vec![(1, 80, 85)],
+                },
+            );
+
+            let screen = draw(&state);
+            let row = screen
+                .iter()
+                .map(|r| r.concat())
+                .find(|r| r.contains("needl"))
+                .unwrap_or_else(|| {
+                    let all: Vec<String> = screen.iter().map(|r| r.concat()).collect();
+                    panic!(
+                        "hit not on screen with split {split:?}:
+{}",
+                        all.join(
+                            "
+"
+                        )
+                    )
+                });
+            assert!(
+                row.contains("needl│"),
+                "hit should end at the viewer's right border with split {split:?}: {row}"
+            );
+        }
     }
 }

@@ -156,6 +156,9 @@ mod exit_cd_integration_tests;
 mod task_panel_management_integration_tests;
 
 #[cfg(test)]
+mod pane_split_integration_tests;
+
+#[cfg(test)]
 mod scrolling_integration_tests;
 
 #[cfg(test)]

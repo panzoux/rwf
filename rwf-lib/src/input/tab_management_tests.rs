@@ -38,13 +38,13 @@ mod tests {
     fn test_next_tab_key_bindings() {
         let mut bindings = KeyBindings::default();
 
-        // Ctrl+Right should switch to next tab
-        let event = KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL);
+        // Ctrl+PageDown should switch to next tab
+        let event = KeyEvent::new(KeyCode::PageDown, KeyModifiers::CONTROL);
         let action = bindings.map_key(&event);
         assert_eq!(action, Some(Action::NextTab));
 
-        // Ctrl+PageDown should also switch to next tab
-        let event = KeyEvent::new(KeyCode::PageDown, KeyModifiers::CONTROL);
+        // Alt+l should also switch to next tab
+        let event = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::ALT);
         let action = bindings.map_key(&event);
         assert_eq!(action, Some(Action::NextTab));
     }
@@ -53,15 +53,50 @@ mod tests {
     fn test_prev_tab_key_bindings() {
         let mut bindings = KeyBindings::default();
 
-        // Ctrl+Left should switch to previous tab
-        let event = KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL);
-        let action = bindings.map_key(&event);
-        assert_eq!(action, Some(Action::PrevTab));
-
-        // Ctrl+PageUp should also switch to previous tab
+        // Ctrl+PageUp should switch to previous tab
         let event = KeyEvent::new(KeyCode::PageUp, KeyModifiers::CONTROL);
         let action = bindings.map_key(&event);
         assert_eq!(action, Some(Action::PrevTab));
+
+        // Alt+h should also switch to previous tab
+        let event = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT);
+        let action = bindings.map_key(&event);
+        assert_eq!(action, Some(Action::PrevTab));
+    }
+
+    /// 7.25: Ctrl+Left/Right moved from tab switching to the pane divider.
+    #[test]
+    fn test_pane_split_key_bindings() {
+        let mut bindings = KeyBindings::default();
+        let cases = [
+            (KeyCode::Right, Action::WidenLeftPane),
+            (KeyCode::Left, Action::WidenRightPane),
+            // Windows Terminal drops SHIFT from Ctrl+Shift+\: it arrives as Char('\\') with
+            // CONTROL only, same as plain Ctrl+\ (diagnostic bundle 20260918-215728).
+            (KeyCode::Char('\\'), Action::ResetPaneSplit),
+            // Kept for terminals that do report the shifted character.
+            (KeyCode::Char('|'), Action::ResetPaneSplit),
+            // Unix terminals send 0x1C, which crossterm decodes as Ctrl+4.
+            (KeyCode::Char('4'), Action::ResetPaneSplit),
+        ];
+        for (code, expected) in cases {
+            let event = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert_eq!(bindings.map_key(&event), Some(expected), "{code:?}");
+        }
+        let state = test_state();
+        for (action, expected) in [
+            (Action::WidenLeftPane, Transition::WidenLeftPane),
+            (Action::WidenRightPane, Transition::WidenRightPane),
+            (Action::ResetPaneSplit, Transition::ResetPaneSplit),
+        ] {
+            let transitions = action_to_transitions(&state, &action);
+            assert_eq!(transitions.len(), 1, "{action:?}");
+            assert_eq!(
+                std::mem::discriminant(&transitions[0]),
+                std::mem::discriminant(&expected),
+                "{action:?}"
+            );
+        }
     }
 
     #[test]

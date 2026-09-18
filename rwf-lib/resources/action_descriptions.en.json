@@ -128,6 +128,9 @@
           "ToggleTaskPanel":            { "description": "Toggle task panel visibility" },
           "IncreaseTaskPanelHeight":    { "description": "Increase task panel height" },
           "DecreaseTaskPanelHeight":    { "description": "Decrease task panel height" },
+          "WidenLeftPane":              { "description": "Move the pane divider right (widen the left pane)" },
+          "WidenRightPane":             { "description": "Move the pane divider left (widen the right pane)" },
+          "ResetPaneSplit":             { "description": "Reset the pane divider to an even split" },
           "ScrollTaskPanelUp":          { "description": "Scroll task panel up" },
           "ScrollTaskPanelDown":        { "description": "Scroll task panel down" }
         }

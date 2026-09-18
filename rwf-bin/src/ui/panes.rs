@@ -4,13 +4,30 @@
 
 use super::{pad_to_width, parse_color, smart_truncate};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::Style,
     text::{Line, Span},
     widgets::{List, ListItem, Paragraph},
     Frame,
 };
-use rwf_lib::{config::ColorScheme, model::ActivePane, AppState, FileEntry};
+use rwf_lib::{
+    config::ColorScheme,
+    model::{split_columns, ActivePane},
+    AppState, FileEntry,
+};
+
+/// Split a full-width row into the left and right pane columns.
+///
+/// Every row that is divided between the two panes — path, volume, file list, pane
+/// info, and the SideBySide viewer — must go through this, or their dividers drift
+/// apart as soon as the split is not even (7.25).
+pub fn split_left_right(area: Rect, state: &AppState) -> [Rect; 2] {
+    let (left, right) = split_columns(area.width, state.current_tab().left_pane_width);
+    [
+        Rect::new(area.x, area.y, left, area.height),
+        Rect::new(area.x + left, area.y, right, area.height),
+    ]
+}
 
 /// Render only the anchored pane, filling the entire area (used in SideBySide viewer mode).
 pub fn render_active_pane_only(
@@ -41,11 +58,7 @@ pub fn render_active_pane_only(
 
 /// Render both panes side by side
 pub fn render_panes(frame: &mut Frame, area: Rect, state: &AppState) {
-    // Split area into two vertical panes
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
+    let panes = split_left_right(area, state);
 
     let tab = state.current_tab();
     let colors = &state.config.display.colors;
