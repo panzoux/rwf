@@ -166,7 +166,7 @@ mod tests {
 
         assert_eq!(colors.ok_color, "Green");
         assert_eq!(colors.warning_color, "Yellow");
-        assert_eq!(colors.error_color, "Red");
+        assert_eq!(colors.error_color, "LightRed");
     }
 
     #[test]
@@ -361,7 +361,7 @@ mod tests {
         assert!(colors.pane_info_background_color.is_some());
 
         // Default values
-        assert_eq!(colors.pane_info_foreground_color.as_deref(), Some("Black"));
+        assert_eq!(colors.pane_info_foreground_color.as_deref(), Some("White"));
         assert_eq!(
             colors.pane_info_background_color.as_deref(),
             Some("DarkGray")
