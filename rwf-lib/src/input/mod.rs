@@ -493,7 +493,10 @@ pub enum Action {
     CalculateDirectorySize,
 
     // Pane operations
+    /// Move the *other* pane to the active pane's directory.
     SyncPanes,
+    /// Move the *active* pane to the other pane's directory (default `o`).
+    SyncToOtherPane,
     SwapPanes,
 
     // Context menu, drive selection, custom functions
@@ -1732,6 +1735,20 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::SyncPanes => {
             // Synchronize opposite pane to active pane's location
             vec![Transition::SyncPanes]
+        }
+        Action::SyncToOtherPane => {
+            // Active pane follows the other pane — a plain ChangeLocation, so
+            // history/back, cursor restore and job ownership behave as for any
+            // other navigation of the active pane.
+            let other_location = state.opposite_pane().current_location.clone();
+            if state.active_pane().current_location == other_location {
+                vec![]
+            } else {
+                vec![Transition::ChangeLocation {
+                    pane: state.ui.active_pane,
+                    location: other_location,
+                }]
+            }
         }
         Action::SwapPanes => {
             // Swap the paths of left and right panes

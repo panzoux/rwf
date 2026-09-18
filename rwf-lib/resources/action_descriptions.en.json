@@ -81,6 +81,7 @@
           "ToggleHidden":           { "description": "Toggle hidden files" },
           "Refresh":                { "description": "Refresh pane" },
           "SyncPanes":              { "description": "Sync other pane to current directory" },
+          "SyncToOtherPane":        { "description": "Sync current pane to other pane's directory" },
           "SwapPanes":              { "description": "Swap left and right panes" },
           "CalculateDirectorySize": { "description": "Calculate directory sizes" }
         }

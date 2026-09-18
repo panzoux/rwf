@@ -389,4 +389,88 @@ mod tests {
             duration
         );
     }
+
+    #[test]
+    fn test_sync_to_other_pane_moves_active_pane_not_opposite() {
+        // 'o' (SyncToOtherPane) acts on the *active* pane like every other key:
+        // the active pane follows the other pane, the other pane is untouched.
+        use crate::input::action_to_transitions;
+        use crate::input::Action;
+
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
+        let left_before = state.current_tab().left_pane.current_location.clone();
+        let right_location = state.current_tab().right_pane.current_location.clone();
+
+        let transitions = action_to_transitions(&state, &Action::SyncToOtherPane);
+        assert_eq!(transitions.len(), 1);
+        for t in transitions {
+            update_state(&mut state, t);
+        }
+
+        assert_eq!(
+            state.current_tab().left_pane.current_location,
+            right_location,
+            "Active (left) pane should move to the other pane's directory"
+        );
+        assert_eq!(
+            state.current_tab().right_pane.current_location,
+            right_location,
+            "Other (right) pane must not change"
+        );
+        assert_eq!(state.ui.active_pane, ActivePane::Left, "Focus stays put");
+        assert_eq!(
+            state.current_tab().history.left_stack.last(),
+            Some(&left_before),
+            "Previous directory must be recorded in the active pane's history"
+        );
+    }
+
+    #[test]
+    fn test_sync_to_other_pane_from_right() {
+        use crate::input::action_to_transitions;
+        use crate::input::Action;
+
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
+        state.ui.active_pane = ActivePane::Right;
+        let left_location = state.current_tab().left_pane.current_location.clone();
+
+        for t in action_to_transitions(&state, &Action::SyncToOtherPane) {
+            update_state(&mut state, t);
+        }
+
+        assert_eq!(
+            state.current_tab().right_pane.current_location,
+            left_location
+        );
+        assert_eq!(
+            state.current_tab().left_pane.current_location,
+            left_location
+        );
+    }
+
+    #[test]
+    fn test_sync_to_other_pane_is_noop_when_same_directory() {
+        use crate::input::action_to_transitions;
+        use crate::input::Action;
+
+        let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
+        let right_location = state.current_tab().right_pane.current_location.clone();
+        state.current_tab_mut().left_pane.current_location = right_location;
+
+        assert!(
+            action_to_transitions(&state, &Action::SyncToOtherPane).is_empty(),
+            "No navigation (and no history entry) when both panes already match"
+        );
+    }
+
+    #[test]
+    fn test_default_o_key_is_sync_to_other_pane() {
+        use crate::input::{Action, KeyBindings};
+        let keybindings = KeyBindings::default();
+        assert_eq!(
+            keybindings.normal_mode.get("o"),
+            Some(&Action::SyncToOtherPane)
+        );
+        assert_eq!(keybindings.normal_mode.get("O"), Some(&Action::SwapPanes));
+    }
 }

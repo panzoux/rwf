@@ -81,6 +81,7 @@
           "ToggleHidden":           { "description": "隠しファイルを表示/非表示" },
           "Refresh":                { "description": "ペインを更新" },
           "SyncPanes":              { "description": "他のペインを現在のディレクトリに同期" },
+          "SyncToOtherPane":        { "description": "現在のペインを他のペインのディレクトリに同期" },
           "SwapPanes":              { "description": "左右ペインを入れ替え" },
           "CalculateDirectorySize": { "description": "ディレクトリサイズを計算" }
         }
