@@ -28,8 +28,17 @@ struct Args {
     export_config_files: Option<std::path::PathBuf>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let result = runtime.block_on(run());
+    // Not a plain drop: dropping a runtime waits for every blocking task, and a
+    // listing of an unreachable SMB share sits in the OS for ~20 s. Quit already
+    // gave in-flight jobs `QUIT_GRACE` to finish; anything left is abandoned.
+    runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+    result
+}
+
+async fn run() -> Result<()> {
     // Parse command-line arguments
     let args = Args::parse();
 

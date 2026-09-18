@@ -185,6 +185,23 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
 
         tracing::info!("Worker pool shut down");
     }
+
+    /// Shut down like [`shutdown`](Self::shutdown), but stop waiting after `grace`.
+    ///
+    /// Cancellation is a flag the executor checks between steps; it cannot interrupt
+    /// a blocking OS call already in flight. A listing of an unreachable SMB share
+    /// sits in the OS for ~20 s, and quitting behind it froze the app for that long.
+    /// Returns `false` when workers were abandoned; they die with the process.
+    pub async fn shutdown_within(self, grace: std::time::Duration) -> bool {
+        let finished = tokio::time::timeout(grace, self.shutdown()).await.is_ok();
+        if !finished {
+            tracing::warn!(
+                "Worker pool still busy after {} ms; abandoning its jobs",
+                grace.as_millis()
+            );
+        }
+        finished
+    }
 }
 
 #[cfg(test)]
@@ -195,6 +212,7 @@ mod tests {
     use crate::job::{JobKind, JobSpec};
     use crate::model::Location;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     #[tokio::test]
     async fn test_worker_pool_creation() {
@@ -278,5 +296,29 @@ mod tests {
 
         // Shutdown should complete without hanging
         pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_within_finishes_idle_pool() {
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let pool = WorkerPool::new(2, backend, archive_handler);
+
+        assert!(pool.shutdown_within(Duration::from_secs(5)).await);
+    }
+
+    /// A worker parked in a call that never returns — a directory listing on an
+    /// unreachable SMB host holds ~20 s in the OS — must not hold quit hostage.
+    #[tokio::test]
+    async fn test_shutdown_within_gives_up_on_stuck_worker() {
+        let backend = Arc::new(LocalFilesystemBackend::new());
+        let archive_handler = Arc::new(MockArchiveHandler);
+        let mut pool = WorkerPool::new(1, backend, archive_handler);
+        pool.workers
+            .push(tokio::spawn(std::future::pending::<()>()));
+
+        let started = std::time::Instant::now();
+        assert!(!pool.shutdown_within(Duration::from_millis(100)).await);
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 }

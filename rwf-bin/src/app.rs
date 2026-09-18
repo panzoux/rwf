@@ -25,6 +25,10 @@ use crate::ui::task_panel::TaskPanel;
 /// this constant rather than duplicating the literal.
 pub const DIAGNOSTIC_REPORT_DIALOG_TITLE: &str = "Diagnostic Report";
 
+/// How long quit waits for in-flight jobs to honour cancellation before abandoning
+/// them. File operations check the cancel flag per chunk, well inside this.
+pub const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Application runner
 pub struct App {
     state: AppState,
@@ -1021,12 +1025,22 @@ impl App {
                 for id in active_ids {
                     self.state.background_jobs.cancel_job(id);
                 }
-                if let Some(pool) = self.worker_pool.take() {
-                    pool.shutdown().await;
-                }
-                if let Some(pool) = self.poll_pool.take() {
-                    pool.shutdown().await;
-                }
+                // Bounded: a worker stuck in an unreachable SMB listing ignores
+                // the cancel above and would otherwise freeze quit for ~20 s.
+                let worker_pool = self.worker_pool.take();
+                let poll_pool = self.poll_pool.take();
+                tokio::join!(
+                    async {
+                        if let Some(pool) = worker_pool {
+                            pool.shutdown_within(QUIT_GRACE).await;
+                        }
+                    },
+                    async {
+                        if let Some(pool) = poll_pool {
+                            pool.shutdown_within(QUIT_GRACE).await;
+                        }
+                    },
+                );
                 break;
             }
         }
@@ -2538,8 +2552,7 @@ impl App {
     /// `pending_diag_report`.
     fn toggle_diagnostic_session(&mut self) {
         if rwf_lib::diagnostics::is_active() {
-            self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Final);
-            self.pending_diag_report = true;
+            self.request_diagnostic_stop();
             return;
         }
 
@@ -2567,6 +2580,28 @@ impl App {
                     .add_pending_log("[DIAG] Could not start diagnostic session".to_string());
             }
         }
+    }
+
+    /// The stop half of the toggle. Idempotent while a stop is under way: the
+    /// session keeps recording until the prompt is answered, so a second press
+    /// would otherwise open a second prompt. A background dialog (a failed read,
+    /// say) can land on top of the prompt; pressing the key again brings the
+    /// prompt back up with its text intact.
+    fn request_diagnostic_stop(&mut self) {
+        if self.pending_diag_report {
+            return;
+        }
+        let dialogs = &mut self.state.dialogs.stack;
+        if let Some(idx) = dialogs
+            .iter()
+            .position(|d| d.title == DIAGNOSTIC_REPORT_DIALOG_TITLE)
+        {
+            let report = dialogs.remove(idx);
+            dialogs.push(report);
+            return;
+        }
+        self.request_snapshot(rwf_lib::diagnostics::SnapshotTrigger::Final);
+        self.pending_diag_report = true;
     }
 
     /// Write `config_effective.json` into the running session.
@@ -4329,5 +4364,70 @@ mod pane_read_visibility_tests {
                 .all(|j| j.spec.origin == rwf_lib::job::JobOrigin::SessionRestore),
             "a failure dialog must be able to say \"while restoring your session\""
         );
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_stop_tests {
+    use super::*;
+    use rwf_lib::model::dialog::DialogContent;
+    use rwf_lib::model::Dialog;
+
+    fn test_app() -> App {
+        let state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    fn report_dialog(text: &str) -> Dialog {
+        Dialog::multiline_input(DIAGNOSTIC_REPORT_DIALOG_TITLE, "What happened?", text)
+    }
+
+    fn titles(app: &App) -> Vec<&str> {
+        app.state
+            .dialogs
+            .stack
+            .iter()
+            .map(|d| d.title.as_str())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn first_stop_defers_the_report_prompt() {
+        let mut app = test_app();
+        app.request_diagnostic_stop();
+        assert!(app.pending_diag_report);
+        assert!(app.state.dialogs.is_empty());
+    }
+
+    // Bundle 20260919-012856: a failed SMB read pushed "Directory Unavailable" over
+    // the report prompt; F12 pressed there opened a second prompt on top, leaving
+    // the first one buried under the error dialog.
+    #[tokio::test]
+    async fn stop_while_report_is_buried_raises_it_instead_of_opening_another() {
+        let mut app = test_app();
+        app.state.dialogs.push(report_dialog("half-typed"));
+        app.state
+            .dialogs
+            .push(Dialog::error("Directory Unavailable"));
+
+        app.request_diagnostic_stop();
+
+        assert!(!app.pending_diag_report, "no second prompt may be queued");
+        assert_eq!(titles(&app).len(), 2);
+        let top = app.state.dialogs.current().expect("a dialog is open");
+        assert_eq!(top.title, DIAGNOSTIC_REPORT_DIALOG_TITLE);
+        match &top.content {
+            DialogContent::MultiLineInput(d) => assert_eq!(d.lines, vec!["half-typed"]),
+            other => panic!("expected the report prompt, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_while_prompt_is_pending_is_ignored() {
+        let mut app = test_app();
+        app.pending_diag_report = true;
+        app.request_diagnostic_stop();
+        assert!(app.pending_diag_report);
+        assert!(app.state.dialogs.is_empty());
     }
 }
