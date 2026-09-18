@@ -580,8 +580,9 @@ impl App {
             let mut spinner_due_in: Option<Duration> = None;
 
             // Phase 7.15: the final snapshot has now been consumed by a render,
-            // so the capture shows the pre-prompt screen. Only now put the
-            // report prompt up.
+            // so the capture shows the pre-prompt screen. Only now stop
+            // recording and put the report prompt up — stopping first keeps
+            // the typed report out of the bundle as a stream of keystrokes.
             if self.pending_diag_report && self.snapshot_request.is_none() {
                 self.pending_diag_report = false;
                 if self.state.config.diagnostics.prompt_for_report {
@@ -590,13 +591,15 @@ impl App {
                     // one-line report with a mid-sentence backspace visible
                     // in the recorded event stream — the box invited far
                     // less than the reporter had to say).
-                    self.state
-                        .dialogs
-                        .push(rwf_lib::model::Dialog::multiline_input(
-                            DIAGNOSTIC_REPORT_DIALOG_TITLE,
-                            "What happened? (problem / expected behaviour)",
-                            "",
-                        ));
+                    if rwf_lib::diagnostics::stop_session_awaiting_report().is_some() {
+                        self.state
+                            .dialogs
+                            .push(rwf_lib::model::Dialog::multiline_input(
+                                DIAGNOSTIC_REPORT_DIALOG_TITLE,
+                                "What happened? (problem / expected behaviour)",
+                                "",
+                            ));
+                    }
                     ui_needs_update = true;
                 } else {
                     self.finish_diagnostic_session(None);
@@ -2551,7 +2554,9 @@ impl App {
     /// capture the screen *before* the report prompt covers it. See
     /// `pending_diag_report`.
     fn toggle_diagnostic_session(&mut self) {
-        if rwf_lib::diagnostics::is_active() {
+        // With the prompt open recording has already stopped, but the key must
+        // not start a new session until the prompt is answered.
+        if rwf_lib::diagnostics::is_active() || self.diagnostic_report_open() {
             self.request_diagnostic_stop();
             return;
         }
@@ -2580,6 +2585,14 @@ impl App {
                     .add_pending_log("[DIAG] Could not start diagnostic session".to_string());
             }
         }
+    }
+
+    fn diagnostic_report_open(&self) -> bool {
+        self.state
+            .dialogs
+            .stack
+            .iter()
+            .any(|d| d.title == DIAGNOSTIC_REPORT_DIALOG_TITLE)
     }
 
     /// The stop half of the toggle. Idempotent while a stop is under way: the
@@ -2636,9 +2649,15 @@ impl App {
         }
     }
 
-    /// Finish a session once the user has answered (or dismissed) the prompt.
+    /// Finish a session: stop it outright when no prompt is configured, or
+    /// settle the report prompt that already stopped it.
     fn finish_diagnostic_session(&mut self, report: Option<String>) {
-        if let Some(paths) = rwf_lib::diagnostics::stop_session(report) {
+        let finished = if rwf_lib::diagnostics::is_active() {
+            rwf_lib::diagnostics::stop_session(report)
+        } else {
+            rwf_lib::diagnostics::submit_report(report)
+        };
+        if let Some(paths) = finished {
             self.task_panel.add_pending_log(format!(
                 "[DIAG] Session written to {} — contains file paths and screen contents, \
                  review before sharing",
@@ -4420,6 +4439,25 @@ mod diagnostic_stop_tests {
             DialogContent::MultiLineInput(d) => assert_eq!(d.lines, vec!["half-typed"]),
             other => panic!("expected the report prompt, got {other:?}"),
         }
+    }
+
+    // Recording stops when the prompt opens, so the key would otherwise start a
+    // fresh session on top of an unanswered prompt.
+    #[tokio::test]
+    async fn toggle_with_prompt_open_does_not_start_a_session() {
+        let mut app = test_app();
+        app.state.dialogs.push(report_dialog(""));
+        app.state
+            .dialogs
+            .push(Dialog::error("Directory Unavailable"));
+
+        app.toggle_diagnostic_session();
+
+        assert!(!rwf_lib::diagnostics::is_active());
+        assert_eq!(
+            app.state.dialogs.current().map(|d| d.title.as_str()),
+            Some(DIAGNOSTIC_REPORT_DIALOG_TITLE)
+        );
     }
 
     #[tokio::test]

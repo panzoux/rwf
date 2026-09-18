@@ -107,6 +107,14 @@ pub(crate) enum WriterMessage {
         /// `metadata.json` and `report.txt`.
         ack: std::sync::mpsc::SyncSender<()>,
     },
+    /// Replace the placeholder `report.txt` of a session that already ended —
+    /// the report prompt is answered after recording stops.
+    Report {
+        paths: Box<SessionPaths>,
+        body: String,
+        /// Signalled once the file is written, for the same reason as `EndSession`.
+        ack: std::sync::mpsc::SyncSender<()>,
+    },
 }
 
 /// Spawn the writer thread.
@@ -167,6 +175,12 @@ fn run(mut rx: UnboundedReceiver<WriterMessage>) {
                     active.finish(report);
                 }
                 // Receiver may already have timed out; that is not our problem.
+                let _ = ack.send(());
+            }
+            WriterMessage::Report { paths, body, ack } => {
+                if let Err(e) = fs::write(paths.report(), body) {
+                    tracing::warn!("diagnostics: report.txt write failed: {e}");
+                }
                 let _ = ack.send(());
             }
         }
@@ -323,8 +337,9 @@ impl ActiveSession {
 
         self.write_metadata();
 
-        let body = report
-            .unwrap_or_else(|| "(no description — the report prompt was cancelled)\n".to_string());
+        let body = report.unwrap_or_else(|| {
+            "(no description — the report prompt was cancelled or not answered)\n".to_string()
+        });
         if let Err(e) = fs::write(self.paths.report(), body) {
             tracing::warn!("diagnostics: report.txt write failed: {e}");
         }

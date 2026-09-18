@@ -385,6 +385,47 @@ pub fn stop_session(report: Option<String>) -> Option<SessionPaths> {
         .map(|s| s.paths)
 }
 
+/// The bundle whose report prompt is open. See [`stop_session_awaiting_report`].
+static AWAITING_REPORT: Mutex<Option<SessionPaths>> = Mutex::new(None);
+
+/// Stop recording now and leave `report.txt` to be written by [`submit_report`].
+///
+/// The prompt is answered after recording ends, so typing the description does not
+/// land in the bundle as a stream of keystrokes. Until then the bundle is complete
+/// with a placeholder report, so nothing is lost if the prompt is never answered.
+pub fn stop_session_awaiting_report() -> Option<SessionPaths> {
+    let paths = stop_session(None)?;
+    if let Ok(mut slot) = AWAITING_REPORT.lock() {
+        *slot = Some(paths.clone());
+    }
+    Some(paths)
+}
+
+/// Answer the prompt opened by [`stop_session_awaiting_report`]. `None` (cancelled
+/// or blank) keeps the placeholder. Returns the bundle's paths, or `None` when no
+/// bundle is awaiting a report.
+pub fn submit_report(report: Option<String>) -> Option<SessionPaths> {
+    let paths = AWAITING_REPORT.lock().ok()?.take()?;
+    if let (Some(body), Some(handle)) = (report, HANDLE.get()) {
+        // Written by the writer thread like every other bundle file; waited on so
+        // quitting right after answering cannot race the write.
+        let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+        if handle
+            .tx
+            .send(WriterMessage::Report {
+                paths: Box::new(paths.clone()),
+                body,
+                ack: ack_tx,
+            })
+            .is_ok()
+            && ack_rx.recv_timeout(WRITER_DRAIN_TIMEOUT).is_err()
+        {
+            tracing::warn!("diagnostics: writer did not write report.txt within the drain timeout");
+        }
+    }
+    Some(paths)
+}
+
 /// Default location for diagnostic bundles.
 ///
 /// Mirrors [`crate::logging::default_log_dir`]: a project-local `diagnostics/`

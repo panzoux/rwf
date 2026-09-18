@@ -88,12 +88,14 @@ fn session_records_events_and_writes_a_complete_bundle() {
     // SessionStart + 5 notes + 1 wake + SessionEnd
     assert_eq!(events.len(), 8, "unexpected event count: {events:#?}");
 
-    // seq is the ordering contract: monotonic and gap-free.
+    // seq is the ordering contract: monotonic and gap-free. The counter is
+    // process-global and never resets, so a session run after another test's
+    // session does not start at 0.
     let seqs: Vec<u64> = events
         .iter()
         .map(|e| e["seq"].as_u64().expect("seq is a number"))
         .collect();
-    let expected: Vec<u64> = (0..seqs.len() as u64).collect();
+    let expected: Vec<u64> = (seqs[0]..seqs[0] + seqs.len() as u64).collect();
     assert_eq!(seqs, expected, "seq must be gap-free and monotonic");
 
     // Payloads survive the round trip.
@@ -344,4 +346,62 @@ fn tracing_events_are_mirrored_into_logs_jsonl() {
     );
 
     assert!(!diagnostics::is_active());
+}
+
+/// The report prompt opens *after* recording stops, so typing the report does not
+/// land in the bundle (bundle 20260919-012856: ~4,000 of 5,000 events were the
+/// report being typed). The bundle is complete with a placeholder while the
+/// prompt is open; answering it replaces the placeholder.
+///
+/// Shares the process-global collector with the tests above; must start from and
+/// return to the idle state.
+#[test]
+fn recording_stops_before_the_report_is_written() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path().to_path_buf();
+
+    // Nothing is awaiting a report yet.
+    assert!(diagnostics::submit_report(Some("stray\n".to_string())).is_none());
+
+    // --- answered ---------------------------------------------------------
+    let paths = diagnostics::start_session(root.clone(), "test").expect("session starts");
+    let stopped = diagnostics::stop_session_awaiting_report().expect("session stops");
+    assert_eq!(stopped.dir, paths.dir);
+    assert!(
+        !diagnostics::is_active(),
+        "recording ends when the prompt opens"
+    );
+
+    let placeholder = std::fs::read_to_string(paths.report()).expect("report written");
+    assert!(
+        placeholder.contains("no description"),
+        "got: {placeholder:?}"
+    );
+
+    // Keystrokes typed into the prompt are no longer recorded.
+    let before = read_events(&paths.dir).len();
+    diagnostics::observe(|| DiagnosticEvent::Note {
+        message: "typing the report".to_string(),
+    });
+    assert_eq!(read_events(&paths.dir).len(), before);
+
+    let submitted =
+        diagnostics::submit_report(Some("pressing Q stalls\n".to_string())).expect("awaiting");
+    assert_eq!(submitted.dir, paths.dir);
+    assert_eq!(
+        std::fs::read_to_string(paths.report()).expect("report readable"),
+        "pressing Q stalls\n"
+    );
+    assert!(
+        diagnostics::submit_report(Some("again\n".to_string())).is_none(),
+        "a report is accepted once"
+    );
+
+    // --- cancelled --------------------------------------------------------
+    let second = diagnostics::start_session(root, "test").expect("second session starts");
+    diagnostics::stop_session_awaiting_report().expect("second session stops");
+    let cancelled = diagnostics::submit_report(None).expect("awaiting");
+    assert_eq!(cancelled.dir, second.dir);
+    let kept = std::fs::read_to_string(second.report()).expect("report readable");
+    assert!(kept.contains("no description"), "got: {kept:?}");
 }

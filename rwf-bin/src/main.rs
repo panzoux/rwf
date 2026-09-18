@@ -167,7 +167,11 @@ async fn run() -> Result<()> {
     // extra stdout line silently breaks directory-on-exit whenever a diagnostic
     // session is running. stderr is not captured by that substitution and is
     // still shown to the user once the TUI has been torn down.
-    if let Some(paths) = rwf_lib::diagnostics::stop_session(None) {
+    // `submit_report`: quit with the report prompt still open — recording
+    // already stopped and the bundle is on disk with a placeholder report.
+    if let Some(paths) = rwf_lib::diagnostics::stop_session(None)
+        .or_else(|| rwf_lib::diagnostics::submit_report(None))
+    {
         eprintln!("Diagnostic session written to {}", paths.dir.display());
         eprintln!("It contains file paths and screen contents — review before sharing.");
     }

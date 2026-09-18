@@ -231,7 +231,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 } else {
                     Some(format!("{input}\n"))
                 };
-                if let Some(paths) = rwf_lib::diagnostics::stop_session(report) {
+                if let Some(paths) = rwf_lib::diagnostics::submit_report(report) {
                     state.pending_confirmation_logs.push(format!(
                         "[DIAG] Session written to {} — contains file paths and screen \
                          contents, review before sharing",

@@ -27,9 +27,11 @@ This document is the consumer's reference: what the files contain and how to rea
 
 While recording, `● DIAG mm:ss` shows in the top-right corner and the task panel carries the
 bundle path. Stopping prompts for a description; cancelling it or leaving it blank still
-saves the bundle. Recording continues until the prompt is answered. If another dialog lands on
-top of the prompt (a failed directory read, say), pressing `F12` again brings the prompt back
-with its text intact. It does not open a second prompt.
+saves the bundle. Recording stops when the prompt opens, so typing the report is not recorded;
+the bundle is already complete on disk, with a placeholder `report.txt` that answering the
+prompt replaces. If another dialog lands on top of the prompt (a failed directory read, say),
+pressing `F12` again brings the prompt back with its text intact. It never opens a second
+prompt or starts a new session while the prompt is open.
 
 Both keys work in normal, viewer and leap modes, and while a dialog is open.
 
