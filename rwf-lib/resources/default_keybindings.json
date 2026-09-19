@@ -114,6 +114,8 @@
     "F2":              "ShowVersionInfo",
     "Shift+F2":        "ShowVersionInfoVerbose",
     "F3":              "EnterLeap",
+    "F4"             : "fzf jump to file",
+    "Shift+F4"       : "fzf jump to dir",
     "F6":              "clip menu",
     "Ctrl+F6":         "full path, quoted",
     "z":               "config menu",

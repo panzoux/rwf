@@ -202,20 +202,7 @@ impl AppState {
                 ),
             };
 
-        // Semantic validation of the functions themselves: ambiguous Command/Menu/ClipText
-        // combinations, and the removed $M macro (which would otherwise survive as
-        // literal text in a command rather than erroring). Reported, not auto-resolved.
-        let custom_fn_result = {
-            let problems = crate::model::dialog::validate_custom_functions(&custom_functions);
-            if problems.is_empty() {
-                custom_fn_result
-            } else {
-                crate::config::ConfigLoadResult::error(
-                    custom_fn_result.path.clone(),
-                    problems.join("; "),
-                )
-            }
-        };
+        let custom_fn_result = with_custom_function_problems(custom_fn_result, &custom_functions);
 
         let context_menu_result =
             crate::config::ConfigManager::validate_json_file(config_manager.context_menu_path());
@@ -1085,6 +1072,22 @@ pub enum HistoryDirection {
     Forward,
 }
 
+/// Fold semantic problems in the loaded custom functions into their load result:
+/// ambiguous Command/Menu/ClipText combinations, the removed `$M` macro, and pickers
+/// run without `Suspend`. Reported, not auto-resolved — the functions still load.
+/// Shared by startup and Reload so an edit is checked the same way both times.
+fn with_custom_function_problems(
+    result: crate::config::ConfigLoadResult,
+    functions: &[crate::model::dialog::CustomFunction],
+) -> crate::config::ConfigLoadResult {
+    let problems = crate::model::dialog::validate_custom_functions(functions);
+    if problems.is_empty() {
+        result
+    } else {
+        crate::config::ConfigLoadResult::error(result.path, problems.join("; "))
+    }
+}
+
 /// Result of applying a state transition
 pub struct StateUpdateResult {
     /// Jobs to start
@@ -1107,6 +1110,10 @@ pub struct StateUpdateResult {
     pub ui_changed: bool,
     /// Signal to app.rs to reload keybindings from file (set by ReloadConfig)
     pub reload_keybindings: bool,
+    /// Signal to app.rs to re-assert raw mode and the alternate screen and repaint.
+    /// Set when a custom function that ran without `Suspend` finishes: it shared the
+    /// console with rwf, and a TUI such as fzf leaves the alternate screen on exit.
+    pub reclaim_terminal: bool,
 }
 
 impl StateUpdateResult {
@@ -1129,6 +1136,7 @@ impl StateUpdateResult {
             panes_to_refresh,
             ui_changed,
             reload_keybindings,
+            reclaim_terminal,
         } = other;
         self.jobs_to_start.extend(jobs_to_start);
         self.jobs_to_cancel.extend(jobs_to_cancel);
@@ -1140,6 +1148,7 @@ impl StateUpdateResult {
         self.panes_to_refresh.extend(panes_to_refresh);
         self.ui_changed = self.ui_changed || ui_changed;
         self.reload_keybindings = self.reload_keybindings || reload_keybindings;
+        self.reclaim_terminal = self.reclaim_terminal || reclaim_terminal;
     }
 
     /// Create an empty result with no side effects
@@ -1155,6 +1164,7 @@ impl StateUpdateResult {
             panes_to_refresh: Vec::new(),
             ui_changed: false,
             reload_keybindings: false,
+            reclaim_terminal: false,
         }
     }
 
@@ -1171,6 +1181,7 @@ impl StateUpdateResult {
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,
+            reclaim_terminal: false,
         }
     }
 
@@ -1187,6 +1198,7 @@ impl StateUpdateResult {
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,
+            reclaim_terminal: false,
         }
     }
 
@@ -1203,6 +1215,7 @@ impl StateUpdateResult {
             panes_to_refresh: vec![PaneRefresh { tab_id, pane }],
             ui_changed: true,
             reload_keybindings: false,
+            reclaim_terminal: false,
         }
     }
 
@@ -1219,6 +1232,7 @@ impl StateUpdateResult {
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,
+            reclaim_terminal: false,
         }
     }
 }
@@ -1368,6 +1382,7 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                         crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string()),
                     ),
                 };
+            let custom_fn_result = with_custom_function_problems(custom_fn_result, &custom_fns);
             state.custom_functions = custom_fns;
 
             let context_menu_result = crate::config::ConfigManager::validate_json_file(

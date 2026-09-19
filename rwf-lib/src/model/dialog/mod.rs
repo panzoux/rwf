@@ -2395,9 +2395,31 @@ fn parse_custom_functions(
     Ok(file.functions)
 }
 
+/// Full-screen pickers that read the console directly. Run without `Suspend` they
+/// share the console with rwf: both draw, both act on each key, and on exit the
+/// picker leaves the alternate screen rwf is still drawing to (bundle
+/// 20260919-133522, where keys meant for fzf opened a Rename dialog in rwf).
+const INTERACTIVE_PICKERS: &[&str] = &["fzf", "sk", "peco", "percol", "fzy"];
+
+/// The first known interactive picker a command runs, matched on program name so
+/// `C:\tools\fzf.exe` and `(fzf.exe)` inside a PowerShell expression both count.
+fn interactive_picker_in(command: &str) -> Option<&'static str> {
+    command
+        .split(|c: char| c.is_whitespace() || "()|;&'\"`".contains(c))
+        .filter_map(|token| token.rsplit(['/', '\\']).next())
+        .map(|name| {
+            let lower = name.to_ascii_lowercase();
+            lower
+                .strip_suffix(".exe")
+                .map(str::to_string)
+                .unwrap_or(lower)
+        })
+        .find_map(|name| INTERACTIVE_PICKERS.iter().copied().find(|p| *p == name))
+}
+
 /// Validate loaded custom functions, returning one human-readable message per problem.
 ///
-/// Two classes of error, both deliberately loud rather than silently resolved:
+/// Three classes of error, all deliberately loud rather than silently resolved:
 ///
 /// 1. **Ambiguous kind** — `Command`/`Menu`/`ClipText` are mutually exclusive, and
 ///    `Suspend` is meaningless on a `ClipText` entry (there is no process to suspend).
@@ -2406,6 +2428,8 @@ fn parse_custom_functions(
 ///    literal `$M` text in the command rather than erroring, so it is caught here.
 ///    Replacements: `$MFS` (names for a shell), `$MPS` (full paths for a shell),
 ///    `$MFL` / `$MPL` (newline-joined raw forms, for `ClipText`).
+/// 3. **Picker without `Suspend`** — see [`INTERACTIVE_PICKERS`]. The function still
+///    loads and runs; the message names the fix.
 pub fn validate_custom_functions(functions: &[CustomFunction]) -> Vec<String> {
     let mut problems = Vec::new();
     for f in functions {
@@ -2426,6 +2450,19 @@ pub fn validate_custom_functions(functions: &[CustomFunction]) -> Vec<String> {
                 f.name,
                 present.join(" and ")
             )),
+        }
+        if !f.suspend {
+            let commands = f
+                .command
+                .iter()
+                .chain(f.os_specific.values().map(|os| &os.command));
+            if let Some(picker) = commands.filter_map(|c| interactive_picker_in(c)).next() {
+                problems.push(format!(
+                    "'{}': runs {picker}, which needs the terminal — add \"Suspend\": true \
+                     (without it rwf and {picker} share the console and both act on your keys)",
+                    f.name
+                ));
+            }
         }
         if f.suspend && f.clip_text.is_some() {
             problems.push(format!(
@@ -2489,6 +2526,34 @@ mod custom_function_validation_tests {
             problems.iter().any(|p| p.contains("Suspend")),
             "{problems:?}"
         );
+    }
+
+    #[test]
+    fn a_picker_run_without_suspend_is_reported() {
+        let fns = parse(
+            r#"[{"Name":"Jump using fzf","Command":"powershell -command join-path (pwd) (fzf.exe)","PipeToAction":"JumpToPath"},
+                {"Name":"by path","Command":"C:\\tools\\peco.exe"},
+                {"Name":"os","Command":"echo","OsSpecific":{"windows":{"Command":"sk --ansi"}}}]"#,
+        );
+        let problems = validate_custom_functions(&fns);
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert!(problems[0].contains("Jump using fzf") && problems[0].contains("runs fzf"));
+        assert!(
+            problems[0].contains("\"Suspend\": true"),
+            "must name the fix"
+        );
+        assert!(problems[1].contains("runs peco"), "{problems:?}");
+        assert!(problems[2].contains("runs sk"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_suspended_picker_and_lookalike_names_pass() {
+        let fns = parse(
+            r#"[{"Name":"ok","Command":"fzf --walker=file","Suspend":true},
+                {"Name":"not a picker","Command":"git log --format=%s | sort"},
+                {"Name":"substring","Command":"fzf-tmux-helper.sh; skim.exe"}]"#,
+        );
+        assert!(validate_custom_functions(&fns).is_empty());
     }
 
     #[test]

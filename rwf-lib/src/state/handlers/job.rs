@@ -73,6 +73,7 @@ impl AppState {
                         panes_to_refresh: Vec::new(),
                         ui_changed: true,
                         reload_keybindings: false,
+                        reclaim_terminal: false,
                     })
                 } else {
                     Some(StateUpdateResult::with_ui_change())
@@ -1341,6 +1342,9 @@ impl AppState {
                             pipe_to_action,
                             ..
                         } => {
+                            // Only `Suspend: false` runs reach the pool; they shared the
+                            // console with rwf, so take it back whatever the outcome.
+                            result_obj.reclaim_terminal = true;
                             match result {
                                 crate::job::OpResult::Failed(ref e) => {
                                     tracing::info!("[CompleteJob] ExecuteCustomFunction FAILED: cmd={:?} stderr={:?}", command, e.trim());

@@ -409,7 +409,12 @@ impl AppState {
                     tracing::info!(
                         "No custom functions loaded (custom_functions.json missing or empty)"
                     );
-                    None
+                    let mut result = StateUpdateResult::with_ui_change();
+                    result.task_panel_logs.push(
+                        "[WARN] No custom functions loaded — custom_functions.json is missing or empty"
+                            .to_string(),
+                    );
+                    Some(result)
                 } else {
                     let dialog = crate::model::Dialog::custom_function_selector(functions);
                     self.dialogs.push(dialog);
@@ -454,7 +459,13 @@ impl AppState {
                     }
                 } else {
                     tracing::warn!("InvokeCustomFunctionByName: no function named {:?}", name);
-                    None
+                    // Surfaced, not just logged: a bound key that does nothing looks like
+                    // keybindings.json was ignored, when the function list is what's missing.
+                    let mut result = StateUpdateResult::with_ui_change();
+                    result.task_panel_logs.push(format!(
+                        "[WARN] No custom function named \"{name}\" — check custom_functions.json"
+                    ));
+                    Some(result)
                 }
             }
             Transition::ExecuteAssociation {

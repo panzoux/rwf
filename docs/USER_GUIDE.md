@@ -424,6 +424,13 @@ the split `Suspend` sets up — so the picker is interactive *and* its result dr
 navigation. Bound to `Ctrl+P` (files) and `Alt+P` (directories) by default; both
 require [fzf](https://github.com/junegunn/fzf) on `PATH`.
 
+**Without `Suspend`, an interactive program shares the console with rwf.** Both draw on
+the screen and both act on every key, so keys meant for the picker also trigger rwf
+actions. rwf therefore reports a function that runs `fzf`, `sk`, `peco`, `percol` or
+`fzy` without `Suspend` as `[NG]` at startup and on Reload, naming the fix. When such a
+command finishes, rwf takes the terminal back (raw input, alternate screen) and repaints.
+`Ctrl+L` does the same by hand if anything else leaves the screen garbled.
+
 #### `ClipText` — copying to the clipboard
 
 `ClipText` is a third kind of entry, alongside `Command` and `Menu`. It runs no process

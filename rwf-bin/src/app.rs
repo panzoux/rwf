@@ -414,6 +414,27 @@ impl App {
         }
     }
 
+    /// Hand the console to a child process: the inverse of
+    /// [`reclaim_terminal_modes`](Self::reclaim_terminal_modes). Focus reporting goes
+    /// off too — the child must not receive our focus escape sequences as input.
+    fn release_terminal_modes() {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+    }
+
+    /// Put the terminal back into rwf's modes: raw input, alternate screen, focus
+    /// reporting. Each call is idempotent, so this is safe when nothing was lost —
+    /// which is what lets Ctrl+L use it unconditionally. A child that shared the
+    /// console (a custom function run without `Suspend`) can leave the alternate
+    /// screen and reset the console input mode on exit; the caller then clears so
+    /// the next frame repaints every cell.
+    fn reclaim_terminal_modes() {
+        let _ = crossterm::terminal::enable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen);
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange);
+    }
+
     /// Run a custom function with the terminal handed over to it, returning its stdout.
     ///
     /// rwf leaves the alternate screen and drops raw mode so the child owns the console,
@@ -429,11 +450,7 @@ impl App {
     ) -> Result<String, String> {
         use std::process::Stdio;
 
-        // Focus reporting off too: the child owns the console and must not receive our
-        // focus escape sequences as input.
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen,);
+        Self::release_terminal_modes();
 
         let mut cmd = Self::shell_command(command, shell);
         if let rwf_lib::model::Location::Local(dir) = working_dir {
@@ -446,9 +463,7 @@ impl App {
             .output();
 
         // Restore before interpreting the result, so an error still leaves a usable screen.
-        let _ = crossterm::terminal::enable_raw_mode();
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen,);
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange);
+        Self::reclaim_terminal_modes();
         let _ = terminal.clear();
 
         match outcome {
@@ -675,17 +690,9 @@ impl App {
                 // SuspendAndRun: hand the terminal to the editor, then resume.
                 // Must happen on the main thread before any pool interaction.
                 if let JobKind::SuspendAndRun { program, args } = &job_spec.kind {
-                    let _ = crossterm::terminal::disable_raw_mode();
-                    let _ = crossterm::execute!(
-                        std::io::stdout(),
-                        crossterm::terminal::LeaveAlternateScreen,
-                    );
+                    Self::release_terminal_modes();
                     let _ = std::process::Command::new(program).args(args).status();
-                    let _ = crossterm::terminal::enable_raw_mode();
-                    let _ = crossterm::execute!(
-                        std::io::stdout(),
-                        crossterm::terminal::EnterAlternateScreen,
-                    );
+                    Self::reclaim_terminal_modes();
                     let _ = terminal.clear();
                     continue;
                 }
@@ -1159,9 +1166,11 @@ impl App {
         }
 
         // Ctrl+L: force full redraw (works in any mode). Setting force_full_redraw makes
-        // the next render() call terminal.clear() before drawing — a plain re-render
-        // alone is a diff against ratatui's own buffer and can't repaint corruption an
-        // external process wrote to the screen, since nothing in RWF's own state changed.
+        // the next render() call re-assert rwf's terminal modes and terminal.clear()
+        // before drawing — a plain re-render alone is a diff against ratatui's own buffer
+        // and can't repaint corruption an external process wrote to the screen, since
+        // nothing in RWF's own state changed. The modes matter when that process also
+        // left the alternate screen or reset the console input mode.
         if key.code == crossterm::event::KeyCode::Char('l')
             && key
                 .modifiers
@@ -2431,6 +2440,7 @@ impl App {
 
     fn render(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
         if self.force_full_redraw {
+            Self::reclaim_terminal_modes();
             terminal.clear()?;
             self.force_full_redraw = false;
         }
@@ -2696,6 +2706,9 @@ impl App {
                 );
                 for log_msg in &result.task_panel_logs {
                     self.task_panel.add_pending_log(log_msg.clone());
+                }
+                if result.reclaim_terminal {
+                    self.force_full_redraw = true;
                 }
                 for refresh in &result.panes_to_refresh {
                     let tab_idx = refresh.tab_id; // array index stored by file-op handlers
@@ -3358,6 +3371,26 @@ mod force_full_redraw_tests {
         app.handle_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
 
         assert!(app.force_full_redraw);
+    }
+
+    // Bundle 20260919-133522: fzf run without `Suspend` left the alternate screen on
+    // exit and rwf kept drawing onto PowerShell's buffer until restarted.
+    #[tokio::test]
+    async fn a_finished_unsuspended_custom_function_forces_a_full_redraw() {
+        let mut app = test_app();
+        let mut result = rwf_lib::state::StateUpdateResult::none();
+        result.reclaim_terminal = true;
+
+        app.apply_worker_results(&[result]);
+
+        assert!(app.force_full_redraw);
+    }
+
+    #[tokio::test]
+    async fn ordinary_worker_results_do_not_force_a_redraw() {
+        let mut app = test_app();
+        app.apply_worker_results(&[rwf_lib::state::StateUpdateResult::with_ui_change()]);
+        assert!(!app.force_full_redraw);
     }
 }
 

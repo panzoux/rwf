@@ -147,6 +147,7 @@ impl AppState {
                     panes_to_refresh: Vec::new(),
                     ui_changed: true,
                     reload_keybindings: false,
+                    reclaim_terminal: false,
                 })
             }
             Transition::CreatePendingFileJob {
@@ -178,6 +179,7 @@ impl AppState {
                     panes_to_refresh: Vec::new(),
                     ui_changed: true,
                     reload_keybindings: false,
+                    reclaim_terminal: false,
                 })
             }
             _ => None,

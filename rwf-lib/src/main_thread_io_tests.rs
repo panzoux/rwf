@@ -146,6 +146,79 @@ mod tests {
         assert_eq!(state.active_pane().active_job_id, Some(read.id));
     }
 
+    // Bundle 20260919-133522: fzf run without `Suspend` shared the console with rwf and
+    // left the alternate screen on exit; rwf kept drawing onto PowerShell's buffer.
+    #[test]
+    fn a_custom_function_run_without_suspend_asks_for_the_terminal_back() {
+        for outcome in [
+            OpResult::Success(SuccessData::CustomFunctionOutput(
+                "/x
+"
+                .to_string(),
+            )),
+            OpResult::Failed("exit 130".to_string()),
+        ] {
+            let mut state = test_state();
+            let command = custom_function(PipeToAction::JumpToPath);
+            let finished = complete(&mut state, &command, outcome);
+            assert!(finished.reclaim_terminal);
+        }
+    }
+
+    // 2026-09-19: F4 bound to "fzf jump to file" did nothing after custom_functions.json
+    // was renamed away; the only trace was a WARN in session.log.
+    #[test]
+    fn invoking_a_missing_custom_function_says_so_in_the_task_panel() {
+        let mut state = test_state();
+        state.custom_functions.clear();
+
+        let result = update_state(
+            &mut state,
+            Transition::InvokeCustomFunctionByName {
+                name: "fzf jump to file".to_string(),
+            },
+        );
+
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.starts_with("[WARN]") && l.contains("\"fzf jump to file\"")),
+            "{:?}",
+            result.task_panel_logs
+        );
+    }
+
+    #[test]
+    fn opening_an_empty_custom_function_list_says_so_in_the_task_panel() {
+        let mut state = test_state();
+        state.custom_functions.clear();
+
+        let result = update_state(&mut state, Transition::ShowCustomFunctionsDialog);
+
+        assert!(state.dialogs.is_empty());
+        assert!(
+            result
+                .task_panel_logs
+                .iter()
+                .any(|l| l.contains("custom_functions.json")),
+            "{:?}",
+            result.task_panel_logs
+        );
+    }
+
+    #[test]
+    fn other_jobs_leave_the_terminal_alone() {
+        let mut state = test_state();
+        let resolve = JobSpec::new(JobKind::ResolvePipeTarget {
+            action: PipeToAction::JumpToPath,
+            output: "/nope".to_string(),
+            working_dir: PathBuf::from("/work"),
+        });
+        let finished = complete(&mut state, &resolve, OpResult::Failed("gone".to_string()));
+        assert!(!finished.reclaim_terminal);
+    }
+
     #[test]
     fn clip_text_output_goes_straight_to_the_clipboard() {
         let mut state = test_state();
