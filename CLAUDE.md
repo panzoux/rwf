@@ -21,7 +21,15 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 ## Task management (Kanban)
 
 Current work is tracked with [`kanban-md`](https://github.com/antopolskiy/kanban-md) in `kanban/`
-(**local only** — `/kanban/` is gitignored; binary at `C:\Users\user\go\bin\kanban-md.exe`).
+(**local only** — `/kanban/` is gitignored). The binary is `C:\Users\user\go\bin\kanban-md.exe`,
+which is **not on the agent shell's PATH** — call it by that full path.
+
+**Who updates the board: the orchestrating (main) session, never subagents.** Move the card to
+`in-progress` when dispatching the work, and to `done` only after you have verified the
+subagent's result. Subagent prompts must not ask them to run `kanban-md`: parallel agents would
+race on the same files, and a worktree outside this repo cannot find the board (it is found by
+walking up from the cwd; pass `--dir <repo>/kanban` if you must run it from elsewhere).
+Record "what the subagent found" in the card body only as a one-line `次アクション` update.
 Columns: `backlog` (ideas, not decided) → `todo` (decided, ready) → `in-progress` → `done`
 (`archived` exists only for `kanban-md archive` when Done gets long). Do not add `review`
 or other statuses until the need is clear.
