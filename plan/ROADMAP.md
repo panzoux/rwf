@@ -202,6 +202,8 @@
 
 ## 関連文書
 
+- いま実施中・実施予定のタスク: Kanban（`kanban/`、ローカルのみ。運用ルールは [CLAUDE.md](../CLAUDE.md) の *Task management*）
+- 見つけた問題・未整理事項・調査事項: [issues.md](issues.md)
 - テスト戦略・件数・実行時間: [docs/TESTING.md](../docs/TESTING.md)
 - Phase 1〜4 の実装内訳・番号再割当の経緯・初期スケジュール: [docs/history/roadmap_implementation_notes.md](../docs/history/roadmap_implementation_notes.md)
 - ペイン更新機構（Layer 1 / Layer 2）の設計決定: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)

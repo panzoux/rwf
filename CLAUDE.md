@@ -6,6 +6,7 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 
 - Workspace: `rwf-lib` (state machine, jobs, backends) + `rwf-bin` (bin `rwf`; rendering, terminal).
 - Roadmap / phase status: `plan/ROADMAP.md` (Japanese) is the source of truth.
+  What is being worked on *right now* lives on the Kanban board — see *Task management* below.
 - Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 - Testing guide: [docs/TESTING.md](docs/TESTING.md)
 - Diagnostic bundles: [docs/DIAGNOSTIC_BUNDLES.md](docs/DIAGNOSTIC_BUNDLES.md) — `F12` records a
@@ -16,6 +17,34 @@ No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
   [docs/IMPLICIT_CONTRACTS.md](docs/IMPLICIT_CONTRACTS.md) — read this before adding a
   CLI flag, a `.gitignore` entry, a config field, an external-process spawn, or anything
   that writes to stdout or touches terminal mode.
+
+## Task management (Kanban)
+
+Current work is tracked with [`kanban-md`](https://github.com/antopolskiy/kanban-md) in `kanban/`
+(**local only** — `/kanban/` is gitignored; binary at `C:\Users\user\go\bin\kanban-md.exe`).
+Columns: `backlog` (ideas, not decided) → `todo` (decided, ready) → `in-progress` → `done`
+(`archived` exists only for `kanban-md archive` when Done gets long). Do not add `review`
+or other statuses until the need is clear.
+
+- Overview: `kanban-md board`, `kanban-md list --compact --status todo`.
+- Start work: `kanban-md pick --claim <name> --status todo --move in-progress`.
+  **Always pass `--status todo`** — without it `pick` also takes Backlog cards.
+- Never start a Backlog card directly; moving it to `todo` is the decision to do it (ask the user).
+- New ideas / unsorted work go to Backlog first (`kanban-md create "<title>"`, default status).
+- Finish: `kanban-md move <id> done` only after the completion condition is verified (evidence rule).
+- Cards are **Japanese**, one topic each, short title, body of `- 現状:` / `- 次アクション:` /
+  `- ブロック:` (only if blocked) / `- 完了条件:` (only if needed) / `- 詳細: <doc path>`.
+  Pass the body via a quoted heredoc — `$'...'` turns `\r` in `%APPDATA%\rwf\` into a CR.
+- Cards are not a knowledge base. Details go to project documents:
+
+| Role | Where |
+|---|---|
+| Goals, milestones, plan (`plan.md` role) | `plan/ROADMAP.md` (one line per item + link) |
+| Design decisions and reasons (`decisions.md` role) | each item's `plan/<番号>.<名前>.md` + ROADMAP *不採用* section |
+| Found problems, open questions, investigations (`issues.md` role) | `plan/issues.md` |
+| What is being done now, and its state | Kanban |
+
+When a ROADMAP item changes state, update its card too (and vice versa).
 
 ## Build / Test / Verify
 
