@@ -63,7 +63,7 @@ Default location, mirroring the log directory:
 ```
 20260811-234152/
   metadata.json            environment and session timing
-  config_effective.json    resolved config, keybindings, config load results
+  config_effective.json    resolved config, keybindings, custom functions, associations, load results
   events.jsonl             the event timeline, one JSON object per line
   logs.jsonl               tracing output for this session, one per line
   snapshots/
@@ -204,7 +204,11 @@ fields:
 `metadata.json` carries session id, start/end times, rwf version, OS, arch and terminal
 identification.
 
-`config_effective.json` has three sections:
+`config_effective.json` has these sections:
+
+- `layering` — which layering mode loaded the list-type files (Phase 7.26): built-in
+  defaults + user overrides (normal), user files replacing the built-ins
+  (`UseBuiltInDefaults: false` / `--no-default-config`), or built-ins only (`--no-user-config`).
 
 - `config` — the **resolved** `AppConfig`, not a copy of `config.json`. Every config field
   has a serde default, so the file on disk says what the user *wrote* while this says what the
@@ -212,7 +216,12 @@ identification.
   between versions.
 - `keybindings` — captured separately, because `AppConfig::key_bindings` is `#[serde(skip)]`
   and so absent from the config JSON.
-- `load_results` — which config files were found, parsed, or silently fell back to defaults.
+- `custom_functions`, `extension_associations`, `file_type_map` — the **merged** lists, after
+  the user's files were layered over the built-ins. Each custom function carries `origin`
+  (`built-in` or `user`), so "my F6 does nothing" can be told apart from "F6 runs the user's
+  replacement".
+- `load_results` — which config files were found, parsed, or fell back to the built-ins, with
+  `layering` describing the merge (e.g. `3 user entries over 17 built-in, 1 disabled`).
   A whole class of "rwf ignores my setting" reports resolves here.
 
 ---

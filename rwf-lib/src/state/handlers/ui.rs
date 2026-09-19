@@ -416,7 +416,16 @@ impl AppState {
                     );
                     Some(result)
                 } else {
-                    let dialog = crate::model::Dialog::custom_function_selector(functions);
+                    let mut dialog = crate::model::Dialog::custom_function_selector(functions);
+                    if let crate::model::DialogContent::CustomFunctionSelector(content) =
+                        &mut dialog.content
+                    {
+                        content.origins = content
+                            .functions
+                            .iter()
+                            .map(|f| (f.name.clone(), self.config_layers.function_origin(&f.name)))
+                            .collect();
+                    }
                     self.dialogs.push(dialog);
                     Some(StateUpdateResult::with_ui_change())
                 }
@@ -890,6 +899,7 @@ impl AppState {
                             &self.custom_functions,
                             self.config.help_show_unbound,
                             &self.config,
+                            Some(&self.config_layers),
                         );
                     }
                 }

@@ -60,6 +60,7 @@ pub(super) fn handle_selector_input(
         functions,
         selected_index,
         filter,
+        ..
     } = dialog;
     use crossterm::event::KeyCode;
     let lower = filter.to_lowercase();
@@ -212,6 +213,7 @@ pub(super) fn render_custom_function_selector(
     frame: &mut Frame,
     area: Rect,
     functions: &[rwf_lib::model::dialog::CustomFunction],
+    origins: &std::collections::HashMap<String, rwf_lib::config_layers::ConfigOrigin>,
     selected_index: usize,
     filter: &str,
 ) {
@@ -265,7 +267,12 @@ pub(super) fn render_custom_function_selector(
             break;
         }
         let func = filtered[fi];
-        let name_w = item_width.saturating_sub(2);
+        // Built-in / user tag, right-aligned in its own column (Phase 7.26).
+        let tag = origins
+            .get(&func.name)
+            .map(|o| format!(" {:>8}", o.label()))
+            .unwrap_or_default();
+        let name_w = item_width.saturating_sub(2 + tag.len());
         let label = if let Some(desc) = &func.description {
             let desc_w = name_w.saturating_sub(func.name.len() + 3);
             if desc_w > 4 {
@@ -285,8 +292,13 @@ pub(super) fn render_custom_function_selector(
         } else {
             base_style
         };
+        let tag_style = if fi == clamped_sel { style } else { hint_style };
         frame.render_widget(
-            Paragraph::new(format!(" {}", label)).style(style),
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!(" {:<name_w$}", label, name_w = name_w), style),
+                Span::styled(tag, tag_style),
+            ]))
+            .style(style),
             Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
         );
     }

@@ -865,11 +865,13 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             functions,
             selected_index,
             filter,
+            origins,
         }) => {
             render_custom_function_selector(
                 frame,
                 content_area,
                 functions,
+                origins,
                 *selected_index,
                 filter,
             );

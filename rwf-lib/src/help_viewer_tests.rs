@@ -110,6 +110,7 @@ fn make_entries(show_unbound: bool) -> Vec<HelpEntry> {
         &custom,
         show_unbound,
         &crate::config::AppConfig::default(),
+        None,
     )
 }
 
@@ -328,6 +329,7 @@ fn test_custom_function_category_defaults() {
         &custom,
         true,
         &crate::config::AppConfig::default(),
+        None,
     );
     let cf: Vec<_> = entries
         .iter()
@@ -369,6 +371,7 @@ fn test_custom_function_explicit_category() {
         &custom,
         true,
         &crate::config::AppConfig::default(),
+        None,
     );
     let my_func = entries.iter().find(|e| e.action_name == "MyFunc");
     assert!(my_func.is_some());
@@ -406,4 +409,37 @@ fn test_help_tab_from_index() {
     assert_eq!(HelpTab::from_index(3), HelpTab::DialogMode);
     assert_eq!(HelpTab::from_index(4), HelpTab::CustomFunctions);
     assert_eq!(HelpTab::from_index(99), HelpTab::CustomFunctions);
+}
+
+/// Phase 7.26: the Custom Functions tab says whether each function is the shipped
+/// definition or the user's.
+#[test]
+fn test_custom_function_entries_are_marked_built_in_or_user() {
+    let kb = KeyBindings::embedded_defaults();
+    let desc = ActionDescriptions::load("en");
+    let custom = vec![
+        CustomFunction::new("shipped", "echo a").with_description("a shipped one"),
+        CustomFunction::new("mine", "echo b").with_description("one of mine"),
+    ];
+    let layers = crate::config_layers::ConfigLayers {
+        layering: crate::config_layers::ConfigLayering::Layered,
+        built_in_function_names: ["shipped".to_string()].into_iter().collect(),
+    };
+    let entries = build_help_entries(
+        &kb,
+        &desc,
+        &custom,
+        true,
+        &crate::config::AppConfig::default(),
+        Some(&layers),
+    );
+    let description = |name: &str| {
+        entries
+            .iter()
+            .find(|e| e.tab == HelpTab::CustomFunctions && e.action_name == name)
+            .map(|e| e.description.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(description("shipped"), "a shipped one  [built-in]");
+    assert_eq!(description("mine"), "one of mine  [user]");
 }

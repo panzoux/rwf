@@ -7,6 +7,8 @@ pub struct CustomFunctionSelectorContent {
     pub functions: Vec<CustomFunction>,
     pub filter: String,
     pub selected_index: usize,
+    /// Built-in or user, by function name (Phase 7.26). Empty = show no marker.
+    pub origins: std::collections::HashMap<String, crate::config_layers::ConfigOrigin>,
 }
 
 impl CustomFunctionSelectorContent {
@@ -15,6 +17,7 @@ impl CustomFunctionSelectorContent {
             functions,
             filter: String::new(),
             selected_index: 0,
+            origins: std::collections::HashMap::new(),
         }
     }
 }

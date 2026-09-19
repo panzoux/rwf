@@ -3,6 +3,8 @@
     "RWF keybindings.json - full reference with all default bindings.",
     "You only need to include the keys you want to change.",
     "Missing sections or keys fall back to the built-in defaults.",
+    "Deleting a key from this file does NOT unbind it - the built-in comes back.",
+    "To unbind a default key, set it to null (or \"None\"): \"F4\": null",
     "",
     "Key name format:",
     "  Plain character  : \"a\", \"A\", \"1\", \"/\", \"`\"",

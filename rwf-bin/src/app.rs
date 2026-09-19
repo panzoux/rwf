@@ -105,6 +105,14 @@ impl App {
             task_panel.add_log(line, crate::ui::task_panel::LogLevel::Info);
         }
 
+        // A non-default layering mode changes what every list-type file means; say so.
+        if state.config_layers.layering != rwf_lib::config_layers::ConfigLayering::Layered {
+            task_panel.add_log(
+                format!("Config: {}", state.config_layers.layering.label()),
+                crate::ui::task_panel::LogLevel::Warn,
+            );
+        }
+
         // Warn immediately in the task panel for any config file that failed to parse
         use rwf_lib::config::ConfigLoadStatus;
         for r in &state.config_load_results {
@@ -117,8 +125,8 @@ impl App {
             }
         }
 
-        // Check keybindings.json for duplicate keys
-        {
+        // Check keybindings.json for duplicate keys (unless user config is ignored)
+        if state.config_layers.layering.reads_user_files() {
             let kb_path = rwf_lib::config::ConfigManager::new()
                 .keybindings_path()
                 .to_path_buf();
@@ -208,23 +216,23 @@ impl App {
             format!("Log: {}", log_path),
             format!("LogLevel: {} | Migemo: {}", log_level, migemo_line),
             "Archives: ZIP, 7Z, TAR, TGZ / Extract only: ISO".to_string(),
-            "Config files:".to_string(),
+            format!("Config files ({}):", state.config_layers.layering.label()),
         ];
 
         use rwf_lib::config::ConfigLoadStatus;
         for r in &state.config_load_results {
             let path_str = r.path.to_string_lossy();
+            let detail = r.detail().map(|d| format!("  ({d})")).unwrap_or_default();
             match &r.status {
-                ConfigLoadStatus::Ok => lines.push(format!(" [OK]      {}", path_str)),
-                ConfigLoadStatus::Default(reason) => {
-                    lines.push(format!(" [OK]      {}  ({})", path_str, reason))
+                ConfigLoadStatus::Ok | ConfigLoadStatus::Default(_) => {
+                    lines.push(format!(" [OK]      {path_str}{detail}"))
                 }
-                ConfigLoadStatus::Skipped(reason) => {
-                    lines.push(format!(" [Skipped] {}  ({})", path_str, reason))
+                ConfigLoadStatus::Skipped(_) => {
+                    lines.push(format!(" [Skipped] {path_str}{detail}"))
                 }
-                ConfigLoadStatus::Error(detail) => {
-                    lines.push(format!(" [NG]      {}", path_str));
-                    lines.push(format!("           {}", detail));
+                ConfigLoadStatus::Error(err) => {
+                    lines.push(format!(" [NG]      {path_str}{detail}"));
+                    lines.push(format!("           {}", err));
                 }
             }
         }
@@ -1374,20 +1382,7 @@ impl App {
                             }
                             if self.state.confirmation_needs_keybinding_reload {
                                 self.state.confirmation_needs_keybinding_reload = false;
-                                let kb_path = rwf_lib::config::ConfigManager::new()
-                                    .keybindings_path()
-                                    .to_path_buf();
-                                for warning in rwf_lib::check_keybindings_duplicates(&kb_path) {
-                                    tracing::warn!("{}", warning);
-                                    self.task_panel
-                                        .add_log(warning, crate::ui::task_panel::LogLevel::Warn);
-                                }
-                                if let Ok(kb) =
-                                    rwf_lib::input::KeyBindings::load_from_file(&kb_path)
-                                {
-                                    self.key_bindings = kb.clone();
-                                    self.state.config.key_bindings = kb;
-                                }
+                                self.reload_keybindings();
                             }
                             if let Some(job_spec) = confirmed_job {
                                 // For Delete/MoveToTrash/EmptyTrash/RestoreFromTrash jobs confirmed via dialog, register background job for task panel logs
@@ -2352,47 +2347,7 @@ impl App {
             // Reload keybindings BEFORE the ReloadConfig transition so the state-generated
             // log includes the updated keybindings status.
             if is_reload_config {
-                let kb_path = rwf_lib::config::ConfigManager::new()
-                    .keybindings_path()
-                    .to_path_buf();
-                let kb_exists = kb_path.exists();
-                for warning in rwf_lib::check_keybindings_duplicates(&kb_path) {
-                    tracing::warn!("{}", warning);
-                    self.task_panel
-                        .add_log(warning, crate::ui::task_panel::LogLevel::Warn);
-                }
-                let (new_kb, kb_result) =
-                    match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
-                        Ok(kb) => {
-                            tracing::info!("Keybindings reloaded from {:?}", kb_path);
-                            (kb, rwf_lib::config::ConfigLoadResult::ok(kb_path))
-                        }
-                        Err(e) => {
-                            let result = if kb_exists {
-                                tracing::warn!(
-                                    "Failed to reload {:?}, using built-in defaults: {:?}",
-                                    kb_path,
-                                    e
-                                );
-                                rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
-                            } else {
-                                tracing::info!(
-                                    "Keybindings file not found at {:?}, using built-in defaults",
-                                    kb_path
-                                );
-                                rwf_lib::config::ConfigLoadResult::default_fallback(
-                                    kb_path,
-                                    "built-in defaults",
-                                )
-                            };
-                            (rwf_lib::KeyBindings::default(), result)
-                        }
-                    };
-                self.key_bindings = new_kb.clone();
-                self.state.config.key_bindings = new_kb;
-                if self.state.config_load_results.len() > 1 {
-                    self.state.config_load_results[1] = kb_result;
-                }
+                self.reload_keybindings();
             }
             let transitions = rwf_lib::input::action_to_transitions(&self.state, &action);
             tracing::info!("[KEY] transitions={}", transitions.len());
@@ -2627,6 +2582,43 @@ impl App {
         self.pending_diag_report = true;
     }
 
+    /// Reload keybindings.json layered over the built-ins, warn about duplicate keys,
+    /// and store its load result. Runs before `Transition::ReloadConfig` so the
+    /// state-generated report includes it. The layering mode comes from the
+    /// config.json that is about to be reloaded, read here the same way the
+    /// transition will read it.
+    fn reload_keybindings(&mut self) {
+        let manager = rwf_lib::config::ConfigManager::new();
+        let config = rwf_lib::config_layers::load_app_config(&manager)
+            .0
+            .unwrap_or_else(|| self.state.config.clone());
+        let layering = rwf_lib::config_layers::ConfigLayering::current(&config);
+        let kb_path = manager.keybindings_path();
+        if layering.reads_user_files() {
+            for warning in rwf_lib::check_keybindings_duplicates(kb_path) {
+                tracing::warn!("{}", warning);
+                self.task_panel
+                    .add_log(warning, crate::ui::task_panel::LogLevel::Warn);
+            }
+        }
+        let (new_kb, kb_result) = rwf_lib::config_layers::load_keybindings(kb_path, layering);
+        tracing::info!("Keybindings reloaded: {:?}", kb_result.status);
+        self.key_bindings = new_kb.clone();
+        self.state.config.key_bindings = new_kb;
+        match self
+            .state
+            .config_load_results
+            .iter_mut()
+            .find(|r| r.path == kb_result.path)
+        {
+            Some(slot) => *slot = kb_result,
+            None => {
+                let at = self.state.config_load_results.len().min(1);
+                self.state.config_load_results.insert(at, kb_result);
+            }
+        }
+    }
+
     /// Write `config_effective.json` into the running session.
     ///
     /// Keybindings are serialised **separately** from `AppConfig`: the
@@ -2643,13 +2635,30 @@ impl App {
                 serde_json::json!({
                     "path": r.path.display().to_string(),
                     "status": format!("{:?}", r.status),
+                    "layering": r.note,
                 })
             })
             .collect();
 
+        let layers = &self.state.config_layers;
+        let custom_functions: Vec<_> = self
+            .state
+            .custom_functions
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "origin": layers.function_origin(&f.name).label(),
+                    "function": f,
+                })
+            })
+            .collect();
         let payload = serde_json::json!({
+            "layering": layers.layering.label(),
             "config": self.state.config,
             "keybindings": self.key_bindings,
+            "custom_functions": custom_functions,
+            "extension_associations": self.state.extension_associations,
+            "file_type_map": self.state.file_type_map,
             "load_results": load_results,
         });
 

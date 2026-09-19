@@ -42,6 +42,12 @@ pub struct ActionDescriptions {
 const EMBEDDED_EN: &str = include_str!("../resources/action_descriptions.en.json");
 const EMBEDDED_JP: &str = include_str!("../resources/action_descriptions.jp.json");
 
+/// Embedded default config.json — exported by `--export-config-files`. The source of
+/// truth stays `AppConfig::default()` (plus each field's serde default); this file is
+/// its serialized form, kept identical by `default_config_json_matches_app_config_default`
+/// in `rwf-bin/tests/config_contracts.rs`, which also regenerates it.
+pub const DEFAULT_CONFIG: &str = include_str!("../resources/default_config.json");
+
 /// Embedded default custom_functions.json — exported by `--export-config-files`
 pub const DEFAULT_CUSTOM_FUNCTIONS: &str =
     include_str!("../resources/default_custom_functions.json");
@@ -51,6 +57,16 @@ pub const DEFAULT_MENU_CONFIG: &str = include_str!("../resources/default_menu_co
 
 /// Embedded default menu_clip.json — exported by `--export-config-files`
 pub const DEFAULT_MENU_CLIP: &str = include_str!("../resources/default_menu_clip.json");
+
+/// Every built-in `menu_*.json`, by the file name a custom function's `Menu` names.
+/// Always loaded unless a user file of the same name replaces it (Phase 7.26).
+pub const BUILT_IN_MENUS: &[(&str, &str)] = &[
+    ("menu_clip.json", DEFAULT_MENU_CLIP),
+    ("menu_config.json", DEFAULT_MENU_CONFIG),
+];
+
+/// Embedded default keybindings.json — exported by `--export-config-files`
+pub const DEFAULT_KEYBINDINGS: &str = include_str!("../resources/default_keybindings.json");
 
 /// Embedded default file_type_map.json — exported by `--export-config-files`
 pub const DEFAULT_FILE_TYPE_MAP: &str = include_str!("../resources/default_file_type_map.json");
@@ -145,6 +161,7 @@ pub fn build_help_entries(
     custom_functions: &[crate::model::dialog::CustomFunction],
     show_unbound: bool,
     config: &crate::config::AppConfig,
+    layers: Option<&crate::config_layers::ConfigLayers>,
 ) -> Vec<crate::model::dialog::HelpEntry> {
     use crate::model::dialog::{HelpEntry, HelpTab};
 
@@ -239,6 +256,11 @@ pub fn build_help_entries(
             func.description
                 .clone()
                 .unwrap_or_else(|| func.name.clone())
+        };
+        // Phase 7.26: say whether this is the shipped definition or the user's.
+        let description = match layers {
+            Some(l) => format!("{description}  [{}]", l.function_origin(&func.name).label()),
+            None => description,
         };
         // Look up whether this custom function has a bound key
         let keys = normal_map.get(&func.name).cloned().unwrap_or_default();

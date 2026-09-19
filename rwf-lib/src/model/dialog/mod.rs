@@ -1866,6 +1866,7 @@ impl DialogContent {
                 functions,
                 filter,
                 selected_index,
+                ..
             }) => Some((functions, filter, *selected_index)),
             _ => None,
         }
@@ -1880,6 +1881,7 @@ impl DialogContent {
                 functions,
                 filter,
                 selected_index,
+                ..
             }) => Some((functions, filter, selected_index)),
             _ => None,
         }
@@ -2361,10 +2363,12 @@ struct CustomFunctionsFile {
     functions: Vec<CustomFunction>,
 }
 
-/// Load custom functions from a JSON file.
+/// Load custom functions from one JSON file, as-is (no built-in layering — that is
+/// `crate::config_layers::load_custom_functions`).
 /// Accepts the wrapper format `{"Version":"1.0","Functions":[...]}` and a bare
 /// array `[...]`. Menu entries whose `Menu` field is a filename string are loaded
-/// recursively from the same directory as the parent file.
+/// from the same directory as the parent file, falling back to the built-in menu
+/// of that name.
 pub fn load_custom_functions(
     path: &std::path::Path,
 ) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
@@ -2375,11 +2379,11 @@ pub fn load_custom_functions(
     let content = std::fs::read_to_string(path)?;
 
     let mut functions = parse_custom_functions(&content)?;
-    resolve_menu_files(&mut functions, base_dir);
+    resolve_menu_files(&mut functions, Some(base_dir));
     Ok(functions)
 }
 
-fn parse_custom_functions(
+pub(crate) fn parse_custom_functions(
     content: &str,
 ) -> Result<Vec<CustomFunction>, Box<dyn std::error::Error>> {
     // Preferred: wrapper object with Version + Functions
@@ -2753,27 +2757,60 @@ mod custom_function_validation_tests {
     }
 }
 
+/// The built-in menu file shipped under `name`, if any. Menu files layer by file
+/// name: a user file of the same name replaces the built-in menu as a whole.
+pub fn built_in_menu(name: &str) -> Option<&'static str> {
+    crate::help_content::BUILT_IN_MENUS
+        .iter()
+        .find(|(file, _)| file.eq_ignore_ascii_case(name))
+        .map(|(_, content)| *content)
+}
+
 /// Resolve `Menu: "filename.json"` references into item lists.
+///
+/// The file is read from `user_dir` when it exists there; otherwise the built-in
+/// menu of the same name is used (Phase 7.26 — before that a missing file gave an
+/// empty menu even though the default was embedded). `user_dir: None` means user
+/// config is being ignored (`--no-user-config`). A user file that fails to parse
+/// also falls back to the built-in menu; the load report flags the file as NG.
 /// Inline `Items` entries are left as-is (nested menus not supported in 6.6 scope).
-fn resolve_menu_files(functions: &mut [CustomFunction], base_dir: &std::path::Path) {
+pub(crate) fn resolve_menu_files(
+    functions: &mut [CustomFunction],
+    user_dir: Option<&std::path::Path>,
+) {
     for func in functions.iter_mut() {
         if let Some(MenuContent::File(filename)) = &func.menu {
-            let menu_path = base_dir.join(filename);
-            match std::fs::read_to_string(&menu_path) {
-                Ok(content) => match serde_json::from_str::<MenuFile>(&content) {
-                    Ok(menu_file) => {
-                        func.menu = Some(MenuContent::Items(menu_file.menus));
+            let user_menu = user_dir
+                .map(|dir| dir.join(filename))
+                .filter(|p| p.exists())
+                .and_then(|p| {
+                    let parsed = std::fs::read_to_string(&p)
+                        .map_err(|e| e.to_string())
+                        .and_then(|c| {
+                            serde_json::from_str::<MenuFile>(&c).map_err(|e| e.to_string())
+                        });
+                    match parsed {
+                        Ok(menu_file) => Some(menu_file.menus),
+                        Err(e) => {
+                            tracing::warn!("Failed to load menu file {:?}: {}", p, e);
+                            None
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse menu file {:?}: {}", menu_path, e);
-                        func.menu = Some(MenuContent::Items(Vec::new()));
-                    }
-                },
-                Err(e) => {
-                    tracing::warn!("Failed to read menu file {:?}: {}", menu_path, e);
-                    func.menu = Some(MenuContent::Items(Vec::new()));
-                }
-            }
+                });
+            let items = user_menu
+                .or_else(|| {
+                    built_in_menu(filename).and_then(|c| {
+                        serde_json::from_str::<MenuFile>(c)
+                            .map(|m| m.menus)
+                            .map_err(|e| tracing::warn!("built-in menu {filename}: {e}"))
+                            .ok()
+                    })
+                })
+                .unwrap_or_else(|| {
+                    tracing::warn!("Menu file {:?} not found and has no built-in", filename);
+                    Vec::new()
+                });
+            func.menu = Some(MenuContent::Items(items));
         }
         // Inline Items stay as-is; no recursive nesting in 6.6
     }

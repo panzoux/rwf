@@ -1,5 +1,9 @@
 {
   "Version": "1.0",
+  "_comment": [
+    "A menu_*.json with this file name replaces the built-in menu as a whole.",
+    "Delete this file to go back to the built-in menu."
+  ],
   "Menus": [
     {
       "Name": "file name",

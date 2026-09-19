@@ -236,6 +236,43 @@ Configuration files are stored in:
 - **Linux/macOS**: `~/.config/rwf/`
 - **Windows**: `%APPDATA%\rwf\`
 
+### How config files layer over the built-in defaults
+
+rwf ships a built-in version of every config file and **always loads it**. Your file only has to contain what you want to change; a fresh install with no config files works out of the box.
+
+| File | Matched by | An entry in your file… |
+|---|---|---|
+| `config.json` | field name | overrides that field |
+| `keybindings.json` | key, per mode | rebinds that key |
+| `custom_functions.json` | `Name` | replaces the built-in of the same name, or adds a new one |
+| `menu_*.json` | file name | replaces the built-in menu of that name as a whole |
+| `extension_associations.json` | `Extension` + `FileType` | is checked first; a built-in with the same key is hidden |
+| `file_type_map.json` | `Extension` | is checked first; a built-in with the same key is hidden |
+
+**Removing a built-in.** Because the built-ins are always there, deleting an entry from your file does not remove it — the built-in fills the gap. Remove one explicitly instead:
+
+```json
+// keybindings.json — unbind a key (null or "None")
+{ "NormalMode": { "F4": null } }
+
+// custom_functions.json — remove a built-in function
+{ "Functions": [ { "Name": "fzf jump to dir", "Disabled": true } ] }
+
+// extension_associations.json / file_type_map.json — remove a built-in entry
+[ { "Extension": "jpg", "Disabled": true } ]
+```
+
+A `Disabled` entry needs only its name or key — no `Command` or `Actions`.
+
+**Exported files.** `rwf --export-config-files DIR` writes the complete built-in files, which is the easiest way to see every default and start editing. An exported file used unchanged behaves exactly like having no file. The one difference from older versions: **deleting an entry from an exported file no longer removes it** — use `"Disabled": true` or `null` as above.
+
+**Switching the layering off.** Set `"UseBuiltInDefaults": false` in `config.json` to make each of your files *replace* its built-in (deleting an entry removes it again; a file you don't have still falls back to the built-in). Two command-line flags do the same for one run:
+
+- `rwf --no-default-config` — like `"UseBuiltInDefaults": false`, for this run only.
+- `rwf --no-user-config` — ignore your config directory entirely and run on the built-ins only (handy for checking whether a problem comes from your config). Your session and registered folders are still used.
+
+The config load report (`Shift+F2` verbose version info, and the `Z` reload message) shows the active mode and how each file layered, for example `custom_functions.json (3 user entries over 17 built-in, 1 disabled)`. The Custom Functions list and the help view mark each function `built-in` or `user`.
+
 ### Main Configuration (`config.json`)
 
 ```json
@@ -318,7 +355,7 @@ Configuration files are stored in:
 
 ### Custom Functions (`custom_functions.json`)
 
-Custom functions allow you to define shell commands with macro expansion:
+Custom functions allow you to define shell commands with macro expansion. rwf ships built-in functions (the `F6` clip menu, the `z` config menu, `F4`/`Shift+F4` fzf jumps, …) that are always loaded; your file adds to them, replaces one by writing an entry with the same `Name`, or removes one with `"Disabled": true` (see [How config files layer](#how-config-files-layer-over-the-built-in-defaults)).
 
 ```json
 [
@@ -504,7 +541,7 @@ For per-extension (and, since Phase 7.3b, per-detected-content-type) custom comm
 ]
 ```
 
-Fields: `Extension` (no leading dot, case-insensitive; optional since Phase 7.3b), `FileType` (optional — a detected-content-type key or group alias, see below), `Command` (supports the same macros as custom functions — `$P`/`$F`/`$W`/`$E`/etc., see the Macro Reference above), optional `Description`, optional `Shell`. At least one of `Extension`/`FileType` must be set — an entry with neither is skipped (with a warning) at load time. Location: `%APPDATA%\rwf\extension_associations.json`. Ships empty — there's no universally-correct default command to pre-fill, so this file exists purely for your own overrides.
+Fields: `Extension` (no leading dot, case-insensitive; optional since Phase 7.3b), `FileType` (optional — a detected-content-type key or group alias, see below), `Command` (supports the same macros as custom functions — `$P`/`$F`/`$W`/`$E`/etc., see the Macro Reference above), optional `Description`, optional `Shell`. At least one of `Extension`/`FileType` must be set — an entry with neither is skipped (with a warning) at load time. Location: `%APPDATA%\rwf\extension_associations.json`. The built-in list is empty — there's no universally-correct default command to pre-fill, so this file exists purely for your own entries. Your entries are checked before any built-in, and one with the same `Extension` + `FileType` as a built-in hides it (see [How config files layer](#how-config-files-layer-over-the-built-in-defaults)).
 
 **`FileType` (Phase 7.3b, requires magic-byte detection to be enabled — see `magic_byte_detection_enabled` in `config.json`):** matches the file's *detected* content, not its name. When both `FileType` and `Extension` are set on the same entry, both must match (AND) for that entry to be a candidate. Resolution order when detection is on and the target is a local file: entries whose `FileType` matches the detected content are tried first; if none match (or the content is unrecognized), RWF falls back to plain `Extension`-only entries. With detection off, or for non-local files (e.g. inside an archive), only `Extension`-only entries are ever considered.
 
@@ -514,7 +551,7 @@ Recognized `FileType` values (case-insensitive):
 
 #### `file_type_map.json`
 
-RWF's built-in extension classification for Enter's auto-routing. Location: `%APPDATA%\rwf\file_type_map.json` — if absent or invalid, RWF falls back to its embedded defaults (covering common image/video/audio/document extensions) rather than an empty list, so this feature works out of the box with zero configuration.
+RWF's built-in extension classification for Enter's auto-routing. Location: `%APPDATA%\rwf\file_type_map.json`. The embedded defaults (common image/video/audio/document extensions) are always loaded, so this works out of the box with zero configuration; if your file is invalid, the built-ins are used alone and the load report flags it.
 
 ```json
 [
@@ -522,7 +559,7 @@ RWF's built-in extension classification for Enter's auto-routing. Location: `%AP
 ]
 ```
 
-Fields: `Extension`, optional `FileType` (a MIME-ish string, currently informational only), and `Actions` — an ordered list; today only `"OsDefault"` (open via OS association) does anything, but the list format is forward-compatible with future action kinds. To add your own extension to the OS-default list, or remove one from the built-in set, edit your copy of this file (a full replacement of the file's contents — not merged with the built-in defaults).
+Fields: `Extension`, optional `FileType` (a MIME-ish string, currently informational only), and `Actions` — an ordered list; today only `"OsDefault"` (open via OS association) does anything, but the list format is forward-compatible with future action kinds. Your entries layer over the built-ins: add an extension with its own entry, change a built-in by writing an entry with the same `Extension`, and remove one with `{ "Extension": "jpg", "Disabled": true }`. Deleting a line from an exported copy does not remove the built-in.
 
 ### Registered Folders (`registered_directory.json`)
 

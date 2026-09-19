@@ -186,3 +186,47 @@ fn every_app_config_field_can_be_omitted() {
         missing_defaults.join("\n  ")
     );
 }
+
+/// `rwf-lib/resources/default_config.json` is the serialized `AppConfig::default()`.
+/// It exists so the defaults can be read as a file next to the other `default_*.json`
+/// and so `--export-config-files` ships it verbatim, but the code stays the source of
+/// truth: a changed default must regenerate the file, or this fails.
+///
+/// Regenerate with:
+/// `RWF_REGENERATE_DEFAULT_CONFIG=1 cargo test -p rwf --test config_contracts`
+#[test]
+fn default_config_json_matches_app_config_default() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../rwf-lib/resources/default_config.json");
+    if std::env::var_os("RWF_REGENERATE_DEFAULT_CONFIG").is_some() {
+        let mut text = ok(
+            serde_json::to_string_pretty(&AppConfig::default()),
+            "AppConfig::default() is not serializable",
+        );
+        text.push('\n');
+        ok(
+            std::fs::write(&path, text),
+            "cannot write default_config.json",
+        );
+    }
+    // Read from disk rather than `rwf_lib::DEFAULT_CONFIG`: that is the same bytes
+    // (it is `include_str!` of this file) except right after a regenerate.
+    let text = ok(
+        std::fs::read_to_string(&path),
+        "cannot read default_config.json",
+    );
+    let shipped: Value = ok(
+        serde_json::from_str(&text),
+        "default_config.json is not valid JSON",
+    );
+    assert!(
+        shipped == default_config_json(),
+        "rwf-lib/resources/default_config.json is out of date with AppConfig::default(). \
+         Regenerate it: RWF_REGENERATE_DEFAULT_CONFIG=1 cargo test -p rwf --test config_contracts"
+    );
+    // And it loads as a config.json without falling back to defaults.
+    ok(
+        serde_json::from_str::<AppConfig>(&text),
+        "default_config.json does not parse as AppConfig",
+    );
+}

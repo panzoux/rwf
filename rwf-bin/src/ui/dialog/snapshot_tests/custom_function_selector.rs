@@ -86,3 +86,25 @@ fn custom_function_selector_four_items_last_selected() {
     }
     snapshot_dialog("custom_function_selector_four_items_last", &dialog, &state);
 }
+
+/// Phase 7.26: with origins known, each row carries a right-aligned built-in / user tag.
+#[test]
+fn custom_function_selector_with_origin_tags() {
+    use rwf_lib::config_layers::ConfigOrigin;
+    let state = test_state();
+    let functions = vec![
+        CustomFunction::new("clip menu", "x").with_description("the clip menu"),
+        CustomFunction::new("my tool", "tool $F").with_description("mine"),
+    ];
+    let mut dialog = Dialog::custom_function_selector(functions);
+    if let rwf_lib::model::dialog::DialogContent::CustomFunctionSelector(
+        CustomFunctionSelectorContent {
+            ref mut origins, ..
+        },
+    ) = dialog.content
+    {
+        origins.insert("clip menu".to_string(), ConfigOrigin::BuiltIn);
+        origins.insert("my tool".to_string(), ConfigOrigin::User);
+    }
+    snapshot_dialog("custom_function_selector_with_origin_tags", &dialog, &state);
+}

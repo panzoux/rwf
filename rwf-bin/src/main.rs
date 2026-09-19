@@ -26,6 +26,16 @@ struct Args {
     /// Export all default config files to DIR (skips files that already exist).
     #[arg(long, value_name = "DIR")]
     export_config_files: Option<std::path::PathBuf>,
+
+    /// For this run, let a user config file replace its built-in defaults instead
+    /// of layering over them (same as "UseBuiltInDefaults": false).
+    #[arg(long, conflicts_with = "no_user_config")]
+    no_default_config: bool,
+
+    /// Ignore the user config directory and run on the built-in defaults only
+    /// (for reproducing bugs against a known configuration).
+    #[arg(long)]
+    no_user_config: bool,
 }
 
 fn main() -> Result<()> {
@@ -58,6 +68,16 @@ async fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Phase 7.26: must be set before the first config load (config.json below,
+    // then every list-type file in AppState::new, and again on each reload).
+    rwf_lib::config_layers::set_cli_layering(if args.no_user_config {
+        rwf_lib::config_layers::CliLayering::NoUserConfig
+    } else if args.no_default_config {
+        rwf_lib::config_layers::CliLayering::NoDefaultConfig
+    } else {
+        rwf_lib::config_layers::CliLayering::FromConfig
+    });
+
     // Get proper app data directory based on OS
     let log_dir = rwf_lib::logging::default_log_dir();
 
@@ -74,24 +94,9 @@ async fn run() -> Result<()> {
     // Initialize application state with session restoration
     // Load configuration from file or use defaults
     let config_manager = rwf_lib::config::ConfigManager::new();
-    let config_path = config_manager.config_path().to_path_buf();
-    let (config, config_result) = match config_manager.load_config() {
-        Ok(c) => {
-            info!("Configuration loaded from {:?}", config_path);
-            let result = rwf_lib::config::ConfigLoadResult::ok(config_path);
-            (c, result)
-        }
-        Err(e) => {
-            let is_not_found = matches!(&e, rwf_lib::config::ConfigError::IoError(io) if io.kind() == std::io::ErrorKind::NotFound);
-            tracing::warn!("Failed to load config: {:?}, using defaults", e);
-            let result = if is_not_found {
-                rwf_lib::config::ConfigLoadResult::skipped(config_path, "file not found")
-            } else {
-                rwf_lib::config::ConfigLoadResult::error(config_path, format!("{:?}", e))
-            };
-            (rwf_lib::config::AppConfig::default(), result)
-        }
-    };
+    let (config, config_result) = rwf_lib::config_layers::load_app_config(&config_manager);
+    let config = config.unwrap_or_default();
+    info!("Configuration: {:?}", config_result.status);
 
     let mut state = AppState::new_with_session(config);
     info!("Application state initialized with session restoration");
@@ -116,32 +121,13 @@ async fn run() -> Result<()> {
         }
     }
 
-    // Load key bindings from keybindings.json (merges over defaults; falls back entirely on parse error)
-    let kb_path = config_manager.keybindings_path().to_path_buf();
-    let kb_exists = kb_path.exists();
-    let (key_bindings, kb_result) = match rwf_lib::input::KeyBindings::load_from_file(&kb_path) {
-        Ok(kb) => {
-            info!("Keybindings loaded from {:?}", kb_path);
-            (kb, rwf_lib::config::ConfigLoadResult::ok(kb_path))
-        }
-        Err(e) => {
-            let result = if kb_exists {
-                tracing::warn!(
-                    "Failed to parse {:?}, using built-in defaults: {:?}",
-                    kb_path,
-                    e
-                );
-                rwf_lib::config::ConfigLoadResult::error(kb_path, e.to_string())
-            } else {
-                tracing::info!(
-                    "Keybindings file not found at {:?}, using built-in defaults",
-                    kb_path
-                );
-                rwf_lib::config::ConfigLoadResult::default_fallback(kb_path, "built-in defaults")
-            };
-            (rwf_lib::KeyBindings::default(), result)
-        }
-    };
+    // Load key bindings: the built-ins with keybindings.json layered over them (or
+    // replacing them, per the layering mode); a parse error keeps the built-ins.
+    let (key_bindings, kb_result) = rwf_lib::config_layers::load_keybindings(
+        config_manager.keybindings_path(),
+        state.config_layers.layering,
+    );
+    info!("Keybindings: {:?}", kb_result.status);
     state.config.key_bindings = key_bindings.clone();
     info!("Key bindings ready");
 
@@ -186,6 +172,18 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
+/// Printed after `--export-config-files`. file_type_map.json and
+/// extension_associations.json are bare JSON arrays with no room for a comment,
+/// so this is where their users learn it (the other files carry it in `_comment`).
+const LAYERING_NOTE: &str = "
+These files are layered over rwf's built-in defaults: an entry you keep overrides
+the built-in of the same name/key, and an entry you delete falls back to the
+built-in instead of disappearing. To remove a built-in, keep its entry and add
+\"Disabled\": true (custom_functions.json, extension_associations.json,
+file_type_map.json) or bind the key to null (keybindings.json).
+Set \"UseBuiltInDefaults\": false in config.json to make these files replace the
+built-ins instead.";
+
 fn write_if_absent(dir: &std::path::Path, name: &str, content: &str) -> Result<()> {
     let path = dir.join(name);
     if path.exists() {
@@ -198,11 +196,7 @@ fn write_if_absent(dir: &std::path::Path, name: &str, content: &str) -> Result<(
 }
 
 fn export_default_configs(dir: &std::path::Path) -> Result<()> {
-    write_if_absent(
-        dir,
-        "keybindings.json",
-        include_str!("../../rwf-lib/resources/default_keybindings.json"),
-    )?;
+    write_if_absent(dir, "keybindings.json", rwf_lib::DEFAULT_KEYBINDINGS)?;
     write_if_absent(
         dir,
         "custom_functions.json",
@@ -221,7 +215,7 @@ fn export_default_configs(dir: &std::path::Path) -> Result<()> {
         "action_descriptions.en.json",
         include_str!("../../rwf-lib/resources/action_descriptions.en.json"),
     )?;
-    let config_json = serde_json::to_string_pretty(&rwf_lib::config::AppConfig::default())?;
-    write_if_absent(dir, "config.json", &config_json)?;
+    write_if_absent(dir, "config.json", rwf_lib::DEFAULT_CONFIG)?;
+    println!("{LAYERING_NOTE}");
     Ok(())
 }

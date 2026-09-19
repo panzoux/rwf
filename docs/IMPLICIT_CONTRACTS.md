@@ -20,6 +20,7 @@ add its guard; a rule that lives only in prose is a rule that will be broken.
 | 6 | [config keys are PascalCase](#6-configjson-keys-are-pascalcase) | Guarded — 2 tests | **Yes — `ArchiveConfig`, `TextInputConfig`** |
 | 7 | [every config field is optional](#7-every-configjson-field-is-optional) | Guarded — 2 tests | **Yes — 16 mandatory fields across 4 structs** |
 | 8 | [no blocking filesystem calls on the input thread](#8-no-blocking-filesystem-calls-on-the-input-thread) | Guarded — 2 tests (render path, transition handlers) | **Yes — 2 in the draw path, 4 in handlers/confirm (Phase 7.21)** |
+| 9 | [config files layer over built-in defaults](#9-config-files-layer-over-built-in-defaults) | Guarded — tests in `config_layers_tests.rs` | **Yes — custom functions and menus had no defaults (Phase 7.26)** |
 | — | [`with_ui_change()` on visible changes](#transitions-that-change-visible-state-must-call-with_ui_change) | Not guardable cheaply | — |
 | — | [`ReadDirectory` / `active_job_id`](#readdirectory-jobs-must-set-active_job_id) | Not guardable cheaply; audited clean | No |
 | — | [Four more, deliberately skipped](#considered-and-deliberately-skipped) | See table | Two have live violations |
@@ -36,6 +37,7 @@ guards; there is no "known failing" state to inherit.
 | [`rwf-bin/tests/config_contracts.rs`](../rwf-bin/tests/config_contracts.rs) | Serialized-shape guards for `config.json` |
 | [`rwf-lib/src/state/helpers.rs`](../rwf-lib/src/state/helpers.rs) | `/D /C` assertions next to the cmd.exe builders |
 | [`.gitattributes`](../.gitattributes) | LF enforcement at checkout time |
+| [`rwf-lib/src/config_layers_tests.rs`](../rwf-lib/src/config_layers_tests.rs) | Built-in defaults are complete and layering is the same at startup and reload |
 
 The static scans sit in **rwf-bin's** integration-test target even though most of
 what they read is rwf-lib source. That is deliberate: `cargo test -p rwf` finishes in
@@ -75,9 +77,10 @@ Phase 7.15: two `println!` lines reporting a diagnostic session path, fixed in
 
 **Enforced by.** `stdout_writes_in_rwf_bin_are_allowlisted`. It scans every `.rs`
 under `rwf-bin/src` for `println!`, `print!` and `stdout()`, and fails on anything
-not in `ALLOWED_STDOUT_WRITES`. The current allowlist is four `main.rs` entries
-(`--export-function-list` and `--export-config-files`, both of which `return` before
-the TUI starts; and the exit directory itself) plus three handle acquisitions that feed
+not in `ALLOWED_STDOUT_WRITES`. The current allowlist is five `main.rs` entries
+(`--export-function-list`, and three for `--export-config-files` — its two progress lines
+and the layering note — all of which `return` before the TUI starts; and the exit
+directory itself) plus three handle acquisitions that feed
 crossterm/ratatui rather than printing text: the ratatui backend in `terminal.rs`, and
 the alternate-screen enter/leave pairs in `app.rs` used by `SuspendAndRun` and by
 `run_suspended` (custom functions with `Suspend: true`).
@@ -250,6 +253,12 @@ degenerate case; `every_app_config_field_can_be_omitted` serializes the default
 config, then removes each key in turn and re-parses, so a single field losing its
 default is reported by name.
 
+**Its written form.** `rwf-lib/resources/default_config.json` is `AppConfig::default()`
+serialized, shipped by `--export-config-files` next to the other `default_*.json`. The code
+stays the source of truth; `default_config_json_matches_app_config_default` fails when a
+default changes without the file, and
+`RWF_REGENERATE_DEFAULT_CONFIG=1 cargo test -p rwf --test config_contracts` rewrites it.
+
 ---
 
 ## 8. No blocking filesystem calls on the input thread
@@ -279,6 +288,43 @@ draws nothing). Its jump and undo probes are gone; the Create File/Directory nam
 (`symlink_metadata`) remains — one stat of a name in the pane's own, already-listed
 directory. Startup config loading (`state/mod.rs`) is also outside both scans: it reads
 small local files that rwf cannot start without.
+
+## 9. Config files layer over built-in defaults
+
+**Rule.** Every config file has an embedded built-in, and the user's file only overrides,
+adds to, or disables it (Phase 7.26). A new list-type config file loads through
+`rwf_lib::config_layers` and is wired into `load_list_configs`, the one function both
+startup (`AppState::new`) and reload (`Transition::ReloadConfig`) call. A new `config.json`
+field is layered by contract 7's serde defaults; its only extra step is regenerating
+`rwf-lib/resources/default_config.json` (see contract 7). A default
+keybinding that names a custom function needs that function in
+`default_custom_functions.json`, and a built-in function that opens a menu file needs that
+file in `help_content::BUILT_IN_MENUS`.
+
+**Why.** On 2026-09-19 moving `custom_functions.json` aside left rwf with no custom
+functions at all: the shipped keybindings for `F6`, `z`, `F4` and `Shift+F4` still named
+them, so they silently did nothing — and a fresh install is in exactly that state. Before
+this, only keybindings.json and file_type_map.json fell back to their built-ins; custom
+functions gave an empty list and menus an empty menu, even though the defaults were
+embedded. Startup and reload also each carried their own copy of the loading code.
+
+**Two consequences to keep.** Deleting an entry from a user file no longer removes it —
+removal is explicit (`"Disabled": true`, or a key bound to `null`). And
+`--export-config-files` writes the full built-ins, so an exported file used unchanged must
+resolve to exactly the no-file result. `"UseBuiltInDefaults": false`,
+`--no-default-config` and `--no-user-config` switch the mode; the new flags follow
+contract 1 (the export note is the only new stdout write, and it returns before the TUI).
+
+**Guard.** `rwf-lib/src/config_layers_tests.rs`:
+`every_function_the_default_keybindings_invoke_is_built_in` and
+`every_menu_a_built_in_function_opens_is_built_in` (the regression itself),
+`missing_user_files_give_the_full_built_in_defaults`,
+`a_fully_exported_config_behaves_like_no_config`, and
+`reload_resolves_the_same_lists_as_startup`.
+
+**Not covered.** `context_menu.json` is only validated, not layered (it has no built-in).
+`action_descriptions.*.json` overrides and `registered_directory.json` are outside the
+layering and `--no-user-config` still reads them, as it does the session file.
 
 ## Known contracts that are *not* guarded here
 

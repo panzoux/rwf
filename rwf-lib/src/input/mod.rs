@@ -72,7 +72,7 @@ impl Default for KeyBindings {
 impl KeyBindings {
     /// Load built-in defaults from the embedded JSON resource (single source of truth).
     pub fn embedded_defaults() -> Self {
-        Self::load_from_str(include_str!("../../resources/default_keybindings.json"))
+        Self::load_from_str(crate::help_content::DEFAULT_KEYBINDINGS)
             .expect("embedded default_keybindings.json is always valid JSON")
     }
 
@@ -81,86 +81,92 @@ impl KeyBindings {
     /// Used by `embedded_defaults()` and for testing.
     pub fn load_from_str(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let v: serde_json::Value = serde_json::from_str(content)?;
-        let mut result = Self {
+        Ok(Self::apply_over(Self::empty(), &v))
+    }
+
+    /// Apply bindings from a parsed JSON value into `target`, overwriting any existing entries.
+    /// A key whose value is `null` or `"None"` is unbound instead (Phase 7.26): with the
+    /// built-in defaults always loaded underneath, that is the only way to remove one.
+    fn apply_from_value(v: &serde_json::Value, target: &mut Self) {
+        fn apply(
+            section: Option<&serde_json::Value>,
+            map: &mut HashMap<String, Action>,
+            parse: impl Fn(&str) -> Action,
+        ) {
+            let Some(bindings) = section.and_then(|b| b.as_object()) else {
+                return;
+            };
+            for (key, val) in bindings {
+                if is_unbind_value(val) {
+                    map.remove(key);
+                } else if let Some(action_str) = val.as_str() {
+                    map.insert(key.clone(), parse(action_str));
+                }
+            }
+        }
+        // TWF format: top-level "bindings" key maps to NormalMode
+        apply(
+            v.get("bindings"),
+            &mut target.normal_mode,
+            Self::parse_action_name,
+        );
+        // TWF format: "textViewerBindings" maps to ViewerMode
+        apply(v.get("textViewerBindings"), &mut target.viewer_mode, |s| {
+            Self::parse_viewer_action_name(s.strip_prefix("TextViewer.").unwrap_or(s))
+        });
+        // Native rwf format: NormalMode / SearchMode / DialogMode / ViewerMode / LeapMode
+        apply(
+            v.get("NormalMode"),
+            &mut target.normal_mode,
+            Self::parse_action_name,
+        );
+        apply(
+            v.get("SearchMode"),
+            &mut target.search_mode,
+            Self::parse_action_name,
+        );
+        apply(
+            v.get("DialogMode"),
+            &mut target.dialog_mode,
+            Self::parse_action_name,
+        );
+        apply(
+            v.get("ViewerMode"),
+            &mut target.viewer_mode,
+            Self::parse_viewer_action_name,
+        );
+        apply(
+            v.get("LeapMode"),
+            &mut target.leap_mode,
+            Self::parse_leap_action_name,
+        );
+    }
+
+    /// Apply a user keybindings document over `base` (the built-in defaults, or an
+    /// empty set when the user file replaces them). See `crate::config_layers`.
+    pub fn apply_over(mut base: Self, v: &serde_json::Value) -> Self {
+        Self::apply_from_value(v, &mut base);
+        base
+    }
+
+    /// Total number of bindings across every mode.
+    pub fn binding_count(&self) -> usize {
+        self.normal_mode.len()
+            + self.search_mode.len()
+            + self.dialog_mode.len()
+            + self.viewer_mode.len()
+            + self.leap_mode.len()
+    }
+
+    /// An empty binding set (no defaults).
+    pub fn empty() -> Self {
+        Self {
             normal_mode: HashMap::new(),
             search_mode: HashMap::new(),
             dialog_mode: HashMap::new(),
             viewer_mode: HashMap::new(),
             leap_mode: HashMap::new(),
             pending_sequence: None,
-        };
-        Self::apply_from_value(&v, &mut result);
-        Ok(result)
-    }
-
-    /// Apply bindings from a parsed JSON value into `target`, overwriting any existing entries.
-    fn apply_from_value(v: &serde_json::Value, target: &mut Self) {
-        // TWF format: top-level "bindings" key maps to NormalMode
-        if let Some(bindings) = v.get("bindings").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .normal_mode
-                        .insert(key.clone(), Self::parse_action_name(action_str));
-                }
-            }
-        }
-        // TWF format: "textViewerBindings" maps to ViewerMode
-        if let Some(bindings) = v.get("textViewerBindings").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    let stripped = action_str.strip_prefix("TextViewer.").unwrap_or(action_str);
-                    target
-                        .viewer_mode
-                        .insert(key.clone(), Self::parse_viewer_action_name(stripped));
-                }
-            }
-        }
-        // Native rwf format: NormalMode / SearchMode / DialogMode / ViewerMode
-        if let Some(bindings) = v.get("NormalMode").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .normal_mode
-                        .insert(key.clone(), Self::parse_action_name(action_str));
-                }
-            }
-        }
-        if let Some(bindings) = v.get("SearchMode").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .search_mode
-                        .insert(key.clone(), Self::parse_action_name(action_str));
-                }
-            }
-        }
-        if let Some(bindings) = v.get("DialogMode").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .dialog_mode
-                        .insert(key.clone(), Self::parse_action_name(action_str));
-                }
-            }
-        }
-        if let Some(bindings) = v.get("ViewerMode").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .viewer_mode
-                        .insert(key.clone(), Self::parse_viewer_action_name(action_str));
-                }
-            }
-        }
-        if let Some(bindings) = v.get("LeapMode").and_then(|b| b.as_object()) {
-            for (key, val) in bindings {
-                if let Some(action_str) = val.as_str() {
-                    target
-                        .leap_mode
-                        .insert(key.clone(), Self::parse_leap_action_name(action_str));
-                }
-            }
         }
     }
 
@@ -657,7 +663,10 @@ impl<'de> serde::Deserialize<'de> for DupMap {
                 let mut seen = std::collections::HashMap::<String, String>::new();
                 let mut dupes = Vec::<(String, String, String)>::new();
                 while let Some(key) = map.next_key::<String>()? {
-                    let value: String = map.next_value()?;
+                    // `null` unbinds the key (Phase 7.26); report it by name.
+                    let value = map
+                        .next_value::<Option<String>>()?
+                        .unwrap_or_else(|| "null".to_string());
                     if let Some(first) = seen.get(&key) {
                         dupes.push((key.clone(), first.clone(), value.clone()));
                     } else {
@@ -686,6 +695,11 @@ struct KeybindingsForDupCheck {
     leap_mode: Option<DupMap>,
     #[serde(rename = "bindings")]
     bindings: Option<DupMap>,
+}
+
+/// `true` for a keybinding value that unbinds its key: `null` or `"None"`.
+pub fn is_unbind_value(val: &serde_json::Value) -> bool {
+    val.is_null() || val.as_str() == Some("None")
 }
 
 /// Scan keybindings JSON content for duplicate keys within each mode section.
@@ -1660,6 +1674,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 &state.custom_functions,
                 state.config.help_show_unbound,
                 &state.config,
+                Some(&state.config_layers),
             );
             let mut dialog = crate::model::Dialog::help_with_language(lang);
             if let crate::model::DialogContent::Help(crate::model::HelpDialog {

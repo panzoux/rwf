@@ -174,6 +174,11 @@ const ALLOWED_STDOUT_WRITES: &[(&str, &str, &str)] = &[
         "--export-config-files: progress report, returns before the TUI starts",
     ),
     (
+        "rwf-bin/src/main.rs",
+        "println!(\"{LAYERING_NOTE}\");",
+        "--export-config-files: explains layering (Phase 7.26), returns before the TUI starts",
+    ),
+    (
         "rwf-bin/src/terminal.rs",
         "let mut stdout = io::stdout();",
         "the ratatui backend handle — writes go through the alternate screen",

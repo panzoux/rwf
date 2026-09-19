@@ -58,8 +58,11 @@ pub struct AppState {
     /// embedded default if that file is absent/invalid). Checked by EnterDirectory
     /// after extension_associations and before the internal viewer.
     pub file_type_map: Vec<crate::config::FileTypeMapping>,
-    /// Custom functions loaded from custom_functions.json
+    /// Custom functions: the built-ins with custom_functions.json layered over them
     pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
+    /// Which layering mode loaded the list-type config files, and which custom
+    /// functions are still the built-in definition (Phase 7.26).
+    pub config_layers: crate::config_layers::ConfigLayers,
     /// Load results for all config files, used by the verbose version info display
     pub config_load_results: Vec<crate::config::ConfigLoadResult>,
     /// Staging: logs produced by dialog-confirmation built-in actions (drained by app.rs each frame)
@@ -172,69 +175,15 @@ impl AppState {
             }
         }
 
-        let config_manager = crate::config::ConfigManager::new();
-        let (extension_associations, ext_result) =
-            config_manager.load_extension_associations_with_result();
-        let (file_type_map, file_type_map_result) = config_manager.load_file_type_map_with_result();
-
-        let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
-        let custom_fn_dir = custom_fn_path
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .to_path_buf();
-        let (custom_functions, custom_fn_result) =
-            match crate::model::dialog::load_custom_functions(&custom_fn_path) {
-                Ok(fns) if !fns.is_empty() || custom_fn_path.exists() => {
-                    let result = if custom_fn_path.exists() {
-                        crate::config::ConfigLoadResult::ok(custom_fn_path)
-                    } else {
-                        crate::config::ConfigLoadResult::skipped(custom_fn_path, "file not found")
-                    };
-                    (fns, result)
-                }
-                Ok(fns) => (
-                    fns,
-                    crate::config::ConfigLoadResult::skipped(custom_fn_path, "file not found"),
-                ),
-                Err(e) => (
-                    Vec::new(),
-                    crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string()),
-                ),
-            };
-
-        let custom_fn_result = with_custom_function_problems(custom_fn_result, &custom_functions);
-
-        let context_menu_result =
-            crate::config::ConfigManager::validate_json_file(config_manager.context_menu_path());
-
-        // Validate any menu_*.json files in the same directory as custom_functions.json
-        let mut menu_file_results: Vec<crate::config::ConfigLoadResult> = Vec::new();
-        if custom_fn_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(custom_fn_dir) {
-                let mut menu_paths: Vec<std::path::PathBuf> = entries
-                    .flatten()
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        p.file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|n| n.starts_with("menu_") && n.ends_with(".json"))
-                            .unwrap_or(false)
-                    })
-                    .collect();
-                menu_paths.sort();
-                for path in menu_paths {
-                    menu_file_results.push(crate::config::ConfigManager::validate_json_file(&path));
-                }
-            }
-        }
-
-        let mut config_load_results = vec![
-            ext_result,
-            file_type_map_result,
-            custom_fn_result,
-            context_menu_result,
-        ];
-        config_load_results.extend(menu_file_results);
+        // Phase 7.26: every list-type file layers over its built-in defaults. The
+        // same call runs on reload, so startup and reload cannot drift apart.
+        let layering = crate::config_layers::ConfigLayering::current(&config);
+        let lists =
+            crate::config_layers::load_list_configs(&crate::config::ConfigManager::new(), layering);
+        let config_layers = crate::config_layers::ConfigLayers {
+            layering,
+            built_in_function_names: lists.built_in_function_names,
+        };
 
         Self {
             tabs: TabManager::new(),
@@ -257,10 +206,11 @@ impl AppState {
             log_manager,
             config,
             last_tab_created: None,
-            extension_associations,
-            file_type_map,
-            custom_functions,
-            config_load_results,
+            extension_associations: lists.extension_associations,
+            file_type_map: lists.file_type_map,
+            custom_functions: lists.custom_functions,
+            config_layers,
+            config_load_results: lists.results,
             pending_confirmation_logs: Vec::new(),
             pending_confirmation_jobs: Vec::new(),
             confirmation_needs_keybinding_reload: false,
@@ -1072,22 +1022,6 @@ pub enum HistoryDirection {
     Forward,
 }
 
-/// Fold semantic problems in the loaded custom functions into their load result:
-/// ambiguous Command/Menu/ClipText combinations, the removed `$M` macro, and pickers
-/// run without `Suspend`. Reported, not auto-resolved — the functions still load.
-/// Shared by startup and Reload so an edit is checked the same way both times.
-fn with_custom_function_problems(
-    result: crate::config::ConfigLoadResult,
-    functions: &[crate::model::dialog::CustomFunction],
-) -> crate::config::ConfigLoadResult {
-    let problems = crate::model::dialog::validate_custom_functions(functions);
-    if problems.is_empty() {
-        result
-    } else {
-        crate::config::ConfigLoadResult::error(result.path, problems.join("; "))
-    }
-}
-
 /// Result of applying a state transition
 pub struct StateUpdateResult {
     /// Jobs to start
@@ -1329,110 +1263,56 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
             let old_workers = state.config.worker_pool_size;
             let old_migemo = state.config.search.dict_path.clone();
 
-            // Reload config.json
-            let config_path = config_manager.config_path().to_path_buf();
-            let config_result = match config_manager.load_config() {
-                Ok(new_config) => {
-                    state.config = new_config;
-                    // Phase 7.5: intervals restart from the new base; stopped drives stay
-                    // stopped.
-                    for change in state.polling.reset_intervals(
-                        crate::model::polling::PollingState::interval(
+            // Reload config.json. A file that fails to load keeps the running config.
+            let (new_config, config_result) =
+                crate::config_layers::load_app_config(&config_manager);
+            if let Some(new_config) = new_config {
+                state.config = new_config;
+                // Phase 7.5: intervals restart from the new base; stopped drives stay
+                // stopped.
+                for change in
+                    state
+                        .polling
+                        .reset_intervals(crate::model::polling::PollingState::interval(
                             state.config.polling_interval_ms,
-                        ),
-                    ) {
-                        tracing::info!("[Poll] {change}");
-                    }
-                    crate::config::ConfigLoadResult::ok(config_path)
-                }
-                Err(e) => {
-                    let is_not_found = matches!(&e, crate::config::ConfigError::IoError(io) if io.kind() == std::io::ErrorKind::NotFound);
-                    if is_not_found {
-                        crate::config::ConfigLoadResult::skipped(config_path, "file not found")
-                    } else {
-                        crate::config::ConfigLoadResult::error(config_path, format!("{:?}", e))
-                    }
-                }
-            };
-
-            // Reload other config files
-            let (ext_assocs, ext_result) = config_manager.load_extension_associations_with_result();
-            state.extension_associations = ext_assocs;
-
-            let (file_type_map, file_type_map_result) =
-                config_manager.load_file_type_map_with_result();
-            state.file_type_map = file_type_map;
-
-            let custom_fn_path = config_manager.custom_functions_path().to_path_buf();
-            let (custom_fns, custom_fn_result) =
-                match crate::model::dialog::load_custom_functions(&custom_fn_path) {
-                    Ok(fns) => {
-                        let result = if custom_fn_path.exists() {
-                            crate::config::ConfigLoadResult::ok(custom_fn_path)
-                        } else {
-                            crate::config::ConfigLoadResult::skipped(
-                                custom_fn_path,
-                                "file not found",
-                            )
-                        };
-                        (fns, result)
-                    }
-                    Err(e) => (
-                        Vec::new(),
-                        crate::config::ConfigLoadResult::error(custom_fn_path, e.to_string()),
-                    ),
-                };
-            let custom_fn_result = with_custom_function_problems(custom_fn_result, &custom_fns);
-            state.custom_functions = custom_fns;
-
-            let context_menu_result = crate::config::ConfigManager::validate_json_file(
-                config_manager.context_menu_path(),
-            );
-
-            // Scan menu_*.json files in the same directory as custom_functions.json
-            let custom_fn_dir = config_manager
-                .custom_functions_path()
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf();
-            let mut menu_file_results: Vec<crate::config::ConfigLoadResult> = Vec::new();
-            if custom_fn_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&custom_fn_dir) {
-                    let mut menu_paths: Vec<std::path::PathBuf> = entries
-                        .flatten()
-                        .map(|e| e.path())
-                        .filter(|p| {
-                            p.file_name()
-                                .and_then(|n| n.to_str())
-                                .map(|n| n.starts_with("menu_") && n.ends_with(".json"))
-                                .unwrap_or(false)
-                        })
-                        .collect();
-                    menu_paths.sort();
-                    for path in menu_paths {
-                        menu_file_results
-                            .push(crate::config::ConfigManager::validate_json_file(&path));
-                    }
+                        ))
+                {
+                    tracing::info!("[Poll] {change}");
                 }
             }
 
-            // Preserve first 2 slots (config.json [0] and keybindings.json [1]).
-            // keybindings.json is reloaded in app.rs before this transition, so [1] is already current.
-            let prev_results: Vec<_> = state.config_load_results.drain(..2).collect();
-            state.config_load_results = prev_results;
-            state.config_load_results[0] = config_result;
-            state.config_load_results.extend([
-                ext_result,
-                file_type_map_result,
-                custom_fn_result,
-                context_menu_result,
-            ]);
-            state.config_load_results.extend(menu_file_results);
+            // Reload the list-type files through the same path startup uses.
+            let layering = crate::config_layers::ConfigLayering::current(&state.config);
+            let lists = crate::config_layers::load_list_configs(&config_manager, layering);
+            state.extension_associations = lists.extension_associations;
+            state.file_type_map = lists.file_type_map;
+            state.custom_functions = lists.custom_functions;
+            state.config_layers = crate::config_layers::ConfigLayers {
+                layering,
+                built_in_function_names: lists.built_in_function_names,
+            };
+
+            // keybindings.json is reloaded in app.rs before this transition, so its
+            // result is already current; keep it (found by path, not by slot, since
+            // a state built without main.rs has no keybindings row).
+            let kb_result = state
+                .config_load_results
+                .iter()
+                .find(|r| r.path == config_manager.keybindings_path())
+                .cloned();
+            state.config_load_results = std::iter::once(config_result)
+                .chain(kb_result)
+                .chain(lists.results)
+                .collect();
 
             // Build feedback messages
             use crate::config::ConfigLoadStatus;
             let mut messages: Vec<String> = Vec::new();
             messages.push("Configuration reloaded:".to_string());
+            messages.push(format!(
+                "  Layering: {}",
+                state.config_layers.layering.label()
+            ));
 
             // Show status for each config file
             for r in &state.config_load_results {
@@ -1441,12 +1321,14 @@ pub fn update_state(state: &mut AppState, transition: Transition) -> StateUpdate
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| r.path.to_string_lossy().into_owned());
+                let detail = r.detail().map(|d| format!(" ({d})")).unwrap_or_default();
                 let line = match &r.status {
-                    ConfigLoadStatus::Ok => format!("  [OK]      {}", filename),
-                    ConfigLoadStatus::Default(why) => format!("  [OK]      {} ({})", filename, why),
-                    ConfigLoadStatus::Skipped(why) => format!("  [Skipped] {} ({})", filename, why),
-                    ConfigLoadStatus::Error(detail) => {
-                        format!("  [NG]      {} — {}", filename, detail)
+                    ConfigLoadStatus::Ok | ConfigLoadStatus::Default(_) => {
+                        format!("  [OK]      {filename}{detail}")
+                    }
+                    ConfigLoadStatus::Skipped(_) => format!("  [Skipped] {filename}{detail}"),
+                    ConfigLoadStatus::Error(err) => {
+                        format!("  [NG]      {filename} — {err}{detail}")
                     }
                 };
                 messages.push(line);

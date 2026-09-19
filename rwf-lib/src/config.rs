@@ -129,6 +129,17 @@ pub struct AppConfig {
     /// Operation Report / Undo history settings (Phase 7.6).
     #[serde(default)]
     pub undo: UndoConfig,
+
+    /// Layer the user's list-type config files (custom functions, menus, keybindings,
+    /// associations, file-type map) over the built-in defaults (Phase 7.26). `false`
+    /// makes a user file that exists replace its built-in wholesale, so deleting an
+    /// entry removes it again. `--no-default-config` forces `false` for one run.
+    #[serde(default = "default_use_built_in_defaults")]
+    pub use_built_in_defaults: bool,
+}
+
+fn default_use_built_in_defaults() -> bool {
+    true
 }
 
 fn default_polling_interval_ms() -> u32 {
@@ -561,6 +572,7 @@ impl Default for AppConfig {
             magic_byte_detection_enabled: default_magic_byte_detection_enabled(),
             trash: TrashConfig::default(),
             undo: UndoConfig::default(),
+            use_built_in_defaults: default_use_built_in_defaults(),
             is_creating_tab: false,
         }
     }
@@ -1271,93 +1283,8 @@ impl ConfigManager {
         &self.context_menu_path
     }
 
-    /// Load extension associations from extension_associations.json.
-    /// Returns an empty list if the file does not exist.
-    pub fn load_extension_associations(&self) -> Vec<ExtensionAssociation> {
-        self.load_extension_associations_with_result().0
-    }
-
-    /// Load extension associations and return a `ConfigLoadResult` alongside the data.
-    pub fn load_extension_associations_with_result(
-        &self,
-    ) -> (Vec<ExtensionAssociation>, ConfigLoadResult) {
-        let path = self.extension_associations_path.clone();
-        if !path.exists() {
-            return (
-                Vec::new(),
-                ConfigLoadResult::skipped(path, "file not found"),
-            );
-        }
-        match std::fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str::<Vec<ExtensionAssociation>>(&content) {
-                Ok(assocs) => {
-                    // Phase 7.3b: an entry with neither `FileType` nor `Extension` can never
-                    // match anything — skip it (with a warning) instead of failing the whole
-                    // file, so one bad entry doesn't take down every other association.
-                    let assocs: Vec<ExtensionAssociation> = assocs
-                        .into_iter()
-                        .filter(|a| {
-                            if a.file_type.is_none() && a.extension.is_none() {
-                                tracing::warn!(
-                                    "extension_associations.json: skipping entry with neither FileType nor Extension set (command: {:?})",
-                                    a.command
-                                );
-                                false
-                            } else {
-                                true
-                            }
-                        })
-                        .collect();
-                    (assocs, ConfigLoadResult::ok(path))
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse extension_associations.json: {}", e);
-                    (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to read extension_associations.json: {}", e);
-                (Vec::new(), ConfigLoadResult::error(path, e.to_string()))
-            }
-        }
-    }
-
-    /// Load the built-in file-type map. Unlike `load_extension_associations_with_result`,
-    /// this never returns an empty list: if `%APPDATA%\rwf\file_type_map.json` is absent
-    /// or fails to parse, it falls back to the embedded default set (same "user override,
-    /// else embedded default" pattern as `ActionDescriptions::load()` in help_content.rs).
-    pub fn load_file_type_map_with_result(&self) -> (Vec<FileTypeMapping>, ConfigLoadResult) {
-        let path = self.file_type_map_path.clone();
-        let embedded_defaults = || {
-            serde_json::from_str::<Vec<FileTypeMapping>>(crate::help_content::DEFAULT_FILE_TYPE_MAP)
-                .expect("embedded default_file_type_map.json is always valid JSON")
-        };
-        if !path.exists() {
-            return (
-                embedded_defaults(),
-                ConfigLoadResult::default_fallback(path, "file not found"),
-            );
-        }
-        match std::fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str::<Vec<FileTypeMapping>>(&content) {
-                Ok(mappings) => (mappings, ConfigLoadResult::ok(path)),
-                Err(e) => {
-                    tracing::warn!("Failed to parse file_type_map.json: {}", e);
-                    (
-                        embedded_defaults(),
-                        ConfigLoadResult::error(path, e.to_string()),
-                    )
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to read file_type_map.json: {}", e);
-                (
-                    embedded_defaults(),
-                    ConfigLoadResult::error(path, e.to_string()),
-                )
-            }
-        }
-    }
+    // extension_associations.json and file_type_map.json are loaded layered over
+    // their built-ins by `crate::config_layers` (Phase 7.26).
 
     /// Validate a JSON file without applying it (for menu files loaded on-the-fly).
     /// Returns a `ConfigLoadResult` indicating OK, Skipped, or parse Error.
@@ -1434,6 +1361,9 @@ pub enum ConfigLoadStatus {
 pub struct ConfigLoadResult {
     pub path: std::path::PathBuf,
     pub status: ConfigLoadStatus,
+    /// How the file layered over its built-in defaults, e.g. "3 user entries over
+    /// 21 built-in" (Phase 7.26). Shown after the status in the load report.
+    pub note: Option<String>,
 }
 
 impl ConfigLoadResult {
@@ -1441,24 +1371,47 @@ impl ConfigLoadResult {
         Self {
             path,
             status: ConfigLoadStatus::Ok,
+            note: None,
         }
     }
     pub fn default_fallback(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
         Self {
             path,
             status: ConfigLoadStatus::Default(reason.into()),
+            note: None,
         }
     }
     pub fn skipped(path: std::path::PathBuf, reason: impl Into<String>) -> Self {
         Self {
             path,
             status: ConfigLoadStatus::Skipped(reason.into()),
+            note: None,
+        }
+    }
+    /// Attach a layering note (see [`ConfigLoadResult::note`]).
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+    /// One report line's text after the file name: the status reason, then the note.
+    pub fn detail(&self) -> Option<String> {
+        let reason = match &self.status {
+            ConfigLoadStatus::Ok => None,
+            ConfigLoadStatus::Default(r) | ConfigLoadStatus::Skipped(r) => Some(r.clone()),
+            ConfigLoadStatus::Error(_) => None,
+        };
+        match (reason, &self.note) {
+            (Some(r), Some(n)) => Some(format!("{r}; {n}")),
+            (Some(r), None) => Some(r),
+            (None, Some(n)) => Some(n.clone()),
+            (None, None) => None,
         }
     }
     pub fn error(path: std::path::PathBuf, detail: impl Into<String>) -> Self {
         Self {
             path,
             status: ConfigLoadStatus::Error(detail.into()),
+            note: None,
         }
     }
 }
@@ -1715,7 +1668,10 @@ mod tests {
         let keybindings_path = temp_dir.path().join("keybindings.json");
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
 
-        let (mappings, result) = manager.load_file_type_map_with_result();
+        let (mappings, result) = crate::config_layers::load_file_type_map(
+            manager.file_type_map_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
         assert!(!mappings.is_empty());
         assert!(mappings.iter().any(|m| m.extension == "mp4"));
@@ -1730,7 +1686,10 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         std::fs::write(manager.file_type_map_path(), "not valid json").unwrap();
 
-        let (mappings, result) = manager.load_file_type_map_with_result();
+        let (mappings, result) = crate::config_layers::load_file_type_map(
+            manager.file_type_map_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
         assert!(!mappings.is_empty());
         assert!(mappings.iter().any(|m| m.extension == "mp4"));
@@ -1738,7 +1697,7 @@ mod tests {
     }
 
     #[test]
-    fn load_file_type_map_uses_user_file_when_present_and_valid() {
+    fn load_file_type_map_puts_a_valid_user_file_over_the_built_ins() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
@@ -1749,24 +1708,32 @@ mod tests {
         )
         .unwrap();
 
-        let (mappings, result) = manager.load_file_type_map_with_result();
+        let (mappings, result) = crate::config_layers::load_file_type_map(
+            manager.file_type_map_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
-        assert_eq!(mappings.len(), 1);
+        // Phase 7.26: the user entry comes first and the built-ins stay underneath.
         assert_eq!(mappings[0].extension, "csv");
+        assert!(mappings.iter().any(|m| m.extension == "mp4"));
         assert!(matches!(result.status, ConfigLoadStatus::Ok));
     }
 
     #[test]
-    fn load_extension_associations_skipped_when_file_missing() {
+    fn load_extension_associations_uses_the_built_ins_when_file_missing() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         let keybindings_path = temp_dir.path().join("keybindings.json");
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
 
-        let (assocs, result) = manager.load_extension_associations_with_result();
+        let (assocs, result) = crate::config_layers::load_extension_associations(
+            manager.extension_associations_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
+        // The built-in list is empty; since Phase 7.26 it is reported as in use.
         assert!(assocs.is_empty());
-        assert!(matches!(result.status, ConfigLoadStatus::Skipped(_)));
+        assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
     }
 
     #[test]
@@ -1777,7 +1744,10 @@ mod tests {
         let manager = ConfigManager::with_paths(config_path, keybindings_path);
         std::fs::write(manager.extension_associations_path(), "not valid json").unwrap();
 
-        let (assocs, result) = manager.load_extension_associations_with_result();
+        let (assocs, result) = crate::config_layers::load_extension_associations(
+            manager.extension_associations_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
         assert!(assocs.is_empty());
         assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
@@ -1795,7 +1765,10 @@ mod tests {
         )
         .unwrap();
 
-        let (assocs, result) = manager.load_extension_associations_with_result();
+        let (assocs, result) = crate::config_layers::load_extension_associations(
+            manager.extension_associations_path(),
+            crate::config_layers::ConfigLayering::Layered,
+        );
 
         assert_eq!(assocs.len(), 1);
         assert_eq!(assocs[0].extension.as_deref(), Some("log"));

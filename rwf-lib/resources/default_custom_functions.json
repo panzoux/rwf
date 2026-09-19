@@ -1,6 +1,12 @@
 {
   "Version": "1.0",
   "_comment": [
+    "Layering: rwf always loads its built-in functions. This file only overrides",
+    "them by Name, adds new names, or removes one with",
+    "  { \"Name\": \"fzf jump to dir\", \"Disabled\": true }",
+    "Deleting an entry from this file does NOT remove it - the built-in comes back.",
+    "(\"UseBuiltInDefaults\": false in config.json makes this file replace the built-ins.)",
+    "",
     "Each entry has exactly ONE of:",
     "  Command  - run through a shell",
     "  Menu     - open a submenu (inline items, or a menu_*.json filename)",

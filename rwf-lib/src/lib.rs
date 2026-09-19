@@ -20,6 +20,7 @@
 pub mod backend;
 pub mod clipboard;
 pub mod config;
+pub mod config_layers;
 pub mod diagnostics;
 pub mod event_receiver;
 pub mod help_content;
@@ -185,8 +186,8 @@ mod file_open_integration_tests;
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
 pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
 pub use help_content::{
-    DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_EXTENSION_ASSOCIATIONS, DEFAULT_FILE_TYPE_MAP,
-    DEFAULT_MENU_CLIP, DEFAULT_MENU_CONFIG,
+    DEFAULT_CONFIG, DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_EXTENSION_ASSOCIATIONS,
+    DEFAULT_FILE_TYPE_MAP, DEFAULT_KEYBINDINGS, DEFAULT_MENU_CLIP, DEFAULT_MENU_CONFIG,
 };
 pub use input::{
     action_to_transitions, check_keybindings_content_duplicates, check_keybindings_duplicates,

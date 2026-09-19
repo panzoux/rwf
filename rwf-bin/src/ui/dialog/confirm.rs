@@ -817,6 +817,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 functions,
                 selected_index,
                 filter,
+                ..
             }) => {
                 let lower = filter.to_lowercase();
                 let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
