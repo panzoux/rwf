@@ -27,7 +27,7 @@ rwf-lib = { version = "0.1.0", features = ["migemo"] }
 
 Migemo requires a dictionary file to function. Two formats are supported:
 
-- **Normal dictionary** `migemo-dict` — the C/Migemo UTF-8 text dictionary. It is converted to the compact form in memory when loaded, so loading takes noticeably longer than the compact file (about 7 s in a debug build for the 5 MB dictionary).
+- **Normal dictionary** `migemo-dict` — the C/Migemo UTF-8 text dictionary. It is converted to the compact form in memory when loaded, so loading takes noticeably longer than the compact file (about 7 s in a debug build for the 5 MB dictionary). The converted form is therefore cached on disk (`<cache dir>/rwf/migemo/`, i.e. `%LOCALAPPDATA%\rwf\migemo\` on Windows), keyed by the source path, modification time and size; later launches read the cache and only the first load (or the first after the dictionary changes) pays the conversion. The cache is safe to delete.
 - **Compact dictionary** `migemo-compact-dict` — the rustmigemo binary format; loads quickly.
 
 The **normal dictionary is tried first; the compact dictionary is only a fallback** used when no normal dictionary is found (or none of them loads). The format is detected from the file content, so a configured path may point at either.
