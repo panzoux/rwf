@@ -32,6 +32,27 @@ fn failed_record(
 }
 
 /// Executor for processing job specifications
+/// Quote one argument for a `cmd.exe` command line (used with `raw_arg`).
+///
+/// Unlike Rust's default Windows quoting (ASCII space/tab only), this also wraps args with
+/// any Unicode whitespace (e.g. full-width U+3000) or cmd metacharacters, and empty args.
+/// Args already wrapped in quotes, or containing `"`, are passed through unchanged.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn cmd_quote_arg(arg: &str) -> String {
+    if arg.contains('"') {
+        return arg.to_string();
+    }
+    let needs_quotes = arg.is_empty()
+        || arg
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '&' | '^' | '|' | '<' | '>' | '(' | ')'));
+    if needs_quotes {
+        format!("\"{arg}\"")
+    } else {
+        arg.to_string()
+    }
+}
+
 pub struct JobExecutor<B: FilesystemBackend, A: ArchiveHandler> {
     backend: Arc<B>,
     archive_handler: Arc<A>,
@@ -1662,8 +1683,20 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
             return crate::job::OpResult::Cancelled;
         }
         let mut cmd = tokio::process::Command::new(program);
-        cmd.args(args)
-            .stdin(std::process::Stdio::null())
+        #[cfg(target_os = "windows")]
+        if program.eq_ignore_ascii_case("cmd") || program.eq_ignore_ascii_case("cmd.exe") {
+            // Rust only quotes args containing ASCII space/tab, so a path with a
+            // full-width space (U+3000) reaches cmd.exe unquoted and is split.
+            // Quote for cmd.exe ourselves and bypass Rust's escaping.
+            for a in args {
+                cmd.raw_arg(cmd_quote_arg(a));
+            }
+        } else {
+            cmd.args(args);
+        }
+        #[cfg(not(target_os = "windows"))]
+        cmd.args(args);
+        cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
         if wait {
@@ -2957,6 +2990,21 @@ async fn load_mount_table() -> Vec<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cmd_quote_arg_wraps_fullwidth_space_and_metachars() {
+        assert_eq!(
+            cmd_quote_arg("C:\\d\\a\u{3000}b.txt"),
+            "\"C:\\d\\a\u{3000}b.txt\""
+        );
+        assert_eq!(cmd_quote_arg("a b.txt"), "\"a b.txt\"");
+        assert_eq!(cmd_quote_arg("a&b.txt"), "\"a&b.txt\"");
+        assert_eq!(cmd_quote_arg(""), "\"\"");
+        assert_eq!(cmd_quote_arg("/D"), "/D");
+        assert_eq!(cmd_quote_arg("plain.txt"), "plain.txt");
+        assert_eq!(cmd_quote_arg("\"already\""), "\"already\"");
+    }
+
     use crate::backend::LocalFilesystemBackend;
     use crate::backend::MockArchiveHandler;
     use crate::job::{JobKind, JobSpec};
