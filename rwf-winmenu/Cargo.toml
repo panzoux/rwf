@@ -1,6 +1,6 @@
 [package]
 name = "rwf-winmenu"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Native Windows Explorer shell context menu for RWF (Rust port of panzoux/win_ctxmenu)"
 
