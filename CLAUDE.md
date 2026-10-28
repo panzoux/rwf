@@ -4,7 +4,8 @@
 Mental model: `Input -> Transition -> State Update -> UI Projection`.
 No side-effects in the UI thread; all I/O runs as `Job`s in the worker pool.
 
-- Workspace: `rwf-lib` (state machine, jobs, backends) + `rwf-bin` (bin `rwf`; rendering, terminal).
+- Workspace: `rwf-lib` (state machine, jobs, backends) + `rwf-bin` (bin `rwf`; rendering, terminal)
+  + `rwf-winmenu` (native Windows Explorer context menu, bound to `_`; port of `panzoux/win_ctxmenu`).
 - Roadmap / phase status: `plan/ROADMAP.md` (Japanese) is the source of truth.
   What is being worked on *right now* lives on the Kanban board — see *Task management* below.
 - Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
@@ -83,7 +84,7 @@ cargo test -p rwf-lib <filter> -- --test-threads=1 # filtered subset during deve
 1. **No `unwrap()` in non-test code.** `clippy::unwrap_used` is `deny` workspace-wide
    (tests are exempt via `clippy.toml`). The M6 ratchet finished: there are **zero**
    `#![allow(clippy::unwrap_used)]` escapes left in the tree — do not add one.
-2. **`unsafe_code` is `deny`** (`rwf-lib/src/volume_info.rs` is the only scoped allow; every
+2. **`unsafe_code` is `deny`** (`rwf-lib/src/volume_info.rs` and `rwf-winmenu/src/imp.rs` are the only scoped allows; every
    unsafe block needs a `// SAFETY:` comment).
 3. **Tests use shared fixtures** from `rwf-lib/src/test_utils.rs`
    (`test_state()`, `FileEntryBuilder`, `AppStateBuilder`, `state_with_temp_dirs()`, …).

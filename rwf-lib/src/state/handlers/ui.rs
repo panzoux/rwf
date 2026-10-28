@@ -371,6 +371,29 @@ impl AppState {
                 self.dialogs.pop();
                 Some(StateUpdateResult::with_ui_change())
             }
+            Transition::ShowShellContextMenu => {
+                let pane = self.active_pane();
+                let marked = pane.marked_entries();
+                let entries = if marked.is_empty() {
+                    pane.current_entry().into_iter().collect()
+                } else {
+                    marked
+                };
+                let paths: Vec<std::path::PathBuf> = entries
+                    .iter()
+                    .filter_map(|e| match &e.location {
+                        crate::model::Location::Local(p) => Some(p.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if paths.is_empty() {
+                    // Nothing selectable, or a remote/archive location: no native menu.
+                    return Some(StateUpdateResult::none());
+                }
+                Some(StateUpdateResult::with_job(crate::job::JobSpec::new(
+                    crate::job::JobKind::ShellContextMenu { paths },
+                )))
+            }
             Transition::ShowContextMenu => {
                 let dialog = crate::model::Dialog::context_menu();
                 self.dialogs.push(dialog);

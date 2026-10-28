@@ -284,6 +284,12 @@ pub enum JobKind {
         args: Vec<String>,
         wait: bool,
     },
+    /// Show the native Windows Explorer context menu for `paths` (all in one folder)
+    /// and run the chosen command. Blocks the job until the menu and any dialog it
+    /// opened are done. Fails on non-Windows platforms.
+    ShellContextMenu {
+        paths: Vec<std::path::PathBuf>,
+    },
     /// Run a terminal (TUI) program by suspending rwf, handing it the terminal,
     /// and resuming when the program exits. Intercepted in the app layer — never
     /// reaches the worker pool.

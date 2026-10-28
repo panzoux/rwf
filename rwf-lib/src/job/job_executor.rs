@@ -186,6 +186,15 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 self.execute_spawn_process(program, args, *wait, &spec)
                     .await
             }
+            JobKind::ShellContextMenu { paths } => {
+                let paths = paths.clone();
+                match tokio::task::spawn_blocking(move || rwf_winmenu::show_for_paths(&paths)).await
+                {
+                    Ok(Ok(())) => OpResult::Success(SuccessData::None),
+                    Ok(Err(e)) => OpResult::Failed(e),
+                    Err(e) => OpResult::Failed(format!("context menu task failed: {e}")),
+                }
+            }
             JobKind::Search {
                 location,
                 pattern,

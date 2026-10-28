@@ -25,7 +25,7 @@
     "^": "MoveCursorToFirst",
     "$": "MoveCursorToLast",
     "/": "StartSearch",
-    "\\": "ShowContextMenu",
+    "_": "ShowShellContextMenu",
     ":": "FileMaskFilter",
     "*": "WildcardMarking",
     "0": "DisplayModeDetailed",

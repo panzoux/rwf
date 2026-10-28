@@ -1624,6 +1624,7 @@ dependencies = [
  "proptest",
  "regex",
  "rustmigemo",
+ "rwf-winmenu",
  "serde",
  "serde_json",
  "sevenz-rust",
@@ -1639,6 +1640,13 @@ dependencies = [
  "uuid",
  "windows 0.52.0",
  "zip",
+]
+
+[[package]]
+name = "rwf-winmenu"
+version = "0.1.0"
+dependencies = [
+ "windows 0.52.0",
 ]
 
 [[package]]

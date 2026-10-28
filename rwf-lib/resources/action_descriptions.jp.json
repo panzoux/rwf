@@ -108,6 +108,7 @@
         "name": "メニューと機能",
         "actions": {
           "ShowContextMenu":            { "description": "コンテキストメニューを開く" },
+          "ShowShellContextMenu":       { "description": "OS標準（エクスプローラー）のコンテキストメニューを開く（Windows、マーク中のファイルまたはカーソル位置）" },
           "ShowDriveChangeDialog":      { "description": "ドライブ / マウントポイントを変更" },
           "ShowCustomFunctionsDialog":  { "description": "カスタム関数メニューを開く" }
         }

@@ -507,6 +507,8 @@ pub enum Action {
 
     // Context menu, drive selection, custom functions
     ShowContextMenu,
+    /// Native OS shell context menu (Windows Explorer menu) for the marked files, or the cursor file.
+    ShowShellContextMenu,
     ShowDriveChangeDialog,
     ShowCustomFunctionsDialog,
 
@@ -1768,6 +1770,9 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::SwapPanes => {
             // Swap the paths of left and right panes
             vec![Transition::SwapPanes]
+        }
+        Action::ShowShellContextMenu => {
+            vec![Transition::ShowShellContextMenu]
         }
         Action::ShowContextMenu => {
             vec![Transition::ShowContextMenu]

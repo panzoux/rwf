@@ -359,3 +359,76 @@ mod tests {
         assert_eq!(removable_drive.drive_type, DriveType::Removable);
     }
 }
+
+#[cfg(test)]
+mod shell_context_menu_tests {
+    use crate::input::{Action, KeyBindings};
+    use crate::job::JobKind;
+    use crate::model::{ActivePane, Location};
+    use crate::state::{update_state, Transition};
+    use crate::test_utils::{AppStateBuilder, FileEntryBuilder};
+    use std::path::PathBuf;
+
+    fn local(name: &str, marked: bool) -> crate::model::FileEntry {
+        FileEntryBuilder::new(name)
+            .location(Location::Local(PathBuf::from("/d").join(name)))
+            .marked(marked)
+            .build()
+    }
+
+    fn shell_paths(result: &crate::state::StateUpdateResult) -> Vec<PathBuf> {
+        match result.jobs_to_start.as_slice() {
+            [spec] => match &spec.kind {
+                JobKind::ShellContextMenu { paths } => paths.clone(),
+                other => panic!("unexpected job {other:?}"),
+            },
+            other => panic!("expected exactly one job, got {}", other.len()),
+        }
+    }
+
+    #[test]
+    fn cursor_entry_when_nothing_marked() {
+        let mut state = AppStateBuilder::new()
+            .left_entries(vec![local("a　b.txt", false), local("c.txt", false)])
+            .left_cursor(0)
+            .active_pane(ActivePane::Left)
+            .build();
+        let result = update_state(&mut state, Transition::ShowShellContextMenu);
+        assert_eq!(shell_paths(&result), vec![PathBuf::from("/d/a　b.txt")]);
+    }
+
+    #[test]
+    fn marked_entries_win_over_cursor() {
+        let mut state = AppStateBuilder::new()
+            .left_entries(vec![
+                local("a.txt", false),
+                local("b.txt", true),
+                local("c.txt", true),
+            ])
+            .left_cursor(0)
+            .active_pane(ActivePane::Left)
+            .build();
+        let result = update_state(&mut state, Transition::ShowShellContextMenu);
+        assert_eq!(
+            shell_paths(&result),
+            vec![PathBuf::from("/d/b.txt"), PathBuf::from("/d/c.txt")]
+        );
+    }
+
+    #[test]
+    fn empty_pane_starts_no_job() {
+        let mut state = AppStateBuilder::new().left_entries(vec![]).build();
+        let result = update_state(&mut state, Transition::ShowShellContextMenu);
+        assert!(result.jobs_to_start.is_empty());
+    }
+
+    #[test]
+    fn underscore_is_bound_and_backslash_is_free() {
+        let bindings = KeyBindings::embedded_defaults();
+        assert_eq!(
+            bindings.normal_mode.get("_"),
+            Some(&Action::ShowShellContextMenu)
+        );
+        assert_eq!(bindings.normal_mode.get("\\"), None);
+    }
+}

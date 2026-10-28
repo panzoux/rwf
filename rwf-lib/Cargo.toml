@@ -7,6 +7,7 @@ edition = "2021"
 workspace = true
 
 [dependencies]
+rwf-winmenu = { path = "../rwf-winmenu" }
 # Workspace dependencies
 tokio = { workspace = true }
 tokio-util = { workspace = true }

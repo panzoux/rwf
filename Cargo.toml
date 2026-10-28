@@ -1,9 +1,9 @@
 [workspace]
-members = ["rwf-bin", "rwf-lib"]
+members = ["rwf-bin", "rwf-lib", "rwf-winmenu"]
 resolver = "2"
 
 [workspace.lints.rust]
-# volume_info.rs (Win32 API) のみ #![allow(unsafe_code)] + SAFETY コメントで許可
+# volume_info.rs / rwf-winmenu/src/imp.rs (Win32 API) のみ #![allow(unsafe_code)] + SAFETY コメントで許可
 unsafe_code = "deny"
 
 [workspace.lints.clippy]

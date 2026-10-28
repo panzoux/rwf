@@ -108,6 +108,7 @@
         "name": "Menus & Functions",
         "actions": {
           "ShowContextMenu":            { "description": "Open context menu" },
+          "ShowShellContextMenu":       { "description": "Open the native OS (Explorer) context menu for the marked files or cursor file (Windows)" },
           "ShowDriveChangeDialog":      { "description": "Change drive / mount point" },
           "ShowCustomFunctionsDialog":  { "description": "Open custom functions menu" }
         }

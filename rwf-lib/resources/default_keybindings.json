@@ -109,7 +109,7 @@
     "Alt+s":           "CalculateDirectorySize",
     "o":               "SyncToOtherPane",
     "O":               "SwapPanes",
-    "\\":              "ShowContextMenu",
+    "_":               "ShowShellContextMenu",
     "L":               "ShowDriveChangeDialog",
     "T":               "ShowCustomFunctionsDialog",
     "Z":               "ReloadConfig",

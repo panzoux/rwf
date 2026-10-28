@@ -737,6 +737,8 @@ pub enum Transition {
     ScrollTaskPanelUp,
     ScrollTaskPanelDown,
     ShowContextMenu,
+    /// Open the native OS shell context menu for the marked files (or the cursor file).
+    ShowShellContextMenu,
     ShowCustomFunctionsDialog,
     /// Invoke a custom function (or menu) by name, resolved from state.custom_functions at runtime.
     InvokeCustomFunctionByName {

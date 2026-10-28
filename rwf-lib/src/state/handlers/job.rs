@@ -424,6 +424,7 @@ impl AppState {
                                 "Collect jump candidates"
                             }
                             crate::job::JobKind::SpawnProcess { .. } => "Spawn process",
+                            crate::job::JobKind::ShellContextMenu { .. } => "Shell context menu",
                             crate::job::JobKind::SuspendAndRun { .. } => "Terminal editor",
                             crate::job::JobKind::CountDirectoryEntries { .. } => {
                                 "Count directory entries"
