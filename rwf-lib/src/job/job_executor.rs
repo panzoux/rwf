@@ -186,9 +186,13 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 self.execute_spawn_process(program, args, *wait, &spec)
                     .await
             }
-            JobKind::ShellContextMenu { paths } => {
+            JobKind::ShellContextMenu { paths, anchor } => {
                 let paths = paths.clone();
-                match tokio::task::spawn_blocking(move || rwf_winmenu::show_for_paths(&paths)).await
+                let anchor = *anchor;
+                match tokio::task::spawn_blocking(move || {
+                    rwf_winmenu::show_for_paths_at(&paths, anchor)
+                })
+                .await
                 {
                     Ok(Ok(())) => OpResult::Success(SuccessData::None),
                     Ok(Err(e)) => OpResult::Failed(e),

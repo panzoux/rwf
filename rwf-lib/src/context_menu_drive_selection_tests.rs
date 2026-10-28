@@ -379,7 +379,7 @@ mod shell_context_menu_tests {
     fn shell_paths(result: &crate::state::StateUpdateResult) -> Vec<PathBuf> {
         match result.jobs_to_start.as_slice() {
             [spec] => match &spec.kind {
-                JobKind::ShellContextMenu { paths } => paths.clone(),
+                JobKind::ShellContextMenu { paths, .. } => paths.clone(),
                 other => panic!("unexpected job {other:?}"),
             },
             other => panic!("expected exactly one job, got {}", other.len()),

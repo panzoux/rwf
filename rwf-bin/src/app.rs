@@ -273,7 +273,12 @@ impl App {
     /// Submitting straight to the pool is what broke every clip menu: the main-thread
     /// interception lives in `run`'s drain, so anything bypassing it hits the
     /// executor's rejection arms. Queueing instead costs one main-loop tick.
-    fn submit_job(&mut self, job_spec: JobSpec) {
+    fn submit_job(&mut self, mut job_spec: JobSpec) {
+        // The state handler cannot know pane geometry; open the shell menu under the
+        // active pane's cursor row instead of wherever the mouse happens to be.
+        if let JobKind::ShellContextMenu { anchor, .. } = &mut job_spec.kind {
+            *anchor = crate::ui::active_cursor_anchor();
+        }
         if Self::needs_main_thread(&job_spec.kind) {
             // Not registered with `state.jobs` here: the drain runs these inline and
             // never emits a `CompleteJob`, so a registration would never be cleared.

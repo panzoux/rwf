@@ -391,7 +391,10 @@ impl AppState {
                     return Some(StateUpdateResult::none());
                 }
                 Some(StateUpdateResult::with_job(crate::job::JobSpec::new(
-                    crate::job::JobKind::ShellContextMenu { paths },
+                    crate::job::JobKind::ShellContextMenu {
+                        paths,
+                        anchor: None,
+                    },
                 )))
             }
             Transition::ShowContextMenu => {

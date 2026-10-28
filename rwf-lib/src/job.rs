@@ -4,6 +4,7 @@
 //! asynchronous file operations via the rwf Worker Pool.
 
 use crate::model::Location;
+pub use rwf_winmenu::CellAnchor;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
@@ -289,6 +290,10 @@ pub enum JobKind {
     /// opened are done. Fails on non-Windows platforms.
     ShellContextMenu {
         paths: Vec<std::path::PathBuf>,
+        /// Where to open the menu. Only the UI layer knows the pane geometry, so the
+        /// state handler leaves this `None` and the app fills it in on submission;
+        /// `None` means the mouse cursor.
+        anchor: Option<CellAnchor>,
     },
     /// Run a terminal (TUI) program by suspending rwf, handing it the terminal,
     /// and resuming when the program exits. Intercepted in the app layer — never

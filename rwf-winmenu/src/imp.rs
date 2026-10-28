@@ -10,11 +10,14 @@ use std::collections::HashSet;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+use crate::CellAnchor;
 use windows::core::{w, ComInterface, PCSTR, PCWSTR};
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
 };
+use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
@@ -25,7 +28,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, EnumWindows, GetCursorPos, GetForegroundWindow, GetMessageW,
+    DispatchMessageW, EnumWindows, GetClientRect, GetCursorPos, GetForegroundWindow, GetMessageW,
     GetWindowThreadProcessId, IsWindowVisible, KillTimer, LoadCursorW, PostMessageW,
     PostQuitMessage, RegisterClassW, SetForegroundWindow, SetTimer, TrackPopupMenuEx,
     TranslateMessage, HMENU, IDC_ARROW, MSG, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON,
@@ -47,11 +50,11 @@ const ID_CMD_LAST: u32 = 0x7FFF;
 /// How long to wait for a window (Properties, a rename box...) opened by the command.
 const NEW_WINDOW_GRACE_MS: u32 = 2000;
 
-pub(crate) fn show(paths: &[PathBuf]) -> Result<(), String> {
+pub(crate) fn show(paths: &[PathBuf], anchor: Option<CellAnchor>) -> Result<(), String> {
     // SAFETY: plain COM init on this dedicated thread; paired with CoUninitialize below.
     unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) }
         .map_err(|e| format!("CoInitializeEx failed: {e}"))?;
-    let result = show_inner(paths);
+    let result = show_inner(paths, anchor);
     // SAFETY: matches the successful CoInitializeEx above.
     unsafe { CoUninitialize() };
     result
@@ -73,7 +76,7 @@ fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(Some(0)).collect()
 }
 
-fn show_inner(paths: &[PathBuf]) -> Result<(), String> {
+fn show_inner(paths: &[PathBuf], anchor: Option<CellAnchor>) -> Result<(), String> {
     // Parse every path to a PIDL and bind the (shared) parent folder.
     let mut pidls = PidlList(Vec::new());
     let mut children: Vec<*const ITEMIDLIST> = Vec::new();
@@ -98,7 +101,7 @@ fn show_inner(paths: &[PathBuf]) -> Result<(), String> {
     let parent = parent.ok_or_else(|| "no files".to_string())?;
 
     let hwnd = create_host_window()?;
-    let result = run_menu(hwnd, &parent, &children);
+    let result = run_menu(hwnd, &parent, &children, anchor);
     // SAFETY: `hwnd` was created on this thread by create_host_window.
     unsafe {
         let _ = DestroyWindow(hwnd);
@@ -177,6 +180,47 @@ fn create_host_window() -> Result<HWND, String> {
     }
 }
 
+/// The terminal window the cell grid lives in: the console window of a classic console,
+/// else the foreground window (Windows Terminal hosts a hidden pseudo-console window).
+fn terminal_window() -> Option<HWND> {
+    // SAFETY: plain queries with no pointer arguments.
+    unsafe {
+        let console = GetConsoleWindow();
+        if console.0 != 0 && IsWindowVisible(console).as_bool() {
+            return Some(console);
+        }
+        let fg = GetForegroundWindow();
+        (fg.0 != 0).then_some(fg)
+    }
+}
+
+/// Screen position of the bottom-left of `anchor`'s cell, by scaling the terminal
+/// window's client rectangle over the cell grid.
+fn anchor_to_screen(anchor: CellAnchor) -> Option<POINT> {
+    if anchor.cols == 0 || anchor.rows == 0 {
+        return None;
+    }
+    let hwnd = terminal_window()?;
+    let mut rect = RECT::default();
+    let mut origin = POINT::default();
+    // SAFETY: `rect` and `origin` are valid out-pointers; `hwnd` is a live window handle.
+    unsafe {
+        GetClientRect(hwnd, &mut rect).ok()?;
+        if !ClientToScreen(hwnd, &mut origin).as_bool() {
+            return None;
+        }
+    }
+    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    // Bottom edge of the row, so the menu opens just under the file name.
+    Some(POINT {
+        x: origin.x + w * i32::from(anchor.col) / i32::from(anchor.cols),
+        y: origin.y + h * (i32::from(anchor.row) + 1) / i32::from(anchor.rows),
+    })
+}
+
 /// Make the popup menu keyboard-ready immediately (Up/Down/Enter/Esc), even though
 /// the foreground window belongs to the terminal's thread.
 fn prepare_for_keyboard(owner: HWND) {
@@ -207,6 +251,7 @@ fn run_menu(
     hwnd: HWND,
     parent: &IShellFolder,
     children: &[*const ITEMIDLIST],
+    anchor: Option<CellAnchor>,
 ) -> Result<(), String> {
     // SAFETY: `children` are valid child PIDLs kept alive by the caller's PidlList;
     // `hwnd` is our live host window.
@@ -219,7 +264,7 @@ fn run_menu(
 
     // SAFETY: creates a menu we destroy below on every path.
     let hmenu = unsafe { CreatePopupMenu() }.map_err(|e| format!("CreatePopupMenu failed: {e}"))?;
-    let result = track_and_invoke(hwnd, &pcm, hmenu);
+    let result = track_and_invoke(hwnd, &pcm, hmenu, anchor);
     // SAFETY: `hmenu` was created above and is not used afterwards.
     unsafe {
         let _ = DestroyMenu(hmenu);
@@ -227,16 +272,25 @@ fn run_menu(
     result
 }
 
-fn track_and_invoke(hwnd: HWND, pcm: &IContextMenu, hmenu: HMENU) -> Result<(), String> {
+fn track_and_invoke(
+    hwnd: HWND,
+    pcm: &IContextMenu,
+    hmenu: HMENU,
+    anchor: Option<CellAnchor>,
+) -> Result<(), String> {
     // SAFETY: `hmenu` is a valid popup menu.
     unsafe { pcm.QueryContextMenu(hmenu, 0, ID_CMD_FIRST, ID_CMD_LAST, CMF_NORMAL) }
         .map_err(|e| format!("QueryContextMenu failed: {e}"))?;
 
-    let mut pt = POINT::default();
-    // SAFETY: `pt` is a valid out-pointer.
-    unsafe {
-        let _ = GetCursorPos(&mut pt);
-    }
+    // Resolve before `prepare_for_keyboard` steals the foreground from the terminal.
+    let pt = anchor.and_then(anchor_to_screen).unwrap_or_else(|| {
+        let mut pt = POINT::default();
+        // SAFETY: `pt` is a valid out-pointer.
+        unsafe {
+            let _ = GetCursorPos(&mut pt);
+        }
+        pt
+    });
     prepare_for_keyboard(hwnd);
 
     // SAFETY: modal menu on our host window; returns the chosen command id (0 = none).

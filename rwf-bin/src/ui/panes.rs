@@ -29,6 +29,34 @@ pub fn split_left_right(area: Rect, state: &AppState) -> [Rect; 2] {
     ]
 }
 
+thread_local! {
+    /// Terminal cell of the active pane's cursor row, as of the last frame drawn.
+    ///
+    /// A render-side projection like the frame itself: written only while drawing, read
+    /// by the app to place the native context menu, never part of `AppState`.
+    static ACTIVE_CURSOR_CELL: std::cell::Cell<Option<(u16, u16)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Where the active pane's cursor row was last drawn, as a menu anchor.
+///
+/// `None` when no file list was drawn (full-screen viewer, loading or empty pane) or the
+/// terminal size is unknown; callers fall back to the mouse cursor.
+pub fn active_cursor_anchor() -> Option<rwf_lib::job::CellAnchor> {
+    let (col, row) = ACTIVE_CURSOR_CELL.with(|c| c.get())?;
+    let (cols, rows) = crossterm::terminal::size().ok()?;
+    Some(rwf_lib::job::CellAnchor {
+        col,
+        row,
+        cols,
+        rows,
+    })
+}
+
+fn record_cursor_cell(cell: Option<(u16, u16)>) {
+    ACTIVE_CURSOR_CELL.with(|c| c.set(cell));
+}
+
 /// Render only the anchored pane, filling the entire area (used in SideBySide viewer mode).
 pub fn render_active_pane_only(
     frame: &mut Frame,
@@ -103,6 +131,11 @@ fn render_pane(
     symlink_sep: &str,
 ) {
     // NO BORDERS - render directly to area
+
+    if is_active {
+        // Re-set by the list renderers below; stays `None` for a loading/empty pane.
+        record_cursor_cell(None);
+    }
 
     // If loading, show fetching message
     if pane.is_loading {
@@ -299,6 +332,13 @@ fn render_detailed_mode(
     let start_idx = pane.scroll_offset;
     let end_idx = (start_idx + visible_height).min(pane.entries.len());
 
+    if is_active && (start_idx..end_idx).contains(&pane.cursor) {
+        record_cursor_cell(Some((
+            area.x + 1,
+            area.y + (pane.cursor - start_idx) as u16,
+        )));
+    }
+
     // Calculate dynamic name width based on terminal width
     // Reserve 30 chars for indicator(1) + size(10) + date(19), minimum 10 for name
     let name_width = (area.width as usize).saturating_sub(30).max(10);
@@ -353,6 +393,12 @@ fn render_column_mode(
 
     // Calculate column width
     let col_width = area.width as usize / columns;
+
+    if is_active && (start_idx..end_idx).contains(&pane.cursor) {
+        let rel = pane.cursor - start_idx;
+        let x = area.x as usize + (rel % columns) * (col_width + 1) + 1;
+        record_cursor_cell(Some((x as u16, area.y + (rel / columns) as u16)));
+    }
 
     // Create lines for each row
     let mut lines = Vec::new();
@@ -641,5 +687,71 @@ mod tests {
         ]}, {
             insta::assert_snapshot!("render_panes_smoke", output);
         });
+    }
+
+    fn cursor_cell_after_draw(state: &AppState) -> Option<(u16, u16)> {
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("terminal");
+        terminal
+            .draw(|frame| render_panes(frame, frame.area(), state))
+            .expect("draw");
+        ACTIVE_CURSOR_CELL.with(|c| c.get())
+    }
+
+    /// The native context menu opens at the cursor row, so the row drawn must be recorded.
+    #[test]
+    fn records_the_active_cursor_row_in_the_left_pane() {
+        let state = smoke_state(); // left active, cursor on entry 1
+        assert_eq!(cursor_cell_after_draw(&state), Some((1, 1)));
+    }
+
+    #[test]
+    fn records_the_cursor_in_the_right_pane_at_its_own_x_offset() {
+        let mut state = smoke_state();
+        state.ui.active_pane = ActivePane::Right;
+        state.current_tab_mut().right_pane.cursor = 0;
+        let (x, y) = cursor_cell_after_draw(&state).expect("right pane cursor");
+        assert!(
+            x > 1,
+            "right pane starts to the right of the left pane, got x={x}"
+        );
+        assert_eq!(y, 0);
+    }
+
+    #[test]
+    fn row_is_relative_to_the_scroll_offset() {
+        let mut state = smoke_state();
+        {
+            let pane = &mut state.current_tab_mut().left_pane;
+            pane.entries = (0..60)
+                .map(|i| test_entry(&format!("f{i:02}"), false, 1, false))
+                .collect();
+            pane.scroll_offset = 40;
+            pane.cursor = 45;
+        }
+        assert_eq!(cursor_cell_after_draw(&state), Some((1, 5)));
+    }
+
+    #[test]
+    fn column_mode_places_the_cursor_in_its_column() {
+        let mut state = smoke_state();
+        {
+            let pane = &mut state.current_tab_mut().left_pane;
+            pane.display_mode = rwf_lib::model::DisplayMode::Columns(2);
+            pane.entries = (0..10)
+                .map(|i| test_entry(&format!("f{i}"), false, 1, false))
+                .collect();
+            pane.scroll_offset = 0;
+            pane.cursor = 3; // row 1, column 1
+        }
+        let (x, y) = cursor_cell_after_draw(&state).expect("column cursor");
+        assert_eq!(y, 1);
+        assert!(x > 1, "second column is right of the first, got x={x}");
+    }
+
+    #[test]
+    fn nothing_is_recorded_for_an_empty_pane() {
+        let mut state = smoke_state();
+        state.current_tab_mut().left_pane.entries.clear();
+        assert_eq!(cursor_cell_after_draw(&state), None);
     }
 }

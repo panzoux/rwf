@@ -32,7 +32,7 @@ pub use colors::parse_color;
 pub use dialog::render_dialog;
 pub use filename_line::render_filename_line;
 pub use pane_info_line::render_pane_info_line;
-pub use panes::{render_active_pane_only, render_panes};
+pub use panes::{active_cursor_anchor, render_active_pane_only, render_panes};
 pub use path_line::render_path_line;
 pub use smart_text::{SmartText, TruncateMode};
 pub use tab_bar::render_tab_bar;
