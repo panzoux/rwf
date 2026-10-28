@@ -25,22 +25,29 @@ rwf-lib = { version = "0.1.0", features = ["migemo"] }
 
 ## Dictionary Requirements
 
-Migemo requires a dictionary file to function. The library will automatically search for the dictionary in the following locations (in order):
+Migemo requires a dictionary file to function. Two formats are supported:
 
-1. `migemo-compact-dict` (current directory)
-2. `dict/migemo-compact-dict` (current directory)
-3. `~/.migemo/migemo-compact-dict` (user home directory)
-4. `~/.config/migemo/migemo-compact-dict` (user config directory)
-5. `/usr/share/migemo/utf-8/migemo-dict` (Linux system path)
-6. `/usr/local/share/migemo/utf-8/migemo-dict` (Linux local path)
-7. `/opt/homebrew/share/migemo/utf-8/migemo-dict` (macOS Homebrew path)
+- **Normal dictionary** `migemo-dict` — the C/Migemo UTF-8 text dictionary. It is converted to the compact form in memory when loaded, so loading takes noticeably longer than the compact file (about 7 s in a debug build for the 5 MB dictionary).
+- **Compact dictionary** `migemo-compact-dict` — the rustmigemo binary format; loads quickly.
+
+The **normal dictionary is tried first; the compact dictionary is only a fallback** used when no normal dictionary is found (or none of them loads). The format is detected from the file content, so a configured path may point at either.
+
+Search order (first one that loads wins):
+
+1. The configured path (`Search.DictPath`), then the `RWF_MIGEMO_DICT` environment variable. A file is used as is; a directory is searched for `migemo-dict` then `migemo-compact-dict` (also under its `utf-8` subfolder).
+2. **Normal dictionary** `migemo-dict`, in each of these directories, in order:
+   1. `dict/` and `./` (current directory), `dict/utf-8/`
+   2. `%APPDATA%\rwf\dict\` and `%APPDATA%\rwf\dict\utf-8\` (Windows)
+   3. `~/.migemo/`, `~/.migemo/utf-8/`, `~/.config/migemo/`, `~/.config/migemo/utf-8/`
+   4. `/usr/share/migemo/utf-8/`, `/usr/local/share/migemo/utf-8/`, `/opt/homebrew/share/migemo/utf-8/`
+3. **Compact dictionary** `migemo-compact-dict`, in the same directories, in the same order.
 
 ### Obtaining the Dictionary
 
-You can download the migemo dictionary from:
-- [migemo-compact-dict-latest](https://github.com/oguna/rustmigemo/releases)
+- Normal: `migemo-dict` from [C/Migemo](https://github.com/koron/cmigemo) (use the UTF-8 one).
+- Compact: [migemo-compact-dict-latest](https://github.com/oguna/rustmigemo/releases).
 
-Place the downloaded `migemo-compact-dict` file in one of the paths listed above.
+Place the file in one of the directories listed above.
 
 ## Usage
 

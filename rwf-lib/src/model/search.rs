@@ -3,12 +3,136 @@
 use super::FileEntry;
 use regex::Regex;
 use rustmigemo::migemo::compact_dictionary::CompactDictionary;
+use rustmigemo::migemo::compact_dictionary_builder;
 use rustmigemo::migemo::query::query as migemo_query;
 use rustmigemo::migemo::regex_generator::RegexOperator;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
+use std::time::SystemTime;
 use tracing::debug;
+
+const NORMAL_DICT_NAME: &str = "migemo-dict";
+const COMPACT_DICT_NAME: &str = "migemo-compact-dict";
+
+type CompactDictCache = HashMap<PathBuf, ((SystemTime, u64), Arc<Vec<u8>>)>;
+
+/// Compact form of text dictionaries already converted in this process.
+///
+/// Converting the 5 MB text dictionary takes seconds, and every `AppState` (one
+/// per test, one per session) loads the dictionary, so it is converted once per
+/// file version (path + mtime + length).
+fn compact_dict_cache() -> &'static Mutex<CompactDictCache> {
+    static CACHE: OnceLock<Mutex<CompactDictCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// A compact dictionary starts with a big-endian i32 edge count, so its first
+/// byte is 0; the text dictionary starts with a comment or a hiragana key.
+fn is_compact_dict(data: &[u8]) -> bool {
+    data.first() == Some(&0)
+}
+
+/// Whether `rustmigemo`'s compact-dictionary builder can encode this key
+/// (ASCII, hiragana, long-vowel mark). The builder prints skipped words to
+/// stdout, which is reserved, so unsupported keys are dropped here first.
+fn is_encodable_key(key: &str) -> bool {
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|c| matches!(c, '\u{20}'..='\u{7e}' | '\u{3041}'..='\u{3096}' | '\u{30fc}'))
+}
+
+/// Parse the C/Migemo text dictionary (`key<TAB>value<TAB>value...`, `;` comments).
+fn parse_text_dict(data: &[u8]) -> Result<HashMap<String, Vec<String>>, String> {
+    let text = std::str::from_utf8(data).map_err(|_| "not valid UTF-8".to_string())?;
+    let mut entries: HashMap<String, Vec<String>> = HashMap::new();
+    for line in text.lines() {
+        if line.is_empty() || line.starts_with(';') {
+            continue;
+        }
+        let mut fields = line.split('\t');
+        let key = fields.next().unwrap_or_default();
+        if !is_encodable_key(key) {
+            continue;
+        }
+        let values: Vec<String> = fields
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .collect();
+        if !values.is_empty() {
+            entries.entry(key.to_string()).or_default().extend(values);
+        }
+    }
+    if entries.is_empty() {
+        return Err("no dictionary entries".to_string());
+    }
+    Ok(entries)
+}
+
+/// Paths searched for a migemo dictionary, in priority order:
+///
+/// 1. the configured path, then `RWF_MIGEMO_DICT` (a file, or a directory
+///    holding the dictionary) — normal dictionary before compact;
+/// 2. every known location for the normal dictionary (`migemo-dict`);
+/// 3. every known location for the compact dictionary (`migemo-compact-dict`),
+///    used only when no normal dictionary was found.
+fn migemo_dict_candidates(
+    config_path: Option<&str>,
+    env_path: Option<&str>,
+    data_dir: Option<&Path>,
+    home_dir: Option<&Path>,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    for explicit in [config_path, env_path].into_iter().flatten() {
+        let path = PathBuf::from(explicit);
+        if path.is_dir() {
+            for name in [NORMAL_DICT_NAME, COMPACT_DICT_NAME] {
+                candidates.push(path.join(name));
+                candidates.push(path.join("utf-8").join(name));
+            }
+        } else {
+            candidates.push(path);
+        }
+    }
+
+    let mut dirs: Vec<PathBuf> = vec![
+        PathBuf::from("dict"),
+        PathBuf::from("."),
+        PathBuf::from("dict/utf-8"),
+    ];
+    // Windows AppData (%APPDATA%\rwf\dict)
+    #[cfg(target_os = "windows")]
+    if let Some(data_dir) = data_dir {
+        let base = data_dir.join("rwf").join("dict");
+        dirs.push(base.clone());
+        dirs.push(base.join("utf-8"));
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = data_dir;
+    if let Some(home) = home_dir {
+        dirs.push(home.join(".migemo"));
+        dirs.push(home.join(".migemo").join("utf-8"));
+        dirs.push(home.join(".config").join("migemo"));
+        dirs.push(home.join(".config").join("migemo").join("utf-8"));
+    }
+    // Linux/macOS system paths
+    for system in [
+        "/usr/share/migemo/utf-8",
+        "/usr/local/share/migemo/utf-8",
+        "/opt/homebrew/share/migemo/utf-8",
+    ] {
+        dirs.push(PathBuf::from(system));
+    }
+
+    for name in [NORMAL_DICT_NAME, COMPACT_DICT_NAME] {
+        candidates.extend(dirs.iter().map(|d| d.join(name)));
+    }
+    candidates
+}
 
 /// Search state
 #[derive(Debug)]
@@ -52,100 +176,80 @@ impl SearchModel {
         }
     }
 
-    /// Load migemo dictionary from file
-    pub fn load_migemo_dict(&mut self, dict_path: &std::path::Path) -> Result<(), String> {
-        use std::fs;
-
-        let dict_data = fs::read(dict_path).map_err(|e| {
+    /// Load migemo dictionary from file.
+    ///
+    /// Accepts both the normal text dictionary (`migemo-dict`, UTF-8) and the
+    /// rustmigemo compact dictionary (`migemo-compact-dict`); the format is
+    /// detected from the content.
+    pub fn load_migemo_dict(&mut self, dict_path: &Path) -> Result<(), String> {
+        let dict_data = std::fs::read(dict_path).map_err(|e| {
             format!(
                 "Failed to read migemo dictionary from {:?}: {}",
                 dict_path, e
             )
         })?;
 
-        self.migemo_dict = Some(CompactDictionary::new(&dict_data));
+        let compact = if is_compact_dict(&dict_data) {
+            dict_data
+        } else {
+            let stamp = std::fs::metadata(dict_path)
+                .ok()
+                .and_then(|m| Some((m.modified().ok()?, m.len())));
+            let cached = stamp.and_then(|stamp| {
+                let cache = compact_dict_cache().lock().ok()?;
+                let (cached_stamp, bytes) = cache.get(dict_path)?;
+                (*cached_stamp == stamp).then(|| bytes.clone())
+            });
+            match cached {
+                Some(bytes) => bytes,
+                None => {
+                    let entries = parse_text_dict(&dict_data).map_err(|e| {
+                        format!("Failed to parse migemo dictionary {:?}: {}", dict_path, e)
+                    })?;
+                    let bytes = Arc::new(compact_dictionary_builder::build(entries));
+                    if let (Some(stamp), Ok(mut cache)) = (stamp, compact_dict_cache().lock()) {
+                        cache.insert(dict_path.to_path_buf(), (stamp, bytes.clone()));
+                    }
+                    bytes
+                }
+            }
+            .to_vec()
+        };
+
+        self.migemo_dict = Some(CompactDictionary::new(&compact));
         self.migemo_dict_path = Some(dict_path.to_string_lossy().to_string());
         // Clear cache when dictionary changes
         self.migemo_cache.borrow_mut().clear();
         Ok(())
     }
 
-    /// Load migemo dictionary from common paths
+    /// Load migemo dictionary from common paths.
+    ///
+    /// The normal dictionary (`migemo-dict`) is preferred; the compact one
+    /// (`migemo-compact-dict`) is only used when no normal dictionary loads.
+    /// See [`migemo_dict_candidates`] for the exact order.
     pub fn load_migemo_dict_auto(&mut self, config_path: Option<&str>) -> Result<(), String> {
-        use std::path::PathBuf;
+        let env_path = std::env::var("RWF_MIGEMO_DICT").ok();
+        let candidates = migemo_dict_candidates(
+            config_path,
+            env_path.as_deref(),
+            dirs::data_dir().as_deref(),
+            dirs::home_dir().as_deref(),
+        );
+        self.load_first_migemo_dict(&candidates)
+    }
 
-        let mut possible_paths = Vec::new();
-
-        // 1. Config path
-        if let Some(path) = config_path {
-            possible_paths.push(PathBuf::from(path));
-        }
-
-        // 2. Environment variable
-        if let Ok(path) = std::env::var("RWF_MIGEMO_DICT") {
-            possible_paths.push(PathBuf::from(path));
-        }
-
-        // 3. Local paths
-        possible_paths.push(PathBuf::from("dict/migemo-compact-dict"));
-        possible_paths.push(PathBuf::from("migemo-compact-dict"));
-        possible_paths.push(PathBuf::from("dict/utf-8/migemo-compact-dict"));
-
-        // 4. Windows AppData
-        #[cfg(target_os = "windows")]
-        if let Some(data_dir) = dirs::data_dir() {
-            possible_paths.push(
-                data_dir
-                    .join("rwf")
-                    .join("dict")
-                    .join("migemo-compact-dict"),
-            );
-            possible_paths.push(
-                data_dir
-                    .join("rwf")
-                    .join("dict")
-                    .join("utf-8")
-                    .join("migemo-compact-dict"),
-            );
-        }
-
-        // 5. Unix Home (inc. macOS)
-        if let Some(home) = dirs::home_dir() {
-            possible_paths.push(home.join(".migemo").join("migemo-compact-dict"));
-            possible_paths.push(
-                home.join(".migemo")
-                    .join("utf-8")
-                    .join("migemo-compact-dict"),
-            );
-            possible_paths.push(
-                home.join(".config")
-                    .join("migemo")
-                    .join("migemo-compact-dict"),
-            );
-            possible_paths.push(
-                home.join(".config")
-                    .join("migemo")
-                    .join("utf-8")
-                    .join("migemo-compact-dict"),
-            );
-        }
-
-        // 6. Linux/Unix System paths
-        possible_paths.push(PathBuf::from("/usr/share/migemo/utf-8/migemo-dict"));
-        possible_paths.push(PathBuf::from("/usr/local/share/migemo/utf-8/migemo-dict"));
-        possible_paths.push(PathBuf::from(
-            "/opt/homebrew/share/migemo/utf-8/migemo-dict",
-        ));
-
-        for path in possible_paths {
-            let exists = path.exists() && path.is_file();
+    /// Load the first candidate that exists and loads successfully.
+    fn load_first_migemo_dict(&mut self, candidates: &[PathBuf]) -> Result<(), String> {
+        for path in candidates {
+            let exists = path.is_file();
             tracing::info!(
                 "Migemo: checking {:?} — {}",
                 path,
                 if exists { "found" } else { "not found" }
             );
             if exists {
-                match self.load_migemo_dict(&path) {
+                match self.load_migemo_dict(path) {
                     Ok(_) => {
                         tracing::info!("Migemo dictionary loaded from {:?}", path);
                         return Ok(());
@@ -518,4 +622,128 @@ fn wildcard_to_regex(pattern: &str) -> String {
         }
     }
     regex
+}
+
+#[cfg(test)]
+mod migemo_dict_tests {
+    use super::*;
+    use std::fs;
+
+    const TEXT_DICT: &str = ";; test dictionary\nにほん\t日本\t二本\nけんさく\t検索\n";
+
+    fn write_normal(dir: &Path) -> PathBuf {
+        let path = dir.join(NORMAL_DICT_NAME);
+        fs::write(&path, TEXT_DICT).unwrap();
+        path
+    }
+
+    fn write_compact(dir: &Path) -> PathBuf {
+        let entries = parse_text_dict(TEXT_DICT.as_bytes()).unwrap();
+        let path = dir.join(COMPACT_DICT_NAME);
+        fs::write(&path, compact_dictionary_builder::build(entries)).unwrap();
+        path
+    }
+
+    fn loaded_path(candidates: &[PathBuf]) -> Result<String, String> {
+        let mut search = SearchModel::new();
+        search.load_first_migemo_dict(candidates)?;
+        Ok(search.migemo_dict_path().unwrap().to_string())
+    }
+
+    #[test]
+    fn normal_dict_wins_over_compact() {
+        let normal_dir = tempfile::tempdir().unwrap();
+        let compact_dir = tempfile::tempdir().unwrap();
+        let normal = write_normal(normal_dir.path());
+        let compact = write_compact(compact_dir.path());
+
+        let candidates = [normal.clone(), compact];
+        assert_eq!(loaded_path(&candidates).unwrap(), normal.to_string_lossy());
+    }
+
+    #[test]
+    fn compact_used_when_only_compact_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let compact = write_compact(dir.path());
+        let candidates = [dir.path().join(NORMAL_DICT_NAME), compact.clone()];
+        assert_eq!(loaded_path(&candidates).unwrap(), compact.to_string_lossy());
+    }
+
+    #[test]
+    fn compact_used_when_normal_is_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(NORMAL_DICT_NAME), [0xff, 0xfe, b'x']).unwrap();
+        let compact_dir = tempfile::tempdir().unwrap();
+        let compact = write_compact(compact_dir.path());
+        let candidates = [dir.path().join(NORMAL_DICT_NAME), compact.clone()];
+        assert_eq!(loaded_path(&candidates).unwrap(), compact.to_string_lossy());
+    }
+
+    #[test]
+    fn neither_dict_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let candidates = [
+            dir.path().join(NORMAL_DICT_NAME),
+            dir.path().join(COMPACT_DICT_NAME),
+        ];
+        assert!(loaded_path(&candidates).is_err());
+    }
+
+    #[test]
+    fn both_formats_produce_working_queries() {
+        for write in [write_normal, write_compact] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = write(dir.path());
+            let mut search = SearchModel::new();
+            search.load_migemo_dict(&path).unwrap();
+            search.use_migemo = true;
+            let pattern = search.get_migemo_regex("nihon", true).unwrap();
+            let re = Regex::new(&pattern).unwrap();
+            assert!(re.is_match("日本"), "{path:?}: {pattern}");
+        }
+    }
+
+    #[test]
+    fn candidates_list_every_normal_path_before_any_compact_path() {
+        let data = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let candidates = migemo_dict_candidates(None, None, Some(data.path()), Some(home.path()));
+        let name = |p: &PathBuf| p.file_name().unwrap().to_string_lossy().to_string();
+        let first_compact = candidates
+            .iter()
+            .position(|p| name(p) == COMPACT_DICT_NAME)
+            .unwrap();
+        assert!(first_compact > 0);
+        assert!(candidates[..first_compact]
+            .iter()
+            .all(|p| name(p) == NORMAL_DICT_NAME));
+        assert!(candidates[first_compact..]
+            .iter()
+            .all(|p| name(p) == COMPACT_DICT_NAME));
+        #[cfg(target_os = "windows")]
+        assert!(candidates.contains(
+            &data
+                .path()
+                .join("rwf")
+                .join("dict")
+                .join("utf-8")
+                .join(NORMAL_DICT_NAME)
+        ));
+    }
+
+    #[test]
+    fn explicit_path_comes_first_and_directory_prefers_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let candidates =
+            migemo_dict_candidates(Some(dir.path().to_str().unwrap()), None, None, None);
+        assert_eq!(candidates[0], dir.path().join(NORMAL_DICT_NAME));
+        assert_eq!(
+            candidates[1],
+            dir.path().join("utf-8").join(NORMAL_DICT_NAME)
+        );
+
+        let file = dir.path().join("custom");
+        let candidates = migemo_dict_candidates(file.to_str(), None, None, None);
+        assert_eq!(candidates[0], file);
+    }
 }

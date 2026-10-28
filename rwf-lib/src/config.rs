@@ -1004,7 +1004,7 @@ pub struct SearchConfig {
     pub use_regex: bool,
     /// Use migemo search by default
     pub use_migemo: bool,
-    /// Path to migemo dictionary file
+    /// Path to a migemo dictionary file (or a directory holding one); tried before the default search paths
     #[serde(rename = "DictPath")]
     pub dict_path: Option<String>,
     /// Search debounce interval in milliseconds
