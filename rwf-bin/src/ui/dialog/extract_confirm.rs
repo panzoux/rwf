@@ -1,11 +1,8 @@
 //! Extraction confirmation dialog
 
-use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
-    widgets::Paragraph,
-    Frame,
-};
+use ratatui::{layout::Rect, widgets::Paragraph, Frame};
+
+use super::common::DIALOG_TEXT;
 
 /// Extraction confirmation dialog
 #[derive(Debug, Clone)]
@@ -23,7 +20,7 @@ impl ExtractionConfirmDialog {
             self.archive_name, self.file_count, self.dest_path
         );
 
-        let paragraph = Paragraph::new(message).style(Style::default().fg(Color::White));
+        let paragraph = Paragraph::new(message).style(DIALOG_TEXT);
 
         frame.render_widget(paragraph, area);
     }

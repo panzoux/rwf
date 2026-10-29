@@ -107,18 +107,22 @@ pub(super) fn handle_input(dialog: &mut HelpDialog, key: KeyEvent) -> DialogActi
             *scroll_pos = filtered_count.saturating_sub(list_height_estimate);
         }
 
-        // u: toggle show_unbound
-        KeyCode::Char('u') if key.modifiers == KeyModifiers::NONE => {
+        // Commands stay on Ctrl so every printable key reaches the search box.
+        // Ctrl+U: toggle show_unbound
+        KeyCode::Char('u' | 'U') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            *show_unbound = !*show_unbound;
+            *scroll_pos = 0;
+        }
+        KeyCode::Char('') => {
             *show_unbound = !*show_unbound;
             *scroll_pos = 0;
         }
 
-        // L: switch language
-        KeyCode::Char('L')
-            if key.modifiers == KeyModifiers::NONE || key.modifiers == KeyModifiers::SHIFT =>
-        {
+        // Ctrl+L (with or without Shift): switch language
+        KeyCode::Char('l' | 'L') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return DialogAction::RotateLanguage;
         }
+        KeyCode::Char('') => return DialogAction::RotateLanguage,
 
         // Ctrl+R: toggle regex mode
         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -357,16 +361,67 @@ pub(super) fn render_help_dialog(
     // ── Last row: hint line ──────────────────────────────────────────────────
     let hint_y = area.y + area.height.saturating_sub(1);
     let unbound_indicator = if show_unbound {
-        "u:hide unbound"
+        "^U:hide unbound"
     } else {
-        "u:show unbound"
+        "^U:show unbound"
     };
     let hint_text = format!(
-        "({})  {}  L:lang({})  Ctrl+R:regex",
+        "({})  {}  ^L:lang({})  ^R:regex",
         count, unbound_indicator, language
     );
     frame.render_widget(
         Paragraph::new(smart_truncate(&hint_text, w, "…")).style(hint_style),
         Rect::new(area.x + 1, hint_y, w as u16, 1),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyCode;
+
+    fn press(dialog: &mut HelpDialog, code: KeyCode, modifiers: KeyModifiers) -> DialogAction {
+        handle_input(dialog, KeyEvent::new(code, modifiers))
+    }
+
+    /// Plain letters belong to the search box: "u" and "L" used to toggle
+    /// unbound entries / rotate the language instead (bundle `20260926-115630`).
+    #[test]
+    fn plain_u_and_capital_l_are_typed_into_the_query() {
+        let mut dialog = HelpDialog::new("en".to_string());
+        let unbound_before = dialog.show_unbound;
+        press(&mut dialog, KeyCode::Char('u'), KeyModifiers::NONE);
+        let action = press(&mut dialog, KeyCode::Char('L'), KeyModifiers::SHIFT);
+        assert_eq!(dialog.query, "uL");
+        assert_eq!(dialog.show_unbound, unbound_before);
+        assert!(matches!(action, DialogAction::None));
+    }
+
+    #[test]
+    fn ctrl_u_toggles_unbound_entries() {
+        let mut dialog = HelpDialog::new("en".to_string());
+        let before = dialog.show_unbound;
+        press(&mut dialog, KeyCode::Char('u'), KeyModifiers::CONTROL);
+        assert_eq!(dialog.show_unbound, !before);
+        assert!(dialog.query.is_empty());
+    }
+
+    #[test]
+    fn ctrl_l_and_ctrl_shift_l_rotate_the_language() {
+        let mut dialog = HelpDialog::new("en".to_string());
+        for (code, modifiers) in [
+            (KeyCode::Char('l'), KeyModifiers::CONTROL),
+            (
+                KeyCode::Char('L'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+        ] {
+            let action = press(&mut dialog, code, modifiers);
+            assert!(
+                matches!(action, DialogAction::RotateLanguage),
+                "{code:?} {modifiers:?}"
+            );
+        }
+        assert!(dialog.query.is_empty());
+    }
 }

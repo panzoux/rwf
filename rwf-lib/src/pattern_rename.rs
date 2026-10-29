@@ -1,10 +1,11 @@
 //! TWF-compatible pattern-based rename
 //!
-//! Pattern modes (same as TWF's ApplyRenamePattern):
+//! Pattern modes (from TWF's ApplyRenamePattern; mode 3 deliberately differs):
 //!
 //! 1. `find` starts with `s/` → Perl-style substitution: `s/search/replace/[gi]`
 //! 2. `find` starts with `tr/` → character transliteration: `tr/from/to/`
-//! 3. `use_regex = true` → `find` is a regex, `replace` is replacement (first occurrence)
+//! 3. `use_regex = true` → `find` is a regex, `replace` is replacement (all occurrences;
+//!    TWF replaced only the first — use `s/find/repl/` without `g` for that)
 //! 4. `use_regex = false` → literal string replacement (all occurrences, case-optional)
 //!
 //! Always returns a `String`; equals the original filename when no match/change.
@@ -41,7 +42,7 @@ pub fn apply_rename_pattern(
         // (Rust regex crate's $name accepts [0-9A-Za-z_]+, unlike C#/.NET which stops at digits)
         let normalized = normalize_replacement(replace);
         match Regex::new(&pattern) {
-            Ok(re) => re.replacen(filename, 1, normalized.as_str()).to_string(),
+            Ok(re) => re.replace_all(filename, normalized.as_str()).to_string(),
             Err(_) => filename.to_string(),
         }
     } else if case_sensitive {
@@ -209,6 +210,24 @@ mod tests {
         assert_eq!(
             apply_rename_pattern("photo001.jpg", r"\d+", "NUM", true, true),
             "photoNUM.jpg"
+        );
+    }
+
+    /// The regex checkbox replaces every match, like plain mode; `s/…/…/` without
+    /// `g` is the way to replace only the first (bundle `20260926-115838`).
+    #[test]
+    fn test_regex_mode_replaces_every_match() {
+        assert_eq!(
+            apply_rename_pattern("2wow1woww", "wow", "yey", true, false),
+            "2yey1yeyw"
+        );
+    }
+
+    #[test]
+    fn test_s_command_without_g_replaces_first_match_only() {
+        assert_eq!(
+            apply_rename_pattern("2wow1woww", "s/wow/yey/", "", true, false),
+            "2yey1woww"
         );
     }
 

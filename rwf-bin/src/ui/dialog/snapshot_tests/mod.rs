@@ -106,3 +106,34 @@ pub fn snapshot_dialog(name: &str, dialog: &Dialog, state: &AppState) {
         }
     });
 }
+
+/// White text on the gray dialog background is unreadable on light terminal
+/// palettes (the extract dialog shipped that way, diagnostic bundle
+/// `20260926-155707`). Scan every dialog snapshot so no dialog can pin it again.
+#[test]
+fn no_dialog_snapshot_renders_white_on_gray() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/ui/dialog/snapshot_tests/snapshots");
+    let mut scanned = 0;
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("snapshot dir") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().is_some_and(|e| e == "snap") {
+            scanned += 1;
+            let contents = std::fs::read_to_string(&path).expect("read snapshot");
+            if contents.contains("fg: White, bg: Gray") {
+                offenders.push(
+                    path.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+    }
+    assert!(scanned > 50, "only {scanned} snapshots found in {dir:?}");
+    assert!(
+        offenders.is_empty(),
+        "white-on-gray dialog text (use common::DIALOG_TEXT): {offenders:?}"
+    );
+}

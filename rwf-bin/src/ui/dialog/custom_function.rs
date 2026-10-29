@@ -92,12 +92,13 @@ pub(super) fn handle_selector_input(
             }
             return DialogAction::Confirm;
         }
-        KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+        // Arrows only: j/k are search input.
+        KeyCode::Up if key.modifiers == KeyModifiers::NONE => {
             if *selected_index > 0 {
                 *selected_index -= 1;
             }
         }
-        KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+        KeyCode::Down if key.modifiers == KeyModifiers::NONE => {
             if *selected_index + 1 < filtered_count {
                 *selected_index += 1;
             }
@@ -374,5 +375,25 @@ pub(super) fn render_custom_function_menu(
                 Rect::new(area.x + 2, area.y + row as u16, item_width as u16, 1),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyCode;
+
+    /// `j`/`k` are search input, not navigation: a search box that eats letters
+    /// cannot find anything containing them (bundle `20260926-115630`).
+    #[test]
+    fn j_and_k_are_typed_into_the_filter() {
+        let mut dialog = CustomFunctionSelectorContent::new(Vec::new());
+        for c in ['j', 'k'] {
+            handle_selector_input(
+                &mut dialog,
+                KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+            );
+        }
+        assert_eq!(dialog.filter, "jk");
     }
 }
