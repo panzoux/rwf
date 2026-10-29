@@ -45,6 +45,8 @@ thread_local! {
 
 /// `CMIC_MASK_UNICODE` (= `SEE_MASK_UNICODE`); not exported by windows 0.52.
 const CMIC_MASK_UNICODE: u32 = 0x0000_4000;
+/// Rows below the cursor row's bottom edge at which the menu opens.
+const MENU_ROW_OFFSET: i32 = 2;
 const ID_CMD_FIRST: u32 = 1;
 const ID_CMD_LAST: u32 = 0x7FFF;
 /// How long to wait for a window (Properties, a rename box...) opened by the command.
@@ -237,10 +239,11 @@ fn anchor_to_screen(anchor: CellAnchor) -> Option<POINT> {
         tracing::info!("[ContextMenu] no terminal window with a client area for {anchor:?}");
         return None;
     };
-    // Bottom edge of the row, so the menu opens just under the file name.
+    // Just under the file name, plus a margin: Windows Terminal's tab strip makes the
+    // scaled position run high, and the menu would otherwise cover the name itself.
     let pt = POINT {
         x: left + w * i32::from(anchor.col) / i32::from(anchor.cols),
-        y: top + h * (i32::from(anchor.row) + 1) / i32::from(anchor.rows),
+        y: top + h * (i32::from(anchor.row) + 1 + MENU_ROW_OFFSET) / i32::from(anchor.rows),
     };
     tracing::info!(
         "[ContextMenu] anchor {anchor:?} in window {hwnd:?} (client {w}x{h} at screen ({left}, {top})) -> menu at ({}, {})",
