@@ -56,8 +56,7 @@ pub fn process_dialog_delete(state: &mut rwf_lib::AppState) -> Option<String> {
 
     // Step 2: remove from authoritative state (different field — no borrow conflict).
     let removed = state.registered_folders.remove(idx);
-    let save_path = rwf_lib::model::dialog::RegisteredFolderManager::default_path();
-    let _ = state.registered_folders.save_to_file(&save_path);
+    state.save_registered_folders();
 
     // Step 3: mirror removal in the dialog's own snapshot.
     if let Some(dialog) = state.dialogs.current_mut() {

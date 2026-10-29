@@ -203,7 +203,7 @@ pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
 pub use session::{
     restore_marked_locations, restore_tabs, save_session, SessionError, SessionState,
 };
-pub use state::{AppConfig, AppState, StateUpdateResult, Transition};
+pub use state::{AppConfig, AppState, StateUpdateResult, StoragePaths, Transition};
 pub use volume_info::{
     calculate_marked_stats, format_top_separator_info, get_drive_or_share_name, MarkedFileStats,
 };

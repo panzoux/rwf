@@ -998,8 +998,7 @@ impl AppState {
                 let folder = crate::model::RegisteredFolder::new(name.clone(), path.clone());
                 self.registered_folders.add(folder);
 
-                let save_path = crate::model::RegisteredFolderManager::default_path();
-                let _ = self.registered_folders.save_to_file(&save_path);
+                self.save_registered_folders();
 
                 let log = format!("[Folder] Registered \"{}\" → {}", name, path);
                 let mut result = StateUpdateResult::with_ui_change();

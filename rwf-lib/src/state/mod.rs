@@ -15,6 +15,31 @@ use crate::model::{
 use std::collections::VecDeque;
 use std::time::Duration;
 
+/// Where the user's persistent state files are read from and written to.
+///
+/// `None` means "not persisted": [`AppState::new`] starts with every path `None`, so a
+/// state built by tests never reads or writes the developer's real config dir. The
+/// production entry point ([`AppState::new_with_session`]) attaches
+/// [`StoragePaths::user_config_dir`]; a test that needs persistence attaches its own
+/// temp paths with [`AppState::attach_storage`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StoragePaths {
+    /// `registered_directory.json`
+    pub registered_folders: Option<std::path::PathBuf>,
+    /// `session.json`
+    pub session: Option<std::path::PathBuf>,
+}
+
+impl StoragePaths {
+    /// The real per-user locations under `dirs::config_dir()/rwf/`.
+    pub fn user_config_dir() -> Self {
+        Self {
+            registered_folders: Some(crate::model::RegisteredFolderManager::default_path()),
+            session: Some(crate::session::SessionState::default_path()),
+        }
+    }
+}
+
 /// Central application state coordinating all components
 #[derive(Debug)]
 pub struct AppState {
@@ -32,6 +57,8 @@ pub struct AppState {
     pub dialogs: DialogStack,
     /// Registered folder manager
     pub registered_folders: crate::model::RegisteredFolderManager,
+    /// Persistence locations; all `None` unless attached (see [`StoragePaths`]).
+    pub storage: StoragePaths,
     /// Directory cache for fast navigation
     pub cache: DirectoryCache,
     /// Navigation state cache for cursor/scroll position memory
@@ -130,14 +157,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Build a state with no persistence attached: registered folders and the session
+    /// are neither loaded nor saved. Use [`AppState::new_with_session`] for the real app.
     pub fn new(config: AppConfig) -> Self {
-        let mut registered_folders = crate::model::RegisteredFolderManager::new();
-        // Try to load registered folders from default path
-        let path = crate::model::RegisteredFolderManager::default_path();
-        if let Err(e) = registered_folders.load_from_file(&path) {
-            tracing::warn!("Failed to load registered folders: {}", e);
-        }
-
         // Create log manager with configured settings.
         // Normalize path separators so display is consistent on Windows.
         let log_path =
@@ -195,7 +217,8 @@ impl AppState {
             search,
             ui: UIState::new(),
             dialogs: DialogStack::new(),
-            registered_folders,
+            registered_folders: crate::model::RegisteredFolderManager::new(),
+            storage: StoragePaths::default(),
             cache: DirectoryCache::new(Duration::from_secs(30)),
             navigation_cache: NavigationStateCache::new(),
             viewer: None,
@@ -455,8 +478,31 @@ impl AppState {
         }
     }
 
-    /// Save current state to session storage
+    /// Attach persistence locations and load the registered folders from them.
+    pub fn attach_storage(&mut self, storage: StoragePaths) {
+        if let Some(path) = &storage.registered_folders {
+            if let Err(e) = self.registered_folders.load_from_file(path) {
+                tracing::warn!("Failed to load registered folders: {}", e);
+            }
+        }
+        self.storage = storage;
+    }
+
+    /// Persist the registered folders; a no-op when no storage is attached.
+    pub fn save_registered_folders(&self) {
+        if let Some(path) = &self.storage.registered_folders {
+            if let Err(e) = self.registered_folders.save_to_file(path) {
+                tracing::warn!("Failed to save registered folders: {}", e);
+            }
+        }
+    }
+
+    /// Save current state to session storage; a no-op when no storage is attached.
     pub fn save_session(&mut self) -> Result<(), crate::session::SessionError> {
+        let Some(path) = self.storage.session.clone() else {
+            return Ok(());
+        };
+
         // The active tab's cursor side is live in `ui.active_pane`; every other tab
         // parked its own on the way out. Park this one too so all of them serialise.
         let idx = self.tabs.active_index;
@@ -471,13 +517,14 @@ impl AppState {
             self.ui.layout.task_panel_height,
         );
 
-        let path = crate::session::SessionState::default_path();
         session.save_to_file(&path)
     }
 
-    /// Restore state from session storage
+    /// Restore state from session storage; a no-op when no storage is attached.
     pub fn restore_session(&mut self) -> Result<(), crate::session::SessionError> {
-        let path = crate::session::SessionState::default_path();
+        let Some(path) = self.storage.session.clone() else {
+            return Ok(());
+        };
         let session = crate::session::SessionState::load_from_file(&path)?;
         self.apply_session(&session);
         Ok(())
@@ -514,9 +561,11 @@ impl AppState {
         self.ui.layout.task_panel_height = session.task_panel_height;
     }
 
-    /// Create a new AppState with session restoration
+    /// The production constructor: attach the user's config dir as storage (loading
+    /// the registered folders), then restore the saved session.
     pub fn new_with_session(config: AppConfig) -> Self {
         let mut state = Self::new(config);
+        state.attach_storage(StoragePaths::user_config_dir());
 
         // Try to restore session, but don't fail if it doesn't work
         if let Err(e) = state.restore_session() {

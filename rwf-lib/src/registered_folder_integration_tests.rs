@@ -523,4 +523,89 @@ mod tests {
             }
         }
     }
+
+    /// Content + mtime of a file, or `None` if it does not exist.
+    fn file_fingerprint(
+        path: &std::path::Path,
+    ) -> Option<(Vec<u8>, Option<std::time::SystemTime>)> {
+        let content = std::fs::read(path).ok()?;
+        let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        Some((content, mtime))
+    }
+
+    /// Drive the register-folder dialog to confirmation, as the user would.
+    fn confirm_register_folder(state: &mut crate::state::AppState, name: &str) {
+        state.current_tab_mut().left_pane.current_location =
+            Location::Local(PathBuf::from("/test/folder"));
+        state.dialogs.push(crate::model::Dialog::input(
+            "Register Folder",
+            "Enter folder name:",
+            "",
+        ));
+        state.dialogs.input_buffer = name.to_string();
+        update_state(state, Transition::ConfirmDialog);
+    }
+
+    /// Guard: a test-built state has no storage attached, so registering a folder must
+    /// not touch the developer's real `registered_directory.json` (it used to be
+    /// overwritten with `[{"name":"My Folder","path":"/test/folder"}]` on every run).
+    #[test]
+    fn test_register_folder_never_touches_real_config_file() {
+        let real_path = crate::model::RegisteredFolderManager::default_path();
+        let before = file_fingerprint(&real_path);
+
+        let mut state = test_state();
+        assert_eq!(state.storage, crate::state::StoragePaths::default());
+        confirm_register_folder(&mut state, "Guard Folder");
+        assert_eq!(state.registered_folders.folders.len(), 1);
+
+        assert_eq!(
+            file_fingerprint(&real_path),
+            before,
+            "registering a folder in a test modified {}",
+            real_path.display()
+        );
+    }
+
+    /// With storage attached, the registered folders are saved to (and only to) the
+    /// injected path.
+    #[test]
+    fn test_register_folder_saves_to_attached_storage_path() {
+        let real_path = crate::model::RegisteredFolderManager::default_path();
+        let before = file_fingerprint(&real_path);
+
+        let dir = crate::test_utils::temp_dir();
+        let injected = dir.path().join("registered_directory.json");
+        let mut state = test_state();
+        state.attach_storage(crate::state::StoragePaths {
+            registered_folders: Some(injected.clone()),
+            session: None,
+        });
+        confirm_register_folder(&mut state, "Injected Folder");
+
+        let saved: Vec<RegisteredFolder> =
+            serde_json::from_str(&std::fs::read_to_string(&injected).unwrap()).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].name, "Injected Folder");
+        assert_eq!(saved[0].path, "/test/folder");
+        assert_eq!(file_fingerprint(&real_path), before);
+
+        // And a fresh state attached to the same path loads them back.
+        let mut reloaded = test_state();
+        reloaded.attach_storage(state.storage.clone());
+        assert_eq!(reloaded.registered_folders.folders.len(), 1);
+    }
+
+    /// Same guard for the session file: saving without storage attached is a no-op.
+    #[test]
+    fn test_save_session_without_storage_never_touches_real_session_file() {
+        let real_path = crate::session::SessionState::default_path();
+        let before = file_fingerprint(&real_path);
+
+        let mut state = test_state();
+        state.save_session().unwrap();
+        state.restore_session().unwrap();
+
+        assert_eq!(file_fingerprint(&real_path), before);
+    }
 }
