@@ -28,12 +28,12 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, EnumWindows, GetClientRect, GetCursorPos, GetForegroundWindow, GetMessageW,
-    GetWindowThreadProcessId, IsWindowVisible, KillTimer, LoadCursorW, PostMessageW,
+    DispatchMessageW, EnumWindows, GetAncestor, GetClientRect, GetCursorPos, GetForegroundWindow,
+    GetMessageW, GetWindowThreadProcessId, IsWindowVisible, KillTimer, LoadCursorW, PostMessageW,
     PostQuitMessage, RegisterClassW, SetForegroundWindow, SetTimer, TrackPopupMenuEx,
-    TranslateMessage, HMENU, IDC_ARROW, MSG, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    WM_DRAWITEM, WM_INITMENUPOPUP, WM_MEASUREITEM, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW,
-    WS_POPUP,
+    TranslateMessage, GA_ROOTOWNER, HMENU, IDC_ARROW, MSG, SW_SHOWNORMAL, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, WM_DRAWITEM, WM_INITMENUPOPUP, WM_MEASUREITEM, WM_NULL, WM_TIMER, WNDCLASSW,
+    WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 thread_local! {
@@ -180,18 +180,51 @@ fn create_host_window() -> Result<HWND, String> {
     }
 }
 
-/// The terminal window the cell grid lives in: the console window of a classic console,
-/// else the foreground window (Windows Terminal hosts a hidden pseudo-console window).
-fn terminal_window() -> Option<HWND> {
-    // SAFETY: plain queries with no pointer arguments.
+/// Client rectangle of `hwnd` in screen coordinates as `(left, top, width, height)`;
+/// `None` if the window is gone or has no client area.
+fn client_rect_on_screen(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+    let mut rect = RECT::default();
+    let mut origin = POINT::default();
+    // SAFETY: `rect` and `origin` are valid out-pointers; a stale `hwnd` just fails.
     unsafe {
-        let console = GetConsoleWindow();
-        if console.0 != 0 && IsWindowVisible(console).as_bool() {
-            return Some(console);
+        GetClientRect(hwnd, &mut rect).ok()?;
+        if !ClientToScreen(hwnd, &mut origin).as_bool() {
+            return None;
         }
-        let fg = GetForegroundWindow();
-        (fg.0 != 0).then_some(fg)
     }
+    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+    (w > 0 && h > 0).then_some((origin.x, origin.y, w, h))
+}
+
+/// The window the cell grid is drawn in, with its client rectangle.
+///
+/// A classic console's own window works. Windows Terminal instead hands out a
+/// pseudo-console window that is visible yet zero-sized (`GetConsoleWindow` returns it),
+/// so fall back to its owner — the real terminal window — and then to the foreground
+/// window. The first candidate with a non-empty client area wins.
+fn terminal_window() -> Option<(HWND, (i32, i32, i32, i32))> {
+    // SAFETY: plain queries with no pointer arguments.
+    let candidates = unsafe {
+        let console = GetConsoleWindow();
+        let owner = if console.0 != 0 {
+            GetAncestor(console, GA_ROOTOWNER)
+        } else {
+            HWND(0)
+        };
+        [console, owner, GetForegroundWindow()]
+    };
+    candidates.into_iter().find_map(|hwnd| {
+        if hwnd.0 == 0 {
+            return None;
+        }
+        match client_rect_on_screen(hwnd) {
+            Some(rect) => Some((hwnd, rect)),
+            None => {
+                tracing::info!("[ContextMenu] skipping {hwnd:?}: empty client rect");
+                None
+            }
+        }
+    })
 }
 
 /// Screen position of the bottom-left of `anchor`'s cell, by scaling the terminal
@@ -200,33 +233,17 @@ fn anchor_to_screen(anchor: CellAnchor) -> Option<POINT> {
     if anchor.cols == 0 || anchor.rows == 0 {
         return None;
     }
-    let Some(hwnd) = terminal_window() else {
-        tracing::info!("[ContextMenu] no terminal window found for {anchor:?}");
+    let Some((hwnd, (left, top, w, h))) = terminal_window() else {
+        tracing::info!("[ContextMenu] no terminal window with a client area for {anchor:?}");
         return None;
     };
-    let mut rect = RECT::default();
-    let mut origin = POINT::default();
-    // SAFETY: `rect` and `origin` are valid out-pointers; `hwnd` is a live window handle.
-    unsafe {
-        GetClientRect(hwnd, &mut rect).ok()?;
-        if !ClientToScreen(hwnd, &mut origin).as_bool() {
-            return None;
-        }
-    }
-    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
-    if w <= 0 || h <= 0 {
-        tracing::info!("[ContextMenu] terminal window {hwnd:?} has an empty client rect");
-        return None;
-    }
     // Bottom edge of the row, so the menu opens just under the file name.
     let pt = POINT {
-        x: origin.x + w * i32::from(anchor.col) / i32::from(anchor.cols),
-        y: origin.y + h * (i32::from(anchor.row) + 1) / i32::from(anchor.rows),
+        x: left + w * i32::from(anchor.col) / i32::from(anchor.cols),
+        y: top + h * (i32::from(anchor.row) + 1) / i32::from(anchor.rows),
     };
     tracing::info!(
-        "[ContextMenu] anchor {anchor:?} in window {hwnd:?} (client {w}x{h} at screen ({}, {})) -> menu at ({}, {})",
-        origin.x,
-        origin.y,
+        "[ContextMenu] anchor {anchor:?} in window {hwnd:?} (client {w}x{h} at screen ({left}, {top})) -> menu at ({}, {})",
         pt.x,
         pt.y
     );
