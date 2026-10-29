@@ -200,7 +200,10 @@ fn anchor_to_screen(anchor: CellAnchor) -> Option<POINT> {
     if anchor.cols == 0 || anchor.rows == 0 {
         return None;
     }
-    let hwnd = terminal_window()?;
+    let Some(hwnd) = terminal_window() else {
+        tracing::info!("[ContextMenu] no terminal window found for {anchor:?}");
+        return None;
+    };
     let mut rect = RECT::default();
     let mut origin = POINT::default();
     // SAFETY: `rect` and `origin` are valid out-pointers; `hwnd` is a live window handle.
@@ -212,13 +215,22 @@ fn anchor_to_screen(anchor: CellAnchor) -> Option<POINT> {
     }
     let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
     if w <= 0 || h <= 0 {
+        tracing::info!("[ContextMenu] terminal window {hwnd:?} has an empty client rect");
         return None;
     }
     // Bottom edge of the row, so the menu opens just under the file name.
-    Some(POINT {
+    let pt = POINT {
         x: origin.x + w * i32::from(anchor.col) / i32::from(anchor.cols),
         y: origin.y + h * (i32::from(anchor.row) + 1) / i32::from(anchor.rows),
-    })
+    };
+    tracing::info!(
+        "[ContextMenu] anchor {anchor:?} in window {hwnd:?} (client {w}x{h} at screen ({}, {})) -> menu at ({}, {})",
+        origin.x,
+        origin.y,
+        pt.x,
+        pt.y
+    );
+    Some(pt)
 }
 
 /// Make the popup menu keyboard-ready immediately (Up/Down/Enter/Esc), even though
@@ -289,6 +301,11 @@ fn track_and_invoke(
         unsafe {
             let _ = GetCursorPos(&mut pt);
         }
+        tracing::info!(
+            "[ContextMenu] no usable anchor ({anchor:?}); using mouse cursor at ({}, {})",
+            pt.x,
+            pt.y
+        );
         pt
     });
     prepare_for_keyboard(hwnd);

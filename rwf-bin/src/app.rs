@@ -268,17 +268,28 @@ impl App {
         )
     }
 
+    /// Give a `ShellContextMenu` job the screen cell of the active pane's cursor row.
+    ///
+    /// The state handler cannot know pane geometry, so the menu would open at the mouse
+    /// cursor. Must run on every path that hands a job to the pool: key-triggered jobs
+    /// reach the pool from the `pending_job_submission` drain, not from `submit_job`.
+    fn anchor_shell_menu(job_spec: &mut JobSpec) {
+        if let JobKind::ShellContextMenu { anchor, .. } = &mut job_spec.kind {
+            *anchor = crate::ui::active_cursor_anchor();
+            tracing::info!(
+                "[ContextMenu] pane cursor cell -> anchor={:?} (None = mouse cursor)",
+                anchor
+            );
+        }
+    }
+
     /// The one way a `JobSpec` produced outside the drain loop becomes running work.
     ///
     /// Submitting straight to the pool is what broke every clip menu: the main-thread
     /// interception lives in `run`'s drain, so anything bypassing it hits the
     /// executor's rejection arms. Queueing instead costs one main-loop tick.
     fn submit_job(&mut self, mut job_spec: JobSpec) {
-        // The state handler cannot know pane geometry; open the shell menu under the
-        // active pane's cursor row instead of wherever the mouse happens to be.
-        if let JobKind::ShellContextMenu { anchor, .. } = &mut job_spec.kind {
-            *anchor = crate::ui::active_cursor_anchor();
-        }
+        Self::anchor_shell_menu(&mut job_spec);
         if Self::needs_main_thread(&job_spec.kind) {
             // Not registered with `state.jobs` here: the drain runs these inline and
             // never emits a `CompleteJob`, so a registration would never be cleared.
@@ -699,7 +710,8 @@ impl App {
             if !pending_jobs.is_empty() {
                 ui_needs_update = true;
             }
-            for job_spec in pending_jobs {
+            for mut job_spec in pending_jobs {
+                Self::anchor_shell_menu(&mut job_spec);
                 // SuspendAndRun: hand the terminal to the editor, then resume.
                 // Must happen on the main thread before any pool interaction.
                 if let JobKind::SuspendAndRun { program, args } = &job_spec.kind {
