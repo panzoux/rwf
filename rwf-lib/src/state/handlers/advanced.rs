@@ -103,7 +103,15 @@ impl AppState {
                     left: left.clone(),
                     right: right.clone(),
                 });
-                Some(StateUpdateResult::with_job(job_spec))
+                let name = format!(
+                    "{} <-> {}",
+                    Self::base_name(&left.display_path()),
+                    Self::base_name(&right.display_path())
+                );
+                Some(Self::with_launch_feedback(
+                    job_spec,
+                    Some(Self::task_line("Compare", &name, "comparing…")),
+                ))
             }
             Transition::ShowComparisonView { diff } => {
                 let dialog = crate::model::Dialog {
@@ -135,7 +143,12 @@ impl AppState {
                     chunk_size: *chunk_size,
                 });
                 self.dialogs.pop();
-                Some(StateUpdateResult::with_job(job_spec))
+                let line = Self::task_line(
+                    "Split",
+                    &Self::base_name(&source.display_path()),
+                    "splitting…",
+                );
+                Some(Self::with_launch_feedback(job_spec, Some(line)))
             }
             Transition::ExecuteFileJoin { parts, dest } => {
                 let job_spec = JobSpec::new(crate::job::JobKind::JoinFiles {
@@ -143,7 +156,12 @@ impl AppState {
                     dest: dest.clone(),
                 });
                 self.dialogs.pop();
-                Some(StateUpdateResult::with_job(job_spec))
+                let line = Self::task_line(
+                    "Join",
+                    &Self::base_name(&dest.display_path()),
+                    &format!("joining {} parts…", parts.len()),
+                );
+                Some(Self::with_launch_feedback(job_spec, Some(line)))
             }
             Transition::ShowPatternRenameDialog => {
                 let pane = self.active_pane();

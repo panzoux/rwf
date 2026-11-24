@@ -390,12 +390,21 @@ impl AppState {
                     // Nothing selectable, or a remote/archive location: no native menu.
                     return Some(StateUpdateResult::none());
                 }
-                Some(StateUpdateResult::with_job(crate::job::JobSpec::new(
-                    crate::job::JobKind::ShellContextMenu {
+                // The native menu can take a moment to appear; say it was asked for.
+                let first = Self::base_name(&paths[0].to_string_lossy());
+                let name = if paths.len() > 1 {
+                    format!("{first} (+{})", paths.len() - 1)
+                } else {
+                    first
+                };
+                let line = Self::task_line("Menu", &name, "opening shell menu…");
+                Some(Self::with_launch_feedback(
+                    crate::job::JobSpec::new(crate::job::JobKind::ShellContextMenu {
                         paths,
                         anchor: None,
-                    },
-                )))
+                    }),
+                    Some(line),
+                ))
             }
             Transition::ShowContextMenu => {
                 let dialog = crate::model::Dialog::context_menu();
@@ -521,13 +530,15 @@ impl AppState {
                 working_dir,
                 shell,
             } => {
+                let line =
+                    Self::launch_line(&path.to_string_lossy(), "launching with association…");
                 let job_spec = self.checked_association_job(
                     path.clone(),
                     command.clone(),
                     working_dir.clone(),
                     shell.clone(),
                 );
-                Some(StateUpdateResult::with_job(job_spec))
+                Some(Self::with_launch_feedback(job_spec, Some(line)))
             }
             Transition::ShowOpenWithPicker { candidates, paths } => {
                 // Reached via the flag-off/non-Local extension-only path in
@@ -1055,12 +1066,22 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::OpenWithEditor { path } => {
-                let job_spec = JobSpec::new(Self::editor_job(&self.config, path.clone(), false));
-                Some(StateUpdateResult::with_job(job_spec))
+                let kind = Self::editor_job(&self.config, path.clone(), false);
+                // A terminal editor takes over the screen, so the panel line
+                // would never be seen; only the GUI launch gets feedback.
+                let gui = matches!(kind, crate::job::JobKind::SpawnProcess { .. });
+                let job_spec = JobSpec::new(kind);
+                Some(Self::with_launch_feedback(
+                    job_spec,
+                    gui.then(|| Self::launch_line(path, "launching in editor…")),
+                ))
             }
             Transition::OpenWithSystem { path } => {
                 let job_spec = JobSpec::new(Self::system_open_job(path.clone()));
-                Some(StateUpdateResult::with_job(job_spec))
+                Some(Self::with_launch_feedback(
+                    job_spec,
+                    Some(Self::launch_line(path, "launching with default app…")),
+                ))
             }
             _ => None,
         }

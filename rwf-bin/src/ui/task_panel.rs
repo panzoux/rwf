@@ -17,6 +17,8 @@ pub enum LogLevel {
 pub struct LogEntry {
     pub message: String,
     pub level: LogLevel,
+    /// Set for rows a later update may rewrite in place (launch feedback).
+    pub key: Option<rwf_lib::job::JobId>,
 }
 
 /// Task panel with state
@@ -48,7 +50,46 @@ impl TaskPanel {
 
     /// Add a log entry with level
     pub fn add_log(&mut self, message: String, level: LogLevel) {
-        self.log_entries.push(LogEntry { message, level });
+        self.log_entries.push(LogEntry {
+            message,
+            level,
+            key: None,
+        });
+    }
+
+    /// Add a row owned by `key`, or rewrite it in place if `key` already has one.
+    pub fn upsert_keyed_log(&mut self, key: rwf_lib::job::JobId, message: String, level: LogLevel) {
+        if let Some(entry) = self
+            .log_entries
+            .iter_mut()
+            .rev()
+            .find(|e| e.key == Some(key))
+        {
+            entry.message = message;
+            entry.level = level;
+        } else {
+            self.log_entries.push(LogEntry {
+                message,
+                level,
+                key: Some(key),
+            });
+        }
+    }
+
+    /// Apply keyed rows from a `StateUpdateResult`; level comes from the tag in the text.
+    pub fn apply_tracked(&mut self, rows: Vec<(rwf_lib::job::JobId, String)>) {
+        for (key, message) in rows {
+            let level = if message.contains("[FAIL]") {
+                LogLevel::Fail
+            } else if message.contains("[WARN]") {
+                LogLevel::Warn
+            } else if message.contains("[OK]") {
+                LogLevel::Ok
+            } else {
+                LogLevel::Info
+            };
+            self.upsert_keyed_log(key, message, level);
+        }
     }
 
     /// Add a pending log (thread-safe, processed later)
@@ -73,7 +114,11 @@ impl TaskPanel {
                 LogLevel::Info
             };
 
-            self.log_entries.push(LogEntry { message, level });
+            self.log_entries.push(LogEntry {
+                message,
+                level,
+                key: None,
+            });
         }
 
         // Trim old logs if exceeding max
@@ -400,5 +445,19 @@ mod tests {
             .expect("draw");
         let output = format!("{:?}", terminal.backend().buffer());
         insta::assert_snapshot!("render_task_panel_smoke", output);
+    }
+
+    #[test]
+    fn keyed_log_is_rewritten_in_place_not_appended() {
+        let mut panel = TaskPanel::new();
+        let key = rwf_lib::job::JobId::new();
+        panel.add_log("other".to_string(), LogLevel::Info);
+        panel.apply_tracked(vec![(key, "[Open] a — launching…".to_string())]);
+        panel.add_log("later".to_string(), LogLevel::Info);
+        panel.apply_tracked(vec![(key, "[Open] a — launching… [OK]".to_string())]);
+        assert_eq!(panel.log_count(), 3);
+        let e = panel.get_log_entry(1).expect("row 1");
+        assert_eq!(e.message, "[Open] a — launching… [OK]");
+        assert_eq!(e.level, LogLevel::Ok);
     }
 }

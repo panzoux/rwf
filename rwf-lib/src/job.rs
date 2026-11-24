@@ -41,6 +41,12 @@ pub struct JobSpec {
     /// Why this job exists — lets a failure say "while restoring your session"
     /// instead of implying the user did something (Phase 7.22 §3.3).
     pub origin: JobOrigin,
+    /// Task-panel row for this job: `(row key, "<ts> [Open] a.mp4 — launching…")`.
+    /// Shown at dispatch and rewritten in place with `[OK]`/`[FAIL]` on
+    /// completion, so one operation costs one row. The key is the id of the
+    /// job that created the row; a follow-up job (association detect -> run)
+    /// inherits the pair so the same row is finished by the last job.
+    pub launch_log: Option<(JobId, String)>,
 }
 
 /// What started a job. Defaults to [`JobOrigin::UserAction`], so only the call sites
@@ -87,7 +93,14 @@ impl JobSpec {
             conflict_decisions: None,
             requesting_pane: None,
             origin: JobOrigin::default(),
+            launch_log: None,
         }
+    }
+
+    /// Attach the in-place task-panel line (see [`JobSpec::launch_log`]).
+    pub fn with_launch_log(mut self, line: String) -> Self {
+        self.launch_log = Some((self.id, line));
+        self
     }
 
     /// Set the tab and pane that requested this job (for targeting results).

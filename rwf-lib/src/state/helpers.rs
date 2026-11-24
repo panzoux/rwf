@@ -183,6 +183,49 @@ impl AppState {
         }
     }
 
+    /// Task-panel announcement for a launch: `[HH:MM:SS] [Open] name — what`.
+    /// Completion appends ` [OK]` / ` [FAIL] — reason` to this same string.
+    pub(crate) fn launch_line(path: &str, what: &str) -> String {
+        Self::task_line("Open", &Self::base_name(path), what)
+    }
+
+    /// Final path component, or the whole string when there is none.
+    pub(crate) fn base_name(path: &str) -> String {
+        std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string())
+    }
+
+    /// `[HH:MM:SS] [tag] name — what`, the shape of every in-place row.
+    pub(crate) fn task_line(tag: &str, name: &str, what: &str) -> String {
+        format!(
+            "{} [{}] {} — {}",
+            chrono::Local::now().format("[%H:%M:%S]"),
+            tag,
+            name,
+            what
+        )
+    }
+
+    /// Start `job` and, when `line` is given, show it in the task panel as a
+    /// keyed row that the job's completion rewrites in place.
+    pub(crate) fn with_launch_feedback(
+        job: crate::job::JobSpec,
+        line: Option<String>,
+    ) -> super::StateUpdateResult {
+        match line {
+            Some(line) => {
+                let id = job.id;
+                let mut result =
+                    super::StateUpdateResult::with_job(job.with_launch_log(line.clone()));
+                result.task_panel_tracked.push((id, line));
+                result
+            }
+            None => super::StateUpdateResult::with_job(job),
+        }
+    }
+
     /// Build a job that opens `file_path` with the OS's default file association
     /// (Windows `start`, macOS `open`, Linux `xdg-open`). Always fire-and-forget —
     /// unlike `editor_job`, there is no "wait for exit" mode, since the whole point
@@ -359,6 +402,184 @@ mod custom_function_job_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ctrl+Enter must announce itself in the task panel at once (a slow app
+    /// start otherwise looks like a dropped keypress), and completion must
+    /// rewrite that same row rather than add a second one.
+    #[test]
+    fn open_with_system_announces_then_rewrites_one_row() {
+        use crate::state::{update_state, Transition};
+        let mut state = crate::test_utils::test_state();
+        let start = update_state(
+            &mut state,
+            Transition::OpenWithSystem {
+                path: r"C:\videos\clip.mp4".to_string(),
+            },
+        );
+        assert_eq!(start.jobs_to_start.len(), 1);
+        let (id, line) = start.task_panel_tracked[0].clone();
+        assert_eq!(id, start.jobs_to_start[0].id);
+        assert!(
+            line.contains("[Open] clip.mp4 — launching with default app…"),
+            "{line}"
+        );
+        assert!(!line.contains("[OK]"));
+
+        state.jobs.start_job(start.jobs_to_start[0].clone());
+        let done = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: id,
+                result: crate::job::OpResult::Success(crate::job::SuccessData::None),
+            },
+        );
+        let (done_id, done_line) = done.task_panel_tracked[0].clone();
+        assert_eq!(done_id, id);
+        assert_eq!(done_line, format!("{line} [OK]"));
+    }
+
+    #[test]
+    fn failed_launch_rewrites_row_with_fail_and_reason() {
+        use crate::state::{update_state, Transition};
+        let mut state = crate::test_utils::test_state();
+        let start = update_state(
+            &mut state,
+            Transition::OpenWithSystem {
+                path: r"C:\x\a.bin".to_string(),
+            },
+        );
+        let id = start.jobs_to_start[0].id;
+        state.jobs.start_job(start.jobs_to_start[0].clone());
+        let done = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: id,
+                result: crate::job::OpResult::Failed("cannot start 'cmd'".to_string()),
+            },
+        );
+        assert!(done.task_panel_tracked[0]
+            .1
+            .ends_with("[FAIL] — cannot start 'cmd'"));
+    }
+
+    fn tracked_line(r: &crate::state::StateUpdateResult) -> String {
+        assert_eq!(r.task_panel_tracked.len(), 1, "one row per operation");
+        assert_eq!(r.task_panel_tracked[0].0, r.jobs_to_start[0].id);
+        r.task_panel_tracked[0].1.clone()
+    }
+
+    #[test]
+    fn compare_split_join_announce_one_row_each() {
+        use crate::model::Location;
+        use crate::state::{update_state, Transition};
+        let loc = |p: &str| Location::Local(std::path::PathBuf::from(p));
+        let mut state = crate::test_utils::test_state();
+
+        let r = update_state(
+            &mut state,
+            Transition::CompareFiles {
+                left: loc("a.txt"),
+                right: loc("b.txt"),
+            },
+        );
+        let l = tracked_line(&r);
+        assert!(l.contains("[Compare] a.txt <-> b.txt — comparing…"), "{l}");
+
+        let r = update_state(
+            &mut state,
+            Transition::ExecuteFileSplit {
+                source: loc("big.bin"),
+                dest_dir: loc("out"),
+                chunk_size: 10,
+            },
+        );
+        let l = tracked_line(&r);
+        assert!(l.contains("[Split] big.bin — splitting…"), "{l}");
+
+        let r = update_state(
+            &mut state,
+            Transition::ExecuteFileJoin {
+                parts: vec![loc("big.bin.001"), loc("big.bin.002")],
+                dest: loc("big.bin"),
+            },
+        );
+        let l = tracked_line(&r);
+        assert!(l.contains("[Join] big.bin — joining 2 parts…"), "{l}");
+    }
+
+    #[test]
+    fn association_without_detection_finishes_its_row_on_completion() {
+        use crate::state::{update_state, Transition};
+        let mut state = crate::test_utils::test_state();
+        state.config.magic_byte_detection_enabled = false;
+        let r = update_state(
+            &mut state,
+            Transition::ExecuteAssociationChecked {
+                path: std::path::PathBuf::from("note.md"),
+                command: "true".to_string(),
+                working_dir: crate::model::Location::Local(std::path::PathBuf::from(".")),
+                shell: None,
+            },
+        );
+        let line = tracked_line(&r);
+        assert!(
+            line.contains("[Open] note.md — launching with association…"),
+            "{line}"
+        );
+        let id = r.jobs_to_start[0].id;
+        state.jobs.start_job(r.jobs_to_start[0].clone());
+        let done = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: id,
+                result: crate::job::OpResult::Success(crate::job::SuccessData::None),
+            },
+        );
+        assert_eq!(done.task_panel_tracked, vec![(id, format!("{line} [OK]"))]);
+    }
+
+    /// With magic-byte detection on, the first job is only the content check;
+    /// the row must stay "launching" and be handed to the command job.
+    #[test]
+    fn association_detect_step_hands_its_row_to_the_command() {
+        use crate::state::{update_state, Transition};
+        let mut state = crate::test_utils::test_state();
+        state.config.magic_byte_detection_enabled = true;
+        let r = update_state(
+            &mut state,
+            Transition::ExecuteAssociationChecked {
+                path: std::path::PathBuf::from("note.md"),
+                command: "true".to_string(),
+                working_dir: crate::model::Location::Local(std::path::PathBuf::from(".")),
+                shell: None,
+            },
+        );
+        let detect = r.jobs_to_start[0].clone();
+        assert!(matches!(
+            detect.kind,
+            crate::job::JobKind::DetectFileType { .. }
+        ));
+        let key = detect.id;
+        state.jobs.start_job(detect);
+        // Detection failing is fail-open: the association command runs anyway.
+        let done = update_state(
+            &mut state,
+            Transition::CompleteJob {
+                job_id: key,
+                result: crate::job::OpResult::Failed("unreadable".to_string()),
+            },
+        );
+        assert!(
+            done.task_panel_tracked.is_empty(),
+            "row must not be finished early"
+        );
+        let next = done
+            .jobs_to_start
+            .iter()
+            .find(|j| matches!(j.kind, crate::job::JobKind::ExecuteCustomFunction { .. }))
+            .expect("association command starts after a failed detect");
+        assert_eq!(next.launch_log.as_ref().map(|(k, _)| *k), Some(key));
+    }
 
     #[test]
     fn system_open_job_shape_for_current_platform() {

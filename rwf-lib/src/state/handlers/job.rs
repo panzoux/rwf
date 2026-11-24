@@ -70,6 +70,7 @@ impl AppState {
                         cancelled_jobs: Vec::new(),
                         started_jobs: vec![*job_id],
                         task_panel_logs: if quiet { Vec::new() } else { vec![log] },
+                        task_panel_tracked: Vec::new(),
                         panes_to_refresh: Vec::new(),
                         ui_changed: true,
                         reload_keybindings: false,
@@ -566,6 +567,13 @@ impl AppState {
                     crate::job::OpResult::Failed(_) => result_obj.failed_jobs.push(*job_id),
                     crate::job::OpResult::Cancelled => result_obj.cancelled_jobs.push(*job_id),
                 }
+
+                // Launch feedback: the row is finished below, once any follow-up
+                // job this completion starts is known.
+                let launch_log = job_spec.as_ref().and_then(|s| s.launch_log.clone());
+                let is_detect = job_spec
+                    .as_ref()
+                    .is_some_and(|s| matches!(s.kind, crate::job::JobKind::DetectFileType { .. }));
 
                 if let Some(spec) = job_spec {
                     job_trace!(
@@ -2032,6 +2040,35 @@ impl AppState {
 
                 if let Some(log) = log_entry {
                     result_obj.task_panel_logs.push(log);
+                }
+
+                if let Some((key, line)) = launch_log {
+                    // A detect step that hands off to the real command leaves the
+                    // row "launching": the command's own completion finishes it.
+                    let successor = if is_detect {
+                        result_obj.jobs_to_start.iter_mut().find(|j| {
+                            matches!(j.kind, crate::job::JobKind::ExecuteCustomFunction { .. })
+                        })
+                    } else {
+                        None
+                    };
+                    if let Some(next) = successor {
+                        next.launch_log = Some((key, line));
+                    } else {
+                        let done = match result {
+                            crate::job::OpResult::Success(_) if is_detect => {
+                                format!("{line} [WARN] waiting for confirmation")
+                            }
+                            crate::job::OpResult::Success(_) => format!("{line} [OK]"),
+                            crate::job::OpResult::Failed(e) => {
+                                format!("{line} [FAIL] — {}", e.trim())
+                            }
+                            crate::job::OpResult::Cancelled => {
+                                format!("{line} [WARN] Cancelled")
+                            }
+                        };
+                        result_obj.task_panel_tracked.push((key, done));
+                    }
                 }
 
                 match result {

@@ -2379,9 +2379,16 @@ impl App {
                     self.should_quit = true;
                     return true;
                 }
-                let result = rwf_lib::state::update_state(&mut self.state, tr);
+                let mut result = rwf_lib::state::update_state(&mut self.state, tr);
                 for job_spec in result.jobs_to_start {
                     self.pending_job_submission.push(job_spec);
+                }
+                if !result.task_panel_tracked.is_empty() {
+                    self.task_panel
+                        .apply_tracked(std::mem::take(&mut result.task_panel_tracked));
+                    let h = self.state.ui.layout.task_panel_height;
+                    self.task_panel.scroll_to_end(h);
+                    state_changed = true;
                 }
                 if !result.task_panel_logs.is_empty() {
                     for log_msg in result.task_panel_logs {
@@ -2732,6 +2739,10 @@ impl App {
                 );
                 for log_msg in &result.task_panel_logs {
                     self.task_panel.add_pending_log(log_msg.clone());
+                }
+                if !result.task_panel_tracked.is_empty() {
+                    self.task_panel
+                        .apply_tracked(result.task_panel_tracked.clone());
                 }
                 if result.reclaim_terminal {
                     self.force_full_redraw = true;

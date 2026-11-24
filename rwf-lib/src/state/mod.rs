@@ -1089,6 +1089,9 @@ pub struct StateUpdateResult {
     pub started_jobs: Vec<JobId>,
     /// Log messages for task panel
     pub task_panel_logs: Vec<String>,
+    /// Keyed task-panel lines: a later entry with the same job id replaces the
+    /// earlier row in place instead of adding another (launch feedback).
+    pub task_panel_tracked: Vec<(JobId, String)>,
     /// Panes that need refreshing
     pub panes_to_refresh: Vec<PaneRefresh>,
     /// Whether the UI needs to be redrawn
@@ -1118,11 +1121,13 @@ impl StateUpdateResult {
             cancelled_jobs,
             started_jobs,
             task_panel_logs,
+            task_panel_tracked,
             panes_to_refresh,
             ui_changed,
             reload_keybindings,
             reclaim_terminal,
         } = other;
+        self.task_panel_tracked.extend(task_panel_tracked);
         self.jobs_to_start.extend(jobs_to_start);
         self.jobs_to_cancel.extend(jobs_to_cancel);
         self.completed_jobs.extend(completed_jobs);
@@ -1146,6 +1151,7 @@ impl StateUpdateResult {
             cancelled_jobs: Vec::new(),
             started_jobs: Vec::new(),
             task_panel_logs: Vec::new(),
+            task_panel_tracked: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: false,
             reload_keybindings: false,
@@ -1163,6 +1169,7 @@ impl StateUpdateResult {
             cancelled_jobs: Vec::new(),
             started_jobs: Vec::new(),
             task_panel_logs: Vec::new(),
+            task_panel_tracked: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,
@@ -1180,6 +1187,7 @@ impl StateUpdateResult {
             cancelled_jobs: Vec::new(),
             started_jobs: Vec::new(),
             task_panel_logs: Vec::new(),
+            task_panel_tracked: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,
@@ -1197,6 +1205,7 @@ impl StateUpdateResult {
             cancelled_jobs: Vec::new(),
             started_jobs: Vec::new(),
             task_panel_logs: Vec::new(),
+            task_panel_tracked: Vec::new(),
             panes_to_refresh: vec![PaneRefresh { tab_id, pane }],
             ui_changed: true,
             reload_keybindings: false,
@@ -1214,6 +1223,7 @@ impl StateUpdateResult {
             cancelled_jobs: Vec::new(),
             started_jobs: Vec::new(),
             task_panel_logs: Vec::new(),
+            task_panel_tracked: Vec::new(),
             panes_to_refresh: Vec::new(),
             ui_changed: true,
             reload_keybindings: false,

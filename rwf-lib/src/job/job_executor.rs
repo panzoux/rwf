@@ -1695,6 +1695,14 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
         if spec.cancel_token.is_cancelled() {
             return crate::job::OpResult::Cancelled;
         }
+        // The exact command line differs per OS (cmd start / open / xdg-open /
+        // editor), so record it where the process is built.
+        tracing::debug!(
+            "[SpawnProcess] program={:?} args={:?} wait={}",
+            program,
+            args,
+            wait
+        );
         let mut cmd = tokio::process::Command::new(program);
         #[cfg(target_os = "windows")]
         if program.eq_ignore_ascii_case("cmd") || program.eq_ignore_ascii_case("cmd.exe") {
