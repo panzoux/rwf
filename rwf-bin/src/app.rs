@@ -14,16 +14,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::error;
 
+use crate::ui::dialog::common::DIAGNOSTIC_REPORT_DIALOG_TITLE;
 use crate::ui::render_ui;
 use crate::ui::task_panel::TaskPanel;
-
-/// Title of the end-of-session report prompt.
-///
-/// The generic `Input` dialog dispatches on title, so this string is the link
-/// between pushing the prompt here and handling its confirmation in
-/// `ui::dialog::confirm::process_dialog_confirmation`. Keep the two in sync via
-/// this constant rather than duplicating the literal.
-pub const DIAGNOSTIC_REPORT_DIALOG_TITLE: &str = "Diagnostic Report";
 
 /// How long quit waits for in-flight jobs to honour cancellation before abandoning
 /// them. File operations check the cancel flag per chunk, well inside this.

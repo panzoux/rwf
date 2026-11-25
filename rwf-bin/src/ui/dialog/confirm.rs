@@ -224,7 +224,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
             // Phase 7.15. An empty description still finalises the session:
             // the user already did the work of reproducing the problem, and
             // discarding the bundle over a blank field would be hostile.
-            crate::app::DIAGNOSTIC_REPORT_DIALOG_TITLE => {
+            super::common::DIAGNOSTIC_REPORT_DIALOG_TITLE => {
                 let report = if input.trim().is_empty() {
                     None
                 } else {

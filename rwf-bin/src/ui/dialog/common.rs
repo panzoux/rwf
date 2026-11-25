@@ -59,3 +59,11 @@ pub fn titled_block(title: &str) -> Block<'_> {
         .title_style(DIALOG_TITLE)
         .style(DIALOG_BG)
 }
+
+/// Title of the end-of-session report prompt.
+///
+/// The generic `Input` dialog dispatches on title, so this string is the link
+/// between pushing the prompt here and handling its confirmation in
+/// `confirm::process_dialog_confirmation`. Keep the two in sync via
+/// this constant rather than duplicating the literal.
+pub const DIAGNOSTIC_REPORT_DIALOG_TITLE: &str = "Diagnostic Report";

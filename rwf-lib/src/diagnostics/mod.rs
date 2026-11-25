@@ -32,8 +32,10 @@ mod record;
 mod state_snapshot;
 mod writer;
 
-pub use log_layer::{DiagnosticLogLayer, LogRecord};
-pub use record::{truncate_detail, variant_name, DiagnosticEvent, DiagnosticRecord, DETAIL_MAX};
+pub use log_layer::DiagnosticLogLayer;
+pub use record::{
+    truncate_detail, variant_name, DiagnosticEvent, DiagnosticRecord, LogRecord, DETAIL_MAX,
+};
 pub use state_snapshot::{
     ActiveJobSnapshot, BackgroundJobSnapshot, DiagnosticStateSnapshot, JobsSnapshot,
     LayoutSnapshot, LeapSnapshot, PaneSnapshot, SearchSnapshot, TabSnapshot, TabsSnapshot,
