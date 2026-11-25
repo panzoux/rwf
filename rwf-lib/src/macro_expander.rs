@@ -3,7 +3,7 @@
 //! This module implements macro expansion for custom function commands,
 //! supporting various macros like $P (active pane path), $F (cursor file), etc.
 
-use crate::model::CustomFunction;
+use crate::dialog::CustomFunction;
 use crate::state::AppState;
 use regex::Regex;
 

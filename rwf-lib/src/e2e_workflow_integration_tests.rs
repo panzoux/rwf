@@ -11,12 +11,12 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{
+        CustomFunction, DeleteConfirmDialog, DialogContent, InputDialog, SimpleRenameDialog,
+    };
     use crate::input::{action_to_transitions, Action};
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{
-        CustomFunction, DeleteConfirmDialog, DialogContent, InputDialog, Location,
-        SimpleRenameDialog,
-    };
+    use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;

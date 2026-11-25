@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::DeleteConfirm`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 

@@ -86,7 +86,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::{
+use rwf_lib::dialog::{
     ActionConfirmDialog, CloseTabWithActiveJobDialog, CompressionDialog, ContextMenuDialog,
     CustomFunctionMenuDialog, CustomFunctionSelectorContent, DeleteConfirmDialog, Dialog,
     DialogContent, DialogUiState, DriveSelectionDialog, ErrorDialog, FileConflictDialog,
@@ -115,7 +115,7 @@ pub enum DialogAction {
     /// Open a second-level menu dialog for a menu-type custom function
     OpenMenu {
         title: String,
-        items: Vec<rwf_lib::model::dialog::MenuItem>,
+        items: Vec<rwf_lib::dialog::MenuItem>,
     },
     /// Toggle the File Information dialog's header-bytes view between hex
     /// and raw text (Phase 7.3b, Task 10). The dialog stays open; the app
@@ -602,10 +602,8 @@ pub fn render_dialog(frame: &mut Frame, dialog: &Dialog, state: &rwf_lib::AppSta
             let max_label = options
                 .iter()
                 .map(|o| {
-                    let extra = if matches!(
-                        o.action,
-                        rwf_lib::model::dialog::ContextMenuAction::OpenWith
-                    ) {
+                    let extra = if matches!(o.action, rwf_lib::dialog::ContextMenuAction::OpenWith)
+                    {
                         suffix_len
                     } else {
                         0

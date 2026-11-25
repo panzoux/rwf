@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::Help`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent, HelpDialog, HelpEntry, HelpTab};
+use rwf_lib::dialog::{Dialog, DialogContent, HelpDialog, HelpEntry, HelpTab};
 
 #[test]
 fn help_empty() {

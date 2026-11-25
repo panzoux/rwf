@@ -117,8 +117,8 @@ mod tests {
                 // title reflects that until task 11 wires real config values.
                 assert!(dialog.title.contains("Trash"));
                 match &dialog.content {
-                    crate::model::DialogContent::DeleteConfirm(
-                        crate::model::dialog::DeleteConfirmDialog {
+                    crate::dialog::DialogContent::DeleteConfirm(
+                        crate::dialog::DeleteConfirmDialog {
                             to_trash,
                             force_fallback,
                             ..
@@ -148,7 +148,7 @@ mod tests {
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
 
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => {
+            crate::dialog::DialogContent::DeleteConfirm(d) => {
                 assert!(d.to_trash, "trash enabled -> dialog should target trash")
             }
             other => panic!("expected DeleteConfirm dialog, got {other:?}"),
@@ -192,7 +192,7 @@ mod tests {
         let dialog =
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => assert!(
+            crate::dialog::DialogContent::DeleteConfirm(d) => assert!(
                 !d.to_trash,
                 "trash disabled -> dialog should target permanent delete"
             ),
@@ -213,7 +213,7 @@ mod tests {
         let dialog =
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => assert!(d.force_fallback),
+            crate::dialog::DialogContent::DeleteConfirm(d) => assert!(d.force_fallback),
             other => panic!("expected DeleteConfirm dialog, got {other:?}"),
         }
     }
@@ -304,8 +304,8 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Rename");
                 match &dialog.content {
-                    crate::model::DialogContent::SimpleRename(
-                        crate::model::SimpleRenameDialog { input, .. },
+                    crate::dialog::DialogContent::SimpleRename(
+                        crate::dialog::SimpleRenameDialog { input, .. },
                     ) => {
                         assert_eq!(input, "file1.txt");
                     }
@@ -326,7 +326,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Create Directory");
                 match &dialog.content {
-                    crate::model::DialogContent::Input(crate::model::InputDialog {
+                    crate::dialog::DialogContent::Input(crate::dialog::InputDialog {
                         prompt,
                         default_value,
                         ..
@@ -351,7 +351,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Create File");
                 match &dialog.content {
-                    crate::model::DialogContent::Input(crate::model::InputDialog {
+                    crate::dialog::DialogContent::Input(crate::dialog::InputDialog {
                         prompt,
                         default_value,
                         ..

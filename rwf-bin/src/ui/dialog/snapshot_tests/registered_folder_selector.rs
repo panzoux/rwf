@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::RegisteredFolderSelector`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, RegisteredFolder, RegisteredFolderSelectorContent};
+use rwf_lib::dialog::{Dialog, RegisteredFolder, RegisteredFolderSelectorContent};
 
 #[test]
 fn registered_folder_selector_two_items_first_selected() {
@@ -31,7 +31,7 @@ fn registered_folder_selector_five_items_middle_selected() {
         RegisteredFolder::new("Videos", "/home/user/videos"),
     ];
     let mut dialog = Dialog::registered_folder_selector(folders);
-    if let rwf_lib::model::dialog::DialogContent::RegisteredFolderSelector(
+    if let rwf_lib::dialog::DialogContent::RegisteredFolderSelector(
         RegisteredFolderSelectorContent {
             ref mut selected_index,
             ..
@@ -57,7 +57,7 @@ fn registered_folder_selector_with_filter() {
         RegisteredFolder::new("Templates", "/home/user/templates"),
     ];
     let mut dialog = Dialog::registered_folder_selector(folders);
-    if let rwf_lib::model::dialog::DialogContent::RegisteredFolderSelector(
+    if let rwf_lib::dialog::DialogContent::RegisteredFolderSelector(
         RegisteredFolderSelectorContent {
             ref mut filter,
             ref mut selected_index,
@@ -80,7 +80,7 @@ fn registered_folder_selector_three_items_last_selected() {
         RegisteredFolder::new("Archive", "/data/archive").with_description("Old projects"),
     ];
     let mut dialog = Dialog::registered_folder_selector(folders);
-    if let rwf_lib::model::dialog::DialogContent::RegisteredFolderSelector(
+    if let rwf_lib::dialog::DialogContent::RegisteredFolderSelector(
         RegisteredFolderSelectorContent {
             ref mut selected_index,
             ..

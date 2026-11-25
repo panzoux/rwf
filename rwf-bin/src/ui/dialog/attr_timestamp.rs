@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::AttrTimestampDialog;
+use rwf_lib::dialog::AttrTimestampDialog;
 
 use super::DialogAction;
 #[cfg(unix)]
@@ -77,10 +77,7 @@ pub(super) fn handle_input(dialog: &mut AttrTimestampDialog, key: KeyEvent) -> D
 // Called only from the `#[cfg(windows)]` focus arms above: the readonly/hidden/
 // system/archive checkboxes are Win32 file attributes and do not exist elsewhere.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn handle_checkbox_key(
-    key: KeyEvent,
-    field: &mut rwf_lib::model::dialog::TriToggle,
-) -> DialogAction {
+fn handle_checkbox_key(key: KeyEvent, field: &mut rwf_lib::dialog::TriToggle) -> DialogAction {
     if key.code == KeyCode::Char(' ') {
         field.toggle();
     }
@@ -91,7 +88,7 @@ fn handle_checkbox_key(
 #[cfg(unix)]
 fn handle_text_field_key(
     key: KeyEvent,
-    field: &mut rwf_lib::model::dialog::AttrTextField,
+    field: &mut rwf_lib::dialog::AttrTextField,
 ) -> DialogAction {
     if key.code == KeyCode::Char('t') && key.modifiers.is_empty() {
         field.set_now();
@@ -118,7 +115,7 @@ fn handle_text_field_key(
 /// time (the previous free-text editor's failure mode).
 fn handle_timestamp_field_key(
     key: KeyEvent,
-    field: &mut rwf_lib::model::dialog::AttrTextField,
+    field: &mut rwf_lib::dialog::AttrTextField,
 ) -> DialogAction {
     match key.code {
         KeyCode::Char(c @ '0'..='9') => field.apply_timestamp_digit(c),
@@ -156,11 +153,10 @@ pub(super) fn render_attr_timestamp_dialog(
             Rect::new(x, chunks[0].y, item_width, 1),
         );
 
-        let checkbox_span =
-            |label: &str, field: &rwf_lib::model::dialog::TriToggle, focused: bool| {
-                let style = if focused { selected_style } else { base_style };
-                Span::styled(format!("{} {}  ", field.label(), label), style)
-            };
+        let checkbox_span = |label: &str, field: &rwf_lib::dialog::TriToggle, focused: bool| {
+            let style = if focused { selected_style } else { base_style };
+            Span::styled(format!("{} {}  ", field.label(), label), style)
+        };
         let row = Line::from(vec![
             checkbox_span("ReadOnly", &dialog.readonly, dialog.focused_field == 0),
             checkbox_span("Hidden", &dialog.hidden, dialog.focused_field == 1),
@@ -291,7 +287,7 @@ fn render_timestamp_row(
     row: Rect,
     item_width: u16,
     label: &str,
-    field: &rwf_lib::model::dialog::AttrTextField,
+    field: &rwf_lib::dialog::AttrTextField,
     focused: bool,
 ) {
     let base_style = crate::ui::dialog::common::DIALOG_TEXT;

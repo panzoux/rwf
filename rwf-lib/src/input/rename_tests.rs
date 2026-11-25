@@ -33,7 +33,7 @@ mod tests {
             transitions.iter().any(|t| matches!(
                 t,
                 Transition::ShowDialog { dialog }
-                    if matches!(dialog.content, crate::model::dialog::DialogContent::SimpleRename(_))
+                    if matches!(dialog.content, crate::dialog::DialogContent::SimpleRename(_))
             )),
             "Rename action must open a SimpleRename dialog"
         );
@@ -59,12 +59,10 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::Rename);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::SimpleRename(
-                crate::model::dialog::SimpleRenameDialog {
-                    input,
-                    ui: crate::model::dialog::DialogUiState { focused_field, .. },
-                },
-            ) = &dialog.content
+            if let crate::dialog::DialogContent::SimpleRename(crate::dialog::SimpleRenameDialog {
+                input,
+                ui: crate::dialog::DialogUiState { focused_field, .. },
+            }) = &dialog.content
             {
                 assert_eq!(input, "hello.txt");
                 assert_eq!(*focused_field, 0, "textbox should be focused by default");
@@ -83,12 +81,10 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::Rename);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::SimpleRename(
-                crate::model::dialog::SimpleRenameDialog {
-                    input,
-                    ui: crate::model::dialog::DialogUiState { cursor_pos, .. },
-                },
-            ) = &dialog.content
+            if let crate::dialog::DialogContent::SimpleRename(crate::dialog::SimpleRenameDialog {
+                input,
+                ui: crate::dialog::DialogUiState { cursor_pos, .. },
+            }) = &dialog.content
             {
                 assert_eq!(
                     *cursor_pos,
@@ -121,7 +117,7 @@ mod tests {
             transitions.iter().any(|t| matches!(
                 t,
                 Transition::ShowDialog { dialog }
-                    if matches!(&dialog.content, crate::model::dialog::DialogContent::SimpleRename(crate::model::dialog::SimpleRenameDialog { input, .. }) if input == "src")
+                    if matches!(&dialog.content, crate::dialog::DialogContent::SimpleRename(crate::dialog::SimpleRenameDialog { input, .. }) if input == "src")
             )),
             "Rename should work for directories too"
         );

@@ -160,9 +160,11 @@ mod tests {
         let state = test_state();
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
         assert!(
-            transitions.iter().any(|t| matches!(t, Transition::ShowDialog { dialog }
-                if matches!(dialog.content, crate::model::dialog::DialogContent::FileMask { .. })
-            )),
+            transitions
+                .iter()
+                .any(|t| matches!(t, Transition::ShowDialog { dialog }
+                    if matches!(dialog.content, crate::dialog::DialogContent::FileMask { .. })
+                )),
             "FileMaskFilter action must open a FileMask dialog"
         );
     }

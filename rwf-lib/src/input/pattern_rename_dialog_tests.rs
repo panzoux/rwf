@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{DialogContent, PatternRenameContent};
     use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::{DialogContent, PatternRenameContent};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

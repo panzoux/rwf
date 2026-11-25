@@ -3,30 +3,12 @@
 //! This module implements the JobManager and related types for managing
 //! asynchronous file operations via the rwf Worker Pool.
 
+pub use crate::model::JobId;
 use crate::model::Location;
 pub use rwf_winmenu::CellAnchor;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
-
-/// Unique identifier for a job
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct JobId(pub Uuid);
-
-impl JobId {
-    /// Generate a new unique job ID
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl Default for JobId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Job specification submitted to the worker pool
 #[derive(Debug, Clone)]
@@ -518,7 +500,7 @@ pub enum SuccessData {
     /// nothing in the chain survives (an unmounted drive, an unreachable host).
     FallbackPath(Option<Location>),
     /// Every drive and mounted volume, for the drive-selection dialog.
-    Drives(Vec<crate::model::dialog::DriveInfo>),
+    Drives(Vec<crate::dialog::DriveInfo>),
     /// What a custom function's printed path resolved to.
     PipeTarget(crate::pipe_to_action::PipeToActionResult),
     /// Undo/Redo rows split into those that can run now and those blocked, with why.

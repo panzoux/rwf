@@ -6,8 +6,8 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{DialogContent, DriveInfo, DriveType};
     use crate::job::{JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
-    use crate::model::dialog::{DialogContent, DriveInfo, DriveType};
     use crate::model::{Location, ReversalAction};
     use crate::pipe_to_action::PipeToActionResult;
     use crate::state::{update_state, AppState, Transition};
@@ -29,7 +29,7 @@ mod tests {
         )
     }
 
-    fn drive_dialog(state: &AppState) -> &crate::model::dialog::DriveSelectionDialog {
+    fn drive_dialog(state: &AppState) -> &crate::dialog::DriveSelectionDialog {
         match &state.dialogs.current().expect("drive dialog").content {
             DialogContent::DriveSelection(d) => d,
             other => panic!("expected DriveSelection, got {other:?}"),

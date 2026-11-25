@@ -6,7 +6,7 @@
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::DriveSelectionDialog;
+use rwf_lib::dialog::DriveSelectionDialog;
 
 use crate::ui::smart_truncate;
 
@@ -86,7 +86,7 @@ pub(super) fn handle_input(dialog: &mut DriveSelectionDialog, key: KeyEvent) -> 
 pub(super) fn render_drive_selection_dialog(
     frame: &mut Frame,
     area: Rect,
-    drives: &[rwf_lib::model::dialog::DriveInfo],
+    drives: &[rwf_lib::dialog::DriveInfo],
     selected_index: usize,
     filter: &str,
     loading: bool,
@@ -99,7 +99,7 @@ pub(super) fn render_drive_selection_dialog(
     let item_width = area.width.saturating_sub(4) as usize;
 
     // Compute filtered list
-    let filtered: Vec<&rwf_lib::model::dialog::DriveInfo> = if filter.is_empty() {
+    let filtered: Vec<&rwf_lib::dialog::DriveInfo> = if filter.is_empty() {
         drives.iter().collect()
     } else {
         let lower = filter.to_lowercase();

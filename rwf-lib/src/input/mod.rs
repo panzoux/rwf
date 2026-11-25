@@ -774,7 +774,7 @@ pub fn expand_association_command(
     assoc: &crate::config::ExtensionAssociation,
 ) -> Result<(String, Location, Option<String>), String> {
     let expander = crate::macro_expander::MacroExpander::new();
-    let func = crate::model::dialog::CustomFunction::new("open", &assoc.command);
+    let func = crate::dialog::CustomFunction::new("open", &assoc.command);
     let func = if let Some(ref shell) = assoc.shell {
         func.with_shell(shell)
     } else {
@@ -1214,7 +1214,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 vec![]
             } else {
                 vec![Transition::ShowDialog {
-                    dialog: crate::model::Dialog::history_dialog(
+                    dialog: crate::dialog::Dialog::history_dialog(
                         tab_index,
                         active_pane,
                         left_entries,
@@ -1261,7 +1261,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::InvertMarks => vec![Transition::InvertMarks],
         Action::WildcardMarking => {
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::wildcard_mark(),
+                dialog: crate::dialog::Dialog::wildcard_mark(),
             }]
         }
         Action::RangeMarking => {
@@ -1314,7 +1314,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::OpenSortDialog => {
             let pane = state.active_pane();
-            let dialog = crate::model::Dialog::sort_dialog(pane.sort_mode, pane.sort_order);
+            let dialog = crate::dialog::Dialog::sort_dialog(pane.sort_mode, pane.sort_order);
             vec![Transition::ShowDialog { dialog }]
         }
         Action::DisplayModeDetailed => vec![Transition::ChangeDisplayMode {
@@ -1374,7 +1374,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 .collect();
 
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::tab_selector(tab_names),
+                dialog: crate::dialog::Dialog::tab_selector(tab_names),
             }]
         }
         Action::Copy => {
@@ -1485,7 +1485,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             }
 
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::delete_confirm(targets, to_trash, force_fallback),
+                dialog: crate::dialog::Dialog::delete_confirm(targets, to_trash, force_fallback),
             }]
         }
         Action::DeleteForce => {
@@ -1517,7 +1517,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             // `JobKind::Delete` rather than a `MoveToTrash`; see
             // `process_dialog_confirmation`.
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::delete_confirm(targets, false, false),
+                dialog: crate::dialog::Dialog::delete_confirm(targets, false, false),
             }]
         }
         Action::EmptyTrash => {
@@ -1555,7 +1555,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             if let Some(entry) = state.active_pane().current_entry() {
                 let current_name = entry.name.clone();
                 vec![Transition::ShowDialog {
-                    dialog: crate::model::Dialog::simple_rename(current_name),
+                    dialog: crate::dialog::Dialog::simple_rename(current_name),
                 }]
             } else {
                 vec![]
@@ -1567,12 +1567,12 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::CreateDirectory => {
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::input("Create Directory", "Directory name:", ""),
+                dialog: crate::dialog::Dialog::input("Create Directory", "Directory name:", ""),
             }]
         }
         Action::CreateFile => {
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::input("Create File", "File name:", ""),
+                dialog: crate::dialog::Dialog::input("Create File", "File name:", ""),
             }]
         }
         Action::ShowAttrTimestampDialog => {
@@ -1595,7 +1595,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         }
         Action::FileMaskFilter => {
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::file_mask(state.active_pane().file_mask.as_deref()),
+                dialog: crate::dialog::Dialog::file_mask(state.active_pane().file_mask.as_deref()),
             }]
         }
         Action::ClearSearchFilter => {
@@ -1678,8 +1678,8 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 &state.config,
                 Some(&state.config_layers),
             );
-            let mut dialog = crate::model::Dialog::help_with_language(lang);
-            if let crate::model::DialogContent::Help(crate::model::HelpDialog {
+            let mut dialog = crate::dialog::Dialog::help_with_language(lang);
+            if let crate::dialog::DialogContent::Help(crate::dialog::HelpDialog {
                 entries: ref mut e,
                 show_unbound: ref mut u,
                 ..
@@ -1698,7 +1698,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
         Action::JobManager => {
             // Show job manager dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::job_manager(),
+                dialog: crate::dialog::Dialog::job_manager(),
             }]
         }
         Action::CalculateDirectorySize => {
@@ -1933,7 +1933,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
             debug!("Creating compression dialog with {} file(s)", sources.len());
             // Show compression dialog
             vec![Transition::ShowDialog {
-                dialog: crate::model::Dialog::compression(
+                dialog: crate::dialog::Dialog::compression(
                     sources,
                     state.config.text_input.edit_mode,
                 ),
@@ -1946,7 +1946,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                 if is_archive(&entry.location) {
                     let dest = state.opposite_pane().current_location.clone();
                     vec![Transition::ShowDialog {
-                        dialog: crate::model::Dialog::extraction_confirm(
+                        dialog: crate::dialog::Dialog::extraction_confirm(
                             entry.location.clone(),
                             dest,
                             1, // file_count - will be determined when archive is opened
@@ -2464,7 +2464,7 @@ mod miscellaneous_tests;
 #[cfg(test)]
 mod destructive_delete_tests {
     use super::*;
-    use crate::model::dialog::DialogContent;
+    use crate::dialog::DialogContent;
     use crate::test_utils::{test_state, FileEntryBuilder};
 
     fn state_with_cursor_file() -> crate::AppState {

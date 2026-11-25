@@ -27,8 +27,8 @@ use serde_json::Value;
 use crate::config::{
     AppConfig, ConfigLoadResult, ConfigManager, ExtensionAssociation, FileTypeMapping,
 };
+use crate::dialog::CustomFunction;
 use crate::input::KeyBindings;
-use crate::model::dialog::CustomFunction;
 
 /// What the command line asked for, set once by `main` before any config loads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -323,7 +323,7 @@ pub struct LoadedFunctions {
 }
 
 fn built_in_functions() -> Vec<CustomFunction> {
-    crate::model::dialog::parse_custom_functions(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS)
+    crate::dialog::parse_custom_functions(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS)
         .expect("embedded default_custom_functions.json is always valid")
 }
 
@@ -372,8 +372,8 @@ pub fn load_custom_functions(path: &Path, layering: ConfigLayering) -> LoadedFun
     };
 
     let mut functions = merged.functions;
-    crate::model::dialog::resolve_menu_files(&mut functions, user_dir);
-    let problems = crate::model::dialog::validate_custom_functions(&functions);
+    crate::dialog::resolve_menu_files(&mut functions, user_dir);
+    let problems = crate::dialog::validate_custom_functions(&functions);
     let result = if problems.is_empty() {
         result
     } else {
@@ -398,8 +398,8 @@ fn read_user_functions(path: &Path) -> Result<(Vec<CustomFunction>, Vec<String>)
     let disabled = entries
         .map(|a| take_disabled(a, |e| str_field(e, "Name")))
         .unwrap_or_default();
-    let functions = crate::model::dialog::parse_custom_functions(&value.to_string())
-        .map_err(|e| e.to_string())?;
+    let functions =
+        crate::dialog::parse_custom_functions(&value.to_string()).map_err(|e| e.to_string())?;
     Ok((functions, disabled))
 }
 
@@ -525,7 +525,7 @@ fn menu_file_results(user_dir: &Path, layering: ConfigLayering) -> Vec<ConfigLoa
         let is_built_in = p
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| crate::model::dialog::built_in_menu(n).is_some());
+            .is_some_and(|n| crate::dialog::built_in_menu(n).is_some());
         if !is_built_in {
             results.push(ConfigManager::validate_json_file(&p));
         }

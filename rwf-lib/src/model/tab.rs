@@ -10,8 +10,8 @@ use std::path::PathBuf;
 #[derive(Debug, Default)]
 pub struct TabViewerState {
     pub viewer: Option<crate::model::viewer::ViewerState>,
-    pub viewer_job_id: Option<crate::job::JobId>,
-    pub viewer_search_job_id: Option<crate::job::JobId>,
+    pub viewer_job_id: Option<crate::model::job_id::JobId>,
+    pub viewer_search_job_id: Option<crate::model::job_id::JobId>,
     pub viewer_layout: ViewerLayout,
     pub viewer_preferred_layout: ViewerLayout,
     /// Which file pane the tab's SideBySide viewer is anchored to. Per tab, not per

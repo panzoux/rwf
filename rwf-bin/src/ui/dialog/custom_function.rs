@@ -16,7 +16,7 @@ use crate::ui::smart_truncate;
 use crate::ui::unicode_utils::{pad_to_width, truncate_to_width};
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::{CustomFunctionMenuDialog, CustomFunctionSelectorContent, MenuItem};
+use rwf_lib::dialog::{CustomFunctionMenuDialog, CustomFunctionSelectorContent, MenuItem};
 
 use super::DialogAction;
 
@@ -64,7 +64,7 @@ pub(super) fn handle_selector_input(
     } = dialog;
     use crossterm::event::KeyCode;
     let lower = filter.to_lowercase();
-    let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
+    let filtered: Vec<&rwf_lib::dialog::CustomFunction> = if filter.is_empty() {
         functions.iter().collect()
     } else {
         functions
@@ -213,7 +213,7 @@ pub(super) fn handle_menu_input(
 pub(super) fn render_custom_function_selector(
     frame: &mut Frame,
     area: Rect,
-    functions: &[rwf_lib::model::dialog::CustomFunction],
+    functions: &[rwf_lib::dialog::CustomFunction],
     origins: &std::collections::HashMap<String, rwf_lib::config_layers::ConfigOrigin>,
     selected_index: usize,
     filter: &str,
@@ -224,7 +224,7 @@ pub(super) fn render_custom_function_selector(
 
     let item_width = area.width.saturating_sub(4) as usize;
 
-    let filtered: Vec<&rwf_lib::model::dialog::CustomFunction> = if filter.is_empty() {
+    let filtered: Vec<&rwf_lib::dialog::CustomFunction> = if filter.is_empty() {
         functions.iter().collect()
     } else {
         let lower = filter.to_lowercase();
@@ -308,7 +308,7 @@ pub(super) fn render_custom_function_selector(
 pub(super) fn render_custom_function_menu(
     frame: &mut Frame,
     area: Rect,
-    items: &[rwf_lib::model::dialog::MenuItem],
+    items: &[rwf_lib::dialog::MenuItem],
     selected_index: usize,
 ) {
     let base_style = crate::ui::dialog::common::DIALOG_TEXT;

@@ -8,7 +8,7 @@ use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 use crate::ui::smart_truncate;
 
 use crossterm::event::KeyEvent;
-use rwf_lib::model::dialog::{Dialog, DialogContent, HistoryDialogContent};
+use rwf_lib::dialog::{Dialog, DialogContent, HistoryDialogContent};
 
 use super::DialogAction;
 

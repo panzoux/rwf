@@ -3,8 +3,8 @@
 //! **Validates: Requirements 48.1-48.7**
 
 use crate::config::AppConfig;
+use crate::dialog::{Dialog, DialogContent, HelpDialog};
 use crate::help_content::HelpContent;
-use crate::model::{Dialog, DialogContent, HelpDialog};
 use crate::state::{update_state, AppState, Transition};
 
 #[test]

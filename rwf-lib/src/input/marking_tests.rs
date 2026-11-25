@@ -64,7 +64,7 @@ mod tests {
                 assert_eq!(dialog.title, "Wildcard Marking");
                 assert!(matches!(
                     dialog.content,
-                    crate::model::DialogContent::WildcardMark { .. }
+                    crate::dialog::DialogContent::WildcardMark { .. }
                 ));
             }
             _ => panic!("Expected ShowDialog transition"),

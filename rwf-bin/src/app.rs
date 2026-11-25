@@ -6,8 +6,8 @@ use anyhow::Result;
 use crossterm::event::{self, Event};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rwf_lib::backend::{LocalFilesystemBackend, MultiFormatArchiveHandler};
+use rwf_lib::dialog::ConflictPair;
 use rwf_lib::job::{JobKind, JobSpec};
-use rwf_lib::model::dialog::ConflictPair;
 use rwf_lib::{process_pending_events, AppState, KeyBindings, Transition, WorkerPool};
 use std::io::Stdout;
 use std::sync::Arc;
@@ -626,7 +626,7 @@ impl App {
                     if rwf_lib::diagnostics::stop_session_awaiting_report().is_some() {
                         self.state
                             .dialogs
-                            .push(rwf_lib::model::Dialog::multiline_input(
+                            .push(rwf_lib::dialog::Dialog::multiline_input(
                                 DIAGNOSTIC_REPORT_DIALOG_TITLE,
                                 "What happened? (problem / expected behaviour)",
                                 "",
@@ -808,7 +808,7 @@ impl App {
                                     Some((job_spec, conflicts.clone(), job_name.clone(), job_name));
                                 self.state
                                     .dialogs
-                                    .push(rwf_lib::model::Dialog::file_conflict(
+                                    .push(rwf_lib::dialog::Dialog::file_conflict(
                                         conflicts,
                                         0,
                                         self.state.config.text_input.edit_mode,
@@ -1252,27 +1252,23 @@ impl App {
                     // silently recording would be the worst of both.
                     let is_diag_report = dialog.title == DIAGNOSTIC_REPORT_DIALOG_TITLE;
 
-                    if let rwf_lib::model::dialog::DialogContent::FileConflict { .. } =
-                        &dialog.content
-                    {
+                    if let rwf_lib::dialog::DialogContent::FileConflict { .. } = &dialog.content {
                         self.pending_conflict_job = None;
                     }
-                    if let rwf_lib::model::dialog::DialogContent::PatternRename { .. } =
-                        &dialog.content
-                    {
+                    if let rwf_lib::dialog::DialogContent::PatternRename { .. } = &dialog.content {
                         self.pattern_rename_dirty = false;
                         self.pattern_rename_last_changed = None;
                         self.pattern_rename_pending = None;
                     }
                     let loading_job = match &dialog.content {
-                        rwf_lib::model::dialog::DialogContent::JumpToFile(
-                            rwf_lib::model::dialog::JumpToFileDialog { loading_job_id, .. },
+                        rwf_lib::dialog::DialogContent::JumpToFile(
+                            rwf_lib::dialog::JumpToFileDialog { loading_job_id, .. },
                         ) => *loading_job_id,
-                        rwf_lib::model::dialog::DialogContent::JumpToPath(
-                            rwf_lib::model::dialog::JumpToPathDialog { loading_job_id, .. },
+                        rwf_lib::dialog::DialogContent::JumpToPath(
+                            rwf_lib::dialog::JumpToPathDialog { loading_job_id, .. },
                         ) => *loading_job_id,
-                        rwf_lib::model::dialog::DialogContent::DriveSelection(
-                            rwf_lib::model::dialog::DriveSelectionDialog { loading_job_id, .. },
+                        rwf_lib::dialog::DialogContent::DriveSelection(
+                            rwf_lib::dialog::DriveSelectionDialog { loading_job_id, .. },
                         ) => *loading_job_id,
                         _ => None,
                     };
@@ -1281,7 +1277,7 @@ impl App {
                     }
                     let is_menu_dialog = matches!(
                         &dialog.content,
-                        rwf_lib::model::dialog::DialogContent::CustomFunctionMenu { .. }
+                        rwf_lib::dialog::DialogContent::CustomFunctionMenu { .. }
                     );
                     self.state.dialogs.pop();
                     // Esc on a CustomFunctionMenu closes the whole stack (not just the menu)
@@ -1289,7 +1285,7 @@ impl App {
                         if let Some(d) = self.state.dialogs.current() {
                             if matches!(
                                 &d.content,
-                                rwf_lib::model::dialog::DialogContent::CustomFunctionSelector { .. }
+                                rwf_lib::dialog::DialogContent::CustomFunctionSelector { .. }
                             ) {
                                 self.state.dialogs.pop();
                             }
@@ -1303,12 +1299,12 @@ impl App {
                 crate::ui::dialog::DialogAction::Confirm => {
                     let is_function_menu = matches!(
                         &dialog.content,
-                        rwf_lib::model::dialog::DialogContent::CustomFunctionMenu { .. }
+                        rwf_lib::dialog::DialogContent::CustomFunctionMenu { .. }
                     );
                     let mut should_pop = true;
                     match &mut dialog.content {
-                        rwf_lib::model::dialog::DialogContent::FileConflict(
-                            rwf_lib::model::dialog::FileConflictDialog {
+                        rwf_lib::dialog::DialogContent::FileConflict(
+                            rwf_lib::dialog::FileConflictDialog {
                                 conflicts,
                                 current_index,
                                 decisions,
@@ -1322,15 +1318,30 @@ impl App {
                             } else if let Some((job_spec, conflicts_list, job_name, job_desc)) =
                                 self.pending_conflict_job.take()
                             {
-                                let conflict_decisions: Vec<_> = conflicts_list.iter().zip(decisions.iter()).map(|(c, a)| rwf_lib::job::ConflictDecision {
-                                    source: c.source_path.clone(), dest: c.dest_path.clone(),
-                                    action: match a {
-                                        rwf_lib::model::dialog::ConflictAction::Force => rwf_lib::job::ConflictAction::Force,
-                                        rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer => rwf_lib::job::ConflictAction::OverwriteIfNewer,
-                                        rwf_lib::model::dialog::ConflictAction::Skip => rwf_lib::job::ConflictAction::Skip,
-                                        rwf_lib::model::dialog::ConflictAction::Rename { new_name } => rwf_lib::job::ConflictAction::Rename { new_name: new_name.clone() },
-                                    },
-                                }).collect();
+                                let conflict_decisions: Vec<_> = conflicts_list
+                                    .iter()
+                                    .zip(decisions.iter())
+                                    .map(|(c, a)| rwf_lib::job::ConflictDecision {
+                                        source: c.source_path.clone(),
+                                        dest: c.dest_path.clone(),
+                                        action: match a {
+                                            rwf_lib::dialog::ConflictAction::Force => {
+                                                rwf_lib::job::ConflictAction::Force
+                                            }
+                                            rwf_lib::dialog::ConflictAction::OverwriteIfNewer => {
+                                                rwf_lib::job::ConflictAction::OverwriteIfNewer
+                                            }
+                                            rwf_lib::dialog::ConflictAction::Skip => {
+                                                rwf_lib::job::ConflictAction::Skip
+                                            }
+                                            rwf_lib::dialog::ConflictAction::Rename {
+                                                new_name,
+                                            } => rwf_lib::job::ConflictAction::Rename {
+                                                new_name: new_name.clone(),
+                                            },
+                                        },
+                                    })
+                                    .collect();
 
                                 let mut final_job = job_spec.clone();
                                 final_job.conflict_decisions = Some(conflict_decisions);
@@ -1359,7 +1370,7 @@ impl App {
                             }
                         }
                         _ => {
-                            if let rwf_lib::model::dialog::DialogContent::PatternRename { .. } =
+                            if let rwf_lib::dialog::DialogContent::PatternRename { .. } =
                                 &dialog.content
                             {
                                 self.pattern_rename_dirty = false;
@@ -1482,7 +1493,7 @@ impl App {
                         if let Some(d) = self.state.dialogs.current() {
                             if matches!(
                                 &d.content,
-                                rwf_lib::model::dialog::DialogContent::CustomFunctionSelector { .. }
+                                rwf_lib::dialog::DialogContent::CustomFunctionSelector { .. }
                             ) {
                                 self.state.dialogs.pop();
                             }
@@ -1502,22 +1513,37 @@ impl App {
                 }
                 crate::ui::dialog::DialogAction::ConfirmAll => {
                     // Shift+Enter: all decisions already pushed by handle_file_conflict_input; submit job now
-                    if let rwf_lib::model::dialog::DialogContent::FileConflict(
-                        rwf_lib::model::dialog::FileConflictDialog { decisions, .. },
+                    if let rwf_lib::dialog::DialogContent::FileConflict(
+                        rwf_lib::dialog::FileConflictDialog { decisions, .. },
                     ) = &mut dialog.content
                     {
                         if let Some((job_spec, conflicts_list, job_name, job_desc)) =
                             self.pending_conflict_job.take()
                         {
-                            let conflict_decisions: Vec<_> = conflicts_list.iter().zip(decisions.iter()).map(|(c, a)| rwf_lib::job::ConflictDecision {
-                                source: c.source_path.clone(), dest: c.dest_path.clone(),
-                                action: match a {
-                                    rwf_lib::model::dialog::ConflictAction::Force => rwf_lib::job::ConflictAction::Force,
-                                    rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer => rwf_lib::job::ConflictAction::OverwriteIfNewer,
-                                    rwf_lib::model::dialog::ConflictAction::Skip => rwf_lib::job::ConflictAction::Skip,
-                                    rwf_lib::model::dialog::ConflictAction::Rename { new_name } => rwf_lib::job::ConflictAction::Rename { new_name: new_name.clone() },
-                                },
-                            }).collect();
+                            let conflict_decisions: Vec<_> = conflicts_list
+                                .iter()
+                                .zip(decisions.iter())
+                                .map(|(c, a)| rwf_lib::job::ConflictDecision {
+                                    source: c.source_path.clone(),
+                                    dest: c.dest_path.clone(),
+                                    action: match a {
+                                        rwf_lib::dialog::ConflictAction::Force => {
+                                            rwf_lib::job::ConflictAction::Force
+                                        }
+                                        rwf_lib::dialog::ConflictAction::OverwriteIfNewer => {
+                                            rwf_lib::job::ConflictAction::OverwriteIfNewer
+                                        }
+                                        rwf_lib::dialog::ConflictAction::Skip => {
+                                            rwf_lib::job::ConflictAction::Skip
+                                        }
+                                        rwf_lib::dialog::ConflictAction::Rename { new_name } => {
+                                            rwf_lib::job::ConflictAction::Rename {
+                                                new_name: new_name.clone(),
+                                            }
+                                        }
+                                    },
+                                })
+                                .collect();
                             let mut final_job = job_spec.clone();
                             final_job.conflict_decisions = Some(conflict_decisions);
                             let tab_id = self.state.current_tab().id;
@@ -1550,8 +1576,8 @@ impl App {
                 crate::ui::dialog::DialogAction::PatternChanged => {
                     // Stash current fields for debounced preview regeneration
                     if let Some(dialog) = self.state.dialogs.current() {
-                        if let rwf_lib::model::dialog::DialogContent::PatternRename(
-                            rwf_lib::model::dialog::PatternRenameContent {
+                        if let rwf_lib::dialog::DialogContent::PatternRename(
+                            rwf_lib::dialog::PatternRenameContent {
                                 find,
                                 replace,
                                 use_regex,
@@ -1576,8 +1602,7 @@ impl App {
                     return true;
                 }
                 crate::ui::dialog::DialogAction::OpenMenu { title, items } => {
-                    let menu_dialog =
-                        rwf_lib::model::dialog::Dialog::custom_function_menu(title, items);
+                    let menu_dialog = rwf_lib::dialog::Dialog::custom_function_menu(title, items);
                     self.state.dialogs.push(menu_dialog);
                     return true;
                 }
@@ -3730,7 +3755,8 @@ mod leap_investigation {
 mod trash_job_panel_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::{Dialog, Location};
+    use rwf_lib::dialog::Dialog;
+    use rwf_lib::model::Location;
     use tempfile::TempDir;
 
     fn test_app_with_delete_confirm_dialog(to_trash: bool) -> App {
@@ -3794,8 +3820,8 @@ mod trash_job_panel_tests {
 mod reload_config_confirm_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::dialog::ConfirmableAction;
-    use rwf_lib::model::Dialog;
+    use rwf_lib::dialog::ConfirmableAction;
+    use rwf_lib::dialog::Dialog;
 
     fn test_app_with_reload_confirm_dialog() -> App {
         let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
@@ -3844,8 +3870,8 @@ mod reload_config_confirm_tests {
 mod empty_trash_job_panel_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::dialog::ConfirmableAction;
-    use rwf_lib::model::Dialog;
+    use rwf_lib::dialog::ConfirmableAction;
+    use rwf_lib::dialog::Dialog;
 
     #[tokio::test]
     async fn confirming_empty_trash_registers_labeled_background_job() {
@@ -3853,7 +3879,7 @@ mod empty_trash_job_panel_tests {
         state.dialogs.push(Dialog::action_confirm(
             "Empty Trash",
             "Permanently empty 3 items (4.0 KB) from the trash? This cannot be undone.",
-            Some(rwf_lib::model::dialog::ConfirmStats {
+            Some(rwf_lib::dialog::ConfirmStats {
                 count: 3,
                 total_size: 4096,
             }),
@@ -3888,7 +3914,8 @@ mod empty_trash_job_panel_tests {
 mod trash_browser_restore_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::{Dialog, Location, TrashLocation, TrashRecord};
+    use rwf_lib::dialog::Dialog;
+    use rwf_lib::model::{Location, TrashLocation, TrashRecord};
     use std::path::PathBuf;
     use std::time::SystemTime;
 
@@ -3908,7 +3935,7 @@ mod trash_browser_restore_tests {
     async fn confirming_selected_item_restores_that_item_not_the_first() {
         let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
         let mut dialog = Dialog::trash_browser(vec![record("first.txt"), record("second.txt")]);
-        if let rwf_lib::model::DialogContent::TrashBrowser(d) = &mut dialog.content {
+        if let rwf_lib::dialog::DialogContent::TrashBrowser(d) = &mut dialog.content {
             d.selected_index = 1;
         }
         state.dialogs.push(dialog);
@@ -3943,10 +3970,10 @@ mod trash_browser_restore_tests {
 mod operation_report_confirm_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::dialog::ConfirmableAction;
+    use rwf_lib::dialog::ConfirmableAction;
+    use rwf_lib::dialog::{Dialog, DialogContent};
     use rwf_lib::model::{
-        Dialog, DialogContent, Location, OperationRecord, OperationReport, ReversalAction,
-        UndoAvailability,
+        Location, OperationRecord, OperationReport, ReversalAction, UndoAvailability,
     };
     use tempfile::TempDir;
 
@@ -4193,7 +4220,8 @@ mod operation_report_confirm_tests {
 mod operation_report_navigation_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::{DialogContent, OperationReport};
+    use rwf_lib::dialog::DialogContent;
+    use rwf_lib::model::OperationReport;
 
     #[tokio::test]
     async fn shift_down_navigates_to_an_older_report_and_shift_up_returns() {
@@ -4310,8 +4338,8 @@ mod sbs_refresh_guard_tests {
 mod main_thread_job_routing_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::dialog::{CustomFunction, MenuItem};
-    use rwf_lib::model::Dialog;
+    use rwf_lib::dialog::Dialog;
+    use rwf_lib::dialog::{CustomFunction, MenuItem};
 
     /// Deliberately not a name from the shipped defaults: `AppState::new` loads the
     /// developer's real custom_functions.json from the OS config dir, and name lookup
@@ -4452,8 +4480,8 @@ mod pane_read_visibility_tests {
 #[cfg(test)]
 mod diagnostic_stop_tests {
     use super::*;
-    use rwf_lib::model::dialog::DialogContent;
-    use rwf_lib::model::Dialog;
+    use rwf_lib::dialog::Dialog;
+    use rwf_lib::dialog::DialogContent;
 
     fn test_app() -> App {
         let state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());

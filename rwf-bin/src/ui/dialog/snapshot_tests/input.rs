@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::Input`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 
 #[test]
 fn input_empty_default() {
@@ -43,7 +43,7 @@ fn input_with_scrolling() {
 fn input_with_validation_error() {
     let state = test_state();
     let mut dialog = Dialog::input("Create File", "File name:", "notes.txt");
-    if let rwf_lib::model::dialog::DialogContent::Input(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::Input(d) = &mut dialog.content {
         d.error = Some("'notes.txt' already exists".to_string());
     }
     snapshot_dialog("input_with_validation_error", &dialog, &state);

@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
     Frame,
 };
-use rwf_lib::model::dialog::DialogContent;
+use rwf_lib::dialog::DialogContent;
 
 use super::common::{titled_block, DIALOG_SELECTED, DIALOG_TEXT};
 
@@ -97,7 +97,7 @@ fn get_button_labels(content: &DialogContent) -> Vec<&'static str> {
 fn default_button_index(content: &DialogContent) -> usize {
     match content {
         // Retrying a dead network path blocks a worker for another full timeout.
-        DialogContent::ReadFailure(_) => rwf_lib::model::dialog::READ_FAILURE_DISMISS,
+        DialogContent::ReadFailure(_) => rwf_lib::dialog::READ_FAILURE_DISMISS,
         _ => 0,
     }
 }

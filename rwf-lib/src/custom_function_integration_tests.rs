@@ -5,9 +5,10 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::CustomFunction;
     use crate::job::{JobKind, JobSpec, PipeToAction};
     use crate::macro_expander::MacroExpander;
-    use crate::model::{CustomFunction, Location};
+    use crate::model::Location;
     use crate::pipe_to_action::{process_pipe_to_action, PipeToActionResult};
     use crate::state::AppState;
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -120,7 +121,7 @@ mod tests {
         // Add OS-specific configuration
         #[cfg(target_os = "linux")]
         {
-            use crate::model::OsConfig;
+            use crate::dialog::OsConfig;
             use std::collections::HashMap;
 
             let mut os_specific = HashMap::new();
@@ -261,7 +262,7 @@ mod tests {
     /// **Validates: Requirements 28.1**
     #[test]
     fn test_custom_function_loading() {
-        use crate::model::dialog::load_custom_functions;
+        use crate::dialog::load_custom_functions;
         use std::io::Write;
         use tempfile::NamedTempFile;
 
@@ -295,7 +296,7 @@ mod tests {
     /// **Validates: Requirements 28.3**
     #[test]
     fn test_custom_function_selector_filtering() {
-        use crate::model::dialog::CustomFunctionSelector;
+        use crate::dialog::CustomFunctionSelector;
 
         let functions = vec![
             CustomFunction::new("Copy File", "cp $F $O"),

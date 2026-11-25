@@ -129,7 +129,7 @@ impl<B: FilesystemBackend + 'static, A: ArchiveHandler + 'static> WorkerPool<B, 
         &self,
         sources: &[crate::model::Location],
         dest: &crate::model::Location,
-    ) -> Vec<crate::model::dialog::ConflictPair> {
+    ) -> Vec<crate::dialog::ConflictPair> {
         crate::job::detect_conflicts(
             sources,
             dest,

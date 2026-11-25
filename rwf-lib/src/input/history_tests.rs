@@ -80,7 +80,7 @@ mod tests {
             transitions.iter().any(|t| matches!(
                 t,
                 Transition::ShowDialog { dialog }
-                    if matches!(dialog.content, crate::model::dialog::DialogContent::HistoryDialog(_))
+                    if matches!(dialog.content, crate::dialog::DialogContent::HistoryDialog(_))
             )),
             "ShowHistoryDialog must open a HistoryDialog dialog"
         );
@@ -132,8 +132,8 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::ShowHistoryDialog);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::HistoryDialog(
-                crate::model::dialog::HistoryDialogContent { left_entries, .. },
+            if let crate::dialog::DialogContent::HistoryDialog(
+                crate::dialog::HistoryDialogContent { left_entries, .. },
             ) = &dialog.content
             {
                 let paths: Vec<String> = left_entries.iter().map(|l| l.display_path()).collect();
@@ -178,8 +178,8 @@ mod tests {
 
         let transitions = action_to_transitions(&state, &Action::ShowHistoryDialog);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::HistoryDialog(
-                crate::model::dialog::HistoryDialogContent {
+            if let crate::dialog::DialogContent::HistoryDialog(
+                crate::dialog::HistoryDialogContent {
                     left_selected,
                     left_current_pos,
                     left_entries,

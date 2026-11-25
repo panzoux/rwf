@@ -4,7 +4,7 @@
 //! scan the real filesystem.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::dialog::{Dialog, DialogContent};
 
 #[test]
 fn jump_to_file_empty() {
@@ -39,7 +39,7 @@ fn jump_to_file_query_and_selection() {
             "/test/docs/guide.md".to_string(),
         ],
     );
-    if let DialogContent::JumpToFile(rwf_lib::model::dialog::JumpToFileDialog {
+    if let DialogContent::JumpToFile(rwf_lib::dialog::JumpToFileDialog {
         query,
         cursor_pos,
         suggestions,

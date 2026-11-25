@@ -15,7 +15,7 @@
 
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 use rwf_lib::{AppConfig, AppState};
 
 // Every snapshot in here covers Win32 file attributes, so the whole module is

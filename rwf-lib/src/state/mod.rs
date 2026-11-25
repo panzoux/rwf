@@ -6,11 +6,11 @@
 mod handlers;
 pub mod helpers;
 
+use crate::dialog::DialogStack;
 use crate::job::{BackgroundJobManager, JobId, JobManager, JobSpec};
 use crate::log_manager::LogManager;
 use crate::model::{
-    DialogStack, DirectoryCache, NavigationStateCache, SearchModel, TabManager, UIState,
-    ViewerState,
+    DirectoryCache, NavigationStateCache, SearchModel, TabManager, UIState, ViewerState,
 };
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -34,7 +34,7 @@ impl StoragePaths {
     /// The real per-user locations under `dirs::config_dir()/rwf/`.
     pub fn user_config_dir() -> Self {
         Self {
-            registered_folders: Some(crate::model::RegisteredFolderManager::default_path()),
+            registered_folders: Some(crate::dialog::RegisteredFolderManager::default_path()),
             session: Some(crate::session::SessionState::default_path()),
         }
     }
@@ -56,7 +56,7 @@ pub struct AppState {
     /// Dialog stack
     pub dialogs: DialogStack,
     /// Registered folder manager
-    pub registered_folders: crate::model::RegisteredFolderManager,
+    pub registered_folders: crate::dialog::RegisteredFolderManager,
     /// Persistence locations; all `None` unless attached (see [`StoragePaths`]).
     pub storage: StoragePaths,
     /// Directory cache for fast navigation
@@ -86,7 +86,7 @@ pub struct AppState {
     /// after extension_associations and before the internal viewer.
     pub file_type_map: Vec<crate::config::FileTypeMapping>,
     /// Custom functions: the built-ins with custom_functions.json layered over them
-    pub custom_functions: Vec<crate::model::dialog::CustomFunction>,
+    pub custom_functions: Vec<crate::dialog::CustomFunction>,
     /// Which layering mode loaded the list-type config files, and which custom
     /// functions are still the built-in definition (Phase 7.26).
     pub config_layers: crate::config_layers::ConfigLayers,
@@ -123,7 +123,7 @@ pub struct AppState {
     pub confirmation_needs_keybinding_reload: bool,
     /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
     /// consumed and cleared when that Input dialog confirms.
-    pub pending_custom_function_input: Option<crate::model::dialog::CustomFunction>,
+    pub pending_custom_function_input: Option<crate::dialog::CustomFunction>,
     /// Set by process_dialog_confirmation when it pushes a new dialog; tells app.rs not to
     /// pop the current dialog (it was replaced by the newly pushed one).
     pub suppress_next_dialog_pop: bool,
@@ -217,7 +217,7 @@ impl AppState {
             search,
             ui: UIState::new(),
             dialogs: DialogStack::new(),
-            registered_folders: crate::model::RegisteredFolderManager::new(),
+            registered_folders: crate::dialog::RegisteredFolderManager::new(),
             storage: StoragePaths::default(),
             cache: DirectoryCache::new(Duration::from_secs(30)),
             navigation_cache: NavigationStateCache::new(),
@@ -766,7 +766,7 @@ pub enum Transition {
         width: usize,
     },
     ShowDialog {
-        dialog: crate::model::Dialog,
+        dialog: crate::dialog::Dialog,
     },
     CloseDialog,
     UpdateDialogInput {
@@ -2725,7 +2725,7 @@ mod tests {
 
     #[test]
     fn test_show_dialog_transition() {
-        use crate::model::Dialog;
+        use crate::dialog::Dialog;
         let config = AppConfig::default();
         let mut state = AppState::new(config);
 
@@ -2733,7 +2733,7 @@ mod tests {
             "Title",
             "Message",
             None,
-            crate::model::ConfirmableAction::ReloadConfig,
+            crate::dialog::ConfirmableAction::ReloadConfig,
         );
 
         let result = update_state(&mut state, Transition::ShowDialog { dialog });
@@ -2744,7 +2744,7 @@ mod tests {
 
     #[test]
     fn test_close_dialog_transition() {
-        use crate::model::Dialog;
+        use crate::dialog::Dialog;
         let config = AppConfig::default();
         let mut state = AppState::new(config);
 
@@ -2752,7 +2752,7 @@ mod tests {
             "Title",
             "Message",
             None,
-            crate::model::ConfirmableAction::ReloadConfig,
+            crate::dialog::ConfirmableAction::ReloadConfig,
         ));
         assert!(state.dialogs.current().is_some());
 
@@ -2780,7 +2780,7 @@ mod tests {
         update_state(&mut state, Transition::ShowOperationReport);
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert!(
                     content.is_actionable(),
                     "opening via ShowOperationReport must show the live undo-stack target as actionable"
@@ -2806,7 +2806,7 @@ mod tests {
         assert!(result.ui_changed);
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert!(content.report.records.is_empty());
                 assert!(content.is_actionable());
                 // The sidebar always renders (see `render_operation_report_dialog`),
@@ -2853,7 +2853,7 @@ mod tests {
         );
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Move");
                 assert_eq!(content.history_cursor, 1);
                 assert_eq!(content.history.len(), 3);
@@ -2889,7 +2889,7 @@ mod tests {
         );
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Copy");
                 // `history` is newest-first, so the oldest entry clamps at
                 // the *last* index (1 of 2 here), not 0.
@@ -2921,7 +2921,7 @@ mod tests {
         );
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.operation_name, "Move");
                 assert!(content.is_actionable());
             }
@@ -2996,7 +2996,7 @@ mod tests {
         );
 
         match state.dialogs.current().map(|d| &d.content) {
-            Some(crate::model::dialog::DialogContent::OperationReportView(content)) => {
+            Some(crate::dialog::DialogContent::OperationReportView(content)) => {
                 assert_eq!(content.report.id, 3);
                 assert_eq!(content.report.operation_name, "Delete");
                 assert!(content.is_actionable());

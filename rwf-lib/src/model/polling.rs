@@ -4,8 +4,8 @@
 //! so any user-initiated read simply supersedes them. What a poll needs to know about
 //! itself lives here instead.
 
+use super::job_id::JobId;
 use super::{ActivePane, Location};
-use crate::job::JobId;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

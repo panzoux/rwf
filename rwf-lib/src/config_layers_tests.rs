@@ -5,8 +5,8 @@
 
 use super::*;
 use crate::config::ConfigLoadStatus;
+use crate::dialog::MenuContent;
 use crate::input::Action;
-use crate::model::dialog::MenuContent;
 use tempfile::TempDir;
 
 fn manager(dir: &TempDir) -> ConfigManager {
@@ -180,7 +180,7 @@ fn every_menu_a_built_in_function_opens_is_built_in() {
     for f in built_in_functions() {
         if let Some(MenuContent::File(file)) = &f.menu {
             assert!(
-                crate::model::dialog::built_in_menu(file).is_some(),
+                crate::dialog::built_in_menu(file).is_some(),
                 "{:?} opens {file}, which is not a built-in menu",
                 f.name
             );

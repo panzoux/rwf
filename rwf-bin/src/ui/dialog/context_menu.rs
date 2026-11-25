@@ -8,7 +8,7 @@ use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 use crate::ui::smart_truncate;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::ContextMenuDialog;
+use rwf_lib::dialog::ContextMenuDialog;
 
 use super::DialogAction;
 
@@ -20,7 +20,7 @@ pub(super) fn handle_input(dialog: &mut ContextMenuDialog, key: KeyEvent) -> Dia
         ..
     } = dialog;
     use crossterm::event::KeyCode;
-    use rwf_lib::model::dialog::ContextMenuAction;
+    use rwf_lib::dialog::ContextMenuAction;
     match key.code {
         KeyCode::Esc => return DialogAction::Cancel,
         KeyCode::Enter => return DialogAction::Confirm,
@@ -77,12 +77,12 @@ pub(super) fn handle_input(dialog: &mut ContextMenuDialog, key: KeyEvent) -> Dia
 pub(super) fn render_context_menu_dialog(
     frame: &mut Frame,
     area: Rect,
-    options: &[rwf_lib::model::dialog::ContextMenuOption],
+    options: &[rwf_lib::dialog::ContextMenuOption],
     selected_index: usize,
     detected_type_label: Option<&str>,
     detecting: bool,
 ) {
-    use rwf_lib::model::dialog::ContextMenuAction;
+    use rwf_lib::dialog::ContextMenuAction;
 
     let base_style = crate::ui::dialog::common::DIALOG_TEXT;
     let selected_style = crate::ui::dialog::common::DIALOG_SELECTED.add_modifier(Modifier::BOLD);

@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::SplitJoinDialog`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent, SplitJoinDialogContent, SplitJoinMode};
+use rwf_lib::dialog::{Dialog, DialogContent, SplitJoinDialogContent, SplitJoinMode};
 
 #[test]
 fn split_join_split_mode() {

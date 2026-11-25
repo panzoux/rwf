@@ -5,8 +5,8 @@
 //! manager stores jobs in a HashMap and row order would be nondeterministic.
 
 use super::{snapshot_dialog, test_state};
+use rwf_lib::dialog::Dialog;
 use rwf_lib::job::{JobKind, JobSpec};
-use rwf_lib::model::dialog::Dialog;
 use rwf_lib::model::Location;
 use rwf_lib::AppState;
 use std::path::PathBuf;
@@ -45,9 +45,10 @@ fn job_manager_one_pending_job() {
 fn job_manager_close_button_focused() {
     let state = state_with_one_job();
     let mut dialog = Dialog::job_manager();
-    if let rwf_lib::model::dialog::DialogContent::JobManager(
-        rwf_lib::model::dialog::JobManagerContent { focused_field, .. },
-    ) = &mut dialog.content
+    if let rwf_lib::dialog::DialogContent::JobManager(rwf_lib::dialog::JobManagerContent {
+        focused_field,
+        ..
+    }) = &mut dialog.content
     {
         *focused_field = 1; // Close button
     }

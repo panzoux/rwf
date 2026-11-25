@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{DialogContent, FileMaskDialog};
     use crate::input::{action_to_transitions, Action};
-    use crate::model::{ActivePane, DialogContent, FileMaskDialog, UIMode};
+    use crate::model::{ActivePane, UIMode};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
 

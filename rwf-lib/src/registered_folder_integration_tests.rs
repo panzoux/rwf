@@ -8,7 +8,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Location, RegisteredFolder};
+    use crate::dialog::RegisteredFolder;
+    use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::env;
@@ -19,7 +20,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set current location
         let location = Location::Local(PathBuf::from("/test/folder"));
@@ -45,7 +46,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders and add test folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
         state
             .registered_folders
             .add(RegisteredFolder::new("Home", "/home/user"));
@@ -62,8 +63,8 @@ mod tests {
         // Verify dialog content
         if let Some(dialog) = state.dialogs.current() {
             match &dialog.content {
-                crate::model::DialogContent::RegisteredFolderSelector(
-                    crate::model::RegisteredFolderSelectorContent {
+                crate::dialog::DialogContent::RegisteredFolderSelector(
+                    crate::dialog::RegisteredFolderSelectorContent {
                         folders,
                         filter,
                         selected_index,
@@ -85,7 +86,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Add a registered folder
         state
@@ -114,7 +115,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Try to navigate to a non-existent folder
         let result = update_state(
@@ -131,7 +132,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set an environment variable
         env::set_var("TEST_HOME", "/home/testuser");
@@ -165,7 +166,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set an environment variable with unique name for this test
         env::set_var("TEST_VAR_INTEGRATION_UNIX_BRACES", "value");
@@ -200,7 +201,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set an environment variable with unique name for this test
         env::set_var("TEST_VAR_INTEGRATION_POWERSHELL", "psvalue");
@@ -235,7 +236,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Add some files to the active pane
         let entries = vec![
@@ -296,7 +297,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Add a registered folder
         state
@@ -318,7 +319,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Mark a file
         state
@@ -342,7 +343,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set multiple environment variables
         env::set_var("VAR1", "first");
@@ -378,7 +379,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Ensure the variable doesn't exist
         env::remove_var("NONEXISTENT_VAR");
@@ -415,14 +416,14 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Set current location
         let location = Location::Local(PathBuf::from("/test/folder"));
         state.current_tab_mut().left_pane.current_location = location.clone();
 
         // Show the register folder dialog
-        state.dialogs.push(crate::model::Dialog::input(
+        state.dialogs.push(crate::dialog::Dialog::input(
             "Register Folder",
             "Enter folder name:",
             "",
@@ -445,7 +446,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Add registered folders
         state
@@ -459,7 +460,7 @@ mod tests {
         let folders = state.registered_folders.folders.clone();
         state
             .dialogs
-            .push(crate::model::Dialog::registered_folder_selector(folders));
+            .push(crate::dialog::Dialog::registered_folder_selector(folders));
 
         // Confirm the dialog (should navigate to the first folder)
         let result = update_state(&mut state, Transition::ConfirmDialog);
@@ -480,7 +481,7 @@ mod tests {
         let mut state = test_state();
 
         // Clear any pre-loaded folders
-        state.registered_folders = crate::model::RegisteredFolderManager::new();
+        state.registered_folders = crate::dialog::RegisteredFolderManager::new();
 
         // Add a file entry to the pane
         let file_entry = FileEntryBuilder::new("file.txt")
@@ -504,7 +505,7 @@ mod tests {
         let folders = state.registered_folders.folders.clone();
         state
             .dialogs
-            .push(crate::model::Dialog::registered_folder_selector(folders));
+            .push(crate::dialog::Dialog::registered_folder_selector(folders));
 
         // Confirm the dialog (should create a move job)
         let result = update_state(&mut state, Transition::ConfirmDialog);
@@ -537,7 +538,7 @@ mod tests {
     fn confirm_register_folder(state: &mut crate::state::AppState, name: &str) {
         state.current_tab_mut().left_pane.current_location =
             Location::Local(PathBuf::from("/test/folder"));
-        state.dialogs.push(crate::model::Dialog::input(
+        state.dialogs.push(crate::dialog::Dialog::input(
             "Register Folder",
             "Enter folder name:",
             "",
@@ -551,7 +552,7 @@ mod tests {
     /// overwritten with `[{"name":"My Folder","path":"/test/folder"}]` on every run).
     #[test]
     fn test_register_folder_never_touches_real_config_file() {
-        let real_path = crate::model::RegisteredFolderManager::default_path();
+        let real_path = crate::dialog::RegisteredFolderManager::default_path();
         let before = file_fingerprint(&real_path);
 
         let mut state = test_state();
@@ -571,7 +572,7 @@ mod tests {
     /// injected path.
     #[test]
     fn test_register_folder_saves_to_attached_storage_path() {
-        let real_path = crate::model::RegisteredFolderManager::default_path();
+        let real_path = crate::dialog::RegisteredFolderManager::default_path();
         let before = file_fingerprint(&real_path);
 
         let dir = crate::test_utils::temp_dir();

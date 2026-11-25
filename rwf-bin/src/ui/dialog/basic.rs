@@ -12,7 +12,7 @@ use ratatui::{
 
 use crossterm::event::KeyEvent;
 use rwf_lib::config::ViMode;
-use rwf_lib::model::dialog::{
+use rwf_lib::dialog::{
     ActionConfirmDialog, CompressionDialog, DeleteConfirmDialog, DialogContent, ErrorDialog,
     ExtractionConfirmDialog as RwfExtractionConfirmDialog, FileInfoDialog, InputDialog,
     JobManagerContent, SortDialog,
@@ -573,7 +573,7 @@ pub(super) fn handle_content_input(content: &mut DialogContent, key: KeyEvent) -
 mod input_dialog_error_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::InputDialog;
+    use rwf_lib::dialog::InputDialog;
 
     fn dialog_with_error(text: &str) -> InputDialog {
         let mut d = InputDialog::new("Name:".to_string(), text.to_string());

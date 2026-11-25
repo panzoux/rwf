@@ -12,7 +12,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use rwf_lib::model::dialog::OperationReportDialogContent;
+use rwf_lib::dialog::OperationReportDialogContent;
 use rwf_lib::model::{Location, OperationRecord, OperationReport, UndoAvailability};
 
 use crate::ui::{pad_to_width, smart_truncate};

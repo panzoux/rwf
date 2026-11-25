@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::FileInfo`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 use rwf_lib::model::{FileEntry, LinkKind, Location};
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -83,7 +83,7 @@ fn file_info_detected_type() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("PNG image".to_string());
     }
     snapshot_dialog("file_info_detected_type", &dialog, &state);
@@ -116,7 +116,7 @@ fn file_info_detecting() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detecting = true;
     }
     snapshot_dialog("file_info_detecting", &dialog, &state);
@@ -146,7 +146,7 @@ fn file_info_detecting_shows_dynamic_spinner_not_static_string() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detecting = true;
     }
 
@@ -179,7 +179,7 @@ fn file_info_header_bytes_hex_mode() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("PNG image".to_string());
         d.header_bytes = Some(vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
@@ -207,7 +207,7 @@ fn file_info_header_bytes_text_mode() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some(b"Hello, world! This is plain text.".to_vec());
         d.header_hex_mode = false;
@@ -263,7 +263,7 @@ fn file_info_header_encoding_override_takes_effect_over_auto_detect() {
     );
 
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some(shift_jis_bytes.clone());
         d.header_hex_mode = false;
@@ -313,7 +313,7 @@ fn file_info_shows_current_encoding_name_and_hint() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some(b"Hello, world!".to_vec());
         d.header_hex_mode = false;
@@ -372,7 +372,7 @@ fn file_info_hex_mode_ascii_column_reflects_encoding() {
     // limitation independent of this test — so a wide screen is used here to
     // actually see the column, rather than asserting on truncated output.
     let mut win1252_dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut win1252_dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut win1252_dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some(vec![0x92]);
         d.header_hex_mode = true;
@@ -381,7 +381,7 @@ fn file_info_hex_mode_ascii_column_reflects_encoding() {
     let win1252_rendered = super::render_dialog_to_string(&win1252_dialog, &state, 200, 30);
 
     let mut sjis_dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut sjis_dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut sjis_dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some(vec![0x92]);
         d.header_hex_mode = true;
@@ -429,7 +429,7 @@ fn file_info_hex_mode_full_row_not_clipped_at_100_columns() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("PNG image".to_string());
         // A full 16-byte row so the ASCII column runs the full width;
         // bytes chosen so every position decodes to a printable ASCII char
@@ -475,7 +475,7 @@ fn file_info_header_bytes_text_mode_cjk() {
         link_kind: None,
     };
     let mut dialog = Dialog::file_info(&entry);
-    if let rwf_lib::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
         d.detected_type = Some("Unknown / plain text".to_string());
         d.header_bytes = Some("こんにちは世界".as_bytes().to_vec());
         d.header_hex_mode = false;

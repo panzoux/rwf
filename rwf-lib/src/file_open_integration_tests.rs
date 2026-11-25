@@ -4,10 +4,10 @@
 #[cfg(test)]
 mod tests {
     use crate::config::{ExtensionAssociation, FileOpenAction, FileTypeMapping};
+    use crate::dialog::DialogContent;
     use crate::input::{action_to_transitions, Action};
     use crate::job::{DetectFileTypePurpose, JobKind, JobSpec, OpResult, SuccessData};
     use crate::magic::DetectedKind;
-    use crate::model::dialog::DialogContent;
     use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};

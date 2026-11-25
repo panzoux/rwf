@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::Confirmation`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{ConfirmableAction, Dialog};
+use rwf_lib::dialog::{ConfirmableAction, Dialog};
 
 #[test]
 fn confirmation_short_message() {
@@ -72,7 +72,7 @@ fn confirmation_with_stats() {
     let dialog = Dialog::action_confirm(
         "Empty Trash",
         "Permanently empty 3 items (1.5 MB) from the trash? This cannot be undone.",
-        Some(rwf_lib::model::dialog::ConfirmStats {
+        Some(rwf_lib::dialog::ConfirmStats {
             count: 3,
             total_size: 1_572_864,
         }),

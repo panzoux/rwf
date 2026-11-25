@@ -14,7 +14,7 @@ use ratatui::{
 use crate::ui::smart_truncate;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::PatternRenameContent;
+use rwf_lib::dialog::PatternRenameContent;
 
 use super::DialogAction;
 

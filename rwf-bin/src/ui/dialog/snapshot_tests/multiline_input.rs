@@ -3,7 +3,7 @@
 use super::{snapshot_dialog, test_state};
 use crate::ui::multiline_text_input::MultiLineTextInput;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::{Dialog, DialogContent, MultiLineInputDialog};
+use rwf_lib::dialog::{Dialog, DialogContent, MultiLineInputDialog};
 
 #[test]
 fn multiline_input_empty_default() {

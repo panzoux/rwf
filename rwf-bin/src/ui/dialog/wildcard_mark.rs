@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::{DialogUiState, WildcardMarkDialog};
+use rwf_lib::dialog::{DialogUiState, WildcardMarkDialog};
 
 use super::DialogAction;
 

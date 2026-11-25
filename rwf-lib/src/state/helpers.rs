@@ -1,7 +1,7 @@
 use crate::state::AppConfig;
 use crate::state::AppState;
 
-/// What invoking a [`CustomFunction`](crate::model::dialog::CustomFunction) should do.
+/// What invoking a [`CustomFunction`](crate::dialog::CustomFunction) should do.
 ///
 /// Returned by [`AppState::custom_function_job`], the single place that turns a custom
 /// function into work. Before it existed, five call sites (keybindings, the `$I` input
@@ -28,7 +28,7 @@ impl AppState {
     /// dialog; pass `None` on the first attempt.
     pub fn custom_function_job(
         &self,
-        func: &crate::model::dialog::CustomFunction,
+        func: &crate::dialog::CustomFunction,
         user_input: Option<&str>,
     ) -> CustomFunctionOutcome {
         use crate::job::{JobKind, JobSpec};
@@ -269,8 +269,8 @@ impl AppState {
 #[cfg(test)]
 mod custom_function_job_tests {
     use super::CustomFunctionOutcome;
+    use crate::dialog::CustomFunction;
     use crate::job::{JobKind, PipeToAction};
-    use crate::model::dialog::CustomFunction;
     use crate::test_utils::test_state;
 
     fn func(name: &str) -> CustomFunction {
@@ -281,7 +281,7 @@ mod custom_function_job_tests {
     fn menu_entries_are_reported_as_menus_not_jobs() {
         let mut f = func("m");
         f.command = None;
-        f.menu = Some(crate::model::dialog::MenuContent::Items(Vec::new()));
+        f.menu = Some(crate::dialog::MenuContent::Items(Vec::new()));
         let state = test_state();
         assert!(matches!(
             state.custom_function_job(&f, None),
@@ -369,7 +369,7 @@ mod custom_function_job_tests {
         };
         f.os_specific.insert(
             os_key.to_string(),
-            crate::model::dialog::OsConfig {
+            crate::dialog::OsConfig {
                 command: "pwd".to_string(),
                 shell: Some("bash".to_string()),
             },

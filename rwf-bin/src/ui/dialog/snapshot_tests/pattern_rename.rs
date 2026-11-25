@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::PatternRename`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent, PatternRenameContent};
+use rwf_lib::dialog::{Dialog, DialogContent, PatternRenameContent};
 
 #[test]
 fn pattern_rename_empty() {

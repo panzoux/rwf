@@ -83,3 +83,19 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
       - run: cargo test -p rwf -- --test-threads=1
       - run: cargo test -p rwf-lib -- --test-threads=1
+
+  # Architecture lint: module cycles, wide directories, long files. Existing
+  # debt is frozen in .deslop-please.allow; anything new fails. Runs on Windows
+  # because the allow file was generated there and the tool only checks the
+  # host's cfg (cfg(windows) modules are invisible on Linux).
+  # Fixing debt: rerun `deslop-please --update-allow .deslop-please.allow`.
+  architecture:
+    name: deslop-please (windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install deslop-please --version 0.1.4 --locked
+      - run: deslop-please --allow .deslop-please.allow

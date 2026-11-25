@@ -158,12 +158,12 @@ fn resolve_description(desc: &str, config: &crate::config::AppConfig) -> String 
 pub fn build_help_entries(
     key_bindings: &crate::input::KeyBindings,
     descriptions: &ActionDescriptions,
-    custom_functions: &[crate::model::dialog::CustomFunction],
+    custom_functions: &[crate::dialog::CustomFunction],
     show_unbound: bool,
     config: &crate::config::AppConfig,
     layers: Option<&crate::config_layers::ConfigLayers>,
-) -> Vec<crate::model::dialog::HelpEntry> {
-    use crate::model::dialog::{HelpEntry, HelpTab};
+) -> Vec<crate::dialog::HelpEntry> {
+    use crate::dialog::{HelpEntry, HelpTab};
 
     let mut entries: Vec<HelpEntry> = Vec::new();
 
@@ -247,7 +247,7 @@ pub fn build_help_entries(
                 .menu
                 .as_ref()
                 .and_then(|m| match m {
-                    crate::model::dialog::MenuContent::File(f) => Some(f.clone()),
+                    crate::dialog::MenuContent::File(f) => Some(f.clone()),
                     _ => None,
                 })
                 .unwrap_or_else(|| func.name.clone());

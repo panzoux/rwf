@@ -160,12 +160,12 @@ mod tests {
     fn the_sample_custom_functions_offer_a_polling_submenu() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../sample/custom_functions.json");
-        let functions = crate::model::dialog::load_custom_functions(&path).expect("sample parses");
+        let functions = crate::dialog::load_custom_functions(&path).expect("sample parses");
         let polling = functions
             .iter()
             .find(|f| f.name == "Polling")
             .expect("a Polling entry");
-        let Some(crate::model::dialog::MenuContent::Items(items)) = &polling.menu else {
+        let Some(crate::dialog::MenuContent::Items(items)) = &polling.menu else {
             panic!("Polling is an inline submenu, got {:?}", polling.menu);
         };
         let actions: Vec<&str> = items.iter().map(|i| i.action.as_str()).collect();

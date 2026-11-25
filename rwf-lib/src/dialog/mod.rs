@@ -614,7 +614,7 @@ impl Dialog {
 
     /// Create a file conflict dialog
     pub fn file_conflict(
-        conflicts: Vec<crate::model::dialog::ConflictPair>,
+        conflicts: Vec<crate::dialog::ConflictPair>,
         current_index: usize,
         edit_mode: crate::config::EditMode,
         op_name: &str,

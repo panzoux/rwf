@@ -22,6 +22,7 @@ pub mod clipboard;
 pub mod config;
 pub mod config_layers;
 pub mod diagnostics;
+pub mod dialog;
 pub mod event_receiver;
 pub mod help_content;
 pub mod input;
@@ -184,6 +185,7 @@ mod help_viewer_tests;
 mod file_open_integration_tests;
 
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
+pub use dialog::DialogContent;
 pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
 pub use help_content::{
     DEFAULT_CONFIG, DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_EXTENSION_ASSOCIATIONS,
@@ -197,7 +199,7 @@ pub use job::{Job, JobId, JobKind, JobManager, JobResult, JobSpec};
 pub use log_manager::{LogEntry, LogEntryLevel, LogManager};
 pub use logging::{default_log_dir, init_logging, LogLevel};
 pub use macro_expander::MacroExpander;
-pub use model::{DialogContent, FileEntry, Location, PaneModel, TabManager, TabState};
+pub use model::{FileEntry, Location, PaneModel, TabManager, TabState};
 pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
 pub use session::{

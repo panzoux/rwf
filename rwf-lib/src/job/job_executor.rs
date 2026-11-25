@@ -2880,7 +2880,7 @@ pub async fn detect_conflicts(
     backend: &dyn FilesystemBackend,
     job_id: crate::job::JobId,
     tab_id: usize,
-) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
+) -> Result<Vec<crate::dialog::ConflictPair>, String> {
     use chrono::Local;
 
     debug!(
@@ -2914,7 +2914,7 @@ pub async fn detect_conflicts(
                     }
                 };
 
-                let conflict = crate::model::dialog::ConflictPair {
+                let conflict = crate::dialog::ConflictPair {
                     source: source_entry.clone(),
                     dest: dest_entry,
                     source_path: source.clone(),
