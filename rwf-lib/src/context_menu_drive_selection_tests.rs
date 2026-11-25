@@ -159,7 +159,7 @@ mod tests {
         let mut state = test_state();
 
         // Manually create a drive selection dialog with a test drive
-        use crate::dialog::{DriveInfo, DriveType};
+        use crate::model::drive::{DriveInfo, DriveType};
         let test_drive = DriveInfo {
             path: "/test/drive".to_string(),
             label: "Test Drive".to_string(),
@@ -195,7 +195,7 @@ mod tests {
     /// **Validates: Requirement 42.6**
     #[test]
     fn test_drive_information_display() {
-        use crate::dialog::{DriveInfo, DriveType};
+        use crate::model::drive::{DriveInfo, DriveType};
 
         // Create a drive with full information
         let drive = DriveInfo {
@@ -328,7 +328,7 @@ mod tests {
     /// Test drive type differentiation
     #[test]
     fn test_drive_types() {
-        use crate::dialog::{DriveInfo, DriveType};
+        use crate::model::drive::{DriveInfo, DriveType};
 
         let local_drive = DriveInfo {
             path: "C:\\".to_string(),
@@ -363,8 +363,8 @@ mod tests {
 
 #[cfg(test)]
 mod shell_context_menu_tests {
-    use crate::input::{Action, KeyBindings};
     use crate::job::JobKind;
+    use crate::keybindings::{Action, KeyBindings};
     use crate::model::{ActivePane, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::{AppStateBuilder, FileEntryBuilder};

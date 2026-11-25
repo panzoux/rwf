@@ -1,6 +1,6 @@
 //! Custom function menu dialog content (second-level menu from a menu-type entry).
 
-use super::MenuItem;
+use crate::custom_function::MenuItem;
 
 #[derive(Debug, Clone)]
 pub struct CustomFunctionMenuDialog {

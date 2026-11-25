@@ -405,7 +405,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 ..
             }) => {
                 let lower = filter.to_lowercase();
-                let filtered: Vec<&rwf_lib::dialog::DriveInfo> = if filter.is_empty() {
+                let filtered: Vec<&rwf_lib::model::drive::DriveInfo> = if filter.is_empty() {
                     drives.iter().collect()
                 } else {
                     drives
@@ -819,7 +819,8 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                 ..
             }) => {
                 let lower = filter.to_lowercase();
-                let filtered: Vec<&rwf_lib::dialog::CustomFunction> = if filter.is_empty() {
+                let filtered: Vec<&rwf_lib::custom_function::CustomFunction> = if filter.is_empty()
+                {
                     functions.iter().collect()
                 } else {
                     functions
@@ -842,10 +843,11 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         }
                         CustomFunctionOutcome::NeedsInput => {
                             // Command requires $I user input — push an Input dialog.
-                            let prompt = rwf_lib::macro_expander::MacroExpander::extract_i_prompt(
-                                func.get_command().unwrap_or(""),
-                            )
-                            .unwrap_or_else(|| "Enter input".to_string());
+                            let prompt =
+                                rwf_lib::state::macro_expander::MacroExpander::extract_i_prompt(
+                                    func.get_command().unwrap_or(""),
+                                )
+                                .unwrap_or_else(|| "Enter input".to_string());
                             state.dialogs.push(rwf_lib::dialog::Dialog::input(
                                 "Custom Function Input",
                                 &prompt,
@@ -873,7 +875,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         ContextMenuAction::Copy => {
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
-                                &rwf_lib::input::Action::Copy,
+                                &rwf_lib::keybindings::Action::Copy,
                             );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
@@ -885,7 +887,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         ContextMenuAction::Move => {
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
-                                &rwf_lib::input::Action::Move,
+                                &rwf_lib::keybindings::Action::Move,
                             );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
@@ -897,7 +899,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         ContextMenuAction::Delete => {
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
-                                &rwf_lib::input::Action::Delete,
+                                &rwf_lib::keybindings::Action::Delete,
                             );
                             for t in transitions {
                                 let result = rwf_lib::state::update_state(state, t);
@@ -909,7 +911,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                         ContextMenuAction::Rename => {
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
-                                &rwf_lib::input::Action::Rename,
+                                &rwf_lib::keybindings::Action::Rename,
                             );
                             for t in transitions {
                                 rwf_lib::state::update_state(state, t);
@@ -953,7 +955,7 @@ pub fn process_dialog_confirmation(state: &mut rwf_lib::AppState) -> Option<rwf_
                             let depth_before = state.dialogs.stack.len();
                             let transitions = rwf_lib::input::action_to_transitions(
                                 state,
-                                &rwf_lib::input::Action::OpenWith,
+                                &rwf_lib::keybindings::Action::OpenWith,
                             );
                             let mut job_to_return = None;
                             for t in transitions {
@@ -1105,17 +1107,17 @@ fn resolve_menu_item_action(
     state: &mut rwf_lib::AppState,
     action_name: &str,
 ) -> Option<rwf_lib::job::JobSpec> {
-    let builtin: Option<rwf_lib::input::Action> = match action_name {
-        "DeleteFile" | "Delete" => Some(rwf_lib::input::Action::Delete),
-        "MoveFile" | "Move" => Some(rwf_lib::input::Action::Move),
-        "CopyFile" | "Copy" => Some(rwf_lib::input::Action::Copy),
-        "ViewFileAsText" | "View" => Some(rwf_lib::input::Action::OpenTextViewer),
-        "ViewFileAsHex" => Some(rwf_lib::input::Action::OpenHexViewer),
-        "ReloadConfiguration" => Some(rwf_lib::input::Action::ReloadConfig),
-        "EditConfigFile" => Some(rwf_lib::input::Action::EditConfigFile),
-        "StopPolling" => Some(rwf_lib::input::Action::StopPolling),
-        "StartPolling" => Some(rwf_lib::input::Action::StartPolling),
-        "TogglePolling" => Some(rwf_lib::input::Action::TogglePolling),
+    let builtin: Option<rwf_lib::keybindings::Action> = match action_name {
+        "DeleteFile" | "Delete" => Some(rwf_lib::keybindings::Action::Delete),
+        "MoveFile" | "Move" => Some(rwf_lib::keybindings::Action::Move),
+        "CopyFile" | "Copy" => Some(rwf_lib::keybindings::Action::Copy),
+        "ViewFileAsText" | "View" => Some(rwf_lib::keybindings::Action::OpenTextViewer),
+        "ViewFileAsHex" => Some(rwf_lib::keybindings::Action::OpenHexViewer),
+        "ReloadConfiguration" => Some(rwf_lib::keybindings::Action::ReloadConfig),
+        "EditConfigFile" => Some(rwf_lib::keybindings::Action::EditConfigFile),
+        "StopPolling" => Some(rwf_lib::keybindings::Action::StopPolling),
+        "StartPolling" => Some(rwf_lib::keybindings::Action::StartPolling),
+        "TogglePolling" => Some(rwf_lib::keybindings::Action::TogglePolling),
         _ => None,
     };
 
@@ -1179,7 +1181,7 @@ mod tests {
         // lookup takes the first match, so a realistic name here would silently
         // resolve to their entry instead of this one.
         let name = "rwf test clip path";
-        let mut func = rwf_lib::dialog::CustomFunction::new(name, "unused");
+        let mut func = rwf_lib::custom_function::CustomFunction::new(name, "unused");
         func.command = None;
         func.clip_text = Some("$P".to_string());
         state.custom_functions.push(func);
@@ -1200,7 +1202,7 @@ mod tests {
     fn menu_item_naming_a_suspend_function_keeps_the_flag() {
         let mut state = test_state();
         let name = "rwf test suspend pick";
-        let mut func = rwf_lib::dialog::CustomFunction::new(name, "fzf");
+        let mut func = rwf_lib::custom_function::CustomFunction::new(name, "fzf");
         func.suspend = true;
         state.custom_functions.push(func);
 

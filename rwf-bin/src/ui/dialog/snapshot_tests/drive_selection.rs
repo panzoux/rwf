@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::DriveSelection`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::dialog::{Dialog, DriveInfo, DriveType};
+use rwf_lib::dialog::Dialog;
+use rwf_lib::model::drive::{DriveInfo, DriveType};
 use rwf_lib::model::ui::ActivePane;
 
 #[test]

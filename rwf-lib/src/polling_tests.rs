@@ -422,7 +422,7 @@ mod tests {
 
         async fn run_left_poll<B, A>(
             executor: &crate::job::JobExecutor<B, A>,
-            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::job::JobEvent>,
             state: &mut AppState,
             now: Instant,
         ) where
@@ -434,10 +434,8 @@ mod tests {
             executor.execute(job.clone()).await;
             let result = loop {
                 match rx.recv().await.expect("event") {
-                    crate::worker_pool::JobEvent::Completed(_, data) => {
-                        break OpResult::Success(data)
-                    }
-                    crate::worker_pool::JobEvent::Failed(_, e) => break OpResult::Failed(e),
+                    crate::job::JobEvent::Completed(_, data) => break OpResult::Success(data),
+                    crate::job::JobEvent::Failed(_, e) => break OpResult::Failed(e),
                     _ => continue,
                 }
             };

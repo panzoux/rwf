@@ -1,8 +1,9 @@
 //! Tests for Phase 6.7 Dynamic Help Viewer
 
-use crate::dialog::{CustomFunction, HelpEntry, HelpTab};
+use crate::custom_function::CustomFunction;
+use crate::dialog::{HelpEntry, HelpTab};
 use crate::help_content::{build_help_entries, ActionDescriptions};
-use crate::input::KeyBindings;
+use crate::keybindings::KeyBindings;
 
 // ── action_to_keys inversion ─────────────────────────────────────────────────
 

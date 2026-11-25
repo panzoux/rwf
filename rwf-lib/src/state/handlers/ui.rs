@@ -318,17 +318,18 @@ impl AppState {
                             },
                         ) => {
                             let lower = filter.to_lowercase();
-                            let filtered: Vec<&crate::dialog::DriveInfo> = if filter.is_empty() {
-                                drives.iter().collect()
-                            } else {
-                                drives
-                                    .iter()
-                                    .filter(|d| {
-                                        d.display_label().to_lowercase().contains(&lower)
-                                            || d.path.to_lowercase().contains(&lower)
-                                    })
-                                    .collect()
-                            };
+                            let filtered: Vec<&crate::model::drive::DriveInfo> =
+                                if filter.is_empty() {
+                                    drives.iter().collect()
+                                } else {
+                                    drives
+                                        .iter()
+                                        .filter(|d| {
+                                            d.display_label().to_lowercase().contains(&lower)
+                                                || d.path.to_lowercase().contains(&lower)
+                                        })
+                                        .collect()
+                                };
                             if let Some(drive) = filtered.get(*selected_index) {
                                 let location = crate::model::Location::Local(
                                     std::path::PathBuf::from(&drive.path),
@@ -487,10 +488,11 @@ impl AppState {
                             // Previously this path silently stripped `$I` and ran the
                             // command with a hole in it; prompt like every other
                             // invocation route does.
-                            let prompt = crate::macro_expander::MacroExpander::extract_i_prompt(
-                                func.get_command().unwrap_or(""),
-                            )
-                            .unwrap_or_else(|| "Enter input".to_string());
+                            let prompt =
+                                crate::state::macro_expander::MacroExpander::extract_i_prompt(
+                                    func.get_command().unwrap_or(""),
+                                )
+                                .unwrap_or_else(|| "Enter input".to_string());
                             self.dialogs.push(crate::dialog::Dialog::input(
                                 "Custom Function Input",
                                 &prompt,
@@ -605,10 +607,10 @@ impl AppState {
 
                 // 1. Home directory
                 if let Some(home) = dirs::home_dir() {
-                    entries.push(crate::dialog::DriveInfo {
+                    entries.push(crate::model::drive::DriveInfo {
                         path: home.to_string_lossy().into_owned(),
                         label: "~ User Directory".to_string(),
-                        drive_type: crate::dialog::DriveType::Local,
+                        drive_type: crate::model::drive::DriveType::Local,
                         total_space: None,
                         free_space: None,
                     });
@@ -643,10 +645,10 @@ impl AppState {
                     }
                 }
                 for root in &nw_roots {
-                    entries.push(crate::dialog::DriveInfo {
+                    entries.push(crate::model::drive::DriveInfo {
                         path: root.clone(),
                         label: root.clone(),
-                        drive_type: crate::dialog::DriveType::Network,
+                        drive_type: crate::model::drive::DriveType::Network,
                         total_space: None,
                         free_space: None,
                     });

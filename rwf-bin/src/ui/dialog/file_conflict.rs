@@ -68,7 +68,7 @@ pub(super) fn handle_input(
 pub(super) fn render_file_conflict_dialog(
     frame: &mut Frame,
     area: Rect,
-    conflicts: &[rwf_lib::dialog::ConflictPair],
+    conflicts: &[rwf_lib::model::conflict::ConflictPair],
     current_index: usize,
     focused_button: usize,
     rename_text: &str,
@@ -342,7 +342,7 @@ fn validate_filename(rename_text: &str, original_name: &str) -> Option<String> {
 /// Focus fields: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename button, 4=Textbox, 5=Cancel
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_file_conflict_input(
-    conflicts: &mut [rwf_lib::dialog::ConflictPair],
+    conflicts: &mut [rwf_lib::model::conflict::ConflictPair],
     current_index: &mut usize,
     focused_button: &mut usize,
     rename_text: &mut String,
@@ -587,7 +587,8 @@ fn button_index_to_action(index: usize) -> rwf_lib::dialog::ConflictAction {
 mod conflict_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::dialog::{ConflictAction, ConflictPair};
+    use rwf_lib::dialog::ConflictAction;
+    use rwf_lib::model::conflict::ConflictPair;
     use rwf_lib::model::{FileEntry, Location};
     use std::path::PathBuf;
     use std::time::SystemTime;

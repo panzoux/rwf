@@ -115,7 +115,7 @@ pub enum DialogAction {
     /// Open a second-level menu dialog for a menu-type custom function
     OpenMenu {
         title: String,
-        items: Vec<rwf_lib::dialog::MenuItem>,
+        items: Vec<rwf_lib::custom_function::MenuItem>,
     },
     /// Toggle the File Information dialog's header-bytes view between hex
     /// and raw text (Phase 7.3b, Task 10). The dialog stays open; the app

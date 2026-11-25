@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::dialog::{DriveInfo, DriveSelectionDialog, DriveType};
-    use crate::input::{Action, KeyBindings};
+    use crate::dialog::DriveSelectionDialog;
+    use crate::keybindings::{Action, KeyBindings};
+    use crate::model::drive::{DriveInfo, DriveType};
     use crate::model::Location;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;

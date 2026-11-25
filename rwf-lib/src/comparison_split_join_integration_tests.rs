@@ -53,18 +53,12 @@ mod tests {
 
         // Verify we received a started event
         let event = event_rx.recv().await;
-        assert!(matches!(
-            event,
-            Some(crate::worker_pool::JobEvent::Started(_))
-        ));
+        assert!(matches!(event, Some(crate::job::JobEvent::Started(_))));
 
         // Verify we received a completed event with comparison result
         let event = event_rx.recv().await;
         match event {
-            Some(crate::worker_pool::JobEvent::Completed(
-                _,
-                SuccessData::ComparisonResult(diff),
-            )) => {
+            Some(crate::job::JobEvent::Completed(_, SuccessData::ComparisonResult(diff))) => {
                 assert_eq!(diff.left_path, left_file.display().to_string());
                 assert_eq!(diff.right_path, right_file.display().to_string());
 
@@ -124,10 +118,7 @@ mod tests {
         // Verify we received a completed event with comparison result
         let event = event_rx.recv().await;
         match event {
-            Some(crate::worker_pool::JobEvent::Completed(
-                _,
-                SuccessData::ComparisonResult(diff),
-            )) => {
+            Some(crate::job::JobEvent::Completed(_, SuccessData::ComparisonResult(diff))) => {
                 // All chunks should be Equal
                 let all_equal = diff
                     .differences
@@ -183,10 +174,10 @@ mod tests {
         let mut received_progress = false;
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, _) => {
+                crate::job::JobEvent::Progress(_, _) => {
                     received_progress = true;
                 }
-                crate::worker_pool::JobEvent::Completed(_, _) => break,
+                crate::job::JobEvent::Completed(_, _) => break,
                 _ => {}
             }
         }
@@ -260,10 +251,10 @@ mod tests {
         let mut received_progress = false;
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, _) => {
+                crate::job::JobEvent::Progress(_, _) => {
                     received_progress = true;
                 }
-                crate::worker_pool::JobEvent::Completed(_, _) => break,
+                crate::job::JobEvent::Completed(_, _) => break,
                 _ => {}
             }
         }

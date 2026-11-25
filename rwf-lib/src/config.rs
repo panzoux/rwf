@@ -15,7 +15,7 @@ pub struct AppConfig {
     pub display: DisplayConfig,
     /// Runtime key bindings — not serialised; populated at startup and on reload.
     #[serde(skip)]
-    pub key_bindings: crate::input::KeyBindings,
+    pub key_bindings: crate::keybindings::KeyBindings,
     /// File operation settings
     pub file_operations: FileOpConfig,
     /// Search configuration
@@ -387,7 +387,7 @@ pub struct ClipboardConfig {
 pub struct ArchiveConfig {
     /// Default archive format (default: ZIP)
     #[serde(default = "default_archive_format", alias = "default_format")]
-    pub default_format: crate::input::ArchiveFormat,
+    pub default_format: crate::model::archive_format::ArchiveFormat,
 
     /// Compression level (1-9, default: 6)
     #[serde(default = "default_compression_level", alias = "compression_level")]
@@ -398,8 +398,8 @@ pub struct ArchiveConfig {
     pub last_archive_name: String,
 }
 
-fn default_archive_format() -> crate::input::ArchiveFormat {
-    crate::input::ArchiveFormat::ZIP
+fn default_archive_format() -> crate::model::archive_format::ArchiveFormat {
+    crate::model::archive_format::ArchiveFormat::ZIP
 }
 
 fn default_compression_level() -> u32 {
@@ -409,7 +409,7 @@ fn default_compression_level() -> u32 {
 impl Default for ArchiveConfig {
     fn default() -> Self {
         Self {
-            default_format: crate::input::ArchiveFormat::ZIP,
+            default_format: crate::model::archive_format::ArchiveFormat::ZIP,
             compression_level: 6,
             last_archive_name: String::new(),
         }
@@ -542,7 +542,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             display: DisplayConfig::default(),
-            key_bindings: crate::input::KeyBindings::default(),
+            key_bindings: crate::keybindings::KeyBindings::default(),
             file_operations: FileOpConfig::default(),
             search: SearchConfig::default(),
             ui: UIConfig::default(),
@@ -1072,7 +1072,7 @@ impl Default for UIConfig {
 /// time with a `tracing::warn!` (see `Config::load` / wherever this is
 /// deserialized from `extension_associations.json`).
 ///
-/// Resolution order (see `rwf_lib::input::candidates_for` / `resolve_extension_association`):
+/// Resolution order (see `rwf_lib::state::file_open::candidates_for` / `resolve_extension_association`):
 /// 1. When magic-byte detection is enabled and the target is a local file, the
 ///    file's content is detected first. Entries whose `file_type` matches the
 ///    detected kind are preferred; when `extension` is *also* set on such an
@@ -1659,121 +1659,6 @@ mod tests {
             mappings[0].actions,
             vec![FileOpenAction::Unknown, FileOpenAction::OsDefault]
         );
-    }
-
-    #[test]
-    fn load_file_type_map_falls_back_to_embedded_defaults_when_file_missing() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-
-        let (mappings, result) = crate::config_layers::load_file_type_map(
-            manager.file_type_map_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        assert!(!mappings.is_empty());
-        assert!(mappings.iter().any(|m| m.extension == "mp4"));
-        assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
-    }
-
-    #[test]
-    fn load_file_type_map_falls_back_to_embedded_defaults_on_malformed_user_file() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-        std::fs::write(manager.file_type_map_path(), "not valid json").unwrap();
-
-        let (mappings, result) = crate::config_layers::load_file_type_map(
-            manager.file_type_map_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        assert!(!mappings.is_empty());
-        assert!(mappings.iter().any(|m| m.extension == "mp4"));
-        assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
-    }
-
-    #[test]
-    fn load_file_type_map_puts_a_valid_user_file_over_the_built_ins() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-        std::fs::write(
-            manager.file_type_map_path(),
-            r#"[{ "Extension": "csv", "Actions": ["OsDefault"] }]"#,
-        )
-        .unwrap();
-
-        let (mappings, result) = crate::config_layers::load_file_type_map(
-            manager.file_type_map_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        // Phase 7.26: the user entry comes first and the built-ins stay underneath.
-        assert_eq!(mappings[0].extension, "csv");
-        assert!(mappings.iter().any(|m| m.extension == "mp4"));
-        assert!(matches!(result.status, ConfigLoadStatus::Ok));
-    }
-
-    #[test]
-    fn load_extension_associations_uses_the_built_ins_when_file_missing() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-
-        let (assocs, result) = crate::config_layers::load_extension_associations(
-            manager.extension_associations_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        // The built-in list is empty; since Phase 7.26 it is reported as in use.
-        assert!(assocs.is_empty());
-        assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
-    }
-
-    #[test]
-    fn load_extension_associations_errors_on_malformed_json() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-        std::fs::write(manager.extension_associations_path(), "not valid json").unwrap();
-
-        let (assocs, result) = crate::config_layers::load_extension_associations(
-            manager.extension_associations_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        assert!(assocs.is_empty());
-        assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
-    }
-
-    #[test]
-    fn load_extension_associations_parses_valid_json() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let keybindings_path = temp_dir.path().join("keybindings.json");
-        let manager = ConfigManager::with_paths(config_path, keybindings_path);
-        std::fs::write(
-            manager.extension_associations_path(),
-            r#"[{ "Extension": "log", "Command": "less $F" }]"#,
-        )
-        .unwrap();
-
-        let (assocs, result) = crate::config_layers::load_extension_associations(
-            manager.extension_associations_path(),
-            crate::config_layers::ConfigLayering::Layered,
-        );
-
-        assert_eq!(assocs.len(), 1);
-        assert_eq!(assocs[0].extension.as_deref(), Some("log"));
-        assert_eq!(assocs[0].command, "less $F");
-        assert!(matches!(result.status, ConfigLoadStatus::Ok));
     }
 
     #[test]

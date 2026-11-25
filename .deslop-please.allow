@@ -1,6 +1,5 @@
 # Existing architectural debt suppressed by `deslop-please --allow`.
 # Fixing an entry here never fails CI; new issues not listed here fail.
-module-cycle rwf_lib::backend,rwf_lib::config,rwf_lib::config_layers,rwf_lib::diagnostics,rwf_lib::dialog,rwf_lib::help_content,rwf_lib::input,rwf_lib::job,rwf_lib::logging,rwf_lib::macro_expander,rwf_lib::pipe_to_action,rwf_lib::state,rwf_lib::volume_info,rwf_lib::worker_pool
 wide-directory rwf-bin/src/ui/
 wide-directory rwf-bin/src/ui/dialog/
 wide-directory rwf-bin/src/ui/dialog/snapshot_tests/
@@ -12,7 +11,6 @@ long-file rwf-bin/src/app.rs
 long-file rwf-bin/src/ui/dialog/confirm.rs
 long-file rwf-lib/src/dialog/mod.rs
 long-file rwf-lib/src/file_open_integration_tests.rs
-long-file rwf-lib/src/input/mod.rs
 long-file rwf-lib/src/job/job_executor.rs
 long-file rwf-lib/src/state/handlers/job.rs
 long-file rwf-lib/src/state/mod.rs

@@ -444,7 +444,7 @@ mod tests {
             }
 
             // Copy uses CreatePendingFileJob — jobs available immediately
-            let transitions = crate::input::action_to_transitions(&state, &crate::input::Action::Copy);
+            let transitions = crate::input::action_to_transitions(&state, &crate::keybindings::Action::Copy);
             prop_assert_eq!(transitions.len(), 1);
 
             let result = update_state(&mut state, transitions.into_iter().next().unwrap());
@@ -489,7 +489,7 @@ mod tests {
             }
 
             // Move uses CreatePendingFileJob — jobs available immediately
-            let transitions = crate::input::action_to_transitions(&state, &crate::input::Action::Move);
+            let transitions = crate::input::action_to_transitions(&state, &crate::keybindings::Action::Move);
             prop_assert_eq!(transitions.len(), 1);
 
             let result = update_state(&mut state, transitions.into_iter().next().unwrap());
@@ -533,7 +533,7 @@ mod tests {
             }
 
             // Show delete dialog
-            let transitions = crate::input::action_to_transitions(&state, &crate::input::Action::Delete);
+            let transitions = crate::input::action_to_transitions(&state, &crate::keybindings::Action::Delete);
 
             // Should create a dialog (entries exist)
             prop_assert_eq!(transitions.len(), 1);
@@ -602,7 +602,7 @@ mod tests {
 
         // Show and confirm delete dialog
         let transitions =
-            crate::input::action_to_transitions(&state, &crate::input::Action::Delete);
+            crate::input::action_to_transitions(&state, &crate::keybindings::Action::Delete);
         for transition in transitions {
             update_state(&mut state, transition);
         }
@@ -1450,8 +1450,9 @@ mod tests {
     /// a Location::Archive.
     #[test]
     fn property_archive_entry_creates_archive_location() {
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
         use crate::job::JobKind;
+        use crate::keybindings::Action;
         use crate::model::{ActivePane, FileEntry, Location};
         use std::path::PathBuf;
         use std::time::SystemTime;
@@ -1530,8 +1531,9 @@ mod tests {
     /// the application SHALL exit the virtual folder and return to the filesystem view.
     #[test]
     fn property_archive_exit_returns_to_filesystem() {
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
         use crate::job::JobKind;
+        use crate::keybindings::Action;
         use crate::model::{ActivePane, FileEntry, Location};
         use std::path::PathBuf;
         use std::time::SystemTime;
@@ -1604,7 +1606,8 @@ mod tests {
     /// Test navigating into nested directories within an archive
     #[test]
     fn test_archive_nested_directory_navigation() {
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
+        use crate::keybindings::Action;
         use crate::model::{ActivePane, FileEntry, Location};
         use std::path::PathBuf;
         use std::time::SystemTime;
@@ -1691,7 +1694,8 @@ mod tests {
     /// Test that non-archive files don't create archive locations
     #[test]
     fn test_non_archive_file_no_archive_location() {
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
+        use crate::keybindings::Action;
         use crate::model::{FileEntry, Location};
         use std::path::PathBuf;
         use std::time::SystemTime;

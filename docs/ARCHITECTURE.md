@@ -67,7 +67,7 @@ Cancellation is cooperative: executors check a token; `CancelJob` only flags it.
 
 Rule of thumb: if it decides *what* happens, it belongs in rwf-lib; if it
 decides *how it looks*, it belongs in rwf-bin. Dialog *data* lives in
-`rwf-lib/src/model/dialog.rs` (`DialogContent`); dialog *pixels* live in
+`rwf-lib/src/dialog/mod.rs` (`DialogContent`); dialog *pixels* live in
 `rwf-bin/src/ui/dialog/` (shared chrome: `common.rs` styles + `frame.rs`
 frame/buttons).
 

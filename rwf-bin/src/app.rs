@@ -6,8 +6,8 @@ use anyhow::Result;
 use crossterm::event::{self, Event};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rwf_lib::backend::{LocalFilesystemBackend, MultiFormatArchiveHandler};
-use rwf_lib::dialog::ConflictPair;
 use rwf_lib::job::{JobKind, JobSpec};
+use rwf_lib::model::conflict::ConflictPair;
 use rwf_lib::{process_pending_events, AppState, KeyBindings, Transition, WorkerPool};
 use std::io::Stdout;
 use std::sync::Arc;
@@ -1178,7 +1178,7 @@ impl App {
         // the next Press of the same key can be told apart from an OS auto-repeat burst. It
         // must never itself trigger an action (redraw, dialog input, dispatch, etc).
         if key.kind == crossterm::event::KeyEventKind::Release {
-            let key_string = rwf_lib::input::format_key_event(&key);
+            let key_string = rwf_lib::keybindings::format_key_event(&key);
             self.should_process_key_repeat(&key_string, key.kind, Instant::now());
             return false;
         }
@@ -1211,7 +1211,7 @@ impl App {
             return true;
         }
 
-        let key_string = rwf_lib::input::format_key_event(&key);
+        let key_string = rwf_lib::keybindings::format_key_event(&key);
         tracing::info!(
             "[KEY] code={:?} modifiers={:?} kind={:?} formatted={:?}",
             key.code,
@@ -1840,7 +1840,7 @@ impl App {
 
             // Remaining normal viewer actions (keybinding lookup)
             if let Some(action) = self.key_bindings.viewer_mode.get(&key_string).cloned() {
-                use rwf_lib::input::Action;
+                use rwf_lib::keybindings::Action;
                 let tr = match action {
                     Action::ViewerClose => Some(Transition::CloseViewer),
                     Action::ViewerToggleHexMode => Some(Transition::ViewerToggleMode),
@@ -1955,7 +1955,7 @@ impl App {
         // 3.7 Leap mode handling
         if self.state.ui.mode == rwf_lib::model::UIMode::Leap {
             use crossterm::event::KeyCode;
-            use rwf_lib::input::Action;
+            use rwf_lib::keybindings::Action;
 
             if let Some(action) = self.key_bindings.lookup_leap_action(&key_string) {
                 match action {
@@ -2325,7 +2325,7 @@ impl App {
 
         // 4. Normal key handling (transitions)
         if let Some(action) = self.key_bindings.map_key(&key) {
-            use rwf_lib::input::Action;
+            use rwf_lib::keybindings::Action;
             // In SideBySide mode, pane-switching is disabled: the anchored file pane
             // stays on its side for the duration of the SideBySide session.
             if self.state.viewer.is_some()
@@ -2360,11 +2360,11 @@ impl App {
                 return true;
             }
             // ShowVersionInfo / ShowVersionInfoVerbose: write to task panel, no state change
-            if action == rwf_lib::input::Action::ShowVersionInfo {
+            if action == rwf_lib::keybindings::Action::ShowVersionInfo {
                 self.log_version_info();
                 return true;
             }
-            if action == rwf_lib::input::Action::ShowVersionInfoVerbose {
+            if action == rwf_lib::keybindings::Action::ShowVersionInfoVerbose {
                 self.log_version_info_verbose();
                 return true;
             }
@@ -2378,7 +2378,7 @@ impl App {
                 self.task_panel.scroll_down(h);
                 return true;
             }
-            let is_reload_config = action == rwf_lib::input::Action::ReloadConfig;
+            let is_reload_config = action == rwf_lib::keybindings::Action::ReloadConfig;
             // Reload keybindings BEFORE the ReloadConfig transition so the state-generated
             // log includes the updated keybindings status.
             if is_reload_config {
@@ -2518,7 +2518,7 @@ impl App {
     /// The keymap is selected by current mode, so a binding present only in
     /// `ViewerMode` does not fire in `NormalMode`.
     fn handle_diagnostic_key(&mut self, key_string: &str) -> bool {
-        use rwf_lib::input::Action;
+        use rwf_lib::keybindings::Action;
         use rwf_lib::model::UIMode;
 
         if !self.state.config.diagnostics.enabled {
@@ -3149,7 +3149,7 @@ mod suspended_command_tests {
         // The output is relative; JumpToPath must resolve it against the pane directory
         // and, because it names a file, target the parent with the cursor on the file.
         let result = rwf_lib::pipe_to_action::process_pipe_to_action(
-            &rwf_lib::job::PipeToAction::JumpToPath,
+            &rwf_lib::pipe_to_action::PipeToAction::JumpToPath,
             stdout.trim(),
             tmp.path(),
         )
@@ -4338,8 +4338,8 @@ mod sbs_refresh_guard_tests {
 mod main_thread_job_routing_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::custom_function::{CustomFunction, MenuItem};
     use rwf_lib::dialog::Dialog;
-    use rwf_lib::dialog::{CustomFunction, MenuItem};
 
     /// Deliberately not a name from the shipped defaults: `AppState::new` loads the
     /// developer's real custom_functions.json from the OS config dir, and name lookup

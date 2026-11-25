@@ -21,16 +21,21 @@ pub mod backend;
 pub mod clipboard;
 pub mod config;
 pub mod config_layers;
+pub mod custom_function;
+pub mod defaults;
 pub mod diagnostics;
+#[cfg(test)]
+mod diagnostics_config_tests;
 pub mod dialog;
 pub mod event_receiver;
 pub mod help_content;
 pub mod input;
 pub mod job;
+pub mod keybindings;
 pub mod leap_filter;
 pub mod log_manager;
 pub mod logging;
-pub mod macro_expander;
+pub mod macro_syntax;
 pub mod magic;
 pub mod model;
 pub mod pattern_rename;
@@ -185,28 +190,32 @@ mod help_viewer_tests;
 mod file_open_integration_tests;
 
 pub use backend::{FilesystemBackend, LocalFilesystemBackend};
-pub use dialog::DialogContent;
-pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
-pub use help_content::{
+pub use defaults::{
     DEFAULT_CONFIG, DEFAULT_CUSTOM_FUNCTIONS, DEFAULT_EXTENSION_ASSOCIATIONS,
     DEFAULT_FILE_TYPE_MAP, DEFAULT_KEYBINDINGS, DEFAULT_MENU_CLIP, DEFAULT_MENU_CONFIG,
 };
-pub use input::{
-    action_to_transitions, check_keybindings_content_duplicates, check_keybindings_duplicates,
-    expand_association_command, format_key_event, Action, ArchiveFormat, KeyBindings,
-};
+pub use dialog::DialogContent;
+pub use event_receiver::{map_job_event_to_transition, process_next_event, process_pending_events};
+pub use input::action_to_transitions;
+pub use job::JobEvent;
 pub use job::{Job, JobId, JobKind, JobManager, JobResult, JobSpec};
+pub use keybindings::{
+    check_keybindings_content_duplicates, check_keybindings_duplicates, format_key_event, Action,
+    KeyBindings,
+};
 pub use log_manager::{LogEntry, LogEntryLevel, LogManager};
 pub use logging::{default_log_dir, init_logging, LogLevel};
-pub use macro_expander::MacroExpander;
+pub use model::archive_format::ArchiveFormat;
 pub use model::{FileEntry, Location, PaneModel, TabManager, TabState};
 pub use pattern_rename::{apply_rename_pattern, generate_preview, validate_inputs};
 pub use pipe_to_action::{process_pipe_to_action, PipeToActionResult};
 pub use session::{
     restore_marked_locations, restore_tabs, save_session, SessionError, SessionState,
 };
+pub use state::file_open::expand_association_command;
+pub use state::macro_expander::MacroExpander;
 pub use state::{AppConfig, AppState, StateUpdateResult, StoragePaths, Transition};
 pub use volume_info::{
     calculate_marked_stats, format_top_separator_info, get_drive_or_share_name, MarkedFileStats,
 };
-pub use worker_pool::{JobEvent, WorkerPool};
+pub use worker_pool::WorkerPool;

@@ -1,6 +1,7 @@
 //! File conflict resolution dialog content.
 
-use super::{ConflictAction, ConflictPair};
+use super::ConflictAction;
+use crate::model::conflict::ConflictPair;
 
 #[derive(Debug, Clone)]
 pub struct FileConflictDialog {

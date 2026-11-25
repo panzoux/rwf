@@ -5,11 +5,12 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::dialog::CustomFunction;
-    use crate::job::{JobKind, JobSpec, PipeToAction};
-    use crate::macro_expander::MacroExpander;
+    use crate::custom_function::CustomFunction;
+    use crate::job::{JobKind, JobSpec};
     use crate::model::Location;
+    use crate::pipe_to_action::PipeToAction;
     use crate::pipe_to_action::{process_pipe_to_action, PipeToActionResult};
+    use crate::state::macro_expander::MacroExpander;
     use crate::state::AppState;
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -121,7 +122,7 @@ mod tests {
         // Add OS-specific configuration
         #[cfg(target_os = "linux")]
         {
-            use crate::dialog::OsConfig;
+            use crate::custom_function::OsConfig;
             use std::collections::HashMap;
 
             let mut os_specific = HashMap::new();
@@ -262,7 +263,7 @@ mod tests {
     /// **Validates: Requirements 28.1**
     #[test]
     fn test_custom_function_loading() {
-        use crate::dialog::load_custom_functions;
+        use crate::custom_function::load_custom_functions;
         use std::io::Write;
         use tempfile::NamedTempFile;
 

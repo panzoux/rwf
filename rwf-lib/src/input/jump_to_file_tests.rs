@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::dialog::{filter_jump_to_file_suggestions, DialogContent};
-    use crate::input::{Action, KeyBindings};
+    use crate::keybindings::{Action, KeyBindings};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
 

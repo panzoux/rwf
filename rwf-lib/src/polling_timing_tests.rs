@@ -6,11 +6,11 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::job::JobEvent;
     use crate::job::{JobOrigin, JobSpec, OpResult, SuccessData};
     use crate::model::{ActivePane, Location};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::AppStateBuilder;
-    use crate::worker_pool::JobEvent;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 

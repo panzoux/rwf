@@ -1380,7 +1380,7 @@ impl AppState {
                                         crate::model::Location::Local(p) => p.clone(),
                                         other => std::path::PathBuf::from(other.display_path()),
                                     };
-                                    if matches!(action, crate::job::PipeToAction::ClipText) {
+                                    if matches!(action, crate::pipe_to_action::PipeToAction::ClipText) {
                                         // Text, not a path: nothing to check.
                                         result_obj.jobs_to_start.push(crate::job::JobSpec::new(
                                             crate::job::JobKind::SetClipboard {
@@ -1602,7 +1602,7 @@ impl AppState {
                                             .map(|e| e.to_lowercase())
                                             .unwrap_or_default();
                                         let candidates =
-                                            crate::input::candidates_for(self, *kind, &ext_lower);
+                                            crate::state::file_open::candidates_for(self, *kind, &ext_lower);
                                         match candidates.len() {
                                             0 => {
                                                 // No association matched even with content-type
@@ -1615,7 +1615,7 @@ impl AppState {
                                             }
                                             1 => {
                                                 let assoc = &candidates[0];
-                                                match crate::input::expand_association_command(
+                                                match crate::state::file_open::expand_association_command(
                                                     self, assoc,
                                                 ) {
                                                     Ok((command, working_dir, shell)) => {
@@ -1833,7 +1833,7 @@ impl AppState {
                                 let candidates = if ext_lower.is_empty() {
                                     Vec::new()
                                 } else {
-                                    crate::input::candidates_for_extension(self, &ext_lower)
+                                    crate::state::file_open::candidates_for_extension(self, &ext_lower)
                                 };
                                 match candidates.len() {
                                     0 => {
@@ -1851,7 +1851,7 @@ impl AppState {
                                     1 => {
                                         let assoc = &candidates[0];
                                         if let Ok((command, working_dir, shell)) =
-                                            crate::input::expand_association_command(self, assoc)
+                                            crate::state::file_open::expand_association_command(self, assoc)
                                         {
                                             result_obj.jobs_to_start.push(
                                                 crate::job::JobSpec::execute_association(
@@ -1941,7 +1941,7 @@ impl AppState {
                                     // group was detected as, extension fallback via the shared
                                     // `candidates_for` (same logic the single-file
                                     // ResolveAssociation completion arm above uses).
-                                    let candidates = crate::input::candidates_for(self, kind, &ext);
+                                    let candidates = crate::state::file_open::candidates_for(self, kind, &ext);
                                     match candidates.len() {
                                         0 => {
                                             result_obj.task_panel_logs.push(format!(
@@ -1953,7 +1953,7 @@ impl AppState {
                                         1 => {
                                             let assoc = &candidates[0];
                                             if let Ok((command, working_dir, shell)) =
-                                                crate::input::expand_association_command(
+                                                crate::state::file_open::expand_association_command(
                                                     self, assoc,
                                                 )
                                             {

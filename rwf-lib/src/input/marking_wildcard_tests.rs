@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action, KeyBindings};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::{Action, KeyBindings};
     use crate::model::{FileEntry, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;

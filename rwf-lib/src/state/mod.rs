@@ -3,8 +3,11 @@
 //! This module defines the central AppState structure and the Transition enum
 //! for explicit state changes following the AppState pattern.
 
+pub mod diagnostic_capture;
+pub mod file_open;
 mod handlers;
 pub mod helpers;
+pub mod macro_expander;
 
 use crate::dialog::DialogStack;
 use crate::job::{BackgroundJobManager, JobId, JobManager, JobSpec};
@@ -86,7 +89,7 @@ pub struct AppState {
     /// after extension_associations and before the internal viewer.
     pub file_type_map: Vec<crate::config::FileTypeMapping>,
     /// Custom functions: the built-ins with custom_functions.json layered over them
-    pub custom_functions: Vec<crate::dialog::CustomFunction>,
+    pub custom_functions: Vec<crate::custom_function::CustomFunction>,
     /// Which layering mode loaded the list-type config files, and which custom
     /// functions are still the built-in definition (Phase 7.26).
     pub config_layers: crate::config_layers::ConfigLayers,
@@ -123,7 +126,7 @@ pub struct AppState {
     pub confirmation_needs_keybinding_reload: bool,
     /// Pending custom function awaiting $I user input; set when the Input dialog is pushed,
     /// consumed and cleared when that Input dialog confirms.
-    pub pending_custom_function_input: Option<crate::dialog::CustomFunction>,
+    pub pending_custom_function_input: Option<crate::custom_function::CustomFunction>,
     /// Set by process_dialog_confirmation when it pushes a new dialog; tells app.rs not to
     /// pop the current dialog (it was replaced by the newly pushed one).
     pub suppress_next_dialog_pop: bool,

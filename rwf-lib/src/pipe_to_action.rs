@@ -3,7 +3,6 @@
 //! This module provides utilities for handling PipeToAction directives
 //! after custom function execution completes.
 
-use crate::job::PipeToAction;
 use crate::model::Location;
 use std::path::{Path, PathBuf};
 
@@ -253,4 +252,16 @@ mod tests {
         let result = process_pipe_to_action(&PipeToAction::JumpToPath, "", &cwd());
         assert!(result.unwrap_err().contains("Empty path"));
     }
+}
+
+/// Action to perform with custom function output
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum PipeToAction {
+    JumpToPath,
+    ExecuteFile,
+    ExecuteFileWithEditor,
+    /// Copy the command's stdout to the clipboard. The counterpart to the `ClipText`
+    /// function kind: that one copies an expanded template with no process, this one
+    /// copies what a command produced.
+    ClipText,
 }

@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::CustomFunctionMenu`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::dialog::{CustomFunctionMenuDialog, Dialog, MenuItem};
+use rwf_lib::custom_function::MenuItem;
+use rwf_lib::dialog::{CustomFunctionMenuDialog, Dialog};
 
 fn described(name: &str, action: &str, description: &str) -> MenuItem {
     MenuItem {

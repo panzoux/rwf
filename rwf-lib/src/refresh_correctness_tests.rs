@@ -6,8 +6,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action};
+    use crate::input::action_to_transitions;
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::keybindings::Action;
     use crate::model::{ActivePane, FileEntry, Location, OperationRecord, UndoAvailability};
     use crate::state::{update_state, AppState, StateUpdateResult, Transition};
     use crate::test_utils::{AppStateBuilder, FileEntryBuilder};

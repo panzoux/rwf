@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::CustomFunctionSelector`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::dialog::{CustomFunction, CustomFunctionSelectorContent, Dialog};
+use rwf_lib::custom_function::CustomFunction;
+use rwf_lib::dialog::{CustomFunctionSelectorContent, Dialog};
 
 #[test]
 fn custom_function_selector_two_items_first_selected() {
@@ -84,7 +85,7 @@ fn custom_function_selector_four_items_last_selected() {
 /// Phase 7.26: with origins known, each row carries a right-aligned built-in / user tag.
 #[test]
 fn custom_function_selector_with_origin_tags() {
-    use rwf_lib::config_layers::ConfigOrigin;
+    use rwf_lib::model::config_origin::ConfigOrigin;
     let state = test_state();
     let functions = vec![
         CustomFunction::new("clip menu", "x").with_description("the clip menu"),

@@ -391,7 +391,8 @@ mod tests {
         state.current_tab_mut().left_pane.entries.clear();
 
         // Try to perform operations on empty pane
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
+        use crate::keybindings::Action;
 
         // Copy should return empty transitions
         let transitions = action_to_transitions(&state, &Action::Copy);

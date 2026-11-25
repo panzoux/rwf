@@ -1,7 +1,7 @@
 //! Drive selection dialog content.
 
-use super::DriveInfo;
 use crate::job::JobId;
+use crate::model::drive::DriveInfo;
 
 #[derive(Debug, Clone)]
 pub struct DriveSelectionDialog {

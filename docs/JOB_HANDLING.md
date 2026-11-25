@@ -954,7 +954,7 @@ use std::time::Duration;
 **File**: `rwf-lib/src/state.rs`
 ```rust
 use crate::job::{JobSpec, JobKind, StateUpdateResult};
-use crate::model::dialog::Dialog;
+use crate::dialog::Dialog;
 ```
 
 **File**: `rwf-lib/src/input/mod.rs`

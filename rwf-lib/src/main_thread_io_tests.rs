@@ -6,9 +6,11 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::dialog::{DialogContent, DriveInfo, DriveType};
-    use crate::job::{JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
+    use crate::dialog::DialogContent;
+    use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
+    use crate::model::drive::{DriveInfo, DriveType};
     use crate::model::{Location, ReversalAction};
+    use crate::pipe_to_action::PipeToAction;
     use crate::pipe_to_action::PipeToActionResult;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;

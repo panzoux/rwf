@@ -2,8 +2,12 @@
 //!
 //! This module defines the core data structures used throughout the application.
 
+pub mod archive_format;
 pub mod attrs;
 pub mod cache;
+pub mod config_origin;
+pub mod conflict;
+pub mod drive;
 pub mod file_entry;
 pub mod job_id;
 pub mod leap;

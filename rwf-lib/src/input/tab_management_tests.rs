@@ -3,7 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::dialog::{DialogContent, TabSelectorContent};
-    use crate::input::{action_to_transitions, Action, KeyBindings};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::{Action, KeyBindings};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use crate::AppState;

@@ -4,10 +4,11 @@
 //! appropriate backend methods and sends JobEvent updates.
 
 use crate::backend::{ArchiveHandler, FilesystemBackend};
-use crate::job::{JobId, JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
+use crate::job::JobEvent;
+use crate::job::{JobId, JobKind, JobSpec, OpResult, SuccessData};
 use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, TextEncoding, ViewerBuffer};
 use crate::model::Location;
-use crate::worker_pool::JobEvent;
+use crate::pipe_to_action::PipeToAction;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -2880,7 +2881,7 @@ pub async fn detect_conflicts(
     backend: &dyn FilesystemBackend,
     job_id: crate::job::JobId,
     tab_id: usize,
-) -> Result<Vec<crate::dialog::ConflictPair>, String> {
+) -> Result<Vec<crate::model::conflict::ConflictPair>, String> {
     use chrono::Local;
 
     debug!(
@@ -2914,7 +2915,7 @@ pub async fn detect_conflicts(
                     }
                 };
 
-                let conflict = crate::dialog::ConflictPair {
+                let conflict = crate::model::conflict::ConflictPair {
                     source: source_entry.clone(),
                     dest: dest_entry,
                     source_path: source.clone(),
