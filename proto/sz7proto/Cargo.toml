@@ -1,0 +1,12 @@
+[package]
+name = "sz7proto"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone prototype for plan/8.11 -- not a member of the rwf workspace.
+[workspace]
+
+[dependencies]
+chrono = "0.4"
+libloading = "0.8"

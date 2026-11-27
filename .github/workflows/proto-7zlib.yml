@@ -1,0 +1,82 @@
+name: proto 7zlib (plan 8.11)
+
+# Throwaway prototype check for plan/8.11: load 7-Zip's shared library
+# (7z.dll / 7z.so) from Rust, list and extract the RAR / LZH fixtures.
+# Runs only on the proto branch; not part of the regular CI.
+
+on:
+  push:
+    branches: ["proto/8.11-7zlib"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  probe:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-24.04 apt 7zip + 7zip-rar
+            os: ubuntu-24.04
+            setup: apt
+          - name: ubuntu-latest homebrew sevenzip
+            os: ubuntu-latest
+            setup: brew
+          - name: macos-latest homebrew sevenzip
+            os: macos-latest
+            setup: brew
+          - name: windows-latest preinstalled 7-Zip
+            os: windows-latest
+            setup: windows
+    defaults:
+      run:
+        shell: bash
+        working-directory: proto/sz7proto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Install 7-Zip (apt)
+        if: matrix.setup == 'apt'
+        run: |
+          sudo add-apt-repository -y multiverse
+          sudo apt-get update
+          sudo apt-get install -y 7zip 7zip-rar
+          dpkg -s 7zip | grep -E '^Version'
+          dpkg -L 7zip 7zip-rar | grep -E '\.so$'
+          echo "SZ_LIB=/usr/lib/7zip/7z.so" >> "$GITHUB_ENV"
+
+      - name: Install 7-Zip (Homebrew)
+        if: matrix.setup == 'brew'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          brew install sevenzip
+          brew list --versions sevenzip
+          ls -la "$(brew --prefix)/lib/" | grep -i 7z || true
+          echo "SZ_LIB=$(brew --prefix)/lib/7z.so" >> "$GITHUB_ENV"
+
+      - name: Locate 7-Zip (Windows)
+        if: matrix.setup == 'windows'
+        run: |
+          ls -la "/c/Program Files/7-Zip/"
+          echo "SZ_LIB=C:\\Program Files\\7-Zip\\7z.dll" >> "$GITHUB_ENV"
+
+      - name: Make a zip with a non-ASCII name
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'EOF'
+          import zipfile
+          with zipfile.ZipFile("fixtures/jp.zip", "w") as z:
+              z.writestr("t/a.txt", "hello\n")
+              z.writestr("t/sub/日本語.txt", "あいう\n")
+          EOF
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Run probe
+        run: ./target/release/sz7proto "$SZ_LIB" fixtures/editd169e.rar fixtures/editd169.lzh fixtures/jp.zip
