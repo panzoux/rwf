@@ -527,6 +527,16 @@ fn load_codecs(lib_path: &str) -> *mut c_void {
         let create_decoder = unsafe { lib.get::<CreateCoderFn>(b"CreateDecoder") }.ok().map(|s| *s);
         let create_encoder = unsafe { lib.get::<CreateCoderFn>(b"CreateEncoder") }.ok().map(|s| *s);
         let has_set_codecs = unsafe { lib.get::<*const c_void>(b"SetCodecs") }.is_ok();
+        // Debian 23.01's Rar.so never fills its CRC function pointer (crash in CrcCalc).
+        if std::env::var_os("SZ_CRC_INIT").is_some() {
+            match unsafe { lib.get::<unsafe extern "C" fn()>(b"CrcGenerateTable") } {
+                Ok(f) => {
+                    unsafe { f() };
+                    println!("codecs: called CrcGenerateTable in {}", p.display());
+                }
+                Err(_) => println!("codecs: CrcGenerateTable not exported by {}", p.display()),
+            }
+        }
         type GetModulePropFn = unsafe extern "system" fn(u32, *mut PropVariant) -> HRESULT;
         if let Ok(gmp) = unsafe { lib.get::<GetModulePropFn>(b"GetModuleProp") } {
             let mut pv = PropVariant::empty();

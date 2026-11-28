@@ -82,7 +82,14 @@ jobs:
         if: matrix.setup == 'apt'
         run: |
           7z i | grep -iE 'rar|codecs' || true
-          7z t fixtures/editd169e.rar
+          7z t fixtures/editd169e.rar || echo "7z CLI exit=$?"
+
+      - name: Rar.so exports and probe with CRC table init (apt)
+        if: matrix.setup == 'apt'
+        continue-on-error: true
+        run: |
+          nm -D --defined-only /usr/lib/7zip/Codecs/Rar.so | grep -iE 'crc|CreateDecoder|GetModuleProp' || true
+          SZ_CRC_INIT=1 ./target/release/sz7proto "$SZ_LIB" fixtures/editd169e.rar 2>/dev/null | grep -vE '^\s+\[[0-9]+\] (Str|unrar)'
 
       - name: Run probe
         run: ./target/release/sz7proto "$SZ_LIB" fixtures/editd169e.rar fixtures/editd169.lzh fixtures/jp.zip
