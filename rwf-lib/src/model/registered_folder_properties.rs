@@ -9,7 +9,7 @@
 //! - Multiple variables in the same path are all expanded
 //! - Different variable formats (%, $, ${}, $env:) are handled correctly
 
-use super::dialog::RegisteredFolderManager;
+use crate::dialog::RegisteredFolderManager;
 use proptest::prelude::*;
 use std::env;
 use std::sync::Mutex;

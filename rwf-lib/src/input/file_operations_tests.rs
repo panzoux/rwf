@@ -3,7 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::backend::MockArchiveHandler;
-    use crate::input::{action_to_transitions, Action};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::Action;
     use crate::model::Location;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -117,8 +118,8 @@ mod tests {
                 // title reflects that until task 11 wires real config values.
                 assert!(dialog.title.contains("Trash"));
                 match &dialog.content {
-                    crate::model::DialogContent::DeleteConfirm(
-                        crate::model::dialog::DeleteConfirmDialog {
+                    crate::dialog::DialogContent::DeleteConfirm(
+                        crate::dialog::DeleteConfirmDialog {
                             to_trash,
                             force_fallback,
                             ..
@@ -148,7 +149,7 @@ mod tests {
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
 
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => {
+            crate::dialog::DialogContent::DeleteConfirm(d) => {
                 assert!(d.to_trash, "trash enabled -> dialog should target trash")
             }
             other => panic!("expected DeleteConfirm dialog, got {other:?}"),
@@ -192,7 +193,7 @@ mod tests {
         let dialog =
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => assert!(
+            crate::dialog::DialogContent::DeleteConfirm(d) => assert!(
                 !d.to_trash,
                 "trash disabled -> dialog should target permanent delete"
             ),
@@ -213,7 +214,7 @@ mod tests {
         let dialog =
             crate::test_utils::open_dialog(&mut state, transitions.into_iter().next().unwrap());
         match &dialog.content {
-            crate::model::DialogContent::DeleteConfirm(d) => assert!(d.force_fallback),
+            crate::dialog::DialogContent::DeleteConfirm(d) => assert!(d.force_fallback),
             other => panic!("expected DeleteConfirm dialog, got {other:?}"),
         }
     }
@@ -304,8 +305,8 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Rename");
                 match &dialog.content {
-                    crate::model::DialogContent::SimpleRename(
-                        crate::model::SimpleRenameDialog { input, .. },
+                    crate::dialog::DialogContent::SimpleRename(
+                        crate::dialog::SimpleRenameDialog { input, .. },
                     ) => {
                         assert_eq!(input, "file1.txt");
                     }
@@ -326,7 +327,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Create Directory");
                 match &dialog.content {
-                    crate::model::DialogContent::Input(crate::model::InputDialog {
+                    crate::dialog::DialogContent::Input(crate::dialog::InputDialog {
                         prompt,
                         default_value,
                         ..
@@ -351,7 +352,7 @@ mod tests {
             Transition::ShowDialog { dialog } => {
                 assert_eq!(dialog.title, "Create File");
                 match &dialog.content {
-                    crate::model::DialogContent::Input(crate::model::InputDialog {
+                    crate::dialog::DialogContent::Input(crate::dialog::InputDialog {
                         prompt,
                         default_value,
                         ..
@@ -571,8 +572,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Started(_) => received_started = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Started(_) => received_started = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -639,8 +640,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, _) => received_progress = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Progress(_, _) => received_progress = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -714,7 +715,7 @@ mod tests {
         // Verify completion
         let mut received_completed = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Completed(_, _)) {
+            if matches!(event, crate::job::JobEvent::Completed(_, _)) {
                 received_completed = true;
             }
         }
@@ -772,7 +773,7 @@ mod tests {
         // Verify we received a cancelled event
         let mut received_cancelled = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Cancelled(_)) {
+            if matches!(event, crate::job::JobEvent::Cancelled(_)) {
                 received_cancelled = true;
             }
         }
@@ -826,7 +827,7 @@ mod tests {
         // Verify completion
         let mut received_completed = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Completed(_, _)) {
+            if matches!(event, crate::job::JobEvent::Completed(_, _)) {
                 received_completed = true;
             }
         }
@@ -902,8 +903,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Started(_) => received_started = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Started(_) => received_started = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -973,8 +974,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, _) => received_progress = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Progress(_, _) => received_progress = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -1053,7 +1054,7 @@ mod tests {
         // Verify completion
         let mut received_completed = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Completed(_, _)) {
+            if matches!(event, crate::job::JobEvent::Completed(_, _)) {
                 received_completed = true;
             }
         }
@@ -1117,7 +1118,7 @@ mod tests {
         // Verify we received a cancelled event
         let mut received_cancelled = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Cancelled(_)) {
+            if matches!(event, crate::job::JobEvent::Cancelled(_)) {
                 received_cancelled = true;
             }
         }
@@ -1162,14 +1163,14 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, progress) => {
+                crate::job::JobEvent::Progress(_, progress) => {
                     received_progress = true;
                     assert!(
                         (0.0..=1.0).contains(&progress),
                         "Progress should be between 0 and 1"
                     );
                 }
-                crate::worker_pool::JobEvent::Completed(_, _) => {
+                crate::job::JobEvent::Completed(_, _) => {
                     received_completed = true;
                 }
                 _ => {}
@@ -1228,14 +1229,14 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Progress(_, progress) => {
+                crate::job::JobEvent::Progress(_, progress) => {
                     progress_count += 1;
                     assert!(
                         (0.0..=1.0).contains(&progress),
                         "Progress should be between 0 and 1"
                     );
                 }
-                crate::worker_pool::JobEvent::Completed(_, _) => {
+                crate::job::JobEvent::Completed(_, _) => {
                     received_completed = true;
                 }
                 _ => {}
@@ -1284,7 +1285,7 @@ mod tests {
         // Verify we received a cancelled event
         let mut received_cancelled = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Cancelled(_)) {
+            if matches!(event, crate::job::JobEvent::Cancelled(_)) {
                 received_cancelled = true;
             }
         }
@@ -1335,7 +1336,7 @@ mod tests {
         let mut received_completed = false;
 
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Completed(_, _) = event {
+            if let crate::job::JobEvent::Completed(_, _) = event {
                 received_completed = true;
             }
         }
@@ -1441,8 +1442,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Started(_) => received_started = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Started(_) => received_started = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -1496,7 +1497,7 @@ mod tests {
         // (execute_rename no longer fails the job — it reports per-record failure).
         let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Completed(
+            if let crate::job::JobEvent::Completed(
                 _,
                 crate::job::SuccessData::OperationRecords(records),
             ) = event
@@ -1577,7 +1578,7 @@ mod tests {
         // (execute_rename no longer fails the job — it reports per-record failure).
         let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Completed(
+            if let crate::job::JobEvent::Completed(
                 _,
                 crate::job::SuccessData::OperationRecords(records),
             ) = event
@@ -1648,7 +1649,7 @@ mod tests {
         // Verify completion
         let mut received_completed = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Completed(_, _)) {
+            if matches!(event, crate::job::JobEvent::Completed(_, _)) {
                 received_completed = true;
             }
         }
@@ -1704,8 +1705,8 @@ mod tests {
 
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                crate::worker_pool::JobEvent::Started(_) => received_started = true,
-                crate::worker_pool::JobEvent::Completed(_, _) => received_completed = true,
+                crate::job::JobEvent::Started(_) => received_started = true,
+                crate::job::JobEvent::Completed(_, _) => received_completed = true,
                 _ => {}
             }
         }
@@ -1750,7 +1751,7 @@ mod tests {
         // (execute_mkdir no longer fails the job — it reports per-record failure).
         let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Completed(
+            if let crate::job::JobEvent::Completed(
                 _,
                 crate::job::SuccessData::OperationRecords(records),
             ) = event
@@ -1813,7 +1814,7 @@ mod tests {
         // (execute_mkdir no longer fails the job — it reports per-record failure).
         let mut received_failed_record = false;
         while let Ok(event) = event_rx.try_recv() {
-            if let crate::worker_pool::JobEvent::Completed(
+            if let crate::job::JobEvent::Completed(
                 _,
                 crate::job::SuccessData::OperationRecords(records),
             ) = event
@@ -1875,7 +1876,7 @@ mod tests {
         // Verify completion
         let mut received_completed = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Completed(_, _)) {
+            if matches!(event, crate::job::JobEvent::Completed(_, _)) {
                 received_completed = true;
             }
         }
@@ -1929,7 +1930,7 @@ mod tests {
         // Verify we received a cancelled event
         let mut received_cancelled = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Cancelled(_)) {
+            if matches!(event, crate::job::JobEvent::Cancelled(_)) {
                 received_cancelled = true;
             }
         }
@@ -1974,7 +1975,7 @@ mod tests {
         // Verify we received a cancelled event
         let mut received_cancelled = false;
         while let Ok(event) = event_rx.try_recv() {
-            if matches!(event, crate::worker_pool::JobEvent::Cancelled(_)) {
+            if matches!(event, crate::job::JobEvent::Cancelled(_)) {
                 received_cancelled = true;
             }
         }

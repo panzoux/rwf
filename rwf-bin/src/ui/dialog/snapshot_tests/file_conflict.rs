@@ -2,7 +2,8 @@
 
 use super::{snapshot_dialog, test_state};
 use rwf_lib::config::EditMode;
-use rwf_lib::model::dialog::{ConflictPair, Dialog};
+use rwf_lib::dialog::Dialog;
+use rwf_lib::model::conflict::ConflictPair;
 use rwf_lib::model::{FileEntry, Location};
 use std::path::PathBuf;
 use std::time::SystemTime;

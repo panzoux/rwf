@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::CreateLinkDialog;
+use rwf_lib::dialog::CreateLinkDialog;
 use rwf_lib::model::LinkCreateKind;
 
 use super::DialogAction;

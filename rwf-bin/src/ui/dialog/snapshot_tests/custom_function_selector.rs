@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::CustomFunctionSelector`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{CustomFunction, CustomFunctionSelectorContent, Dialog};
+use rwf_lib::custom_function::CustomFunction;
+use rwf_lib::dialog::{CustomFunctionSelectorContent, Dialog};
 
 #[test]
 fn custom_function_selector_two_items_first_selected() {
@@ -25,12 +26,10 @@ fn custom_function_selector_five_items_middle_selected() {
         CustomFunction::new("Epsilon", "echo epsilon"),
     ];
     let mut dialog = Dialog::custom_function_selector(functions);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionSelector(
-        CustomFunctionSelectorContent {
-            ref mut selected_index,
-            ..
-        },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+        ref mut selected_index,
+        ..
+    }) = dialog.content
     {
         *selected_index = 2;
     }
@@ -51,13 +50,11 @@ fn custom_function_selector_with_filter() {
         CustomFunction::new("SearchText", "grep").with_description("Find text in files"),
     ];
     let mut dialog = Dialog::custom_function_selector(functions);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionSelector(
-        CustomFunctionSelectorContent {
-            ref mut filter,
-            ref mut selected_index,
-            ..
-        },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+        ref mut filter,
+        ref mut selected_index,
+        ..
+    }) = dialog.content
     {
         *filter = "list".to_string();
         *selected_index = 0;
@@ -75,12 +72,10 @@ fn custom_function_selector_four_items_last_selected() {
         CustomFunction::new("Fourth", "cmd4"),
     ];
     let mut dialog = Dialog::custom_function_selector(functions);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionSelector(
-        CustomFunctionSelectorContent {
-            ref mut selected_index,
-            ..
-        },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+        ref mut selected_index,
+        ..
+    }) = dialog.content
     {
         *selected_index = 3;
     }
@@ -90,18 +85,17 @@ fn custom_function_selector_four_items_last_selected() {
 /// Phase 7.26: with origins known, each row carries a right-aligned built-in / user tag.
 #[test]
 fn custom_function_selector_with_origin_tags() {
-    use rwf_lib::config_layers::ConfigOrigin;
+    use rwf_lib::model::config_origin::ConfigOrigin;
     let state = test_state();
     let functions = vec![
         CustomFunction::new("clip menu", "x").with_description("the clip menu"),
         CustomFunction::new("my tool", "tool $F").with_description("mine"),
     ];
     let mut dialog = Dialog::custom_function_selector(functions);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionSelector(
-        CustomFunctionSelectorContent {
-            ref mut origins, ..
-        },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::CustomFunctionSelector(CustomFunctionSelectorContent {
+        ref mut origins,
+        ..
+    }) = dialog.content
     {
         origins.insert("clip menu".to_string(), ConfigOrigin::BuiltIn);
         origins.insert("my tool".to_string(), ConfigOrigin::User);

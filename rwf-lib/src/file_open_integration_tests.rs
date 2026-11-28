@@ -4,10 +4,11 @@
 #[cfg(test)]
 mod tests {
     use crate::config::{ExtensionAssociation, FileOpenAction, FileTypeMapping};
-    use crate::input::{action_to_transitions, Action};
+    use crate::dialog::DialogContent;
+    use crate::input::action_to_transitions;
     use crate::job::{DetectFileTypePurpose, JobKind, JobSpec, OpResult, SuccessData};
+    use crate::keybindings::Action;
     use crate::magic::DetectedKind;
-    use crate::model::dialog::DialogContent;
     use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -1898,10 +1899,10 @@ mod tests {
         let mut state = test_state();
         state.extension_associations = vec![assoc];
 
-        let matching = crate::input::candidates_for(&state, DetectedKind::Pe, "log");
+        let matching = crate::state::file_open::candidates_for(&state, DetectedKind::Pe, "log");
         assert_eq!(matching.len(), 1);
 
-        let non_matching = crate::input::candidates_for(&state, DetectedKind::Pe, "txt");
+        let non_matching = crate::state::file_open::candidates_for(&state, DetectedKind::Pe, "txt");
         assert!(non_matching.is_empty());
     }
 

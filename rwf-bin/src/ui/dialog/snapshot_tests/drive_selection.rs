@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::DriveSelection`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DriveInfo, DriveType};
+use rwf_lib::dialog::Dialog;
+use rwf_lib::model::drive::{DriveInfo, DriveType};
 use rwf_lib::model::ui::ActivePane;
 
 #[test]
@@ -54,12 +55,10 @@ fn drive_selection_mixed_types_middle_selected() {
         },
     ];
     let mut dialog = Dialog::drive_selection(drives, ActivePane::Right);
-    if let rwf_lib::model::dialog::DialogContent::DriveSelection(
-        rwf_lib::model::dialog::DriveSelectionDialog {
-            ref mut selected_index,
-            ..
-        },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::DriveSelection(rwf_lib::dialog::DriveSelectionDialog {
+        ref mut selected_index,
+        ..
+    }) = dialog.content
     {
         *selected_index = 1;
     }
@@ -93,9 +92,10 @@ fn drive_selection_with_filter() {
         },
     ];
     let mut dialog = Dialog::drive_selection(drives, ActivePane::Left);
-    if let rwf_lib::model::dialog::DialogContent::DriveSelection(
-        rwf_lib::model::dialog::DriveSelectionDialog { ref mut filter, .. },
-    ) = dialog.content
+    if let rwf_lib::dialog::DialogContent::DriveSelection(rwf_lib::dialog::DriveSelectionDialog {
+        ref mut filter,
+        ..
+    }) = dialog.content
     {
         *filter = "d".to_string();
     }
@@ -115,7 +115,7 @@ fn drive_selection_while_listing_drives() {
         free_space: None,
     }];
     let mut dialog = Dialog::drive_selection(drives, ActivePane::Left);
-    if let rwf_lib::model::dialog::DialogContent::DriveSelection(d) = &mut dialog.content {
+    if let rwf_lib::dialog::DialogContent::DriveSelection(d) = &mut dialog.content {
         d.loading_job_id = Some(rwf_lib::job::JobId::new());
     }
     snapshot_dialog("drive_selection_while_listing_drives", &dialog, &state);

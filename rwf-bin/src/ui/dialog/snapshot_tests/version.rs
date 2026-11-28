@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::Version`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 
 #[test]
 fn version_default() {

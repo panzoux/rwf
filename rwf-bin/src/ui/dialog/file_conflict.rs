@@ -22,10 +22,10 @@ use super::DialogAction;
 /// `&mut` params (kept that way so `test_support::ConflictInputHarness` can
 /// override individual fields without constructing a full `FileConflictDialog`).
 pub(super) fn handle_input(
-    dialog: &mut rwf_lib::model::dialog::FileConflictDialog,
+    dialog: &mut rwf_lib::dialog::FileConflictDialog,
     key: KeyEvent,
 ) -> DialogAction {
-    let rwf_lib::model::dialog::FileConflictDialog {
+    let rwf_lib::dialog::FileConflictDialog {
         conflicts,
         current_index,
         focused_button,
@@ -68,7 +68,7 @@ pub(super) fn handle_input(
 pub(super) fn render_file_conflict_dialog(
     frame: &mut Frame,
     area: Rect,
-    conflicts: &[rwf_lib::model::dialog::ConflictPair],
+    conflicts: &[rwf_lib::model::conflict::ConflictPair],
     current_index: usize,
     focused_button: usize,
     rename_text: &str,
@@ -342,7 +342,7 @@ fn validate_filename(rename_text: &str, original_name: &str) -> Option<String> {
 /// Focus fields: 0=Force, 1=OverwriteIfNew, 2=Skip, 3=Rename button, 4=Textbox, 5=Cancel
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_file_conflict_input(
-    conflicts: &mut [rwf_lib::model::dialog::ConflictPair],
+    conflicts: &mut [rwf_lib::model::conflict::ConflictPair],
     current_index: &mut usize,
     focused_button: &mut usize,
     rename_text: &mut String,
@@ -351,7 +351,7 @@ pub(super) fn handle_file_conflict_input(
     edit_mode: &mut rwf_lib::config::EditMode,
     vi_mode: &mut Option<rwf_lib::config::ViMode>,
     error_message: &mut Option<String>,
-    decisions: &mut Vec<rwf_lib::model::dialog::ConflictAction>,
+    decisions: &mut Vec<rwf_lib::dialog::ConflictAction>,
     pending_find_backward: &mut Option<bool>,
     pending_operator: &mut Option<u8>,
     pending_ctrl_x: &mut bool,
@@ -448,7 +448,7 @@ pub(super) fn handle_file_conflict_input(
                     }
                     None => {
                         *error_message = None;
-                        decisions.push(rwf_lib::model::dialog::ConflictAction::Rename {
+                        decisions.push(rwf_lib::dialog::ConflictAction::Rename {
                             new_name: rename_text.clone(),
                         });
                         return DialogAction::Confirm;
@@ -570,16 +570,16 @@ pub(super) fn handle_file_conflict_input(
 }
 
 /// Convert button index to ConflictAction
-fn button_index_to_action(index: usize) -> rwf_lib::model::dialog::ConflictAction {
+fn button_index_to_action(index: usize) -> rwf_lib::dialog::ConflictAction {
     match index {
-        0 => rwf_lib::model::dialog::ConflictAction::Force,
-        1 => rwf_lib::model::dialog::ConflictAction::OverwriteIfNewer,
-        2 => rwf_lib::model::dialog::ConflictAction::Skip,
-        3 => rwf_lib::model::dialog::ConflictAction::Rename {
+        0 => rwf_lib::dialog::ConflictAction::Force,
+        1 => rwf_lib::dialog::ConflictAction::OverwriteIfNewer,
+        2 => rwf_lib::dialog::ConflictAction::Skip,
+        3 => rwf_lib::dialog::ConflictAction::Rename {
             new_name: String::new(),
         }, // Placeholder, name synced from textbox
-        4 => rwf_lib::model::dialog::ConflictAction::Skip, // Cancel = skip this file
-        _ => rwf_lib::model::dialog::ConflictAction::Skip,
+        4 => rwf_lib::dialog::ConflictAction::Skip, // Cancel = skip this file
+        _ => rwf_lib::dialog::ConflictAction::Skip,
     }
 }
 
@@ -587,7 +587,8 @@ fn button_index_to_action(index: usize) -> rwf_lib::model::dialog::ConflictActio
 mod conflict_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use rwf_lib::model::dialog::{ConflictAction, ConflictPair};
+    use rwf_lib::dialog::ConflictAction;
+    use rwf_lib::model::conflict::ConflictPair;
     use rwf_lib::model::{FileEntry, Location};
     use std::path::PathBuf;
     use std::time::SystemTime;

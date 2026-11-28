@@ -5,8 +5,8 @@
 //! render the same on both CI runners.
 
 use super::{snapshot_dialog, test_state};
+use rwf_lib::dialog::{Dialog, ReadFailureDialog, READ_FAILURE_RETRY};
 use rwf_lib::job::{FailureKind, JobOrigin};
-use rwf_lib::model::dialog::{Dialog, ReadFailureDialog, READ_FAILURE_RETRY};
 use rwf_lib::model::{ActivePane, Location};
 use std::path::PathBuf;
 

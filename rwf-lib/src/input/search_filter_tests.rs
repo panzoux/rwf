@@ -2,8 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action};
-    use crate::model::{ActivePane, DialogContent, FileMaskDialog, UIMode};
+    use crate::dialog::{DialogContent, FileMaskDialog};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::Action;
+    use crate::model::{ActivePane, UIMode};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
 
@@ -309,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_key_bindings_for_search_filter() {
-        use crate::input::KeyBindings;
+        use crate::keybindings::KeyBindings;
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
         let mut bindings = KeyBindings::default();

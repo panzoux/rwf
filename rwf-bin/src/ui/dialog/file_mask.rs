@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::{DialogUiState, FileMaskDialog};
+use rwf_lib::dialog::{DialogUiState, FileMaskDialog};
 
 use super::DialogAction;
 

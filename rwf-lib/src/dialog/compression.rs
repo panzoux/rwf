@@ -4,7 +4,7 @@
 pub struct CompressionDialog {
     // Data fields
     pub sources: Vec<crate::model::Location>,
-    pub format: crate::input::ArchiveFormat,
+    pub format: crate::model::archive_format::ArchiveFormat,
     pub archive_name: String,
     pub selected_format_index: usize,
     pub selected_compression_index: usize,
@@ -50,7 +50,7 @@ impl CompressionDialog {
 
         Self {
             sources,
-            format: crate::input::ArchiveFormat::ZIP,
+            format: crate::model::archive_format::ArchiveFormat::ZIP,
             archive_name: default_name.clone(),
             selected_format_index: 0,
             selected_compression_index: 3, // Default to Normal

@@ -15,7 +15,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
-use rwf_lib::model::dialog::MultiLineInputDialog;
+use rwf_lib::dialog::MultiLineInputDialog;
 
 use crate::ui::multiline_text_input::{MultiLineInputAction, MultiLineTextInput};
 

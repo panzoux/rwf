@@ -8,6 +8,8 @@ workspace = true
 
 [dependencies]
 rwf-winmenu = { path = "../rwf-winmenu" }
+# 7-Zip's 7z.dll / 7z.so, loaded at run time (plan/8.11)
+rwf-7zlib = { path = "../rwf-7zlib" }
 # Workspace dependencies
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -41,6 +43,11 @@ tar = { workspace = true }
 flate2 = { workspace = true }
 iso9660 = { workspace = true }
 trash = "5"
+
+# RAR on Linux / macOS, whose 7z.so has no RAR decoder (plan/8.11 §2.9).
+# Not on Windows: 7z.dll extracts RAR there.
+[target.'cfg(not(windows))'.dependencies]
+unrar-ng = "0.7.7"
 
 [target.'cfg(unix)'.dependencies]
 users = "0.11"

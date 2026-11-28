@@ -3,30 +3,13 @@
 //! This module implements the JobManager and related types for managing
 //! asynchronous file operations via the rwf Worker Pool.
 
+pub use crate::model::JobId;
 use crate::model::Location;
+use crate::pipe_to_action::PipeToAction;
 pub use rwf_winmenu::CellAnchor;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
-
-/// Unique identifier for a job
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct JobId(pub Uuid);
-
-impl JobId {
-    /// Generate a new unique job ID
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl Default for JobId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Job specification submitted to the worker pool
 #[derive(Debug, Clone)]
@@ -426,18 +409,6 @@ pub enum DetectFileTypePurpose {
     ContextMenuLabel,
 }
 
-/// Action to perform with custom function output
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum PipeToAction {
-    JumpToPath,
-    ExecuteFile,
-    ExecuteFileWithEditor,
-    /// Copy the command's stdout to the clipboard. The counterpart to the `ClipText`
-    /// function kind: that one copies an expanded template with no process, this one
-    /// copies what a command produced.
-    ClipText,
-}
-
 /// Active job with execution state
 #[derive(Debug, Clone)]
 pub struct Job {
@@ -518,7 +489,7 @@ pub enum SuccessData {
     /// nothing in the chain survives (an unmounted drive, an unreachable host).
     FallbackPath(Option<Location>),
     /// Every drive and mounted volume, for the drive-selection dialog.
-    Drives(Vec<crate::model::dialog::DriveInfo>),
+    Drives(Vec<crate::model::drive::DriveInfo>),
     /// What a custom function's printed path resolved to.
     PipeTarget(crate::pipe_to_action::PipeToActionResult),
     /// Undo/Redo rows split into those that can run now and those blocked, with why.
@@ -883,3 +854,35 @@ pub use job_executor::detect_conflicts;
 pub use job_executor::JobExecutor;
 pub use report_builder::build_operation_report;
 pub use undo_preflight::{blocked_summary, preflight_check, PreflightOutcome};
+
+/// Events sent from workers to the UI thread
+#[derive(Debug, Clone)]
+pub enum JobEvent {
+    /// Job has started execution
+    Started(JobId),
+    /// How long the worker spent executing a background poll (Phase 7.5), sent just before
+    /// its result. Timed here because the App loop often receives a fast poll's start and
+    /// result in the same batch.
+    Elapsed(JobId, std::time::Duration),
+    /// Job progress update (job_id, progress 0.0-1.0)
+    Progress(JobId, f64),
+    /// Job progress update with detail messages (job_id, progress, progress_message, operation_detail)
+    ProgressWithDetail(JobId, f64, String, String),
+    /// Job completed successfully
+    Completed(JobId, crate::job::SuccessData),
+    /// Job failed with error
+    Failed(JobId, String),
+    /// Job was cancelled
+    Cancelled(JobId),
+    /// Viewer file opened: mmap ready and line-index building started.
+    /// Sent immediately so the UI can render the first visible lines before
+    /// the full line index is built. The ViewerBuffer's line_index Arc is
+    /// shared with the background indexer — no copy, just Arc::clone.
+    ViewerReady(
+        JobId,
+        crate::model::viewer::ViewerBuffer,
+        crate::model::viewer::TextEncoding,
+    ),
+    /// Background viewer search completed. Contains the match list.
+    ViewerSearchComplete(JobId, Vec<(usize, usize, usize)>),
+}

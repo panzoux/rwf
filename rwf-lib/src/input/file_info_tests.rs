@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{Action, KeyBindings};
+    use crate::keybindings::{Action, KeyBindings};
     use crate::model::FileEntry;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -42,7 +42,7 @@ mod tests {
         assert!(
             matches!(
                 dialog.content,
-                crate::model::dialog::DialogContent::FileInfo { .. }
+                crate::dialog::DialogContent::FileInfo { .. }
             ),
             "must be FileInfo dialog"
         );
@@ -71,14 +71,12 @@ mod tests {
         update_state(&mut state, Transition::ShowFileInfo);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::FileInfo(
-            crate::model::dialog::FileInfoDialog {
-                file_name,
-                size,
-                is_dir,
-                ..
-            },
-        ) = &dialog.content
+        if let crate::dialog::DialogContent::FileInfo(crate::dialog::FileInfoDialog {
+            file_name,
+            size,
+            is_dir,
+            ..
+        }) = &dialog.content
         {
             assert_eq!(file_name, "document.pdf");
             assert_eq!(*size, 99999);
@@ -98,9 +96,10 @@ mod tests {
         update_state(&mut state, Transition::ShowFileInfo);
 
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let crate::model::dialog::DialogContent::FileInfo(
-            crate::model::dialog::FileInfoDialog { is_dir, .. },
-        ) = &dialog.content
+        if let crate::dialog::DialogContent::FileInfo(crate::dialog::FileInfoDialog {
+            is_dir,
+            ..
+        }) = &dialog.content
         {
             assert!(*is_dir, "directory entry must set is_dir=true");
         }

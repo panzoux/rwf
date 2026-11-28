@@ -114,9 +114,12 @@ mod tests {
 
         let entry = entries.iter().find(|e| e.name == "dated.txt").unwrap();
 
-        let expected: chrono::DateTime<chrono::Utc> = chrono::Utc
+        // DOS time is the writer's local wall-clock time, so it reads back in the
+        // local zone (plan/8.11 §6; it used to be read as UTC).
+        let expected: chrono::DateTime<chrono::Utc> = chrono::Local
             .with_ymd_and_hms(2020, 6, 15, 10, 30, 0)
-            .unwrap();
+            .unwrap()
+            .into();
         let actual: chrono::DateTime<chrono::Utc> = entry.modified.into();
         assert_eq!(actual, expected);
 

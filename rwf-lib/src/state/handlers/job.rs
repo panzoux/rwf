@@ -192,9 +192,7 @@ impl AppState {
                                 // with a live `&mut self.dialogs` borrow.
                                 let is_report_dialog_open = matches!(
                                     self.dialogs.current().map(|d| &d.content),
-                                    Some(crate::model::dialog::DialogContent::OperationReportView(
-                                        _
-                                    ))
+                                    Some(crate::dialog::DialogContent::OperationReportView(_))
                                 );
                                 if is_report_dialog_open {
                                     let refreshed =
@@ -486,7 +484,7 @@ impl AppState {
                                 };
                                 Some(format!("Tab {} {} pane", position + 1, side))
                             });
-                            let error_dialog = crate::model::Dialog::from_job_failure_in(
+                            let error_dialog = crate::dialog::Dialog::from_job_failure_in(
                                 op_name,
                                 error_message,
                                 origin.as_deref(),
@@ -761,8 +759,8 @@ impl AppState {
                                                     crate::model::ActivePane::Right => "right",
                                                 };
                                                 self.dialogs
-                                                    .push(crate::model::Dialog::read_failure(
-                                                    crate::model::dialog::ReadFailureDialog::new(
+                                                    .push(crate::dialog::Dialog::read_failure(
+                                                    crate::dialog::ReadFailureDialog::new(
                                                         tab_id,
                                                         side,
                                                         format!("Tab {number}, {side_word} pane"),
@@ -806,7 +804,7 @@ impl AppState {
                                 _ => Vec::new(),
                             };
                             for dialog in self.dialogs.stack.iter_mut() {
-                                if let crate::model::dialog::DialogContent::DriveSelection(d) =
+                                if let crate::dialog::DialogContent::DriveSelection(d) =
                                     &mut dialog.content
                                 {
                                     if d.loading_job_id == Some(*job_id) {
@@ -921,7 +919,7 @@ impl AppState {
                                 } else {
                                     // Some rows are blocked — say which, and let the user
                                     // decide whether to run just the ready ones.
-                                    self.dialogs.push(crate::model::Dialog::action_confirm(
+                                    self.dialogs.push(crate::dialog::Dialog::action_confirm(
                                         title,
                                         crate::job::blocked_summary(
                                             ready.len(),
@@ -930,7 +928,7 @@ impl AppState {
                                             blocked,
                                         ),
                                         None,
-                                        crate::model::ConfirmableAction::ExecuteReversal {
+                                        crate::dialog::ConfirmableAction::ExecuteReversal {
                                             actions: ready.clone(),
                                             operation_name: operation_name.clone(),
                                             resulting_is_undo: *resulting_is_undo,
@@ -1382,7 +1380,7 @@ impl AppState {
                                         crate::model::Location::Local(p) => p.clone(),
                                         other => std::path::PathBuf::from(other.display_path()),
                                     };
-                                    if matches!(action, crate::job::PipeToAction::ClipText) {
+                                    if matches!(action, crate::pipe_to_action::PipeToAction::ClipText) {
                                         // Text, not a path: nothing to check.
                                         result_obj.jobs_to_start.push(crate::job::JobSpec::new(
                                             crate::job::JobKind::SetClipboard {
@@ -1409,11 +1407,11 @@ impl AppState {
                                     let config_path =
                                         config_manager.config_path().to_string_lossy().to_string();
                                     if command.contains(&config_path) {
-                                        let dialog = crate::model::Dialog::action_confirm(
+                                        let dialog = crate::dialog::Dialog::action_confirm(
                                             "Configuration Editor Closed",
                                             "Reload configuration?",
                                             None,
-                                            crate::model::ConfirmableAction::ReloadConfig,
+                                            crate::dialog::ConfirmableAction::ReloadConfig,
                                         );
                                         self.dialogs.push(dialog);
                                     } else {
@@ -1436,11 +1434,11 @@ impl AppState {
                                 let config_path =
                                     config_manager.config_path().to_string_lossy().to_string();
                                 if args.iter().any(|a| a == &config_path) {
-                                    let dialog = crate::model::Dialog::action_confirm(
+                                    let dialog = crate::dialog::Dialog::action_confirm(
                                         "Configuration Editor Closed",
                                         "Reload configuration?",
                                         None,
-                                        crate::model::ConfirmableAction::ReloadConfig,
+                                        crate::dialog::ConfirmableAction::ReloadConfig,
                                     );
                                     self.dialogs.push(dialog);
                                 }
@@ -1455,14 +1453,14 @@ impl AppState {
                                 let job_id_val = *job_id;
                                 for dialog in self.dialogs.stack.iter_mut().rev() {
                                     let matched = match &dialog.content {
-                                        crate::model::dialog::DialogContent::JumpToFile(
-                                            crate::model::dialog::JumpToFileDialog {
+                                        crate::dialog::DialogContent::JumpToFile(
+                                            crate::dialog::JumpToFileDialog {
                                                 loading_job_id,
                                                 ..
                                             },
                                         ) => *loading_job_id == Some(job_id_val),
-                                        crate::model::dialog::DialogContent::JumpToPath(
-                                            crate::model::dialog::JumpToPathDialog {
+                                        crate::dialog::DialogContent::JumpToPath(
+                                            crate::dialog::JumpToPathDialog {
                                                 loading_job_id,
                                                 ..
                                             },
@@ -1471,8 +1469,8 @@ impl AppState {
                                     };
                                     if matched {
                                         match &mut dialog.content {
-                                            crate::model::dialog::DialogContent::JumpToFile(
-                                                crate::model::dialog::JumpToFileDialog {
+                                            crate::dialog::DialogContent::JumpToFile(
+                                                crate::dialog::JumpToFileDialog {
                                                     candidates,
                                                     suggestions,
                                                     dir_paths,
@@ -1492,11 +1490,11 @@ impl AppState {
                                                     }
                                                 }
                                                 *loading_job_id = None;
-                                                *suggestions = crate::model::dialog::filter_jump_to_file_suggestions(candidates, query);
+                                                *suggestions = crate::dialog::filter_jump_to_file_suggestions(candidates, query);
                                                 result_obj.ui_changed = true;
                                             }
-                                            crate::model::dialog::DialogContent::JumpToPath(
-                                                crate::model::dialog::JumpToPathDialog {
+                                            crate::dialog::DialogContent::JumpToPath(
+                                                crate::dialog::JumpToPathDialog {
                                                     candidates,
                                                     suggestions,
                                                     loading_job_id,
@@ -1514,7 +1512,7 @@ impl AppState {
                                                     }
                                                 }
                                                 *loading_job_id = None;
-                                                *suggestions = crate::model::dialog::filter_jump_to_path_suggestions(candidates, query);
+                                                *suggestions = crate::dialog::filter_jump_to_path_suggestions(candidates, query);
                                                 result_obj.ui_changed = true;
                                             }
                                             _ => {}
@@ -1564,7 +1562,7 @@ impl AppState {
                                                 kind.label(),
                                                 ext_note
                                             ));
-                                            let dialog = crate::model::Dialog::type_mismatch_warning(
+                                            let dialog = crate::dialog::Dialog::type_mismatch_warning(
                                                 path.clone(),
                                                 *kind,
                                                 command.clone(),
@@ -1604,7 +1602,7 @@ impl AppState {
                                             .map(|e| e.to_lowercase())
                                             .unwrap_or_default();
                                         let candidates =
-                                            crate::input::candidates_for(self, *kind, &ext_lower);
+                                            crate::state::file_open::candidates_for(self, *kind, &ext_lower);
                                         match candidates.len() {
                                             0 => {
                                                 // No association matched even with content-type
@@ -1617,7 +1615,7 @@ impl AppState {
                                             }
                                             1 => {
                                                 let assoc = &candidates[0];
-                                                match crate::input::expand_association_command(
+                                                match crate::state::file_open::expand_association_command(
                                                     self, assoc,
                                                 ) {
                                                     Ok((command, working_dir, shell)) => {
@@ -1649,7 +1647,7 @@ impl AppState {
                                                                 ext_note
                                                             ));
                                                             let dialog =
-                                                                crate::model::Dialog::type_mismatch_warning(
+                                                                crate::dialog::Dialog::type_mismatch_warning(
                                                                     path.clone(),
                                                                     *kind,
                                                                     command,
@@ -1679,7 +1677,7 @@ impl AppState {
                                                 }
                                             }
                                             _ => {
-                                                let dialog = crate::model::Dialog::open_with_picker(
+                                                let dialog = crate::dialog::Dialog::open_with_picker(
                                                     vec![path.clone()],
                                                     candidates,
                                                     Some(*kind),
@@ -1698,7 +1696,7 @@ impl AppState {
                                         // other dialogs may have been pushed on top meanwhile.
                                         let job_id_val = *job_id;
                                         for dialog in self.dialogs.stack.iter_mut().rev() {
-                                            if let crate::model::dialog::DialogContent::FileInfo(
+                                            if let crate::dialog::DialogContent::FileInfo(
                                                 d,
                                             ) = &mut dialog.content
                                             {
@@ -1767,7 +1765,7 @@ impl AppState {
                                         // (other dialogs may have been pushed on top meanwhile).
                                         let job_id_val = *job_id;
                                         for dialog in self.dialogs.stack.iter_mut().rev() {
-                                            if let crate::model::dialog::DialogContent::ContextMenu(
+                                            if let crate::dialog::DialogContent::ContextMenu(
                                                 d,
                                             ) = &mut dialog.content
                                             {
@@ -1835,7 +1833,7 @@ impl AppState {
                                 let candidates = if ext_lower.is_empty() {
                                     Vec::new()
                                 } else {
-                                    crate::input::candidates_for_extension(self, &ext_lower)
+                                    crate::state::file_open::candidates_for_extension(self, &ext_lower)
                                 };
                                 match candidates.len() {
                                     0 => {
@@ -1853,7 +1851,7 @@ impl AppState {
                                     1 => {
                                         let assoc = &candidates[0];
                                         if let Ok((command, working_dir, shell)) =
-                                            crate::input::expand_association_command(self, assoc)
+                                            crate::state::file_open::expand_association_command(self, assoc)
                                         {
                                             result_obj.jobs_to_start.push(
                                                 crate::job::JobSpec::execute_association(
@@ -1871,7 +1869,7 @@ impl AppState {
                                         }
                                     }
                                     _ => {
-                                        let dialog = crate::model::Dialog::open_with_picker(
+                                        let dialog = crate::dialog::Dialog::open_with_picker(
                                             vec![path.clone()],
                                             candidates,
                                             None,
@@ -1889,7 +1887,7 @@ impl AppState {
                                 // same way as the success path above.
                                 let job_id_val = *job_id;
                                 for dialog in self.dialogs.stack.iter_mut().rev() {
-                                    if let crate::model::dialog::DialogContent::FileInfo(d) =
+                                    if let crate::dialog::DialogContent::FileInfo(d) =
                                         &mut dialog.content
                                     {
                                         if d.detected_type_job_id == Some(job_id_val) {
@@ -1910,7 +1908,7 @@ impl AppState {
                                 // stack-scan pattern as FileInfoDisplay's failure arm above.
                                 let job_id_val = *job_id;
                                 for dialog in self.dialogs.stack.iter_mut().rev() {
-                                    if let crate::model::dialog::DialogContent::ContextMenu(d) =
+                                    if let crate::dialog::DialogContent::ContextMenu(d) =
                                         &mut dialog.content
                                     {
                                         if d.detected_type_job_id == Some(job_id_val) {
@@ -1943,7 +1941,7 @@ impl AppState {
                                     // group was detected as, extension fallback via the shared
                                     // `candidates_for` (same logic the single-file
                                     // ResolveAssociation completion arm above uses).
-                                    let candidates = crate::input::candidates_for(self, kind, &ext);
+                                    let candidates = crate::state::file_open::candidates_for(self, kind, &ext);
                                     match candidates.len() {
                                         0 => {
                                             result_obj.task_panel_logs.push(format!(
@@ -1955,7 +1953,7 @@ impl AppState {
                                         1 => {
                                             let assoc = &candidates[0];
                                             if let Ok((command, working_dir, shell)) =
-                                                crate::input::expand_association_command(
+                                                crate::state::file_open::expand_association_command(
                                                     self, assoc,
                                                 )
                                             {
@@ -1975,7 +1973,7 @@ impl AppState {
                                             // single-file behavior) — skip the group silently.
                                         }
                                         _ => {
-                                            let dialog = crate::model::Dialog::open_with_picker(
+                                            let dialog = crate::dialog::Dialog::open_with_picker(
                                                 paths,
                                                 candidates,
                                                 Some(kind),
@@ -1997,7 +1995,7 @@ impl AppState {
                                         .task_panel_logs
                                         .push("[Info] Trash is already empty".to_string());
                                 } else {
-                                    let dialog = crate::model::Dialog::action_confirm(
+                                    let dialog = crate::dialog::Dialog::action_confirm(
                                         "Empty Trash",
                                         format!(
                                             "Permanently empty {} item{} ({}) from the trash? This cannot be undone.",
@@ -2005,11 +2003,11 @@ impl AppState {
                                             if *count == 1 { "" } else { "s" },
                                             crate::model::format_size(*total_size)
                                         ),
-                                        Some(crate::model::ConfirmStats {
+                                        Some(crate::dialog::ConfirmStats {
                                             count: *count,
                                             total_size: *total_size,
                                         }),
-                                        crate::model::ConfirmableAction::EmptyTrash {
+                                        crate::dialog::ConfirmableAction::EmptyTrash {
                                             fallback_roots: fallback_roots.clone(),
                                         },
                                     );
@@ -2029,7 +2027,7 @@ impl AppState {
                                         .push("[Info] Trash is already empty".to_string());
                                 } else {
                                     self.dialogs
-                                        .push(crate::model::Dialog::trash_browser(records.clone()));
+                                        .push(crate::dialog::Dialog::trash_browser(records.clone()));
                                 }
                                 result_obj.ui_changed = true;
                             }

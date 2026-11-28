@@ -3,7 +3,7 @@
 use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crossterm::event::{KeyCode, KeyEvent};
-use rwf_lib::model::dialog::TrashBrowserDialog;
+use rwf_lib::dialog::TrashBrowserDialog;
 use rwf_lib::model::format_size;
 
 use crate::ui::smart_truncate;

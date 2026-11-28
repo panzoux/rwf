@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::ContextMenu`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{ContextMenuAction, ContextMenuDialog, ContextMenuOption, Dialog};
+use rwf_lib::dialog::{ContextMenuAction, ContextMenuDialog, ContextMenuOption, Dialog};
 
 #[test]
 fn context_menu_default_options_first_selected() {
@@ -14,7 +14,7 @@ fn context_menu_default_options_first_selected() {
 fn context_menu_default_options_middle_selected() {
     let state = test_state();
     let mut dialog = Dialog::context_menu();
-    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+    if let rwf_lib::dialog::DialogContent::ContextMenu(ContextMenuDialog {
         ref mut selected_index,
         ..
     }) = dialog.content
@@ -75,7 +75,7 @@ fn context_menu_extended_options_last_selected() {
         },
     ];
     let mut dialog = Dialog::context_menu_with_options(options);
-    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+    if let rwf_lib::dialog::DialogContent::ContextMenu(ContextMenuDialog {
         ref mut selected_index,
         ..
     }) = dialog.content
@@ -93,7 +93,7 @@ fn context_menu_extended_options_last_selected() {
 fn context_menu_open_with_row_shows_detected_type() {
     let state = test_state();
     let mut dialog = Dialog::context_menu();
-    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+    if let rwf_lib::dialog::DialogContent::ContextMenu(ContextMenuDialog {
         ref mut detected_type_label,
         ..
     }) = dialog.content
@@ -109,7 +109,7 @@ fn context_menu_open_with_row_shows_detected_type() {
 fn context_menu_open_with_row_shows_detecting_placeholder() {
     let state = test_state();
     let mut dialog = Dialog::context_menu();
-    if let rwf_lib::model::dialog::DialogContent::ContextMenu(ContextMenuDialog {
+    if let rwf_lib::dialog::DialogContent::ContextMenu(ContextMenuDialog {
         ref mut detected_type_job_id,
         ..
     }) = dialog.content

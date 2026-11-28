@@ -8,7 +8,7 @@ use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rwf_lib::config::ExtensionAssociation;
-use rwf_lib::model::dialog::OpenWithPickerDialog;
+use rwf_lib::dialog::OpenWithPickerDialog;
 
 use super::DialogAction;
 use crate::ui::smart_truncate;

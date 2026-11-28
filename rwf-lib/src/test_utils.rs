@@ -18,7 +18,8 @@ use std::time::SystemTime;
 use tempfile::TempDir;
 
 use crate::config::AppConfig;
-use crate::model::{ActivePane, Dialog, FileEntry, Location};
+use crate::dialog::Dialog;
+use crate::model::{ActivePane, FileEntry, Location};
 use crate::state::{update_state, AppState, Transition};
 
 /// An `AppState` with default config — the most common test starting point.

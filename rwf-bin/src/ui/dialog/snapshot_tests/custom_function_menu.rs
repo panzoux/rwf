@@ -1,7 +1,8 @@
 //! Snapshots for `DialogContent::CustomFunctionMenu`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{CustomFunctionMenuDialog, Dialog, MenuItem};
+use rwf_lib::custom_function::MenuItem;
+use rwf_lib::dialog::{CustomFunctionMenuDialog, Dialog};
 
 fn described(name: &str, action: &str, description: &str) -> MenuItem {
     MenuItem {
@@ -45,7 +46,7 @@ fn custom_function_menu_four_items_middle_selected() {
         MenuItem::new("Fourth", "fourth"),
     ];
     let mut dialog = Dialog::custom_function_menu("Main".to_string(), items);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
+    if let rwf_lib::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
         ref mut selected_index,
         ..
     }) = dialog.content
@@ -64,7 +65,7 @@ fn custom_function_menu_three_items_last_selected() {
         MenuItem::new("Action3", "action3"),
     ];
     let mut dialog = Dialog::custom_function_menu("Tools".to_string(), items);
-    if let rwf_lib::model::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
+    if let rwf_lib::dialog::DialogContent::CustomFunctionMenu(CustomFunctionMenuDialog {
         ref mut selected_index,
         ..
     }) = dialog.content

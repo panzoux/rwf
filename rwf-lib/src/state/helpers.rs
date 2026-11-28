@@ -1,7 +1,7 @@
 use crate::state::AppConfig;
 use crate::state::AppState;
 
-/// What invoking a [`CustomFunction`](crate::model::dialog::CustomFunction) should do.
+/// What invoking a [`CustomFunction`](crate::custom_function::CustomFunction) should do.
 ///
 /// Returned by [`AppState::custom_function_job`], the single place that turns a custom
 /// function into work. Before it existed, five call sites (keybindings, the `$I` input
@@ -28,7 +28,7 @@ impl AppState {
     /// dialog; pass `None` on the first attempt.
     pub fn custom_function_job(
         &self,
-        func: &crate::model::dialog::CustomFunction,
+        func: &crate::custom_function::CustomFunction,
         user_input: Option<&str>,
     ) -> CustomFunctionOutcome {
         use crate::job::{JobKind, JobSpec};
@@ -37,7 +37,7 @@ impl AppState {
             return CustomFunctionOutcome::Menu;
         }
 
-        let expander = crate::macro_expander::MacroExpander::new();
+        let expander = crate::state::macro_expander::MacroExpander::new();
 
         // ClipText: no process, no shell, no working directory — just expanded text.
         if let Some(template) = &func.clip_text {
@@ -269,8 +269,9 @@ impl AppState {
 #[cfg(test)]
 mod custom_function_job_tests {
     use super::CustomFunctionOutcome;
-    use crate::job::{JobKind, PipeToAction};
-    use crate::model::dialog::CustomFunction;
+    use crate::custom_function::CustomFunction;
+    use crate::job::JobKind;
+    use crate::pipe_to_action::PipeToAction;
     use crate::test_utils::test_state;
 
     fn func(name: &str) -> CustomFunction {
@@ -281,7 +282,7 @@ mod custom_function_job_tests {
     fn menu_entries_are_reported_as_menus_not_jobs() {
         let mut f = func("m");
         f.command = None;
-        f.menu = Some(crate::model::dialog::MenuContent::Items(Vec::new()));
+        f.menu = Some(crate::custom_function::MenuContent::Items(Vec::new()));
         let state = test_state();
         assert!(matches!(
             state.custom_function_job(&f, None),
@@ -369,7 +370,7 @@ mod custom_function_job_tests {
         };
         f.os_specific.insert(
             os_key.to_string(),
-            crate::model::dialog::OsConfig {
+            crate::custom_function::OsConfig {
                 command: "pwd".to_string(),
                 shell: Some("bash".to_string()),
             },
@@ -413,7 +414,14 @@ mod tests {
         let start = update_state(
             &mut state,
             Transition::OpenWithSystem {
-                path: r"C:\videos\clip.mp4".to_string(),
+                // A native path: on Linux a backslash is not a separator, so the
+                // Windows form would show whole instead of as `clip.mp4`.
+                path: if cfg!(windows) {
+                    r"C:\videos\clip.mp4"
+                } else {
+                    "/videos/clip.mp4"
+                }
+                .to_string(),
             },
         );
         assert_eq!(start.jobs_to_start.len(), 1);

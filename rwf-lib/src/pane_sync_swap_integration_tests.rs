@@ -395,7 +395,7 @@ mod tests {
         // 'o' (SyncToOtherPane) acts on the *active* pane like every other key:
         // the active pane follows the other pane, the other pane is untouched.
         use crate::input::action_to_transitions;
-        use crate::input::Action;
+        use crate::keybindings::Action;
 
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         let left_before = state.current_tab().left_pane.current_location.clone();
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn test_sync_to_other_pane_from_right() {
         use crate::input::action_to_transitions;
-        use crate::input::Action;
+        use crate::keybindings::Action;
 
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         state.ui.active_pane = ActivePane::Right;
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn test_sync_to_other_pane_is_noop_when_same_directory() {
         use crate::input::action_to_transitions;
-        use crate::input::Action;
+        use crate::keybindings::Action;
 
         let (mut state, _left_dir, _right_dir) = create_test_state_with_different_panes();
         let right_location = state.current_tab().right_pane.current_location.clone();
@@ -465,7 +465,7 @@ mod tests {
 
     #[test]
     fn test_default_o_key_is_sync_to_other_pane() {
-        use crate::input::{Action, KeyBindings};
+        use crate::keybindings::{Action, KeyBindings};
         let keybindings = KeyBindings::default();
         assert_eq!(
             keybindings.normal_mode.get("o"),

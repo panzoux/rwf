@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::{filter_jump_to_path_suggestions, DialogContent};
+    use crate::dialog::{filter_jump_to_path_suggestions, DialogContent};
+    use crate::keybindings::{Action, KeyBindings};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
 
@@ -50,7 +50,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog { query, .. }) =
+        if let DialogContent::JumpToPath(crate::dialog::JumpToPathDialog { query, .. }) =
             &dialog.content
         {
             assert_eq!(query, "", "initial query must be empty");
@@ -64,9 +64,8 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
-            selected_index,
-            ..
+        if let DialogContent::JumpToPath(crate::dialog::JumpToPathDialog {
+            selected_index, ..
         }) = &dialog.content
         {
             assert_eq!(*selected_index, 0);
@@ -80,7 +79,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
+        if let DialogContent::JumpToPath(crate::dialog::JumpToPathDialog {
             candidates,
             suggestions,
             ..
@@ -101,10 +100,8 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToPath(crate::model::dialog::JumpToPathDialog {
-            search_root,
-            ..
-        }) = &dialog.content
+        if let DialogContent::JumpToPath(crate::dialog::JumpToPathDialog { search_root, .. }) =
+            &dialog.content
         {
             assert!(!search_root.is_empty(), "search_root must not be empty");
         } else {

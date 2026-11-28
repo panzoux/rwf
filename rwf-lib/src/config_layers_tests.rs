@@ -5,8 +5,8 @@
 
 use super::*;
 use crate::config::ConfigLoadStatus;
-use crate::input::Action;
-use crate::model::dialog::MenuContent;
+use crate::custom_function::MenuContent;
+use crate::keybindings::Action;
 use tempfile::TempDir;
 
 fn manager(dir: &TempDir) -> ConfigManager {
@@ -43,32 +43,28 @@ fn write_full_export(dir: &TempDir) {
     write(
         dir,
         "keybindings.json",
-        crate::help_content::DEFAULT_KEYBINDINGS,
+        crate::defaults::DEFAULT_KEYBINDINGS,
     );
     write(
         dir,
         "custom_functions.json",
-        crate::help_content::DEFAULT_CUSTOM_FUNCTIONS,
+        crate::defaults::DEFAULT_CUSTOM_FUNCTIONS,
     );
-    write(
-        dir,
-        "menu_clip.json",
-        crate::help_content::DEFAULT_MENU_CLIP,
-    );
+    write(dir, "menu_clip.json", crate::defaults::DEFAULT_MENU_CLIP);
     write(
         dir,
         "menu_config.json",
-        crate::help_content::DEFAULT_MENU_CONFIG,
+        crate::defaults::DEFAULT_MENU_CONFIG,
     );
     write(
         dir,
         "file_type_map.json",
-        crate::help_content::DEFAULT_FILE_TYPE_MAP,
+        crate::defaults::DEFAULT_FILE_TYPE_MAP,
     );
     write(
         dir,
         "extension_associations.json",
-        crate::help_content::DEFAULT_EXTENSION_ASSOCIATIONS,
+        crate::defaults::DEFAULT_EXTENSION_ASSOCIATIONS,
     );
 }
 
@@ -114,10 +110,10 @@ fn missing_user_files_give_the_full_built_in_defaults() {
         );
     }
     let ftm_defaults: Vec<FileTypeMapping> =
-        serde_json::from_str(crate::help_content::DEFAULT_FILE_TYPE_MAP).expect("valid");
+        serde_json::from_str(crate::defaults::DEFAULT_FILE_TYPE_MAP).expect("valid");
     assert_eq!(json(&lists.file_type_map), json(&ftm_defaults));
     let ext_defaults: Vec<ExtensionAssociation> =
-        serde_json::from_str(crate::help_content::DEFAULT_EXTENSION_ASSOCIATIONS).expect("valid");
+        serde_json::from_str(crate::defaults::DEFAULT_EXTENSION_ASSOCIATIONS).expect("valid");
     assert_eq!(json(&lists.extension_associations), json(&ext_defaults));
     assert_eq!(
         lists.built_in_function_names.len(),
@@ -180,7 +176,7 @@ fn every_menu_a_built_in_function_opens_is_built_in() {
     for f in built_in_functions() {
         if let Some(MenuContent::File(file)) = &f.menu {
             assert!(
-                crate::model::dialog::built_in_menu(file).is_some(),
+                crate::custom_function::built_in_menu(file).is_some(),
                 "{:?} opens {file}, which is not a built-in menu",
                 f.name
             );
@@ -299,7 +295,7 @@ fn a_file_type_map_entry_goes_first_and_hides_the_default_with_its_key() {
         ConfigLayering::Layered,
     );
     let defaults: Vec<FileTypeMapping> =
-        serde_json::from_str(crate::help_content::DEFAULT_FILE_TYPE_MAP).expect("valid");
+        serde_json::from_str(crate::defaults::DEFAULT_FILE_TYPE_MAP).expect("valid");
     assert_eq!(ftm.len(), defaults.len());
     assert_eq!(ftm[0].file_type.as_deref(), Some("x/mine"));
     assert_eq!(
@@ -411,7 +407,7 @@ fn null_or_none_unbinds_a_default_key() {
 
 #[test]
 fn an_unbound_key_is_not_reported_as_a_broken_duplicate_check() {
-    let warnings = crate::input::check_keybindings_content_duplicates(
+    let warnings = crate::keybindings::check_keybindings_content_duplicates(
         r#"{"NormalMode":{"F4":null,"F4":"file name"}}"#,
     );
     assert_eq!(warnings.len(), 1, "{warnings:?}");
@@ -468,7 +464,7 @@ fn deleting_an_entry_from_an_export_keeps_the_built_in() {
     write_full_export(&dir);
     // The exported custom_functions.json minus "fzf jump to dir".
     let mut v: serde_json::Value =
-        serde_json::from_str(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS).expect("valid");
+        serde_json::from_str(crate::defaults::DEFAULT_CUSTOM_FUNCTIONS).expect("valid");
     v["Functions"]
         .as_array_mut()
         .expect("array")
@@ -584,4 +580,119 @@ fn reload_resolves_the_same_lists_as_startup() {
         .map(|r| format!("{:?} {:?} {:?}", r.path, r.status, r.note))
         .collect();
     assert_eq!(reload_results, startup_results);
+}
+
+#[test]
+fn load_file_type_map_falls_back_to_embedded_defaults_when_file_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+
+    let (mappings, result) = crate::config_layers::load_file_type_map(
+        manager.file_type_map_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    assert!(!mappings.is_empty());
+    assert!(mappings.iter().any(|m| m.extension == "mp4"));
+    assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
+}
+
+#[test]
+fn load_file_type_map_falls_back_to_embedded_defaults_on_malformed_user_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+    std::fs::write(manager.file_type_map_path(), "not valid json").unwrap();
+
+    let (mappings, result) = crate::config_layers::load_file_type_map(
+        manager.file_type_map_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    assert!(!mappings.is_empty());
+    assert!(mappings.iter().any(|m| m.extension == "mp4"));
+    assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
+}
+
+#[test]
+fn load_file_type_map_puts_a_valid_user_file_over_the_built_ins() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+    std::fs::write(
+        manager.file_type_map_path(),
+        r#"[{ "Extension": "csv", "Actions": ["OsDefault"] }]"#,
+    )
+    .unwrap();
+
+    let (mappings, result) = crate::config_layers::load_file_type_map(
+        manager.file_type_map_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    // Phase 7.26: the user entry comes first and the built-ins stay underneath.
+    assert_eq!(mappings[0].extension, "csv");
+    assert!(mappings.iter().any(|m| m.extension == "mp4"));
+    assert!(matches!(result.status, ConfigLoadStatus::Ok));
+}
+
+#[test]
+fn load_extension_associations_uses_the_built_ins_when_file_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+
+    let (assocs, result) = crate::config_layers::load_extension_associations(
+        manager.extension_associations_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    // The built-in list is empty; since Phase 7.26 it is reported as in use.
+    assert!(assocs.is_empty());
+    assert!(matches!(result.status, ConfigLoadStatus::Default(_)));
+}
+
+#[test]
+fn load_extension_associations_errors_on_malformed_json() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+    std::fs::write(manager.extension_associations_path(), "not valid json").unwrap();
+
+    let (assocs, result) = crate::config_layers::load_extension_associations(
+        manager.extension_associations_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    assert!(assocs.is_empty());
+    assert!(matches!(result.status, ConfigLoadStatus::Error(_)));
+}
+
+#[test]
+fn load_extension_associations_parses_valid_json() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("config.json");
+    let keybindings_path = temp_dir.path().join("keybindings.json");
+    let manager = ConfigManager::with_paths(config_path, keybindings_path);
+    std::fs::write(
+        manager.extension_associations_path(),
+        r#"[{ "Extension": "log", "Command": "less $F" }]"#,
+    )
+    .unwrap();
+
+    let (assocs, result) = crate::config_layers::load_extension_associations(
+        manager.extension_associations_path(),
+        crate::config_layers::ConfigLayering::Layered,
+    );
+
+    assert_eq!(assocs.len(), 1);
+    assert_eq!(assocs[0].extension.as_deref(), Some("log"));
+    assert_eq!(assocs[0].command, "less $F");
+    assert!(matches!(result.status, ConfigLoadStatus::Ok));
 }

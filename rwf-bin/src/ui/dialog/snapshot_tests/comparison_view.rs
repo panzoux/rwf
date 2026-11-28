@@ -1,8 +1,8 @@
 //! Snapshots for `DialogContent::ComparisonView`.
 
 use super::{snapshot_dialog, test_state};
+use rwf_lib::dialog::Dialog;
 use rwf_lib::job::{DiffChunk, DiffType, FileDiff};
-use rwf_lib::model::dialog::Dialog;
 
 fn sample_diff() -> FileDiff {
     FileDiff {

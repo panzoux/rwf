@@ -1,6 +1,6 @@
 //! Integration tests for file information and version display
 
-use crate::model::{Dialog, DialogContent, FileInfoDialog};
+use crate::dialog::{Dialog, DialogContent, FileInfoDialog};
 use crate::state::{update_state, Transition};
 use crate::test_utils::{test_state, FileEntryBuilder};
 
@@ -266,7 +266,8 @@ fn test_version_dialog_does_not_require_input() {
 
 #[cfg(test)]
 mod link_info_tests {
-    use crate::model::{Dialog, DialogContent, FileEntry, FileInfoDialog, LinkKind, Location};
+    use crate::dialog::{Dialog, DialogContent, FileInfoDialog};
+    use crate::model::{FileEntry, LinkKind, Location};
     use std::path::PathBuf;
     use std::time::SystemTime;
 

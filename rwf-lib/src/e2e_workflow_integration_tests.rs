@@ -11,12 +11,12 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action};
+    use crate::custom_function::CustomFunction;
+    use crate::dialog::{DeleteConfirmDialog, DialogContent, InputDialog, SimpleRenameDialog};
+    use crate::input::action_to_transitions;
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::{
-        CustomFunction, DeleteConfirmDialog, DialogContent, InputDialog, Location,
-        SimpleRenameDialog,
-    };
+    use crate::keybindings::Action;
+    use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -813,9 +813,9 @@ mod tests {
     #[tokio::test]
     async fn copy_undo_redo_round_trip() {
         use crate::backend::{LocalFilesystemBackend, MockArchiveHandler};
+        use crate::job::JobEvent;
         use crate::job::JobExecutor;
         use crate::model::UndoAvailability;
-        use crate::worker_pool::JobEvent;
 
         let temp_dir = tempfile::TempDir::new().unwrap();
         let backend = std::sync::Arc::new(LocalFilesystemBackend::new());
@@ -925,12 +925,13 @@ mod tests {
         let executor = crate::job::JobExecutor::new(backend, archive_handler, event_tx);
 
         async fn next_terminal_event(
-            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
-        ) -> crate::worker_pool::JobEvent {
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::job::JobEvent>,
+        ) -> crate::job::JobEvent {
             loop {
                 match rx.recv().await.expect("channel closed") {
-                    crate::worker_pool::JobEvent::Started(_)
-                    | crate::worker_pool::JobEvent::Progress(..) => continue,
+                    crate::job::JobEvent::Started(_) | crate::job::JobEvent::Progress(..) => {
+                        continue
+                    }
                     other => return other,
                 }
             }
@@ -951,7 +952,7 @@ mod tests {
         executor.execute(spec1).await;
         let event1 = next_terminal_event(&mut event_rx).await;
         let records1 = match event1 {
-            crate::worker_pool::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
+            crate::job::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
             other => panic!("expected OperationRecords, got {other:?}"),
         };
 
@@ -962,7 +963,7 @@ mod tests {
         executor.execute(spec2).await;
         let event2 = next_terminal_event(&mut event_rx).await;
         let records2 = match event2 {
-            crate::worker_pool::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
+            crate::job::JobEvent::Completed(_, SuccessData::OperationRecords(r)) => r,
             other => panic!("expected OperationRecords, got {other:?}"),
         };
 
@@ -1055,12 +1056,13 @@ mod tests {
         let executor = crate::job::JobExecutor::new(backend, archive_handler, event_tx);
 
         async fn next_terminal_event(
-            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
-        ) -> crate::worker_pool::JobEvent {
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::job::JobEvent>,
+        ) -> crate::job::JobEvent {
             loop {
                 match rx.recv().await.expect("channel closed") {
-                    crate::worker_pool::JobEvent::Started(_)
-                    | crate::worker_pool::JobEvent::Progress(..) => continue,
+                    crate::job::JobEvent::Started(_) | crate::job::JobEvent::Progress(..) => {
+                        continue
+                    }
                     other => return other,
                 }
             }
@@ -1074,16 +1076,16 @@ mod tests {
             A: crate::backend::ArchiveHandler,
         >(
             executor: &crate::job::JobExecutor<B, A>,
-            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::worker_pool::JobEvent>,
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::job::JobEvent>,
             state: &mut crate::AppState,
             spec: JobSpec,
         ) {
             state.jobs.start_job(spec.clone());
             executor.execute(spec.clone()).await;
             let result = match next_terminal_event(rx).await {
-                crate::worker_pool::JobEvent::Completed(_, data) => OpResult::Success(data),
-                crate::worker_pool::JobEvent::Failed(_, e) => OpResult::Failed(e),
-                crate::worker_pool::JobEvent::Cancelled(_) => OpResult::Cancelled,
+                crate::job::JobEvent::Completed(_, data) => OpResult::Success(data),
+                crate::job::JobEvent::Failed(_, e) => OpResult::Failed(e),
+                crate::job::JobEvent::Cancelled(_) => OpResult::Cancelled,
                 other => panic!("expected a terminal event, got {other:?}"),
             };
             update_state(

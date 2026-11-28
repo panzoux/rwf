@@ -5,8 +5,8 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::DialogContent;
     use crate::job::{JobKind, JobSpec, OpResult, SuccessData};
-    use crate::model::dialog::DialogContent;
     use crate::model::{Location, TrashLocation, TrashRecord};
     use crate::state::{update_state, StateUpdateResult, Transition};
     use crate::test_utils::test_state;

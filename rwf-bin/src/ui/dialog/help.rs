@@ -14,7 +14,7 @@ use ratatui::{
 use crate::ui::smart_truncate;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::HelpDialog;
+use rwf_lib::dialog::HelpDialog;
 
 use super::DialogAction;
 
@@ -31,7 +31,7 @@ pub(super) fn handle_input(dialog: &mut HelpDialog, key: KeyEvent) -> DialogActi
         ..
     } = dialog;
     use crossterm::event::KeyCode;
-    use rwf_lib::model::dialog::HelpTab;
+    use rwf_lib::dialog::HelpTab;
 
     // Compute filtered count for scroll clamping
     let filtered_count =
@@ -166,13 +166,13 @@ pub(super) fn handle_input(dialog: &mut HelpDialog, key: KeyEvent) -> DialogActi
 }
 
 pub(super) fn help_filter_entries<'a>(
-    entries: &'a [rwf_lib::model::dialog::HelpEntry],
-    active_tab: &rwf_lib::model::dialog::HelpTab,
+    entries: &'a [rwf_lib::dialog::HelpEntry],
+    active_tab: &rwf_lib::dialog::HelpTab,
     show_unbound: bool,
     query: &str,
     regex_mode: bool,
-) -> Vec<&'a rwf_lib::model::dialog::HelpEntry> {
-    let tab_filtered: Vec<&rwf_lib::model::dialog::HelpEntry> = entries
+) -> Vec<&'a rwf_lib::dialog::HelpEntry> {
+    let tab_filtered: Vec<&rwf_lib::dialog::HelpEntry> = entries
         .iter()
         .filter(|e| e.tab == *active_tab)
         .filter(|e| show_unbound || !e.keys.is_empty())
@@ -213,15 +213,15 @@ pub(super) fn render_help_dialog(
     frame: &mut Frame,
     area: Rect,
     _dialog_area: Rect,
-    entries: &[rwf_lib::model::dialog::HelpEntry],
+    entries: &[rwf_lib::dialog::HelpEntry],
     query: &str,
     regex_mode: bool,
     show_unbound: bool,
-    active_tab: &rwf_lib::model::dialog::HelpTab,
+    active_tab: &rwf_lib::dialog::HelpTab,
     scroll_pos: usize,
     language: &str,
 ) {
-    use rwf_lib::model::dialog::HelpTab;
+    use rwf_lib::dialog::HelpTab;
     use unicode_width::UnicodeWidthStr;
 
     let base = crate::ui::dialog::common::DIALOG_TEXT;

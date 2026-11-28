@@ -4,8 +4,9 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{Dialog, DialogContent, ErrorDialog, ErrorType};
     use crate::job::{JobKind, JobSpec, OpResult};
-    use crate::model::{Dialog, DialogContent, ErrorDialog, ErrorType, Location};
+    use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
     use std::path::PathBuf;

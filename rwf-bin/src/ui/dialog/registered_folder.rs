@@ -8,7 +8,7 @@ use ratatui::{layout::Rect, style::Modifier, widgets::Paragraph, Frame};
 use crate::ui::smart_truncate;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::RegisteredFolderSelectorContent;
+use rwf_lib::dialog::RegisteredFolderSelectorContent;
 
 use super::DialogAction;
 
@@ -88,7 +88,7 @@ pub(super) fn handle_input(
 pub(super) fn render_registered_folder_selector(
     frame: &mut Frame,
     area: Rect,
-    folders: &[rwf_lib::model::dialog::RegisteredFolder],
+    folders: &[rwf_lib::dialog::RegisteredFolder],
     selected_index: usize,
     filter: &str,
 ) {
@@ -99,7 +99,7 @@ pub(super) fn render_registered_folder_selector(
     let item_width = area.width.saturating_sub(4) as usize;
 
     // Compute filtered list
-    let filtered: Vec<&rwf_lib::model::dialog::RegisteredFolder> = if filter.is_empty() {
+    let filtered: Vec<&rwf_lib::dialog::RegisteredFolder> = if filter.is_empty() {
         folders.iter().collect()
     } else {
         let lower = filter.to_lowercase();
@@ -171,7 +171,7 @@ mod tests {
     /// cannot find anything containing them (bundle `20260926-115630`).
     #[test]
     fn j_and_k_are_typed_into_the_filter() {
-        let mut dialog = rwf_lib::model::dialog::RegisteredFolderSelectorContent::new(Vec::new());
+        let mut dialog = rwf_lib::dialog::RegisteredFolderSelectorContent::new(Vec::new());
         for c in ['j', 'k'] {
             handle_input(
                 &mut dialog,

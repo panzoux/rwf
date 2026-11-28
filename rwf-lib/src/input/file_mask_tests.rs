@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action, KeyBindings};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::{Action, KeyBindings};
     use crate::model::{ActivePane, FileEntry, Location};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
@@ -160,9 +161,11 @@ mod tests {
         let state = test_state();
         let transitions = action_to_transitions(&state, &Action::FileMaskFilter);
         assert!(
-            transitions.iter().any(|t| matches!(t, Transition::ShowDialog { dialog }
-                if matches!(dialog.content, crate::model::dialog::DialogContent::FileMask { .. })
-            )),
+            transitions
+                .iter()
+                .any(|t| matches!(t, Transition::ShowDialog { dialog }
+                    if matches!(dialog.content, crate::dialog::DialogContent::FileMask { .. })
+                )),
             "FileMaskFilter action must open a FileMask dialog"
         );
     }

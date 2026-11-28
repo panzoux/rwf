@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{Action, KeyBindings};
-    use crate::model::dialog::{filter_jump_to_file_suggestions, DialogContent};
+    use crate::dialog::{filter_jump_to_file_suggestions, DialogContent};
+    use crate::keybindings::{Action, KeyBindings};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::test_state;
 
@@ -49,7 +49,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog { query, .. }) =
+        if let DialogContent::JumpToFile(crate::dialog::JumpToFileDialog { query, .. }) =
             &dialog.content
         {
             assert_eq!(query, "", "initial query must be empty");
@@ -63,9 +63,8 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
-            selected_index,
-            ..
+        if let DialogContent::JumpToFile(crate::dialog::JumpToFileDialog {
+            selected_index, ..
         }) = &dialog.content
         {
             assert_eq!(*selected_index, 0);
@@ -79,7 +78,7 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
+        if let DialogContent::JumpToFile(crate::dialog::JumpToFileDialog {
             candidates,
             suggestions,
             ..
@@ -100,10 +99,8 @@ mod tests {
         let mut state = test_state();
         open_dialog(&mut state);
         let dialog = state.dialogs.current().expect("dialog must be open");
-        if let DialogContent::JumpToFile(crate::model::dialog::JumpToFileDialog {
-            search_root,
-            ..
-        }) = &dialog.content
+        if let DialogContent::JumpToFile(crate::dialog::JumpToFileDialog { search_root, .. }) =
+            &dialog.content
         {
             assert!(!search_root.is_empty(), "search_root must not be empty");
         } else {

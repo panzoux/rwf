@@ -11,7 +11,7 @@ use super::chunk_path_preview;
 use super::common::{DIALOG_DIM, DIALOG_INPUT, DIALOG_SELECTED, DIALOG_TEXT};
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use rwf_lib::model::dialog::JumpToPathDialog;
+use rwf_lib::dialog::JumpToPathDialog;
 
 use super::DialogAction;
 
@@ -68,7 +68,7 @@ pub(super) fn handle_input(
                 *suggestions = if let Some(s) = search {
                     s.filter_paths(candidates, query)
                 } else {
-                    rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
+                    rwf_lib::dialog::filter_jump_to_path_suggestions(candidates, query)
                 };
                 *selected_index = 0;
             }
@@ -95,7 +95,7 @@ pub(super) fn handle_input(
             *suggestions = if let Some(s) = search {
                 s.filter_paths(candidates, query)
             } else {
-                rwf_lib::model::dialog::filter_jump_to_path_suggestions(candidates, query)
+                rwf_lib::dialog::filter_jump_to_path_suggestions(candidates, query)
             };
             *selected_index = 0;
         }

@@ -6,7 +6,7 @@ step-by-step against an existing dialog (`SortDialog`) before finalizing.
 
 Checklist for a new dialog `Foo`:
 
-1. **Data** — `rwf-lib/src/model/dialog/foo.rs`
+1. **Data** — `rwf-lib/src/dialog/foo.rs`
    - Define a `FooDialog` struct holding the dialog's data + UI state
      (cursor/scroll/focus). If it's a single text-input dialog with
      cursor/scroll/focused-field, embed `DialogUiState` under a `ui` field
@@ -14,7 +14,7 @@ Checklist for a new dialog `Foo`:
    - Give it a `new(...)` constructor taking only the fields that vary across
      call sites; hardcode fields that always start at the same value.
    - Add `mod foo;` and `pub use foo::FooDialog;` (both alphabetically sorted)
-     in `rwf-lib/src/model/dialog/mod.rs`.
+     in `rwf-lib/src/dialog/mod.rs`.
    - Add the enum variant `DialogContent::Foo(FooDialog)`.
    - **Naming**: if `FooDialog` collides with an existing unrelated helper
      struct already in `model/dialog/mod.rs` (several dialogs have long-dead

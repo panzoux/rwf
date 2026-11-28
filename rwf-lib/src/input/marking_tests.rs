@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::Action;
     use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{entries, numbered_entries, test_state};
@@ -64,7 +65,7 @@ mod tests {
                 assert_eq!(dialog.title, "Wildcard Marking");
                 assert!(matches!(
                     dialog.content,
-                    crate::model::DialogContent::WildcardMark { .. }
+                    crate::dialog::DialogContent::WildcardMark { .. }
                 ));
             }
             _ => panic!("Expected ShowDialog transition"),

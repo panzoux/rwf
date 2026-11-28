@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::WildcardMark`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 
 #[test]
 fn wildcard_mark_empty_input() {
@@ -14,12 +14,10 @@ fn wildcard_mark_empty_input() {
 fn wildcard_mark_with_pattern() {
     let state = test_state();
     let mut dialog = Dialog::wildcard_mark();
-    if let rwf_lib::model::dialog::DialogContent::WildcardMark(
-        rwf_lib::model::dialog::WildcardMarkDialog {
-            input,
-            ui: rwf_lib::model::dialog::DialogUiState { cursor_pos, .. },
-        },
-    ) = &mut dialog.content
+    if let rwf_lib::dialog::DialogContent::WildcardMark(rwf_lib::dialog::WildcardMarkDialog {
+        input,
+        ui: rwf_lib::dialog::DialogUiState { cursor_pos, .. },
+    }) = &mut dialog.content
     {
         *input = "*.log".to_string();
         *cursor_pos = 5;
@@ -31,17 +29,15 @@ fn wildcard_mark_with_pattern() {
 fn wildcard_mark_focused_on_ok() {
     let state = test_state();
     let mut dialog = Dialog::wildcard_mark();
-    if let rwf_lib::model::dialog::DialogContent::WildcardMark(
-        rwf_lib::model::dialog::WildcardMarkDialog {
-            input,
-            ui:
-                rwf_lib::model::dialog::DialogUiState {
-                    cursor_pos,
-                    focused_field,
-                    ..
-                },
-        },
-    ) = &mut dialog.content
+    if let rwf_lib::dialog::DialogContent::WildcardMark(rwf_lib::dialog::WildcardMarkDialog {
+        input,
+        ui:
+            rwf_lib::dialog::DialogUiState {
+                cursor_pos,
+                focused_field,
+                ..
+            },
+    }) = &mut dialog.content
     {
         *input = "test*".to_string();
         *cursor_pos = 5;
@@ -54,17 +50,15 @@ fn wildcard_mark_focused_on_ok() {
 fn wildcard_mark_focused_on_cancel() {
     let state = test_state();
     let mut dialog = Dialog::wildcard_mark();
-    if let rwf_lib::model::dialog::DialogContent::WildcardMark(
-        rwf_lib::model::dialog::WildcardMarkDialog {
-            input,
-            ui:
-                rwf_lib::model::dialog::DialogUiState {
-                    cursor_pos,
-                    focused_field,
-                    ..
-                },
-        },
-    ) = &mut dialog.content
+    if let rwf_lib::dialog::DialogContent::WildcardMark(rwf_lib::dialog::WildcardMarkDialog {
+        input,
+        ui:
+            rwf_lib::dialog::DialogUiState {
+                cursor_pos,
+                focused_field,
+                ..
+            },
+    }) = &mut dialog.content
     {
         *input = "[a-z]*".to_string();
         *cursor_pos = 6;

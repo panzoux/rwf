@@ -27,8 +27,9 @@ use serde_json::Value;
 use crate::config::{
     AppConfig, ConfigLoadResult, ConfigManager, ExtensionAssociation, FileTypeMapping,
 };
-use crate::input::KeyBindings;
-use crate::model::dialog::CustomFunction;
+use crate::custom_function::CustomFunction;
+use crate::keybindings::KeyBindings;
+use crate::model::config_origin::ConfigOrigin;
 
 /// What the command line asked for, set once by `main` before any config loads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -92,22 +93,6 @@ impl ConfigLayering {
             Self::Layered => "built-in defaults + user overrides",
             Self::UserReplaces => "user files replace built-in defaults",
             Self::BuiltInOnly => "built-in defaults only (user config ignored)",
-        }
-    }
-}
-
-/// Where a custom function's effective definition came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigOrigin {
-    BuiltIn,
-    User,
-}
-
-impl ConfigOrigin {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::BuiltIn => "built-in",
-            Self::User => "user",
         }
     }
 }
@@ -299,7 +284,7 @@ fn count_user_bindings(v: &Value) -> (usize, usize) {
     for section in SECTIONS {
         if let Some(map) = v.get(section).and_then(Value::as_object) {
             for val in map.values() {
-                if crate::input::is_unbind_value(val) {
+                if crate::keybindings::is_unbind_value(val) {
                     unbound += 1;
                 } else if val.is_string() {
                     set += 1;
@@ -323,7 +308,7 @@ pub struct LoadedFunctions {
 }
 
 fn built_in_functions() -> Vec<CustomFunction> {
-    crate::model::dialog::parse_custom_functions(crate::help_content::DEFAULT_CUSTOM_FUNCTIONS)
+    crate::custom_function::parse_custom_functions(crate::defaults::DEFAULT_CUSTOM_FUNCTIONS)
         .expect("embedded default_custom_functions.json is always valid")
 }
 
@@ -372,8 +357,8 @@ pub fn load_custom_functions(path: &Path, layering: ConfigLayering) -> LoadedFun
     };
 
     let mut functions = merged.functions;
-    crate::model::dialog::resolve_menu_files(&mut functions, user_dir);
-    let problems = crate::model::dialog::validate_custom_functions(&functions);
+    crate::custom_function::resolve_menu_files(&mut functions, user_dir);
+    let problems = crate::custom_function::validate_custom_functions(&functions);
     let result = if problems.is_empty() {
         result
     } else {
@@ -398,7 +383,7 @@ fn read_user_functions(path: &Path) -> Result<(Vec<CustomFunction>, Vec<String>)
     let disabled = entries
         .map(|a| take_disabled(a, |e| str_field(e, "Name")))
         .unwrap_or_default();
-    let functions = crate::model::dialog::parse_custom_functions(&value.to_string())
+    let functions = crate::custom_function::parse_custom_functions(&value.to_string())
         .map_err(|e| e.to_string())?;
     Ok((functions, disabled))
 }
@@ -498,7 +483,7 @@ fn menu_file_results(user_dir: &Path, layering: ConfigLayering) -> Vec<ConfigLoa
                 .collect();
         }
     }
-    for (name, _) in crate::help_content::BUILT_IN_MENUS {
+    for (name, _) in crate::defaults::BUILT_IN_MENUS {
         let path = user_dir.join(name);
         let user_file = user_paths.iter().find(|p| {
             p.file_name()
@@ -525,7 +510,7 @@ fn menu_file_results(user_dir: &Path, layering: ConfigLayering) -> Vec<ConfigLoa
         let is_built_in = p
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| crate::model::dialog::built_in_menu(n).is_some());
+            .is_some_and(|n| crate::custom_function::built_in_menu(n).is_some());
         if !is_built_in {
             results.push(ConfigManager::validate_json_file(&p));
         }
@@ -568,7 +553,7 @@ pub fn load_extension_associations(
     let (assocs, result) = load_keyed_list(
         path,
         layering,
-        crate::help_content::DEFAULT_EXTENSION_ASSOCIATIONS,
+        crate::defaults::DEFAULT_EXTENSION_ASSOCIATIONS,
         association_value_key,
         |a: &ExtensionAssociation| association_key(a.file_type.as_deref(), a.extension.as_deref()),
     );
@@ -598,7 +583,7 @@ pub fn load_file_type_map(
     load_keyed_list(
         path,
         layering,
-        crate::help_content::DEFAULT_FILE_TYPE_MAP,
+        crate::defaults::DEFAULT_FILE_TYPE_MAP,
         file_type_value_key,
         |m: &FileTypeMapping| association_key(None, Some(&m.extension)),
     )

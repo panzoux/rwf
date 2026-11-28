@@ -114,10 +114,10 @@ impl AppState {
                 ))
             }
             Transition::ShowComparisonView { diff } => {
-                let dialog = crate::model::Dialog {
+                let dialog = crate::dialog::Dialog {
                     title: "File Comparison".to_string(),
-                    content: crate::model::DialogContent::ComparisonView(
-                        crate::model::ComparisonViewDialog::new(diff.clone()),
+                    content: crate::dialog::DialogContent::ComparisonView(
+                        crate::dialog::ComparisonViewDialog::new(diff.clone()),
                     ),
                 };
                 self.dialogs.push(dialog);
@@ -128,7 +128,7 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ShowSplitJoinDialog => {
-                let dialog = crate::model::Dialog::split_join_dialog();
+                let dialog = crate::dialog::Dialog::split_join_dialog();
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -180,9 +180,9 @@ impl AppState {
                 // Pre-populate preview so the dialog opens at full size with all files visible
                 let initial_preview =
                     crate::pattern_rename::generate_preview(&filenames, "", "", true, false);
-                let mut dialog = crate::model::Dialog::pattern_rename();
-                if let crate::model::DialogContent::PatternRename(
-                    crate::model::PatternRenameContent { preview, .. },
+                let mut dialog = crate::dialog::Dialog::pattern_rename();
+                if let crate::dialog::DialogContent::PatternRename(
+                    crate::dialog::PatternRenameContent { preview, .. },
                 ) = &mut dialog.content
                 {
                     *preview = initial_preview;
@@ -215,8 +215,8 @@ impl AppState {
                     *case_sensitive,
                 );
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::DialogContent::PatternRename(
-                        crate::model::PatternRenameContent {
+                    if let crate::dialog::DialogContent::PatternRename(
+                        crate::dialog::PatternRenameContent {
                             find: f,
                             replace: r,
                             use_regex: ur,

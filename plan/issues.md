@@ -36,6 +36,9 @@
 
 ## 解決済み
 
+- **2026-11-28 書庫の仮想フォルダの中からコピー（`c`）できなかった** — 解決 2026-11-28（ブランチ `feat/8.11-7zip-lib`）。
+  `JobExecutor::copy_location` が書庫内のコピー元を `ArchiveHandler` の `extract_file` / `extract_all`（ディレクトリ）に回す。
+  Redo も同じ経路。テスト: `rwf-bin` の `archive_virtual_folder_tests::copy_out_of_a_virtual_folder`。移動（`m`）は書庫を書き換えるので未対応のまま。
 - **2026-09-19 `kanban-md init` が `.gitignore` に非アンカーの `kanban/` を追記する** —
   リポジトリ規約（ディレクトリパターンはアンカー必須）に反するため `/kanban/` に手で修正済み。
   ボードを作り直すときは再発に注意。

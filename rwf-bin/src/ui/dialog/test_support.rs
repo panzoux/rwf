@@ -9,7 +9,8 @@
 
 use crossterm::event::KeyEvent;
 use rwf_lib::config::{EditMode, ViMode};
-use rwf_lib::model::dialog::{ConflictAction, ConflictPair};
+use rwf_lib::dialog::ConflictAction;
+use rwf_lib::model::conflict::ConflictPair;
 
 use super::file_conflict::handle_file_conflict_input;
 use super::DialogAction;

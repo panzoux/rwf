@@ -1,10 +1,23 @@
 //! Archive handling for browsing and extracting compressed files
 //!
 //! This module provides the ArchiveHandler trait and implementations
-//! for different archive formats (initially .zip).
+//! for different archive formats. Built-in handlers cover zip / 7z / tar / iso;
+//! when 7-Zip's shared library is installed, [`MultiFormatArchiveHandler`] reads
+//! every format it can open through it first (plan/8.11).
+
+mod iso;
+mod listing;
+mod sevenzip;
+#[cfg(not(windows))]
+mod unrar;
+
+pub use iso::IsoArchiveHandler;
+#[cfg(not(windows))]
+pub use unrar::RarArchiveHandler;
 
 use crate::model::{FileEntry, Location};
 use anyhow::Result;
+use sevenzip::{SevenZip, SzError};
 use std::io::Write;
 use tokio_util::sync::CancellationToken;
 use zip::write::SimpleFileOptions;
@@ -51,15 +64,36 @@ pub trait ArchiveHandler: Send + Sync {
     fn is_archive(&self, filename: &str) -> bool;
 }
 
-/// Convert a ZIP entry's MS-DOS timestamp to a `SystemTime`, treating it as UTC
-/// (the ZIP format stores no timezone). Returns `None` if the stored date/time
-/// components are out of range (some writers emit invalid values).
+/// File-name suffixes rwf enters as archives (lower-case). Matched by suffix so
+/// double extensions like `.tar.gz` work. Name-only, so it is safe to call on the
+/// input thread; whether a format can actually be read is decided by the worker.
+///
+/// The 7-Zip-only entries (`.rar` … `.wim`) need 7-Zip's library, except `.rar`
+/// on Linux / macOS, which `unrar-ng` covers. Single-stream compressors (`.gz`,
+/// `.xz`, `.bz2`, `.zst`) and `.chm` are left out on purpose: Enter on them keeps
+/// opening the file with its association.
+pub const ARCHIVE_SUFFIXES: &[&str] = &[
+    ".zip", ".7z", ".tar", ".tgz", ".tar.gz", ".iso", // built in
+    ".rar", ".lzh", ".lha", ".arj", ".cab", ".cpio", ".wim", // 7-Zip
+];
+
+/// Whether `filename` has one of [`ARCHIVE_SUFFIXES`] (case-insensitive).
+pub fn is_archive_name(filename: &str) -> bool {
+    let name = filename.to_lowercase();
+    ARCHIVE_SUFFIXES.iter().any(|ext| name.ends_with(ext))
+}
+
+/// Convert a ZIP entry's MS-DOS timestamp to a `SystemTime`. DOS time is the local
+/// wall-clock time of the machine that wrote it (ZIP stores no zone), so it is read
+/// in the local zone — the same as 7-Zip and Explorer. Returns `None` if the stored
+/// date/time components are out of range (some writers emit invalid values) or the
+/// local time does not exist (a DST gap).
 fn zip_datetime_to_system_time(dt: zip::DateTime) -> Option<std::time::SystemTime> {
     use chrono::TimeZone;
     let naive =
         chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)?
             .and_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)?;
-    Some(chrono::Utc.from_utc_datetime(&naive).into())
+    Some(chrono::Local.from_local_datetime(&naive).earliest()?.into())
 }
 
 /// ZIP archive handler implementation
@@ -1410,291 +1444,49 @@ macro_rules! unsupported_handler {
     };
 }
 
+#[cfg(windows)]
 unsupported_handler!(
     RarArchiveHandler,
     [".rar"],
-    "RAR format requires the 'unrar' utility. Install unrar and use it from a shell, or convert the archive to ZIP/7z.",
+    "RAR archives need 7-Zip: install 7-Zip (7z.dll), or set Archive.SevenZipLibrary in config.json.",
     "RAR is a proprietary format — rwf cannot create RAR archives. Use ZIP or 7z instead."
 );
-
-/// ISO 9660 archive handler (read-only, using the iso9660 crate)
-pub struct IsoArchiveHandler;
-
-impl IsoArchiveHandler {
-    /// Create a new ISO archive handler
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for IsoArchiveHandler {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait::async_trait]
-impl ArchiveHandler for IsoArchiveHandler {
-    async fn list_entries(
-        &self,
-        location: &Location,
-        cancel_token: &CancellationToken,
-    ) -> Result<Vec<FileEntry>> {
-        match location {
-            Location::Archive {
-                archive_path,
-                inner_path,
-            } => match archive_path.as_ref() {
-                Location::Local(path) => list_iso_entries(path, inner_path, cancel_token),
-                _ => anyhow::bail!("Only local archives are supported"),
-            },
-            _ => anyhow::bail!("Expected Archive location"),
-        }
-    }
-
-    async fn extract_file(
-        &self,
-        source: &Location,
-        dest: &Location,
-        cancel_token: &CancellationToken,
-    ) -> Result<()> {
-        match (source, dest) {
-            (
-                Location::Archive {
-                    archive_path,
-                    inner_path,
-                },
-                Location::Local(dest_path),
-            ) => match archive_path.as_ref() {
-                Location::Local(archive_file) => {
-                    extract_iso_single_file(archive_file, inner_path, dest_path, cancel_token)
-                }
-                _ => anyhow::bail!("Only local archives are supported"),
-            },
-            _ => anyhow::bail!("Invalid source/dest combination for ISO extraction"),
-        }
-    }
-
-    async fn extract_all(
-        &self,
-        archive: &Location,
-        dest: &Location,
-        cancel_token: &CancellationToken,
-    ) -> Result<()> {
-        match (archive, dest) {
-            (Location::Local(archive_path), Location::Local(dest_path)) => {
-                std::fs::create_dir_all(dest_path)?;
-                let iso = open_iso(archive_path)?;
-                extract_iso_dir_recursive(&iso, "/", dest_path, cancel_token)
-            }
-            (
-                Location::Archive {
-                    archive_path,
-                    inner_path,
-                },
-                Location::Local(dest_path),
-            ) => match archive_path.as_ref() {
-                Location::Local(archive_file) => {
-                    let iso_path = format!("/{}", inner_path.to_string_lossy().replace('\\', "/"));
-                    std::fs::create_dir_all(dest_path)?;
-                    let iso = open_iso(archive_file)?;
-                    extract_iso_dir_recursive(&iso, &iso_path, dest_path, cancel_token)
-                }
-                _ => anyhow::bail!("Only local archives are supported"),
-            },
-            _ => anyhow::bail!("Invalid archive/dest combination"),
-        }
-    }
-
-    async fn create_archive(
-        &self,
-        _sources: &[Location],
-        _dest: &Location,
-        _cancel_token: &CancellationToken,
-    ) -> Result<()> {
-        anyhow::bail!("ISO images are read-only disc images — rwf cannot create ISO files.")
-    }
-
-    fn is_archive(&self, filename: &str) -> bool {
-        filename.to_lowercase().ends_with(".iso")
-    }
-}
-
-// ── ISO helpers (synchronous, no .await — ISO9660<T> uses Rc internally) ────
-
-fn open_iso(path: &std::path::Path) -> Result<iso9660::ISO9660<std::io::BufReader<std::fs::File>>> {
-    let file = std::io::BufReader::new(std::fs::File::open(path)?);
-    iso9660::ISO9660::new(file).map_err(|e| anyhow::anyhow!("Failed to open ISO: {}", e))
-}
-
-fn list_iso_entries(
-    archive_path: &std::path::Path,
-    inner_path: &std::path::Path,
-    cancel_token: &CancellationToken,
-) -> Result<Vec<FileEntry>> {
-    use std::time::SystemTime;
-
-    let iso = open_iso(archive_path)?;
-    let iso_path = {
-        let s = inner_path.to_string_lossy();
-        if s.is_empty() {
-            "/".to_string()
-        } else {
-            format!("/{}", s.replace('\\', "/"))
-        }
-    };
-
-    let dir_entry = iso
-        .open(&iso_path)
-        .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?;
-    let dir = match dir_entry {
-        Some(iso9660::DirectoryEntry::Directory(d)) => d,
-        Some(iso9660::DirectoryEntry::File(_)) => anyhow::bail!("Path is a file, not a directory"),
-        None => anyhow::bail!("Directory not found in ISO: {}", iso_path),
-    };
-
-    let mut entries = Vec::new();
-    for entry in dir.contents() {
-        if cancel_token.is_cancelled() {
-            anyhow::bail!("Operation cancelled");
-        }
-        let entry = entry.map_err(|e| anyhow::anyhow!("ISO entry error: {}", e))?;
-        let raw_name = entry.identifier();
-        // Skip dot/dotdot (identifiers \x00 and \x01)
-        if raw_name == "\x00" || raw_name == "\x01" {
-            continue;
-        }
-        // ISO 9660 file identifiers have ";1" version suffix — strip it
-        let name = raw_name.trim_end_matches(";1").to_string();
-        if name.is_empty() {
-            continue;
-        }
-
-        let is_dir = matches!(entry, iso9660::DirectoryEntry::Directory(_));
-        let size = match &entry {
-            iso9660::DirectoryEntry::File(f) => f.size() as u64,
-            iso9660::DirectoryEntry::Directory(_) => 0,
-        };
-        let entry_inner = if inner_path.components().count() == 0 {
-            std::path::PathBuf::from(&name)
-        } else {
-            inner_path.join(&name)
-        };
-
-        entries.push(FileEntry {
-            name,
-            location: Location::Archive {
-                archive_path: Box::new(Location::Local(archive_path.to_path_buf())),
-                inner_path: entry_inner,
-            },
-            size,
-            is_dir,
-            is_hidden: false,
-            modified: SystemTime::now(),
-            marked: false,
-            calculated_size: None,
-            is_symlink: false,
-            link_target: None,
-            link_kind: None,
-        });
-    }
-    Ok(entries)
-}
-
-fn extract_iso_single_file(
-    archive_path: &std::path::Path,
-    inner_path: &std::path::Path,
-    dest_path: &std::path::Path,
-    _cancel_token: &CancellationToken,
-) -> Result<()> {
-    let iso = open_iso(archive_path)?;
-    let iso_path = format!("/{}", inner_path.to_string_lossy().replace('\\', "/"));
-    match iso
-        .open(&iso_path)
-        .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?
-    {
-        Some(iso9660::DirectoryEntry::File(f)) => {
-            if let Some(p) = dest_path.parent() {
-                std::fs::create_dir_all(p)?;
-            }
-            let mut reader = f.read();
-            let mut out = std::fs::File::create(dest_path)?;
-            std::io::copy(&mut reader, &mut out)?;
-            Ok(())
-        }
-        Some(iso9660::DirectoryEntry::Directory(_)) => anyhow::bail!("Path is a directory"),
-        None => anyhow::bail!("File not found in ISO: {}", iso_path),
-    }
-}
-
-fn extract_iso_dir_recursive(
-    iso: &iso9660::ISO9660<std::io::BufReader<std::fs::File>>,
-    iso_path: &str,
-    dest_path: &std::path::Path,
-    cancel_token: &CancellationToken,
-) -> Result<()> {
-    let dir_entry = iso
-        .open(iso_path)
-        .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?;
-    let dir = match dir_entry {
-        Some(iso9660::DirectoryEntry::Directory(d)) => d,
-        _ => return Ok(()),
-    };
-
-    // Collect names first to avoid borrow issues
-    let mut items: Vec<(String, bool)> = Vec::new();
-    for entry in dir.contents() {
-        let entry = entry.map_err(|e| anyhow::anyhow!("ISO entry error: {}", e))?;
-        let raw = entry.identifier();
-        if raw == "\x00" || raw == "\x01" {
-            continue;
-        }
-        let name = raw.trim_end_matches(";1").to_string();
-        if name.is_empty() {
-            continue;
-        }
-        let is_dir = matches!(entry, iso9660::DirectoryEntry::Directory(_));
-        items.push((name, is_dir));
-    }
-
-    for (name, is_dir) in items {
-        if cancel_token.is_cancelled() {
-            anyhow::bail!("Operation cancelled");
-        }
-        let out_path = dest_path.join(&name);
-        let child_iso_path = if iso_path == "/" {
-            format!("/{}", name)
-        } else {
-            format!("{}/{}", iso_path.trim_end_matches('/'), name)
-        };
-        if is_dir {
-            std::fs::create_dir_all(&out_path)?;
-            extract_iso_dir_recursive(iso, &child_iso_path, &out_path, cancel_token)?;
-        } else if let Some(iso9660::DirectoryEntry::File(f)) = iso
-            .open(&child_iso_path)
-            .map_err(|e| anyhow::anyhow!("ISO navigate error: {}", e))?
-        {
-            let mut reader = f.read();
-            let mut out = std::fs::File::create(&out_path)?;
-            std::io::copy(&mut reader, &mut out)?;
-        }
-    }
-    Ok(())
-}
 
 unsupported_handler!(
     LzhArchiveHandler,
     [".lzh", ".lha"],
-    "LZH format is not supported. Convert the archive to ZIP or 7z using an external tool.",
+    "LZH archives need 7-Zip: install 7-Zip (7z.dll / 7z.so), or set Archive.SevenZipLibrary in config.json.",
     "LZH is a legacy format — rwf cannot create LZH archives. Use ZIP or 7z instead."
 );
+
+unsupported_handler!(
+    SevenZipOnlyArchiveHandler,
+    [".arj", ".cab", ".cpio", ".wim"],
+    "This archive format needs 7-Zip: install 7-Zip (7z.dll / 7z.so), or set Archive.SevenZipLibrary in config.json.",
+    "rwf can only create ZIP, 7z and tar archives."
+);
+
+/// What [`MultiFormatArchiveHandler`] does after asking 7-Zip.
+enum Routed<T> {
+    /// 7-Zip handled it (successfully or with a real error).
+    Done(Result<T>),
+    /// 7-Zip is absent or cannot open the file: use the built-in handler.
+    Builtin,
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // MultiFormatArchiveHandler
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Routes archive operations to the correct handler based on file extension.
-/// Priority: TAR (.tar/.tgz/.tar.gz) → 7Z (.7z) → ZIP (.zip)
+/// Routes archive operations to the correct handler.
+///
+/// Reading (list / extract): 7-Zip's library first, for every format it claims
+/// (except `.tgz` / `.tar.gz`, which it would show as a single `.tar`). If 7-Zip is
+/// not installed or cannot open the file, the built-in handler by extension:
+/// TAR (.tar/.tgz/.tar.gz) → 7Z → RAR → ISO → LZH → 7-Zip-only stubs → ZIP.
+/// A RAR whose method 7-Zip lacks goes to `unrar-ng` on Linux / macOS.
+///
+/// Creating always uses the built-in handlers.
 pub struct MultiFormatArchiveHandler {
     zip: ZipArchiveHandler,
     sevenz: SevenZArchiveHandler,
@@ -1702,11 +1494,20 @@ pub struct MultiFormatArchiveHandler {
     rar: RarArchiveHandler,
     iso: IsoArchiveHandler,
     lzh: LzhArchiveHandler,
+    sevenzip_only: SevenZipOnlyArchiveHandler,
+    sevenzip: SevenZip,
 }
 
 impl MultiFormatArchiveHandler {
-    /// Create a new multi-format archive handler that routes to appropriate format-specific handlers
+    /// Create a new multi-format archive handler that routes to appropriate format-specific handlers.
+    /// 7-Zip's library is searched for in the usual places on first use.
     pub fn new() -> Self {
+        Self::with_sevenzip_library(None)
+    }
+
+    /// Like [`new`](Self::new), with `Archive.SevenZipLibrary` from config.json
+    /// (`None` or an empty path: search the usual places). Nothing is loaded here.
+    pub fn with_sevenzip_library(library: Option<std::path::PathBuf>) -> Self {
         Self {
             zip: ZipArchiveHandler::new(),
             sevenz: SevenZArchiveHandler::new(),
@@ -1714,6 +1515,59 @@ impl MultiFormatArchiveHandler {
             rar: RarArchiveHandler::new(),
             iso: IsoArchiveHandler::new(),
             lzh: LzhArchiveHandler::new(),
+            sevenzip_only: SevenZipOnlyArchiveHandler::new(),
+            sevenzip: SevenZip::new(library.filter(|p| !p.as_os_str().is_empty())),
+        }
+    }
+
+    /// Apply a reloaded `Archive.SevenZipLibrary`; takes effect on the next operation.
+    pub fn set_sevenzip_library(&self, library: Option<std::path::PathBuf>) {
+        self.sevenzip
+            .set_configured(library.filter(|p| !p.as_os_str().is_empty()));
+    }
+
+    /// Try 7-Zip for the archive file `name`. Blocking (loads the library on first
+    /// use); only called from archive jobs on worker threads.
+    fn via_sevenzip<T>(
+        &self,
+        name: &str,
+        op: impl FnOnce(&rwf_7zlib::Library) -> std::result::Result<T, SzError>,
+    ) -> Routed<T> {
+        if name.ends_with(".tgz") || name.ends_with(".tar.gz") {
+            return Routed::Builtin;
+        }
+        let Some(lib) = self.sevenzip.library() else {
+            return Routed::Builtin;
+        };
+        if lib.formats_for(name).is_empty() {
+            return Routed::Builtin;
+        }
+        match op(&lib) {
+            Ok(v) => Routed::Done(Ok(v)),
+            Err(SzError::NotOpened) => Routed::Builtin,
+            // Linux / macOS 7z.so cannot decode RAR; the built-in RAR handler there
+            // is unrar-ng. Anywhere else this is a real error.
+            Err(SzError::UnsupportedMethod) if cfg!(not(windows)) && name.ends_with(".rar") => {
+                Routed::Builtin
+            }
+            Err(SzError::UnsupportedMethod) => Routed::Done(Err(anyhow::anyhow!(
+                "7-Zip does not support the compression method used in {name}"
+            ))),
+            Err(SzError::Failed(e)) => Routed::Done(Err(e)),
+        }
+    }
+
+    /// The local archive file and inner path of an archive location.
+    fn archive_parts(location: &Location) -> Option<(&std::path::Path, &std::path::Path)> {
+        match location {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => match archive_path.as_ref() {
+                Location::Local(file) => Some((file.as_path(), inner_path.as_path())),
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -1750,6 +1604,10 @@ impl MultiFormatArchiveHandler {
         let name = Self::location_name(location);
         name.ends_with(".lzh") || name.ends_with(".lha")
     }
+
+    fn location_is_sevenzip_only(location: &Location) -> bool {
+        SevenZipOnlyArchiveHandler::new().is_archive(&Self::location_name(location))
+    }
 }
 
 impl Default for MultiFormatArchiveHandler {
@@ -1765,6 +1623,14 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
         location: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<FileEntry>> {
+        if let Some((file, inner)) = Self::archive_parts(location) {
+            let name = Self::location_name(location);
+            if let Routed::Done(r) =
+                self.via_sevenzip(&name, |lib| sevenzip::list(lib, file, inner, cancel_token))
+            {
+                return r;
+            }
+        }
         if Self::location_is_tar(location) {
             self.tar.list_entries(location, cancel_token).await
         } else if Self::location_is_sevenz(location) {
@@ -1775,6 +1641,10 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
             self.iso.list_entries(location, cancel_token).await
         } else if Self::location_is_lzh(location) {
             self.lzh.list_entries(location, cancel_token).await
+        } else if Self::location_is_sevenzip_only(location) {
+            self.sevenzip_only
+                .list_entries(location, cancel_token)
+                .await
         } else {
             self.zip.list_entries(location, cancel_token).await
         }
@@ -1786,6 +1656,16 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
         dest: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<()> {
+        if let (Some((file, inner)), Location::Local(dest_path)) =
+            (Self::archive_parts(source), dest)
+        {
+            let name = Self::location_name(source);
+            if let Routed::Done(r) = self.via_sevenzip(&name, |lib| {
+                sevenzip::extract_file(lib, file, inner, dest_path, cancel_token)
+            }) {
+                return r;
+            }
+        }
         if Self::location_is_tar(source) {
             self.tar.extract_file(source, dest, cancel_token).await
         } else if Self::location_is_sevenz(source) {
@@ -1796,6 +1676,10 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
             self.iso.extract_file(source, dest, cancel_token).await
         } else if Self::location_is_lzh(source) {
             self.lzh.extract_file(source, dest, cancel_token).await
+        } else if Self::location_is_sevenzip_only(source) {
+            self.sevenzip_only
+                .extract_file(source, dest, cancel_token)
+                .await
         } else {
             self.zip.extract_file(source, dest, cancel_token).await
         }
@@ -1807,6 +1691,18 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
         dest: &Location,
         cancel_token: &CancellationToken,
     ) -> Result<()> {
+        let parts = match archive {
+            Location::Local(file) => Some((file.as_path(), None)),
+            other => Self::archive_parts(other).map(|(file, inner)| (file, Some(inner))),
+        };
+        if let (Some((file, inner)), Location::Local(dest_path)) = (parts, dest) {
+            let name = Self::location_name(archive);
+            if let Routed::Done(r) = self.via_sevenzip(&name, |lib| {
+                sevenzip::extract_tree(lib, file, inner, dest_path, cancel_token)
+            }) {
+                return r;
+            }
+        }
         if Self::location_is_tar(archive) {
             self.tar.extract_all(archive, dest, cancel_token).await
         } else if Self::location_is_sevenz(archive) {
@@ -1817,6 +1713,10 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
             self.iso.extract_all(archive, dest, cancel_token).await
         } else if Self::location_is_lzh(archive) {
             self.lzh.extract_all(archive, dest, cancel_token).await
+        } else if Self::location_is_sevenzip_only(archive) {
+            self.sevenzip_only
+                .extract_all(archive, dest, cancel_token)
+                .await
         } else {
             self.zip.extract_all(archive, dest, cancel_token).await
         }
@@ -1835,14 +1735,18 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
                 .create_archive(sources, dest, cancel_token)
                 .await
         } else {
-            // RAR/ISO/LZH creation is not supported; their handlers return clear errors
-            // For dest with those extensions, route to the appropriate stub
+            // RAR/ISO/LZH/7-Zip-only creation is not supported; their handlers
+            // return clear errors. For dest with those extensions, route to the stub.
             if Self::location_is_rar(dest) {
                 self.rar.create_archive(sources, dest, cancel_token).await
             } else if Self::location_is_iso(dest) {
                 self.iso.create_archive(sources, dest, cancel_token).await
             } else if Self::location_is_lzh(dest) {
                 self.lzh.create_archive(sources, dest, cancel_token).await
+            } else if Self::location_is_sevenzip_only(dest) {
+                self.sevenzip_only
+                    .create_archive(sources, dest, cancel_token)
+                    .await
             } else {
                 self.zip.create_archive(sources, dest, cancel_token).await
             }
@@ -1850,12 +1754,7 @@ impl ArchiveHandler for MultiFormatArchiveHandler {
     }
 
     fn is_archive(&self, filename: &str) -> bool {
-        self.zip.is_archive(filename)
-            || self.sevenz.is_archive(filename)
-            || self.tar.is_archive(filename)
-            || self.rar.is_archive(filename)
-            || self.iso.is_archive(filename)
-            || self.lzh.is_archive(filename)
+        is_archive_name(filename)
     }
 }
 

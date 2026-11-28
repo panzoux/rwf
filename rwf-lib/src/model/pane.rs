@@ -20,7 +20,7 @@ pub struct PaneModel {
     pub display_mode: DisplayMode,
     pub file_mask: Option<String>,
     pub is_loading: bool,
-    pub active_job_id: Option<crate::job::JobId>,
+    pub active_job_id: Option<crate::model::job_id::JobId>,
     pub marking: MarkingModel,
     /// After JumpToFile navigation: filename to select once ReadDirectory completes.
     pub pending_cursor_name: Option<String>,

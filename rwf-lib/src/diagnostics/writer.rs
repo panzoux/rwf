@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::log_layer::LogRecord;
 use super::record::DiagnosticRecord;
+use super::record::LogRecord;
 
 /// Thread name of the writer.
 ///

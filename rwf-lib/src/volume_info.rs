@@ -371,7 +371,7 @@ pub fn set_windows_creation_time(path: &Path, time: std::time::SystemTime) -> an
 
 /// Get all available drives and network shares
 /// **Validates: Requirements 42.4, 42.6**
-pub fn get_all_drives() -> Vec<crate::model::dialog::DriveInfo> {
+pub fn get_all_drives() -> Vec<crate::model::drive::DriveInfo> {
     #[cfg(target_os = "windows")]
     {
         get_windows_drives()
@@ -387,8 +387,8 @@ pub fn get_all_drives() -> Vec<crate::model::dialog::DriveInfo> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
-    use crate::model::dialog::{DriveInfo, DriveType};
+fn get_windows_drives() -> Vec<crate::model::drive::DriveInfo> {
+    use crate::model::drive::{DriveInfo, DriveType};
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{
         GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives,
@@ -460,8 +460,8 @@ fn get_windows_drives() -> Vec<crate::model::dialog::DriveInfo> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn get_unix_drives() -> Vec<crate::model::dialog::DriveInfo> {
-    use crate::model::dialog::{DriveInfo, DriveType};
+fn get_unix_drives() -> Vec<crate::model::drive::DriveInfo> {
+    use crate::model::drive::{DriveInfo, DriveType};
     use std::fs;
 
     let mut drives = Vec::new();

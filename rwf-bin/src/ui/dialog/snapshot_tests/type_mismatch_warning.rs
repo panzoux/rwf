@@ -1,8 +1,8 @@
 //! Snapshots for `DialogContent::TypeMismatchWarning`.
 
 use super::{snapshot_dialog, test_state};
+use rwf_lib::dialog::Dialog;
 use rwf_lib::magic::DetectedKind;
-use rwf_lib::model::dialog::Dialog;
 use rwf_lib::model::Location;
 use std::path::PathBuf;
 

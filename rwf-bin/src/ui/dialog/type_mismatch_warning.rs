@@ -20,7 +20,7 @@ use super::render_dialog_buttons;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_type_mismatch_warning_dialog(
     frame: &mut Frame,
-    content: &rwf_lib::model::dialog::DialogContent,
+    content: &rwf_lib::dialog::DialogContent,
     area: Rect,
     path: &std::path::Path,
     detected_label: &str,

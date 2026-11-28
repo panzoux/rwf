@@ -1,7 +1,7 @@
 //! Tests for miscellaneous key handlers (quit, help, job manager)
 
 use super::*;
-use crate::model::{Dialog, DialogContent, JobManagerContent};
+use crate::dialog::{Dialog, DialogContent, JobManagerContent};
 use crate::state::Transition;
 use crate::test_utils::test_state;
 

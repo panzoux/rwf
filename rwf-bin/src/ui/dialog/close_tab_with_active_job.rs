@@ -3,7 +3,7 @@
 //! Moved from dialog/mod.rs in M4 S5.
 
 use crossterm::event::KeyEvent;
-use rwf_lib::model::dialog::CloseTabWithActiveJobDialog;
+use rwf_lib::dialog::CloseTabWithActiveJobDialog;
 
 use super::DialogAction;
 

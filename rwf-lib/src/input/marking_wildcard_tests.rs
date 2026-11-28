@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action, KeyBindings};
+    use crate::input::action_to_transitions;
+    use crate::keybindings::{Action, KeyBindings};
     use crate::model::{FileEntry, Location};
     use crate::state::{update_state, Transition};
     use crate::test_utils::test_state;
@@ -46,7 +47,7 @@ mod tests {
             transitions.iter().any(|t| matches!(
                 t,
                 Transition::ShowDialog { dialog }
-                    if matches!(dialog.content, crate::model::dialog::DialogContent::WildcardMark(_))
+                    if matches!(dialog.content, crate::dialog::DialogContent::WildcardMark(_))
             )),
             "WildcardMarking action must open a WildcardMark dialog"
         );
@@ -68,12 +69,10 @@ mod tests {
         let state = test_state();
         let transitions = action_to_transitions(&state, &Action::WildcardMarking);
         if let Some(Transition::ShowDialog { dialog }) = transitions.first() {
-            if let crate::model::dialog::DialogContent::WildcardMark(
-                crate::model::dialog::WildcardMarkDialog {
-                    input,
-                    ui: crate::model::dialog::DialogUiState { focused_field, .. },
-                },
-            ) = &dialog.content
+            if let crate::dialog::DialogContent::WildcardMark(crate::dialog::WildcardMarkDialog {
+                input,
+                ui: crate::dialog::DialogUiState { focused_field, .. },
+            }) = &dialog.content
             {
                 assert_eq!(input, "");
                 assert_eq!(*focused_field, 0, "textbox should be focused by default");

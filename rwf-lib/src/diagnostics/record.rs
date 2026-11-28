@@ -129,6 +129,28 @@ pub fn truncate_detail(s: &str) -> String {
     format!("{}…[truncated]", &s[..end])
 }
 
+/// One line of `logs.jsonl`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogRecord {
+    /// Shares the counter with `events.jsonl`, so both files interleave into
+    /// one ordered timeline.
+    pub seq: u64,
+    /// RFC 3339 local timestamp.
+    pub ts: String,
+    /// `ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE`.
+    pub level: String,
+    /// Module path the event came from.
+    pub target: String,
+    /// Source file, when the subscriber recorded one.
+    pub file: Option<String>,
+    /// Source line, when the subscriber recorded one.
+    pub line: Option<u32>,
+    /// The formatted `message` field, if present.
+    pub message: Option<String>,
+    /// All other structured fields, rendered with their `Debug` form.
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -5,9 +5,9 @@
 //!
 //! **Validates: Requirements 21.1, 21.5, 21.8, 26.7**
 
+use crate::job::JobEvent;
 use crate::job::OpResult;
 use crate::state::{update_state, AppState, StateUpdateResult, Transition};
-use crate::worker_pool::JobEvent;
 use tracing::debug;
 
 /// Process a JobEvent and convert it to a Transition

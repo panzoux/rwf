@@ -9,8 +9,9 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::dialog::{DialogContent, ErrorDialog, ErrorType};
     use crate::job::{JobKind, JobSpec, OpResult};
-    use crate::model::{DialogContent, ErrorDialog, ErrorType, Location};
+    use crate::model::Location;
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -390,7 +391,8 @@ mod tests {
         state.current_tab_mut().left_pane.entries.clear();
 
         // Try to perform operations on empty pane
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
+        use crate::keybindings::Action;
 
         // Copy should return empty transitions
         let transitions = action_to_transitions(&state, &Action::Copy);

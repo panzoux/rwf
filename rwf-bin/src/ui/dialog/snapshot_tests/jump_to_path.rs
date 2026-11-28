@@ -4,7 +4,7 @@
 //! scan the real filesystem.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::dialog::{Dialog, DialogContent};
 
 #[test]
 fn jump_to_path_empty() {
@@ -38,7 +38,7 @@ fn jump_to_path_query_and_selection() {
             "/test/beta".to_string(),
         ],
     );
-    if let DialogContent::JumpToPath(rwf_lib::model::dialog::JumpToPathDialog {
+    if let DialogContent::JumpToPath(rwf_lib::dialog::JumpToPathDialog {
         query,
         cursor_pos,
         suggestions,

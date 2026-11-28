@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::CloseTabWithActiveJob`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{CloseTabWithActiveJobDialog, Dialog, DialogContent};
+use rwf_lib::dialog::{CloseTabWithActiveJobDialog, Dialog, DialogContent};
 
 #[test]
 fn close_tab_with_one_job_ok_focused() {

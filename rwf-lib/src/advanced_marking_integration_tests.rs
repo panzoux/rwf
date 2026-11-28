@@ -2,8 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::input::{action_to_transitions, Action};
-    use crate::model::{DialogContent, Location};
+    use crate::dialog::DialogContent;
+    use crate::input::action_to_transitions;
+    use crate::keybindings::Action;
+    use crate::model::Location;
     use crate::state::{update_state, Transition};
     use crate::test_utils::{entries, test_state, FileEntryBuilder};
     use std::path::PathBuf;

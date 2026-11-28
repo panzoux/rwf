@@ -2,7 +2,7 @@
 
 use super::{snapshot_dialog, test_state};
 use rwf_lib::config::ExtensionAssociation;
-use rwf_lib::model::dialog::{Dialog, DialogContent, OpenWithPickerDialog};
+use rwf_lib::dialog::{Dialog, DialogContent, OpenWithPickerDialog};
 use std::path::PathBuf;
 
 #[test]

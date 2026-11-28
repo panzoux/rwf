@@ -15,7 +15,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{ActivePane, DialogContent, HelpDialog, Location};
+    use crate::dialog::{DialogContent, HelpDialog};
+    use crate::model::{ActivePane, Location};
     use crate::state::{update_state, AppState, Transition};
     use crate::test_utils::{state_with_temp_dirs, temp_dir, test_state, FileEntryBuilder};
     use std::path::PathBuf;
@@ -171,7 +172,7 @@ mod tests {
         let (mut state, _left_dir, _right_dir) = create_test_state();
 
         // Show help dialog
-        let help_dialog = crate::model::Dialog::help_with_language(&state.config.help_language);
+        let help_dialog = crate::dialog::Dialog::help_with_language(&state.config.help_language);
         let result = update_state(
             &mut state,
             Transition::ShowDialog {
@@ -472,7 +473,7 @@ mod tests {
         let (mut state, _left_dir, _right_dir) = create_test_state();
 
         // Step 1: Show help
-        let help_dialog = crate::model::Dialog::help_with_language(&state.config.help_language);
+        let help_dialog = crate::dialog::Dialog::help_with_language(&state.config.help_language);
         let result = update_state(
             &mut state,
             Transition::ShowDialog {
@@ -494,7 +495,7 @@ mod tests {
         assert!(state.dialogs.is_empty());
 
         // Step 4: Show help again (should remember language preference)
-        let help_dialog = crate::model::Dialog::help_with_language(&state.config.help_language);
+        let help_dialog = crate::dialog::Dialog::help_with_language(&state.config.help_language);
         let result = update_state(
             &mut state,
             Transition::ShowDialog {

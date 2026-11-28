@@ -340,7 +340,8 @@ mod tests {
         state.current_tab_mut().left_pane.cursor = 0;
 
         // Try to trigger size calculation via action
-        use crate::input::{action_to_transitions, Action};
+        use crate::input::action_to_transitions;
+        use crate::keybindings::Action;
         let transitions = action_to_transitions(&state, &Action::CalculateDirectorySize);
 
         // Should return empty transitions since it's not a directory

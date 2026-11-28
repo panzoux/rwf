@@ -399,7 +399,7 @@ mod tests {
     fn test_filter_dialog_workflow() {
         // Requirement 13.1: Display filter input dialog
         // Requirement 13.6: Display active File_Mask in Status_Bar
-        use crate::model::Dialog;
+        use crate::dialog::Dialog;
 
         let mut state = test_state();
 
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn test_clear_filter_dialog_workflow() {
         // Requirement 13.5: Clear filter when mask is empty
-        use crate::model::Dialog;
+        use crate::dialog::Dialog;
 
         let mut state = test_state();
 

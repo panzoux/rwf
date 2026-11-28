@@ -2,8 +2,9 @@
 //!
 //! **Validates: Requirements 28.2**
 
-use crate::macro_expander::MacroExpander;
-use crate::model::{CustomFunction, FileEntry, Location};
+use crate::custom_function::CustomFunction;
+use crate::model::{FileEntry, Location};
+use crate::state::macro_expander::MacroExpander;
 use crate::state::{AppConfig, AppState};
 use proptest::prelude::*;
 use std::path::PathBuf;

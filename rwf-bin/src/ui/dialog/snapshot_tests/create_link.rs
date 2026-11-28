@@ -14,7 +14,7 @@
 //! `LinkCreateKind::Junction`, which only exists on Windows.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::{Dialog, DialogContent};
+use rwf_lib::dialog::{Dialog, DialogContent};
 use rwf_lib::model::{LinkCreateKind, Location};
 use std::path::PathBuf;
 

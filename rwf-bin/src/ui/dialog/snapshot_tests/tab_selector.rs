@@ -1,7 +1,7 @@
 //! Snapshots for `DialogContent::TabSelector`.
 
 use super::{snapshot_dialog, test_state};
-use rwf_lib::model::dialog::Dialog;
+use rwf_lib::dialog::Dialog;
 
 #[test]
 fn tab_selector_single_tab() {

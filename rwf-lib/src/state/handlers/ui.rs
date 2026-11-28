@@ -98,7 +98,7 @@ impl AppState {
             Transition::ConfirmDialog => {
                 if let Some(dialog) = self.dialogs.current() {
                     match &dialog.content {
-                        crate::model::DialogContent::Confirmation(_) => {
+                        crate::dialog::DialogContent::Confirmation(_) => {
                             let title = dialog.title.as_str();
                             if title == "Copy" {
                                 let sources: Vec<_> = {
@@ -181,7 +181,7 @@ impl AppState {
                                 return Some(update_state(self, Transition::ReloadConfig));
                             }
                         }
-                        crate::model::DialogContent::Input { .. } => {
+                        crate::dialog::DialogContent::Input { .. } => {
                             let title = dialog.title.as_str();
                             let input = self.dialogs.input_buffer.clone();
 
@@ -258,8 +258,8 @@ impl AppState {
                                 ));
                             }
                         }
-                        crate::model::DialogContent::DeleteConfirm(
-                            crate::model::dialog::DeleteConfirmDialog { targets, .. },
+                        crate::dialog::DialogContent::DeleteConfirm(
+                            crate::dialog::DeleteConfirmDialog { targets, .. },
                         ) => {
                             let jobs_targets: Vec<_> =
                                 targets.iter().map(|(loc, _)| loc.clone()).collect();
@@ -272,7 +272,7 @@ impl AppState {
                                 return Some(StateUpdateResult::with_job(job_spec));
                             }
                         }
-                        crate::model::DialogContent::SimpleRename(_) => {
+                        crate::dialog::DialogContent::SimpleRename(_) => {
                             let new_name = self.dialogs.input_buffer.clone();
                             if !new_name.is_empty() {
                                 if let Some(entry) = self.active_pane().current_entry() {
@@ -293,9 +293,10 @@ impl AppState {
                                 }
                             }
                         }
-                        crate::model::DialogContent::FileMask(
-                            crate::model::dialog::FileMaskDialog { input, .. },
-                        ) => {
+                        crate::dialog::DialogContent::FileMask(crate::dialog::FileMaskDialog {
+                            input,
+                            ..
+                        }) => {
                             let mask = if input.is_empty() {
                                 None
                             } else {
@@ -308,8 +309,8 @@ impl AppState {
                                 Transition::SetFileMask { pane, mask },
                             ));
                         }
-                        crate::model::DialogContent::DriveSelection(
-                            crate::model::dialog::DriveSelectionDialog {
+                        crate::dialog::DialogContent::DriveSelection(
+                            crate::dialog::DriveSelectionDialog {
                                 drives,
                                 selected_index,
                                 filter,
@@ -317,7 +318,7 @@ impl AppState {
                             },
                         ) => {
                             let lower = filter.to_lowercase();
-                            let filtered: Vec<&crate::model::dialog::DriveInfo> =
+                            let filtered: Vec<&crate::model::drive::DriveInfo> =
                                 if filter.is_empty() {
                                     drives.iter().collect()
                                 } else {
@@ -341,8 +342,8 @@ impl AppState {
                                 ));
                             }
                         }
-                        crate::model::DialogContent::RegisteredFolderSelector(
-                            crate::model::RegisteredFolderSelectorContent {
+                        crate::dialog::DialogContent::RegisteredFolderSelector(
+                            crate::dialog::RegisteredFolderSelectorContent {
                                 selected_index, ..
                             },
                         ) => {
@@ -407,7 +408,7 @@ impl AppState {
                 ))
             }
             Transition::ShowContextMenu => {
-                let dialog = crate::model::Dialog::context_menu();
+                let dialog = crate::dialog::Dialog::context_menu();
                 self.dialogs.push(dialog);
 
                 // Kick off live content-type detection for the "Open With..." row
@@ -427,7 +428,7 @@ impl AppState {
                             });
                         let job_id = job_spec.id;
                         if let Some(dialog) = self.dialogs.current_mut() {
-                            if let crate::model::dialog::DialogContent::ContextMenu(d) =
+                            if let crate::dialog::DialogContent::ContextMenu(d) =
                                 &mut dialog.content
                             {
                                 d.detected_type_job_id = Some(job_id);
@@ -451,8 +452,8 @@ impl AppState {
                     );
                     Some(result)
                 } else {
-                    let mut dialog = crate::model::Dialog::custom_function_selector(functions);
-                    if let crate::model::DialogContent::CustomFunctionSelector(content) =
+                    let mut dialog = crate::dialog::Dialog::custom_function_selector(functions);
+                    if let crate::dialog::DialogContent::CustomFunctionSelector(content) =
                         &mut dialog.content
                     {
                         content.origins = content
@@ -477,7 +478,7 @@ impl AppState {
                             let title = func.name.clone();
                             let items = func.menu_items().to_vec();
                             self.dialogs
-                                .push(crate::model::Dialog::custom_function_menu(title, items));
+                                .push(crate::dialog::Dialog::custom_function_menu(title, items));
                             Some(StateUpdateResult::with_ui_change())
                         }
                         crate::state::helpers::CustomFunctionOutcome::Job(job_spec) => {
@@ -487,11 +488,12 @@ impl AppState {
                             // Previously this path silently stripped `$I` and ran the
                             // command with a hole in it; prompt like every other
                             // invocation route does.
-                            let prompt = crate::macro_expander::MacroExpander::extract_i_prompt(
-                                func.get_command().unwrap_or(""),
-                            )
-                            .unwrap_or_else(|| "Enter input".to_string());
-                            self.dialogs.push(crate::model::Dialog::input(
+                            let prompt =
+                                crate::state::macro_expander::MacroExpander::extract_i_prompt(
+                                    func.get_command().unwrap_or(""),
+                                )
+                                .unwrap_or_else(|| "Enter input".to_string());
+                            self.dialogs.push(crate::dialog::Dialog::input(
                                 "Custom Function Input",
                                 &prompt,
                                 "",
@@ -544,8 +546,11 @@ impl AppState {
                 // Reached via the flag-off/non-Local extension-only path in
                 // `resolve_extension_association` — content-type detection never ran,
                 // so there's no kind to show in the title.
-                let dialog =
-                    crate::model::Dialog::open_with_picker(paths.clone(), candidates.clone(), None);
+                let dialog = crate::dialog::Dialog::open_with_picker(
+                    paths.clone(),
+                    candidates.clone(),
+                    None,
+                );
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -602,10 +607,10 @@ impl AppState {
 
                 // 1. Home directory
                 if let Some(home) = dirs::home_dir() {
-                    entries.push(crate::model::dialog::DriveInfo {
+                    entries.push(crate::model::drive::DriveInfo {
                         path: home.to_string_lossy().into_owned(),
                         label: "~ User Directory".to_string(),
-                        drive_type: crate::model::dialog::DriveType::Local,
+                        drive_type: crate::model::drive::DriveType::Local,
                         total_space: None,
                         free_space: None,
                     });
@@ -640,10 +645,10 @@ impl AppState {
                     }
                 }
                 for root in &nw_roots {
-                    entries.push(crate::model::dialog::DriveInfo {
+                    entries.push(crate::model::drive::DriveInfo {
                         path: root.clone(),
                         label: root.clone(),
-                        drive_type: crate::model::dialog::DriveType::Network,
+                        drive_type: crate::model::drive::DriveType::Network,
                         total_space: None,
                         free_space: None,
                     });
@@ -655,9 +660,8 @@ impl AppState {
                 // to run right here, on the input thread (Phase 7.21-B).
                 let job = crate::job::JobSpec::new(crate::job::JobKind::ListDrives);
                 let mut dialog =
-                    crate::model::Dialog::drive_selection(entries, self.ui.active_pane);
-                if let crate::model::dialog::DialogContent::DriveSelection(d) = &mut dialog.content
-                {
+                    crate::dialog::Dialog::drive_selection(entries, self.ui.active_pane);
+                if let crate::dialog::DialogContent::DriveSelection(d) = &mut dialog.content {
                     d.loading_job_id = Some(job.id);
                 }
                 self.dialogs.push(dialog);
@@ -667,7 +671,7 @@ impl AppState {
             }
             Transition::ShowFileInfo => {
                 if let Some(entry) = self.active_pane().current_entry() {
-                    let mut dialog = crate::model::Dialog::file_info(entry);
+                    let mut dialog = crate::dialog::Dialog::file_info(entry);
                     // Auto-start content-type detection the moment the dialog
                     // opens (Phase 7.3b, Task 13b) — this used to require an
                     // explicit `d` keypress, but detection is a cheap async
@@ -684,9 +688,7 @@ impl AppState {
                                 purpose: crate::job::DetectFileTypePurpose::FileInfoDisplay,
                             });
                         let job_id = job_spec.id;
-                        if let crate::model::dialog::DialogContent::FileInfo(d) =
-                            &mut dialog.content
-                        {
+                        if let crate::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
                             d.detecting = true;
                             d.detected_type_job_id = Some(job_id);
                         }
@@ -698,7 +700,7 @@ impl AppState {
                     // just fail, so report "not available" immediately rather
                     // than silently never detecting anything (same message
                     // the old manual `d`-trigger handler used).
-                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                    if let crate::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
                         d.detected_type = Some("not available for this location".to_string());
                     }
                     self.dialogs.push(dialog);
@@ -714,7 +716,7 @@ impl AppState {
                 // rule (never mutate dialog content from the input/render
                 // layers directly).
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                    if let crate::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
                         d.header_hex_mode = !d.header_hex_mode;
                     }
                 }
@@ -739,14 +741,14 @@ impl AppState {
                 }
 
                 self.dialogs
-                    .push(crate::model::Dialog::attr_timestamp(targets));
+                    .push(crate::dialog::Dialog::attr_timestamp(targets));
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ConfirmAttrTimestampDialog => {
                 let Some(dialog) = self.dialogs.current() else {
                     return Some(StateUpdateResult::none());
                 };
-                let crate::model::dialog::DialogContent::AttrTimestamp(d) = &dialog.content else {
+                let crate::dialog::DialogContent::AttrTimestamp(d) = &dialog.content else {
                     return Some(StateUpdateResult::none());
                 };
 
@@ -803,14 +805,14 @@ impl AppState {
                 };
 
                 self.dialogs
-                    .push(crate::model::Dialog::create_link(target, dest_dir));
+                    .push(crate::dialog::Dialog::create_link(target, dest_dir));
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ConfirmCreateLinkDialog => {
                 let Some(dialog) = self.dialogs.current() else {
                     return Some(StateUpdateResult::none());
                 };
-                let crate::model::dialog::DialogContent::CreateLink(d) = &dialog.content else {
+                let crate::dialog::DialogContent::CreateLink(d) = &dialog.content else {
                     return Some(StateUpdateResult::none());
                 };
                 if d.link_name.is_empty() {
@@ -835,8 +837,7 @@ impl AppState {
                 let Some(dialog) = self.dialogs.current() else {
                     return Some(StateUpdateResult::none());
                 };
-                let crate::model::dialog::DialogContent::OperationReportView(content) =
-                    &dialog.content
+                let crate::dialog::DialogContent::OperationReportView(content) = &dialog.content
                 else {
                     return Some(StateUpdateResult::none());
                 };
@@ -881,7 +882,7 @@ impl AppState {
                     .collect();
 
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    *dialog = crate::model::Dialog::operation_report_view_at(
+                    *dialog = crate::dialog::Dialog::operation_report_view_at(
                         slots,
                         actionable,
                         new_position,
@@ -898,7 +899,7 @@ impl AppState {
                 // unreachable via the real UI path — but we still handle it
                 // defensively (no-op) rather than panicking.
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
+                    if let crate::dialog::DialogContent::FileInfo(d) = &mut dialog.content {
                         if let Some(enc) = d.header_encoding {
                             d.header_encoding = Some(enc.next());
                         }
@@ -907,7 +908,7 @@ impl AppState {
                 Some(StateUpdateResult::with_ui_change())
             }
             Transition::ShowVersion => {
-                let dialog = crate::model::Dialog::version();
+                let dialog = crate::dialog::Dialog::version();
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -921,7 +922,7 @@ impl AppState {
                 self.config.help_language = next_lang.clone();
 
                 if let Some(dialog) = self.dialogs.current_mut() {
-                    if let crate::model::DialogContent::Help(crate::model::HelpDialog {
+                    if let crate::dialog::DialogContent::Help(crate::dialog::HelpDialog {
                         ref mut language,
                         ref mut entries,
                         ..
@@ -944,7 +945,7 @@ impl AppState {
             }
             Transition::ShowRegisteredFolderDialog => {
                 let folders = self.registered_folders.folders.clone();
-                let dialog = crate::model::Dialog::registered_folder_selector(folders);
+                let dialog = crate::dialog::Dialog::registered_folder_selector(folders);
                 self.dialogs.push(dialog);
                 Some(StateUpdateResult::with_ui_change())
             }
@@ -959,10 +960,11 @@ impl AppState {
                         max_depth: self.config.jump_nav.jump_path_max_depth,
                     });
                 let job_id = job_spec.id;
-                let mut dialog = crate::model::Dialog::jump_to_path(root, fast_candidates);
-                if let crate::model::dialog::DialogContent::JumpToPath(
-                    crate::model::dialog::JumpToPathDialog { loading_job_id, .. },
-                ) = &mut dialog.content
+                let mut dialog = crate::dialog::Dialog::jump_to_path(root, fast_candidates);
+                if let crate::dialog::DialogContent::JumpToPath(crate::dialog::JumpToPathDialog {
+                    loading_job_id,
+                    ..
+                }) = &mut dialog.content
                 {
                     *loading_job_id = Some(job_id);
                 }
@@ -990,14 +992,12 @@ impl AppState {
                     .filter(|e| e.is_dir && e.name != "..")
                     .map(|e| e.location.display_path())
                     .collect();
-                let mut dialog = crate::model::Dialog::jump_to_file(root, fast_candidates);
-                if let crate::model::dialog::DialogContent::JumpToFile(
-                    crate::model::dialog::JumpToFileDialog {
-                        loading_job_id,
-                        dir_paths,
-                        ..
-                    },
-                ) = &mut dialog.content
+                let mut dialog = crate::dialog::Dialog::jump_to_file(root, fast_candidates);
+                if let crate::dialog::DialogContent::JumpToFile(crate::dialog::JumpToFileDialog {
+                    loading_job_id,
+                    dir_paths,
+                    ..
+                }) = &mut dialog.content
                 {
                     *loading_job_id = Some(job_id);
                     *dir_paths = fast_dirs;
@@ -1006,7 +1006,7 @@ impl AppState {
                 Some(StateUpdateResult::with_job(job_spec))
             }
             Transition::RegisterCurrentFolder { name, path } => {
-                let folder = crate::model::RegisteredFolder::new(name.clone(), path.clone());
+                let folder = crate::dialog::RegisteredFolder::new(name.clone(), path.clone());
                 self.registered_folders.add(folder);
 
                 self.save_registered_folders();
@@ -1137,14 +1137,14 @@ impl AppState {
     /// just clamping for the defensive case where a stack-top id was
     /// evicted from `operation_reports` (the `history_size` cap) and so
     /// is missing from the slots list.
-    pub(crate) fn operation_report_dialog_for_current_state(&self) -> crate::model::Dialog {
+    pub(crate) fn operation_report_dialog_for_current_state(&self) -> crate::dialog::Dialog {
         let slots = self.operation_history_slots();
         let Some(last_index) = slots.len().checked_sub(1) else {
             // No operations recorded yet — open the dialog anyway, showing
             // its own empty state, instead of a task-panel log message.
             // `Alt+o` should do exactly one thing: open the Operation
             // Report dialog.
-            return crate::model::Dialog::operation_report_empty();
+            return crate::dialog::Dialog::operation_report_empty();
         };
         let cursor = if !self.undo_stack.is_empty() {
             self.redo_stack.len()
@@ -1156,7 +1156,7 @@ impl AppState {
             .iter()
             .map(|r| self.is_undo_redo_target(r.id))
             .collect();
-        crate::model::Dialog::operation_report_view_at(slots, actionable, cursor)
+        crate::dialog::Dialog::operation_report_view_at(slots, actionable, cursor)
     }
 }
 

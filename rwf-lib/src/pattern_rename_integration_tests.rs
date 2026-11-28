@@ -1,7 +1,8 @@
 //! Integration tests for pattern-based rename functionality (TWF-compatible)
 
+use crate::dialog::DialogContent;
 use crate::job::{JobKind, OpResult, SuccessData};
-use crate::model::{DialogContent, Location};
+use crate::model::Location;
 use crate::state::{update_state, Transition};
 use crate::test_utils::{test_state, FileEntryBuilder};
 use std::path::PathBuf;

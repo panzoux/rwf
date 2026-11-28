@@ -84,10 +84,10 @@
 |---|------|------|-------------|
 | 5.1 | **7z サポート** | `[x]` | `sevenz-rust`（純Rust）`SevenZArchiveHandler` + `MultiFormatArchiveHandler` |
 | 5.2 | **TAR/TGZ サポート** | `[x]` | `tar` + `flate2`。`TarArchiveHandler`（.tar/.tgz/.tar.gz） |
-| 5.3 | **RAR サポート** | `[ ]` | `.rar` は認識済み（graceful error）。5.6 経由で実装予定 |
+| 5.3 | **RAR サポート** | `[ ]` | 8.11 で実装中（Windows は 7z.dll、Linux / macOS は `unrar-ng`）（[計画](8.11.sevenzip_external.md)） |
 | 5.4 | **ISO サポート** | `[x]` | `iso9660` クレートでブラウズ・展開（read-only） |
-| 5.5 | **LZH サポート** | `[ ]` | `.lzh/.lha` は認識済み（graceful error）。5.6 経由で実装予定 |
-| 5.6 | **libarchive 統合（RAR・LZH 他）** | `[ ]` | `compress-tools` クレート（`libarchive` ラッパー）。libarchive がある環境で有効化 |
+| 5.5 | **LZH サポート** | `[ ]` | 8.11 で実装中（7-Zip がある環境のみ）（[計画](8.11.sevenzip_external.md)） |
+| 5.6 | **libarchive 統合（RAR・LZH 他）** | `[-]` | 不採用（8.11 の 7-Zip ライブラリに統合）。[不採用](#不採用declined) 節 |
 
 ---
 
@@ -181,7 +181,7 @@
 | **libmagic 統合（オプション）** | `magic`クレート経由の完全なマジックバイト判定。libmagic がある環境でのみ有効化（5.6 と同じ任意依存パターン） | Phase 8.8 |
 | **ファイル一覧ペインへの常時タイプ表示** | 7.3 は File Information でのオンデマンド表示のみ。常時表示は都度 I/O コストのため別途検討 | Phase 8.9 |
 | **migemo 統合方式の見直し（クレート優先 + 外部モジュール fallback）** | migemo クレートは Linux ビルド失敗。ビルド不可環境では TWF で実績のある `migemo.dll` 等へフォールバックできないか検討 | Phase 8.10 |
-| **7-Zip 外部モジュール対応（アーカイブ形式拡張）** | 7-Zip 外部モジュールがある環境ではそちらを優先し、RAR/LZH 等（5.3・5.5・5.6）に対応できないか検討 | Phase 8.11 |
+| **7-Zip 外部モジュール対応（アーカイブ形式拡張）** | 7z.dll/7z.so を実行時に読み込み、ある環境では全形式で 7-Zip を優先（RAR/LZH/ARJ/CAB 等に拡張）。無ければ内蔵へフォールバック。Linux / macOS の RAR は `unrar-ng` で補う（5.3・5.5・5.6 を統合）（[計画](8.11.sevenzip_external.md)） | Phase 8.11 |
 | **`#![warn(missing_docs)]` 導入** | M7 で見送り（`model/dialog/` 約262項目・`rwf-bin/src/ui/` 約65項目が未着手） | Phase 8+ |
 
 ---
@@ -197,6 +197,8 @@
 | **外部コマンドの影響範囲宣言（`refresh_after`）** | 定義漏れ・誤設定のリスク。完了後にアクティブペインを無条件リフレッシュする | 2026-05-24 | [ARCHITECTURE.md（ペイン更新機構）](../docs/ARCHITECTURE.md) |
 | **JobProgress の常時記録（診断）** | 大きなコピー 1 回で数千レコード。オプトイン（旧 7.16）に限定 | 2026-08-12 | [7.15.diagnostic_report.md](7.15.diagnostic_report.md) |
 | **libmagic の必須依存化（7.3）** | Windows 非対応。任意依存としては Phase 8.8 候補 | 2026-07-18 | [7.3.smart_file_opener.md](7.3.smart_file_opener.md) |
+| **5.6 libarchive 統合（`compress-tools`）** | Windows での C ライブラリのビルド・配布が重く、対応形式も 7-Zip の方が広い。8.11 の 7z.dll / 7z.so 読み込みに置き換え | 2026-11-28 | [8.11.sevenzip_external.md](8.11.sevenzip_external.md) |
+| **Debian の `Codecs/Rar.so` を 7-Zip に渡す（8.11）** | そのままだと segfault（Debian 自身の `7z` も落ちる）。回避には 7-Zip の内部関数が要る。Linux / macOS の RAR は `unrar-ng` | 2026-11-28 | [8.11 §2.9](8.11.sevenzip_external.md) |
 | **アーキテクチャ変更を伴う clone 削減（M6）** | 6 系統は churn に見合わない | 2026-07-12 | [M6_handoff.md](M6_handoff.md) |
 
 ---

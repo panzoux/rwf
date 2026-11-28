@@ -652,7 +652,7 @@ pub struct CompressionDialogState {
 
 > **Post-M4 structure**: `DialogContent` variants wrap a per-dialog struct
 > (`DialogContent::Foo(FooDialog)`) defined in
-> `rwf-lib/src/model/dialog/foo.rs`. Each dialog's own render and
+> `rwf-lib/src/dialog/foo.rs`. Each dialog's own render and
 > `handle_input` functions live in `rwf-bin/src/ui/dialog/foo.rs`;
 > `rwf-bin/src/ui/dialog/mod.rs` only dispatches. See
 > `docs/recipes/add-a-dialog.md` for the current checklist.
@@ -662,8 +662,8 @@ pub struct CompressionDialogState {
 | `rwf-bin/src/ui/dialog/mod.rs` | Dialog rendering/input dispatch, height calculation |
 | `rwf-bin/src/ui/dialog/compression.rs` | Compression dialog layout constraints, rendering |
 | `rwf-bin/src/ui/dialog/frame.rs` | Generic button rendering (for other dialogs) |
-| `rwf-lib/src/model/dialog/mod.rs` | `DialogContent` enum + shared types (`DialogUiState`, `HelpTab`, …) |
-| `rwf-lib/src/model/dialog/*.rs` | One file per dialog variant's data struct |
+| `rwf-lib/src/dialog/mod.rs` | `DialogContent` enum + shared types (`DialogUiState`, `HelpTab`, …) |
+| `rwf-lib/src/dialog/*.rs` | One file per dialog variant's data struct |
 | `docs/DIALOG_DESIGN_SPEC.md` | This specification document |
 
 ---
@@ -1097,8 +1097,8 @@ SortDialog {
 | `rwf-bin/src/ui/dialog/sort.rs` | `render_sort_dialog()` |
 | `rwf-bin/src/ui/dialog/basic.rs` | Sort dialog input handling (shared with a few other dialogs) |
 | `rwf-bin/src/ui/dialog/confirm.rs` | Sort dialog confirmation |
-| `rwf-lib/src/model/dialog/sort.rs` | `SortDialog` struct + `SortDialog::new()` |
-| `rwf-lib/src/model/dialog/mod.rs` | `DialogContent::SortDialog(SortDialog)`, `Dialog::sort_dialog()` |
+| `rwf-lib/src/dialog/sort.rs` | `SortDialog` struct + `SortDialog::new()` |
+| `rwf-lib/src/dialog/mod.rs` | `DialogContent::SortDialog(SortDialog)`, `Dialog::sort_dialog()` |
 | `rwf-lib/src/model/pane.rs` | `SortMode`, `SortOrder` enums, `apply_sort()` |
 | `rwf-lib/src/input/mod.rs` | `Action::OpenSortDialog`, `Action::ToggleSortOrder` bindings |
 | `rwf-lib/src/state.rs` | `Transition::ChangeSortOrder` handler |

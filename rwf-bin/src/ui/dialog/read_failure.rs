@@ -12,9 +12,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
     Frame,
 };
-use rwf_lib::model::dialog::{
-    DialogContent, ReadFailureDialog, READ_FAILURE_DISMISS, READ_FAILURE_RETRY,
-};
+use rwf_lib::dialog::{DialogContent, ReadFailureDialog, READ_FAILURE_DISMISS, READ_FAILURE_RETRY};
 use unicode_width::UnicodeWidthStr;
 
 use super::common::{DIALOG_DIM, DIALOG_TEXT};

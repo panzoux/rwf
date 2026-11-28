@@ -4,10 +4,11 @@
 //! appropriate backend methods and sends JobEvent updates.
 
 use crate::backend::{ArchiveHandler, FilesystemBackend};
-use crate::job::{JobId, JobKind, JobSpec, OpResult, PipeToAction, SuccessData};
+use crate::job::JobEvent;
+use crate::job::{JobId, JobKind, JobSpec, OpResult, SuccessData};
 use crate::model::viewer::{FileBytes, LineIndex, SeekableFile, TextEncoding, ViewerBuffer};
 use crate::model::Location;
-use crate::worker_pool::JobEvent;
+use crate::pipe_to_action::PipeToAction;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -580,7 +581,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
     ) -> crate::model::OperationRecord {
         use crate::model::{OperationRecord, ReversalAction, UndoAvailability};
 
-        match self.backend.copy_file(source, dest, cancel_token).await {
+        match self.copy_location(source, dest, cancel_token).await {
             Ok(()) => OperationRecord {
                 source: Some(source.clone()),
                 destination: Some(dest.clone()),
@@ -601,6 +602,53 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
                 failure_reason: Some(format!("{e:#}")),
                 undo: UndoAvailability::NotApplicable,
             },
+        }
+    }
+
+    /// Copy `source` to `dest`. A source inside an archive (a pane browsing an
+    /// archive as a virtual folder) is extracted through the archive handler: a file
+    /// with `extract_file`, a directory as its whole subtree into `dest`.
+    async fn copy_location(
+        &self,
+        source: &Location,
+        dest: &Location,
+        cancel_token: &CancellationToken,
+    ) -> anyhow::Result<()> {
+        let Location::Archive {
+            archive_path,
+            inner_path,
+        } = source
+        else {
+            return self.backend.copy_file(source, dest, cancel_token).await;
+        };
+        let name = inner_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .ok_or_else(|| anyhow::anyhow!("Cannot copy the root of an archive"))?;
+        let parent = Location::Archive {
+            archive_path: archive_path.clone(),
+            inner_path: inner_path
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_default(),
+        };
+        let siblings = self
+            .archive_handler
+            .list_entries(&parent, cancel_token)
+            .await?;
+        let is_dir = siblings
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.is_dir)
+            .ok_or_else(|| anyhow::anyhow!("{name} not found in the archive"))?;
+        if is_dir {
+            self.archive_handler
+                .extract_all(source, dest, cancel_token)
+                .await
+        } else {
+            self.archive_handler
+                .extract_file(source, dest, cancel_token)
+                .await
         }
     }
 
@@ -1348,7 +1396,7 @@ impl<B: FilesystemBackend, A: ArchiveHandler> JobExecutor<B, A> {
 
             let record = match action.clone() {
                 ReversalAction::Copy { from, to } => {
-                    match self.backend.copy_file(&from, &to, &spec.cancel_token).await {
+                    match self.copy_location(&from, &to, &spec.cancel_token).await {
                         Ok(()) => OperationRecord {
                             source: Some(from.clone()),
                             destination: Some(to.clone()),
@@ -2880,7 +2928,7 @@ pub async fn detect_conflicts(
     backend: &dyn FilesystemBackend,
     job_id: crate::job::JobId,
     tab_id: usize,
-) -> Result<Vec<crate::model::dialog::ConflictPair>, String> {
+) -> Result<Vec<crate::model::conflict::ConflictPair>, String> {
     use chrono::Local;
 
     debug!(
@@ -2914,7 +2962,7 @@ pub async fn detect_conflicts(
                     }
                 };
 
-                let conflict = crate::model::dialog::ConflictPair {
+                let conflict = crate::model::conflict::ConflictPair {
                     source: source_entry.clone(),
                     dest: dest_entry,
                     source_path: source.clone(),
