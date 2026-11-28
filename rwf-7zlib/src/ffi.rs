@@ -107,6 +107,7 @@ mod bstr {
     }
 }
 #[cfg(not(windows))]
+#[allow(non_snake_case)] // mirrors the Windows API names used on the other side of the cfg
 mod bstr {
     // 7-Zip on Linux / macOS: BSTR = wchar_t* (4 bytes) with a 4-byte byte-length
     // prefix, allocated by 7-Zip's own SysAllocString with malloc.
@@ -118,14 +119,14 @@ mod bstr {
     /// `b` must be a non-null BSTR allocated by 7-Zip.
     pub unsafe fn SysStringByteLen(b: *const Char) -> u32 {
         // SAFETY: a 7-Zip BSTR is preceded by its u32 byte length (caller's contract).
-        unsafe { *(b as *const u32).sub(1) }
+        unsafe { *b.sub(1) }
     }
     /// # Safety
     /// `b` must be null or a BSTR allocated by 7-Zip that is not used afterwards.
     pub unsafe fn SysFreeString(b: *mut Char) {
         if !b.is_null() {
             // SAFETY: the allocation starts at the length prefix (caller's contract).
-            unsafe { free((b as *mut u32).sub(1) as *mut std::ffi::c_void) }
+            unsafe { free(b.sub(1) as *mut std::ffi::c_void) }
         }
     }
 }

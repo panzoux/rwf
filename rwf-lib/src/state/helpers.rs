@@ -414,7 +414,14 @@ mod tests {
         let start = update_state(
             &mut state,
             Transition::OpenWithSystem {
-                path: r"C:\videos\clip.mp4".to_string(),
+                // A native path: on Linux a backslash is not a separator, so the
+                // Windows form would show whole instead of as `clip.mp4`.
+                path: if cfg!(windows) {
+                    r"C:\videos\clip.mp4"
+                } else {
+                    "/videos/clip.mp4"
+                }
+                .to_string(),
             },
         );
         assert_eq!(start.jobs_to_start.len(), 1);

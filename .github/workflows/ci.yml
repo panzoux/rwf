@@ -109,6 +109,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          # deslop-please indexes the workspace with `rust-analyzer scip`.
+          components: rust-analyzer
       - uses: Swatinem/rust-cache@v2
       - run: cargo install deslop-please --version 0.1.4 --locked
       - run: deslop-please --allow .deslop-please.allow
