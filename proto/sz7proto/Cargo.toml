@@ -10,3 +10,4 @@ publish = false
 [dependencies]
 chrono = "0.4"
 libloading = "0.8"
+unrar-ng = "0.7.7"

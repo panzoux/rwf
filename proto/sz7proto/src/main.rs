@@ -369,6 +369,275 @@ static EXTRACT_CB_VTBL: ExtractCbVtbl = ExtractCbVtbl {
     set_operation_result: cb_set_result,
 };
 
+// ---- external codecs (Debian's /usr/lib/7zip/Codecs/Rar.so) ----------------------
+// 7z.so does not load Codecs/*.so itself. The 7z CLI loads them and hands each archive
+// object an ICompressCodecsInfo through ISetCompressCodecsInfo; we do the same.
+const IID_ICOMPRESS_CODECS_INFO: Guid = iid(4, 0x60);
+const IID_ISET_COMPRESS_CODECS_INFO: Guid = iid(4, 0x61);
+// NMethodPropID
+const MPROP_DECODER: u32 = 2;
+const MPROP_ENCODER: u32 = 3;
+const MPROP_DECODER_IS_ASSIGNED: u32 = 7;
+const MPROP_ENCODER_IS_ASSIGNED: u32 = 8;
+
+type GetNumberOfMethodsFn = unsafe extern "system" fn(*mut u32) -> HRESULT;
+type GetMethodPropertyFn = unsafe extern "system" fn(u32, u32, *mut PropVariant) -> HRESULT;
+type CreateCoderFn = unsafe extern "system" fn(u32, *const Guid, *mut *mut c_void) -> HRESULT;
+
+struct CodecLib {
+    _lib: libloading::Library,
+    get_prop: GetMethodPropertyFn,
+    create_object: Option<CreateObjectFn>,
+    create_decoder: Option<CreateCoderFn>,
+    create_encoder: Option<CreateCoderFn>,
+}
+struct CodecRef {
+    lib: usize,
+    index: u32,
+}
+struct Codecs {
+    libs: Vec<CodecLib>,
+    methods: Vec<CodecRef>,
+}
+
+#[repr(C)]
+struct CodecsInfoVtbl {
+    base: IUnknownVtbl,
+    get_num_methods: unsafe extern "system" fn(*mut c_void, *mut u32) -> HRESULT,
+    get_property: unsafe extern "system" fn(*mut c_void, u32, u32, *mut PropVariant) -> HRESULT,
+    create_decoder: unsafe extern "system" fn(*mut c_void, u32, *const Guid, *mut *mut c_void) -> HRESULT,
+    create_encoder: unsafe extern "system" fn(*mut c_void, u32, *const Guid, *mut *mut c_void) -> HRESULT,
+}
+#[repr(C)]
+struct CodecsInfo {
+    vtbl: *const CodecsInfoVtbl,
+    refs: AtomicU32,
+    codecs: Codecs,
+}
+com_refcount!(CodecsInfo, ci_add_ref, ci_release);
+unsafe extern "system" fn ci_qi(this: *mut c_void, riid: *const Guid, out: *mut *mut c_void) -> HRESULT {
+    let id = unsafe { *riid };
+    if id == IID_IUNKNOWN || id == IID_ICOMPRESS_CODECS_INFO {
+        unsafe { ci_add_ref(this) };
+        unsafe { *out = this };
+        S_OK
+    } else {
+        unsafe { *out = std::ptr::null_mut() };
+        E_NOINTERFACE
+    }
+}
+fn ci_codecs<'a>(this: *mut c_void) -> &'a Codecs {
+    &unsafe { &*(this as *const CodecsInfo) }.codecs
+}
+unsafe extern "system" fn ci_num(this: *mut c_void, n: *mut u32) -> HRESULT {
+    unsafe { *n = ci_codecs(this).methods.len() as u32 };
+    S_OK
+}
+/// The coder's GUID (kDecoder / kEncoder), if the module has one.
+fn coder_guid(c: &Codecs, index: u32, pid: u32) -> Option<Guid> {
+    let m = c.methods.get(index as usize)?;
+    let mut pv = PropVariant::empty();
+    unsafe { (c.libs[m.lib].get_prop)(m.index, pid, &mut pv) };
+    match unsafe { take(&mut pv, true) } {
+        Value::Bytes(b) if b.len() == 16 => Some(unsafe { std::ptr::read_unaligned(b.as_ptr() as *const Guid) }),
+        _ => None,
+    }
+}
+unsafe extern "system" fn ci_prop(this: *mut c_void, index: u32, pid: u32, value: *mut PropVariant) -> HRESULT {
+    let c = ci_codecs(this);
+    let Some(m) = c.methods.get(index as usize) else { return E_INVALIDARG };
+    if pid == MPROP_DECODER_IS_ASSIGNED || pid == MPROP_ENCODER_IS_ASSIGNED {
+        let which = if pid == MPROP_DECODER_IS_ASSIGNED { MPROP_DECODER } else { MPROP_ENCODER };
+        let assigned = coder_guid(c, index, which).is_some();
+        let mut pv = PropVariant::empty();
+        pv.vt = VT_BOOL;
+        pv.val[0] = if assigned { 0xFFFF } else { 0 }; // VARIANT_TRUE = -1
+        unsafe { std::ptr::write(value, pv) };
+        return S_OK;
+    }
+    unsafe { (c.libs[m.lib].get_prop)(m.index, pid, value) }
+}
+unsafe fn ci_create(this: *mut c_void, index: u32, iid: *const Guid, out: *mut *mut c_void, encoder: bool) -> HRESULT {
+    let c = ci_codecs(this);
+    let Some(m) = c.methods.get(index as usize) else { return E_INVALIDARG };
+    let lib = &c.libs[m.lib];
+    let direct = if encoder { lib.create_encoder } else { lib.create_decoder };
+    if let Some(f) = direct {
+        return unsafe { f(m.index, iid, out) };
+    }
+    match (lib.create_object, coder_guid(c, index, if encoder { MPROP_ENCODER } else { MPROP_DECODER })) {
+        (Some(f), Some(g)) => unsafe { f(&g, iid, out) },
+        _ => E_FAIL,
+    }
+}
+unsafe extern "system" fn ci_decoder(this: *mut c_void, i: u32, iid: *const Guid, out: *mut *mut c_void) -> HRESULT {
+    unsafe { ci_create(this, i, iid, out, false) }
+}
+unsafe extern "system" fn ci_encoder(this: *mut c_void, i: u32, iid: *const Guid, out: *mut *mut c_void) -> HRESULT {
+    unsafe { ci_create(this, i, iid, out, true) }
+}
+static CODECS_INFO_VTBL: CodecsInfoVtbl = CodecsInfoVtbl {
+    base: IUnknownVtbl { qi: ci_qi, add_ref: ci_add_ref, release: ci_release },
+    get_num_methods: ci_num,
+    get_property: ci_prop,
+    create_decoder: ci_decoder,
+    create_encoder: ci_encoder,
+};
+
+#[repr(C)]
+struct SetCodecsVtbl {
+    base: IUnknownVtbl,
+    set_compress_codecs_info: unsafe extern "system" fn(*mut c_void, *mut c_void) -> HRESULT,
+}
+
+/// Load every shared library in `<dir of 7z lib>/Codecs/`. Returns a COM object that
+/// lives for the whole process (we keep our own reference forever), or null.
+fn load_codecs(lib_path: &str) -> *mut c_void {
+    let dir = std::path::Path::new(lib_path).parent().map(|p| p.join("Codecs"));
+    let Some(Ok(rd)) = dir.as_ref().map(std::fs::read_dir) else {
+        println!("codecs: no {:?}", dir);
+        return std::ptr::null_mut();
+    };
+    let mut libs = Vec::new();
+    let mut methods = Vec::new();
+    for e in rd.flatten() {
+        let p = e.path();
+        let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if ext != "so" && ext != "dll" {
+            continue;
+        }
+        let Ok(lib) = (unsafe { libloading::Library::new(&p) }) else {
+            println!("codecs: cannot load {}", p.display());
+            continue;
+        };
+        let num = unsafe { lib.get::<GetNumberOfMethodsFn>(b"GetNumberOfMethods") }.map(|s| *s);
+        let get_prop = unsafe { lib.get::<GetMethodPropertyFn>(b"GetMethodProperty") }.map(|s| *s);
+        let (Ok(num), Ok(get_prop)) = (num, get_prop) else {
+            println!("codecs: {} is not a codec module", p.display());
+            continue;
+        };
+        let create_object = unsafe { lib.get::<CreateObjectFn>(b"CreateObject") }.ok().map(|s| *s);
+        let create_decoder = unsafe { lib.get::<CreateCoderFn>(b"CreateDecoder") }.ok().map(|s| *s);
+        let create_encoder = unsafe { lib.get::<CreateCoderFn>(b"CreateEncoder") }.ok().map(|s| *s);
+        let has_set_codecs = unsafe { lib.get::<*const c_void>(b"SetCodecs") }.is_ok();
+        let mut n = 0u32;
+        unsafe { num(&mut n) };
+        let li = libs.len();
+        let mut names = Vec::new();
+        for i in 0..n {
+            let mut pv = PropVariant::empty();
+            unsafe { get_prop(i, 1, &mut pv) }; // kName
+            names.push(match unsafe { take(&mut pv, false) } {
+                Value::Str(s) => s,
+                v => format!("{v:?}"),
+            });
+            methods.push(CodecRef { lib: li, index: i });
+        }
+        println!(
+            "codecs: {} -> {n} methods [{}] CreateDecoder={} CreateObject={} SetCodecs={}",
+            p.display(),
+            names.join(" "),
+            create_decoder.is_some(),
+            create_object.is_some(),
+            has_set_codecs
+        );
+        libs.push(CodecLib { _lib: lib, get_prop, create_object, create_decoder, create_encoder });
+    }
+    if methods.is_empty() {
+        return std::ptr::null_mut();
+    }
+    Box::into_raw(Box::new(CodecsInfo {
+        vtbl: &CODECS_INFO_VTBL,
+        refs: AtomicU32::new(1),
+        codecs: Codecs { libs, methods },
+    })) as *mut c_void
+}
+
+/// Give the archive object our codec list, as the 7z CLI does right after CreateObject.
+fn attach_codecs(archive: *mut c_void, codecs: *mut c_void) -> bool {
+    if codecs.is_null() {
+        return false;
+    }
+    let vt = unsafe { &**(archive as *const *const IUnknownVtbl) };
+    let mut set: *mut c_void = std::ptr::null_mut();
+    if unsafe { (vt.qi)(archive, &IID_ISET_COMPRESS_CODECS_INFO, &mut set) } != S_OK || set.is_null() {
+        return false;
+    }
+    let svt = unsafe { &**(set as *const *const SetCodecsVtbl) };
+    let hr = unsafe { (svt.set_compress_codecs_info)(set, codecs) };
+    unsafe { (svt.base.release)(set) };
+    hr == S_OK
+}
+
+// ---- RAR through unrar-ng (for 7z.so builds without a RAR decoder) ------------------
+fn unrar_check(path: &str) -> bool {
+    let t = Instant::now();
+    let listing = match unrar_ng::Archive::new(path).open_for_listing() {
+        Ok(l) => l,
+        Err(e) => {
+            println!("unrar-ng: open_for_listing failed: {e}");
+            return false;
+        }
+    };
+    let mut expected = Vec::new();
+    for e in listing {
+        match e {
+            Ok(e) if !e.is_directory() => expected.push((e.filename.display().to_string(), e.unpacked_size)),
+            Ok(_) => {}
+            Err(e) => {
+                println!("unrar-ng: list error {e}");
+                return false;
+            }
+        }
+    }
+    let mut a = match unrar_ng::Archive::new(path).open_for_processing() {
+        Ok(a) => a,
+        Err(e) => {
+            println!("unrar-ng: open_for_processing failed: {e}");
+            return false;
+        }
+    };
+    let mut ok = true;
+    let mut i = 0;
+    loop {
+        let h = match a.read_header() {
+            Ok(Some(h)) => h,
+            Ok(None) => break,
+            Err(e) => {
+                println!("unrar-ng: header error {e}");
+                return false;
+            }
+        };
+        if h.entry().is_directory() {
+            a = match h.skip() {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("unrar-ng: skip error {e}");
+                    return false;
+                }
+            };
+            continue;
+        }
+        match h.read() {
+            Ok((data, rest)) => {
+                let (name, size) = expected.get(i).cloned().unwrap_or_default();
+                let good = data.len() as u64 == size;
+                ok &= good;
+                println!("  unrar-ng [{i}] {name} bytes={} expected={size} {}", data.len(), if good { "OK" } else { "NG" });
+                a = rest;
+            }
+            Err(e) => {
+                println!("unrar-ng: read error {e}");
+                return false;
+            }
+        }
+        i += 1;
+    }
+    let all = ok && i == expected.len();
+    println!("unrar-ng ALL {} ({} files) in {:?}", if all { "OK" } else { "NG" }, i, t.elapsed());
+    all
+}
+
 // ---- driver ---------------------------------------------------------------------
 struct Format {
     name: String,
@@ -444,9 +713,12 @@ fn main() {
         formats.iter().map(|f| f.name.as_str()).collect::<Vec<_>>().join(" ")
     );
 
+    let codecs = load_codecs(lib_path);
+
     let mut failures = 0;
     for arc in &args[2..] {
         let mut opened = false;
+        let mut seven_ok = false;
         println!("\n=== {arc}");
         let ext = std::path::Path::new(arc)
             .extension()
@@ -463,6 +735,7 @@ fn main() {
                 continue;
             }
             let vt = unsafe { &**(obj as *const *const IInArchiveVtbl) };
+            let attached = attach_codecs(obj, codecs);
             let file = std::fs::File::open(arc).expect("open archive");
             let stream = Box::into_raw(Box::new(InStream {
                 vtbl: &IN_STREAM_VTBL,
@@ -478,7 +751,7 @@ fn main() {
             }
             let mut count = 0u32;
             unsafe { (vt.get_number_of_items)(obj, &mut count) };
-            println!("opened as {} ({} items) in {:?}", f.name, count, t.elapsed());
+            println!("opened as {} ({} items) in {:?}, external codecs attached={attached}", f.name, count, t.elapsed());
             let mut sizes = Vec::new();
             for i in 0..count {
                 let mut get = |pid: u32| {
@@ -532,9 +805,7 @@ fn main() {
             }
             let all = ok && results.len() == count as usize;
             println!("ALL {}", if all { "OK" } else { "NG" });
-            if !all && !arc.contains("enc") {
-                failures += 1;
-            }
+            seven_ok = all;
             opened = true;
 
             unsafe { cb_release(cb) };
@@ -545,6 +816,17 @@ fn main() {
         }
         if !opened {
             println!("could not open with any format");
+        }
+        // RAR: always try unrar-ng too, so CI shows whether it works on every OS.
+        let is_rar = arc.to_lowercase().ends_with(".rar");
+        let unrar_ok = if is_rar { Some(unrar_check(arc)) } else { None };
+        println!("RESULT {arc}: 7-Zip={} unrar-ng={}", if seven_ok { "OK" } else { "NG" }, match unrar_ok {
+            Some(true) => "OK",
+            Some(false) => "NG",
+            None => "-",
+        });
+        let pass = (seven_ok || unrar_ok == Some(true)) && unrar_ok != Some(false);
+        if !pass && !arc.contains("enc") {
             failures += 1;
         }
     }
