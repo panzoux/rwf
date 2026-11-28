@@ -82,7 +82,9 @@ fn extracts_rar_or_reports_unsupported_method() {
     } else {
         // Homebrew's and Debian's 7z.so carry no RAR decoder.
         // Windows' 7z.dll has one, so there this branch must not be reached.
-        assert!(cfg!(not(windows)) || results.is_empty(), "{results:?}");
+        if cfg!(windows) {
+            panic!("Windows' 7z.dll should extract RAR: {results:?}");
+        }
         assert!(
             results
                 .iter()
