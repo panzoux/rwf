@@ -1,0 +1,16 @@
+[package]
+name = "rwf-7zlib"
+version = "0.1.1"
+edition = "2021"
+description = "Run-time binding to 7-Zip's shared library (7z.dll / 7z.so) for listing and extracting archives"
+
+[lints]
+workspace = true
+
+[dependencies]
+libloading = "0.8"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

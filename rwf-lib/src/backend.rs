@@ -15,8 +15,9 @@ pub mod trash;
 mod local_properties;
 
 pub use archive::{
-    ArchiveHandler, IsoArchiveHandler, LzhArchiveHandler, MultiFormatArchiveHandler,
-    RarArchiveHandler, SevenZArchiveHandler, TarArchiveHandler, ZipArchiveHandler,
+    is_archive_name, ArchiveHandler, IsoArchiveHandler, LzhArchiveHandler,
+    MultiFormatArchiveHandler, RarArchiveHandler, SevenZArchiveHandler, SevenZipOnlyArchiveHandler,
+    TarArchiveHandler, ZipArchiveHandler, ARCHIVE_SUFFIXES,
 };
 pub use local::LocalFilesystemBackend;
 

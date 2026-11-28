@@ -1,5 +1,5 @@
 [workspace]
-members = ["rwf-bin", "rwf-lib", "rwf-winmenu"]
+members = ["rwf-bin", "rwf-lib", "rwf-winmenu", "rwf-7zlib"]
 resolver = "2"
 
 [workspace.lints.rust]

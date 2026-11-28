@@ -289,6 +289,14 @@ draws nothing). Its jump and undo probes are gone; the Create File/Directory nam
 directory. Startup config loading (`state/mod.rs`) is also outside both scans: it reads
 small local files that rwf cannot start without.
 
+**7-Zip.** Loading 7-Zip's library (`7z.dll` / `7z.so`, plan/8.11) is a blocking
+file-system operation too. It happens lazily inside archive jobs
+(`MultiFormatArchiveHandler` → `SevenZip::library()`), never at startup or on the input
+thread. Deciding whether Enter opens a file as an archive uses the name-only
+`backend::is_archive_name` / `ARCHIVE_SUFFIXES`; do not ask the library from a handler.
+The DLL must match rwf's bitness (a 64-bit rwf cannot load a 32-bit `7z.dll`); a
+mismatch only makes that candidate fail to load and is logged.
+
 ## 9. Config files layer over built-in defaults
 
 **Rule.** Every config file has an embedded built-in, and the user's file only overrides,
@@ -395,7 +403,7 @@ is left to the existing per-handler tests.
   (root `Cargo.toml`), with tests exempted via `clippy.toml`. The Phase M ratchet is
   complete: there are now **zero** `#![allow(clippy::unwrap_used)]` escapes left in
   the tree, so the lint is unconditional.
-- **`unsafe_code = "deny"`** workspace-wide, with `rwf-lib/src/volume_info.rs` the
-  only scoped allow.
+- **`unsafe_code = "deny"`** workspace-wide, with `rwf-lib/src/volume_info.rs`,
+  `rwf-winmenu/src/imp.rs` and the `rwf-7zlib` crate (7-Zip FFI) the only scoped allows.
 - **Formatting and lints** — `cargo fmt --all -- --check` and
   `cargo clippy --all-targets -- -D warnings` both run in CI on a pinned toolchain.

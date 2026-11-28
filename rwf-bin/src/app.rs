@@ -32,6 +32,8 @@ pub struct App {
     /// Phase 7.5 D14: a small fixed pool that runs only background polls, so a poll
     /// hung on an unreachable share can stall polling but never a user operation.
     poll_pool: Option<WorkerPool<LocalFilesystemBackend, MultiFormatArchiveHandler>>,
+    /// Shared by both pools; kept to apply a reloaded `Archive.SevenZipLibrary`.
+    archive_handler: Arc<MultiFormatArchiveHandler>,
     last_key_press: Option<(String, Instant, bool)>, // (key, time, is_repeating)
     /// Keys with a Press seen but no matching Release yet (i.e. currently physically held).
     /// Used to tell a genuine OS auto-repeat burst (no Release in between) apart from two
@@ -84,13 +86,21 @@ impl App {
         key_bindings: KeyBindings,
     ) -> Self {
         let backend = Arc::new(LocalFilesystemBackend::new());
-        let archive_handler = Arc::new(MultiFormatArchiveHandler::new());
+        // Only records the configured path: 7-Zip is loaded on a worker the first
+        // time an archive job needs it.
+        let archive_handler = Arc::new(MultiFormatArchiveHandler::with_sevenzip_library(
+            state.config.archive.seven_zip_library_path(),
+        ));
         let poll_pool = WorkerPool::new(
             rwf_lib::model::polling::POLL_POOL_WORKERS,
             Arc::clone(&backend),
             Arc::clone(&archive_handler),
         );
-        let worker_pool = WorkerPool::new(state.config.worker_pool_size, backend, archive_handler);
+        let worker_pool = WorkerPool::new(
+            state.config.worker_pool_size,
+            backend,
+            Arc::clone(&archive_handler),
+        );
         let mut task_panel = TaskPanel::new();
 
         // Compact version info at startup
@@ -146,6 +156,7 @@ impl App {
             should_exit_and_cd: false,
             worker_pool: Some(worker_pool),
             poll_pool: Some(poll_pool),
+            archive_handler,
             last_key_press: None,
             keys_currently_held: std::collections::HashSet::new(),
             task_panel,
@@ -2425,6 +2436,10 @@ impl App {
                 }
                 state_changed = state_changed || result.ui_changed;
             }
+            if is_reload_config {
+                self.archive_handler
+                    .set_sevenzip_library(self.state.config.archive.seven_zip_library_path());
+            }
 
             if self.refresh_sbs_preview() {
                 state_changed = true;
@@ -3751,6 +3766,339 @@ mod leap_investigation {
 /// (non-trash) Delete already does via `delete_job_name`. Before Task 14 this fell through
 /// the `if let JobKind::Delete { .. }` check in app.rs (which only matches the physical-delete
 /// job kind) and the job never appeared in the task panel with any name at all.
+/// Browsing archives as virtual folders through the real App and worker pool
+/// (plan/8.11): Enter into an archive, into a directory inside it, back out with
+/// Backspace, and copy a file out of the archive into the other pane.
+#[cfg(test)]
+mod archive_virtual_folder_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use rwf_lib::backend::ArchiveHandler;
+    use rwf_lib::model::{FileEntry, Location};
+    use std::path::{Path, PathBuf};
+    use std::time::SystemTime;
+    use tempfile::TempDir;
+
+    fn entry(path: &Path, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: path.file_name().unwrap().to_string_lossy().into_owned(),
+            location: Location::Local(path.to_path_buf()),
+            size: if is_dir {
+                0
+            } else {
+                std::fs::metadata(path).unwrap().len()
+            },
+            is_dir,
+            is_hidden: false,
+            modified: SystemTime::now(),
+            marked: false,
+            calculated_size: None,
+            is_symlink: false,
+            link_target: None,
+            link_kind: None,
+        }
+    }
+
+    /// One deliberate key press (not a held-key repeat: the same key twice in a row
+    /// within the repeat delay would otherwise be debounced).
+    fn press(app: &mut App, code: KeyCode) {
+        app.last_key_press = None;
+        app.keys_currently_held.clear();
+        app.handle_key_event(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    /// Submit what the last keys queued and process results until no job is left
+    /// running (or 5 s pass), like `App::run`'s loop.
+    async fn settle(app: &mut App) {
+        for _ in 0..1000 {
+            let jobs: Vec<rwf_lib::job::JobSpec> = app.pending_job_submission.drain(..).collect();
+            for job_spec in jobs {
+                app.state.jobs.start_job(job_spec.clone());
+                if let Some(pool) = app.worker_pool.as_ref() {
+                    pool.submit_job(job_spec);
+                }
+            }
+            if let Some(pool) = app.worker_pool.as_mut() {
+                let results = rwf_lib::process_pending_events(pool, &mut app.state);
+                for r in results {
+                    app.pending_job_submission.extend(r.jobs_to_start);
+                }
+            }
+            let busy = !app.pending_job_submission.is_empty()
+                || app.state.active_pane().is_loading
+                || app.state.opposite_pane().is_loading;
+            if !busy {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("jobs did not settle");
+    }
+
+    fn names(app: &App) -> Vec<String> {
+        let mut v: Vec<String> = app
+            .state
+            .active_pane()
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        v.sort();
+        v
+    }
+
+    fn cursor_to(app: &mut App, name: &str) {
+        let pane = app.state.active_pane();
+        let i = pane
+            .entries
+            .iter()
+            .position(|e| e.name == name)
+            .unwrap_or_else(|| {
+                panic!("{name} not in {:?}", names(app));
+            });
+        app.state.active_pane_mut().cursor = i;
+    }
+
+    fn inner_of(app: &App) -> Option<(PathBuf, PathBuf)> {
+        match &app.state.active_pane().current_location {
+            Location::Archive {
+                archive_path,
+                inner_path,
+            } => match archive_path.as_ref() {
+                Location::Local(p) => Some((p.clone(), inner_path.clone())),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    async fn make_zip(dir: &Path) -> PathBuf {
+        let src = dir.join("src");
+        std::fs::create_dir_all(src.join("docs").join("deep")).unwrap();
+        std::fs::write(src.join("readme.txt"), b"hello").unwrap();
+        std::fs::write(src.join("docs").join("日本語.txt"), "あいう".as_bytes()).unwrap();
+        std::fs::write(src.join("docs").join("deep").join("x.bin"), [7u8; 300]).unwrap();
+        let zip = dir.join("t.zip");
+        rwf_lib::backend::ZipArchiveHandler::new()
+            .create_archive(
+                &[
+                    Location::Local(src.join("readme.txt")),
+                    Location::Local(src.join("docs")),
+                ],
+                &Location::Local(zip.clone()),
+                &tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        zip
+    }
+
+    /// An App whose left pane lists `files` in `root` and whose right pane is `out`.
+    fn app_at(root: &Path, files: &[PathBuf], out: &Path) -> App {
+        let mut state = rwf_lib::AppState::new(rwf_lib::AppConfig::default());
+        let entries: Vec<FileEntry> = files.iter().map(|p| entry(p, false)).collect();
+        let tab = state.current_tab_mut();
+        tab.left_pane.current_location = Location::Local(root.to_path_buf());
+        tab.left_pane.raw_entries = entries.clone();
+        tab.left_pane.entries = entries.clone();
+        tab.left_pane.cursor = 0;
+        tab.right_pane.current_location = Location::Local(out.to_path_buf());
+        tab.right_pane.raw_entries = Vec::new();
+        tab.right_pane.entries = Vec::new();
+        state
+            .cache
+            .insert(Location::Local(root.to_path_buf()), entries);
+        App::with_state_and_keybindings(state, false, rwf_lib::KeyBindings::default())
+    }
+
+    #[tokio::test]
+    async fn enter_browse_and_leave_a_zip_with_subdirectories() {
+        let tmp = TempDir::new().unwrap();
+        let zip = make_zip(tmp.path()).await;
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let mut app = app_at(tmp.path(), std::slice::from_ref(&zip), &out);
+
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+        assert_eq!(inner_of(&app), Some((zip.clone(), PathBuf::new())));
+        assert_eq!(names(&app), ["docs", "readme.txt"]);
+
+        cursor_to(&mut app, "docs");
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+        assert_eq!(inner_of(&app), Some((zip.clone(), PathBuf::from("docs"))));
+        assert_eq!(names(&app), ["deep", "日本語.txt"]);
+
+        cursor_to(&mut app, "deep");
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+        assert_eq!(names(&app), ["x.bin"]);
+        assert_eq!(app.state.active_pane().entries[0].size, 300);
+
+        press(&mut app, KeyCode::Backspace);
+        settle(&mut app).await;
+        assert_eq!(inner_of(&app), Some((zip.clone(), PathBuf::from("docs"))));
+        press(&mut app, KeyCode::Backspace);
+        settle(&mut app).await;
+        assert_eq!(inner_of(&app), Some((zip.clone(), PathBuf::new())));
+        press(&mut app, KeyCode::Backspace);
+        settle(&mut app).await;
+        assert_eq!(
+            app.state.active_pane().current_location,
+            Location::Local(tmp.path().to_path_buf()),
+            "Backspace at the archive root leaves the archive"
+        );
+    }
+
+    /// Wait until `path` exists with `len` bytes, settling jobs meanwhile.
+    async fn wait_for(app: &mut App, path: &Path, len: u64) {
+        for _ in 0..400 {
+            settle(app).await;
+            if std::fs::metadata(path).map(|m| m.len()).ok() == Some(len) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Press a key, then confirm any dialog it opened (conflict prompts) with Enter.
+    fn press_and_confirm(app: &mut App, code: KeyCode) {
+        press(app, code);
+        for _ in 0..3 {
+            if app.state.dialogs.stack.is_empty() {
+                break;
+            }
+            press(app, KeyCode::Enter);
+        }
+    }
+
+    /// `c` inside a virtual folder copies a file, and a directory with its subtree,
+    /// out of the archive into the other pane.
+    #[tokio::test]
+    async fn copy_out_of_a_virtual_folder() {
+        let tmp = TempDir::new().unwrap();
+        let zip = make_zip(tmp.path()).await;
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let mut app = app_at(tmp.path(), std::slice::from_ref(&zip), &out);
+
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+        cursor_to(&mut app, "docs");
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+
+        cursor_to(&mut app, "日本語.txt");
+        press_and_confirm(&mut app, KeyCode::Char('c'));
+        let copied = out.join("日本語.txt");
+        wait_for(&mut app, &copied, 9).await;
+        assert_eq!(std::fs::read_to_string(&copied).unwrap(), "あいう");
+
+        cursor_to(&mut app, "deep");
+        press_and_confirm(&mut app, KeyCode::Char('c'));
+        let nested = out.join("deep").join("x.bin");
+        wait_for(&mut app, &nested, 300).await;
+        assert_eq!(std::fs::read(&nested).unwrap(), [7u8; 300]);
+
+        // Copying the same file again goes through the conflict check and overwrites.
+        std::fs::write(&copied, b"stale").unwrap();
+        cursor_to(&mut app, "日本語.txt");
+        press_and_confirm(&mut app, KeyCode::Char('c'));
+        wait_for(&mut app, &copied, 9).await;
+        assert_eq!(std::fs::read_to_string(&copied).unwrap(), "あいう");
+        assert!(app.state.dialogs.stack.is_empty(), "dialog left open");
+    }
+
+    /// `u` on an archive file: confirm the dialog, the whole archive lands in the
+    /// other pane.
+    #[tokio::test]
+    async fn extract_a_rar_and_a_zip_into_the_other_pane() {
+        if cfg!(windows) && rwf_7zlib_available().is_none() {
+            eprintln!("skipping: no 7-Zip on this Windows machine");
+            return;
+        }
+        let tmp = TempDir::new().unwrap();
+        let rar = tmp.path().join("e.rar");
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../rwf-lib/test_data/editd169e.rar"),
+            &rar,
+        )
+        .unwrap();
+        let zip = make_zip(tmp.path()).await;
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let mut app = app_at(tmp.path(), &[rar.clone(), zip.clone()], &out);
+        for (name, probe, len) in [
+            ("e.rar", out.join("editdisk.exe"), 560_640u64),
+            ("t.zip", out.join("docs").join("deep").join("x.bin"), 300),
+        ] {
+            cursor_to(&mut app, name);
+            press(&mut app, KeyCode::Char('u'));
+            assert!(
+                !app.state.dialogs.stack.is_empty(),
+                "{name}: no extraction dialog"
+            );
+            press(&mut app, KeyCode::Enter);
+            for _ in 0..400 {
+                settle(&mut app).await;
+                if probe.exists() && std::fs::metadata(&probe).unwrap().len() == len {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(
+                std::fs::metadata(&probe).map(|m| m.len()).ok(),
+                Some(len),
+                "{name}"
+            );
+            assert!(
+                app.state.dialogs.stack.is_empty(),
+                "{name}: dialog left open"
+            );
+        }
+    }
+
+    /// RAR (7z.dll on Windows; unrar-ng on Linux / macOS) as a virtual folder.
+    #[tokio::test]
+    async fn rar_opens_as_a_virtual_folder() {
+        let rar = Path::new(env!("CARGO_MANIFEST_DIR")).join("../rwf-lib/test_data/editd169e.rar");
+        if cfg!(windows) && rwf_7zlib_available().is_none() {
+            eprintln!("skipping: no 7-Zip on this Windows machine");
+            return;
+        }
+        let tmp = TempDir::new().unwrap();
+        let local = tmp.path().join("e.rar");
+        std::fs::copy(&rar, &local).unwrap();
+        let mut app = app_at(tmp.path(), std::slice::from_ref(&local), tmp.path());
+        press(&mut app, KeyCode::Enter);
+        settle(&mut app).await;
+        assert_eq!(inner_of(&app), Some((local, PathBuf::new())));
+        assert_eq!(
+            names(&app),
+            [
+                "editdisk.cnt",
+                "editdisk.exe",
+                "editdisk.hlp",
+                "editdisk.ini",
+                "readme.txt",
+                "types.ini"
+            ]
+        );
+    }
+
+    fn rwf_7zlib_available() -> Option<()> {
+        let candidates =
+            [std::env::var_os("ProgramFiles")
+                .map(|d| PathBuf::from(d).join("7-Zip").join("7z.dll"))];
+        candidates
+            .into_iter()
+            .flatten()
+            .any(|p| p.is_file())
+            .then_some(())
+    }
+}
+
 #[cfg(test)]
 mod trash_job_panel_tests {
     use super::*;

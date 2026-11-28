@@ -44,6 +44,12 @@ jobs:
       # rwf-lib: single-threaded (filesystem races). Baseline is zero failures
       # (see .claude/CLAUDE.local.md "Test Suite Status").
       - run: cargo test -p rwf-lib -- --test-threads=1
+        env:
+          # windows-latest ships 7-Zip: the 7z.dll tests must run, not skip (plan/8.11).
+          RWF_REQUIRE_7ZIP: "1"
+      - run: cargo test -p rwf-7zlib -- --test-threads=1
+        env:
+          RWF_REQUIRE_7ZIP: "1"
 
   # Linux exists to compile the code paths Windows never touches: arboard's
   # X11/Wayland clipboard backends, and every cfg(unix) block. Until this job
@@ -80,9 +86,16 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev
+      # 7zip: Debian's 7z.so, so the 7-Zip tests run on Linux too (plan/8.11). Its RAR
+      # decoder is missing by design; RAR goes through unrar-ng there.
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev 7zip
       - run: cargo test -p rwf -- --test-threads=1
       - run: cargo test -p rwf-lib -- --test-threads=1
+        env:
+          RWF_REQUIRE_7ZIP: "1"
+      - run: cargo test -p rwf-7zlib -- --test-threads=1
+        env:
+          RWF_REQUIRE_7ZIP: "1"
 
   # Architecture lint: module cycles, wide directories, long files. Existing
   # debt is frozen in .deslop-please.allow; anything new fails. Runs on Windows

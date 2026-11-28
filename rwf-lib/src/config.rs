@@ -396,6 +396,20 @@ pub struct ArchiveConfig {
     /// Last used archive name for quick access
     #[serde(default, alias = "last_archive_name")]
     pub last_archive_name: String,
+
+    /// Path to 7-Zip's shared library (`7z.dll` / `7z.so`). Empty: look in the
+    /// usual install locations. When 7-Zip is found, rwf reads every archive format
+    /// it supports through it (plan/8.11).
+    #[serde(default)]
+    pub seven_zip_library: String,
+}
+
+impl ArchiveConfig {
+    /// `SevenZipLibrary` as a path, `None` when unset.
+    pub fn seven_zip_library_path(&self) -> Option<std::path::PathBuf> {
+        let s = self.seven_zip_library.trim();
+        (!s.is_empty()).then(|| std::path::PathBuf::from(s))
+    }
 }
 
 fn default_archive_format() -> crate::model::archive_format::ArchiveFormat {
@@ -412,6 +426,7 @@ impl Default for ArchiveConfig {
             default_format: crate::model::archive_format::ArchiveFormat::ZIP,
             compression_level: 6,
             last_archive_name: String::new(),
+            seven_zip_library: String::new(),
         }
     }
 }

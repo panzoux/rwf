@@ -178,6 +178,9 @@ mod comprehensive_phase8_integration_tests;
 mod sevenz_integration_tests;
 
 #[cfg(test)]
+mod sevenzip_lib_integration_tests;
+
+#[cfg(test)]
 mod tar_integration_tests;
 
 #[cfg(test)]

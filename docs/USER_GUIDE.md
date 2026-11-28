@@ -20,7 +20,7 @@ The Two-Pane File Manager is a terminal-based file manager built in Rust that pr
 - **Tab management** with independent pane states per tab
 - **Asynchronous file operations** that never block the UI
 - **Custom functions** with macro expansion
-- **Archive browsing** (.zip support with extensible format handlers)
+- **Archive browsing** (zip / 7z / tar / iso built in; RAR, LZH, ARJ, CAB, … through 7-Zip)
 - **Advanced search** with wildcards, regex, and migemo support
 - **Registered folders** for quick navigation
 - **Multiple display modes** (1-8 columns or detailed view)
@@ -145,7 +145,36 @@ All key bindings are configurable via `keybindings.json`. Below are the default 
 |-----|--------|-------------|
 | `Enter` (on archive) | Browse Archive | Open virtual folder view of archive |
 | `Shift+Enter` (on archive) | Extract Archive | Extract archive to opposite pane |
+| `C` (inside an archive) | Copy Out | Extract the cursor / marked entries (files or folders) to the opposite pane |
 | `P` | Create Archive | Create .zip archive from marked files |
+
+**Formats.** zip, 7z, tar (.tar / .tgz / .tar.gz) and iso are built in. When 7-Zip is
+installed, rwf also reads **RAR, LZH/LHA, ARJ, CAB, CPIO and WIM** — and reads zip, 7z,
+.tar and iso through 7-Zip too. 7-Zip is used in-process through its library (`7z.dll`
+on Windows, `7z.so` on Linux / macOS); no `7z` command is started. Creating archives
+always uses the built-in zip / 7z / tar writers.
+
+| Platform | Where rwf looks for 7-Zip | Install |
+|---|---|---|
+| Windows | `%ProgramFiles%\7-Zip\7z.dll` (must match rwf's 64/32-bit build) | 7-Zip installer |
+| Debian / Ubuntu | `/usr/lib/7zip/7z.so` | `apt install 7zip` |
+| macOS / Linux (Homebrew) | `/opt/homebrew/lib/7z.so`, `/usr/local/lib/7z.so`, `/home/linuxbrew/.linuxbrew/lib/7z.so` | `brew install sevenzip` |
+
+Somewhere else: set it in `config.json`:
+
+```json
+"Archive": { "SevenZipLibrary": "D:\\tools\\7-Zip\\7z.dll" }
+```
+
+7-Zip 23 or newer is required. The library is loaded the first time an archive is
+opened, not at startup; after changing the setting, reload the configuration.
+
+- **RAR on Linux / macOS** is read by a built-in UnRAR (`unrar-ng`), because those 7-Zip
+  builds cannot decompress RAR. It works without 7-Zip too.
+- **Without 7-Zip** (Windows RAR, and LZH / ARJ / CAB / CPIO / WIM everywhere), entering
+  the archive shows "… needs 7-Zip".
+- Password-protected archives and multi-volume sets (`.part1.rar`, `.001`) are not
+  supported.
 
 ### Viewing and Comparison
 
@@ -844,7 +873,7 @@ The UI should never block. If it does:
 ### Archive Browsing Issues
 
 1. Verify archive is not corrupted
-2. Check if format is supported (.zip currently)
+2. Check if format is supported (see *Archive Operations*; RAR / LZH / … need 7-Zip — the log says which 7-Zip library was loaded, or why none was)
 3. Ensure sufficient permissions
 4. Review logs for detailed error messages
 

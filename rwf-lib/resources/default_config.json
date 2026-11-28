@@ -90,7 +90,8 @@
   "Archive": {
     "DefaultFormat": "ZIP",
     "CompressionLevel": 6,
-    "LastArchiveName": ""
+    "LastArchiveName": "",
+    "SevenZipLibrary": ""
   },
   "JobManager": {
     "MaxSimultaneousJobs": 4,

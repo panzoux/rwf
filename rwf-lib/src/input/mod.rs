@@ -4,7 +4,6 @@
 
 use tracing::debug;
 
-use crate::backend::ArchiveHandler;
 use crate::keybindings::Action;
 #[cfg(test)]
 use crate::keybindings::{check_keybindings_content_duplicates, format_key_event, KeyBindings};
@@ -19,17 +18,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// Uses suffix matching rather than Path::extension() to support double
 /// extensions like .tar.gz.
 fn is_archive(location: &crate::model::Location) -> bool {
-    let path_str = location.display_path();
-    let name = path_str.to_lowercase();
-    name.ends_with(".zip")
-        || name.ends_with(".7z")
-        || name.ends_with(".tar")
-        || name.ends_with(".tgz")
-        || name.ends_with(".tar.gz")
-        || name.ends_with(".rar")
-        || name.ends_with(".iso")
-        || name.ends_with(".lzh")
-        || name.ends_with(".lha")
+    crate::backend::is_archive_name(&location.display_path())
 }
 
 fn delete_job_name(targets: &[Location]) -> String {
@@ -254,9 +243,7 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                     }]
                 } else {
                     // Check if this is an archive file
-                    use crate::backend::MultiFormatArchiveHandler;
-                    let handler = MultiFormatArchiveHandler::new();
-                    if handler.is_archive(&entry.name) {
+                    if crate::backend::is_archive_name(&entry.name) {
                         debug!("EnterDirectory: entering archive {}", entry.name);
                         // Enter archive as virtual folder
                         let archive_location = Location::Archive {
@@ -350,23 +337,19 @@ pub fn action_to_transitions(state: &AppState, action: &Action) -> Vec<Transitio
                         pane: state.ui.active_pane,
                         location: entry.location.clone(),
                     }]
+                } else if crate::backend::is_archive_name(&entry.name) {
+                    let archive_location = Location::Archive {
+                        archive_path: Box::new(entry.location.clone()),
+                        inner_path: std::path::PathBuf::new(),
+                    };
+                    vec![Transition::ChangeLocation {
+                        pane: state.ui.active_pane,
+                        location: archive_location,
+                    }]
                 } else {
-                    use crate::backend::MultiFormatArchiveHandler;
-                    let handler = MultiFormatArchiveHandler::new();
-                    if handler.is_archive(&entry.name) {
-                        let archive_location = Location::Archive {
-                            archive_path: Box::new(entry.location.clone()),
-                            inner_path: std::path::PathBuf::new(),
-                        };
-                        vec![Transition::ChangeLocation {
-                            pane: state.ui.active_pane,
-                            location: archive_location,
-                        }]
-                    } else {
-                        vec![Transition::OpenWithSystem {
-                            path: entry.location.display_path(),
-                        }]
-                    }
+                    vec![Transition::OpenWithSystem {
+                        path: entry.location.display_path(),
+                    }]
                 }
             } else {
                 vec![]

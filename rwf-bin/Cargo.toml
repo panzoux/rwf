@@ -33,6 +33,7 @@ clap = { version = "4.5", features = ["derive"] }
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }
+tokio-util = { workspace = true }
 assert_fs = { workspace = true }
 predicates = { workspace = true }
 insta = { version = "1", features = ["filters"] }
