@@ -78,5 +78,17 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: 7z CLI sanity check (apt)
+        if: matrix.setup == 'apt'
+        run: |
+          7z i | grep -iE 'rar|codecs' || true
+          7z t fixtures/editd169e.rar
+
       - name: Run probe
         run: ./target/release/sz7proto "$SZ_LIB" fixtures/editd169e.rar fixtures/editd169.lzh fixtures/jp.zip
+
+      - name: Backtrace on crash (apt)
+        if: failure() && matrix.setup == 'apt'
+        run: |
+          sudo apt-get install -y gdb
+          gdb -batch -ex run -ex bt -ex "info sharedlibrary" --args ./target/release/sz7proto "$SZ_LIB" fixtures/editd169e.rar 2>&1 | tail -60

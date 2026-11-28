@@ -337,6 +337,7 @@ unsafe extern "system" fn cb_set_completed(_: *mut c_void, _: *const u64) -> HRE
     S_OK
 }
 unsafe extern "system" fn cb_get_stream(this: *mut c_void, index: u32, out: *mut *mut c_void, mode: i32) -> HRESULT {
+    eprintln!("trace: GetStream({index}, mode={mode})");
     let o = unsafe { &*(this as *const ExtractCb) };
     unsafe { *out = std::ptr::null_mut() };
     if mode != 0 {
@@ -354,6 +355,7 @@ unsafe extern "system" fn cb_prepare(_: *mut c_void, _: i32) -> HRESULT {
     S_OK
 }
 unsafe extern "system" fn cb_set_result(this: *mut c_void, op_res: i32) -> HRESULT {
+    eprintln!("trace: SetOperationResult({op_res})");
     let o = unsafe { &*(this as *const ExtractCb) };
     if let (Ok(s), Ok(mut r)) = (o.state.lock(), o.results.lock()) {
         r.push((s.0, s.1.load(Ordering::SeqCst), op_res));
@@ -430,6 +432,7 @@ fn ci_codecs<'a>(this: *mut c_void) -> &'a Codecs {
     &unsafe { &*(this as *const CodecsInfo) }.codecs
 }
 unsafe extern "system" fn ci_num(this: *mut c_void, n: *mut u32) -> HRESULT {
+    eprintln!("trace: ICompressCodecsInfo::GetNumMethods");
     unsafe { *n = ci_codecs(this).methods.len() as u32 };
     S_OK
 }
@@ -445,6 +448,7 @@ fn coder_guid(c: &Codecs, index: u32, pid: u32) -> Option<Guid> {
 }
 unsafe extern "system" fn ci_prop(this: *mut c_void, index: u32, pid: u32, value: *mut PropVariant) -> HRESULT {
     let c = ci_codecs(this);
+    eprintln!("trace: ICompressCodecsInfo::GetProperty({index}, {pid})");
     let Some(m) = c.methods.get(index as usize) else { return E_INVALIDARG };
     if pid == MPROP_DECODER_IS_ASSIGNED || pid == MPROP_ENCODER_IS_ASSIGNED {
         let which = if pid == MPROP_DECODER_IS_ASSIGNED { MPROP_DECODER } else { MPROP_ENCODER };
@@ -461,9 +465,12 @@ unsafe fn ci_create(this: *mut c_void, index: u32, iid: *const Guid, out: *mut *
     let c = ci_codecs(this);
     let Some(m) = c.methods.get(index as usize) else { return E_INVALIDARG };
     let lib = &c.libs[m.lib];
+    eprintln!("trace: ICompressCodecsInfo::Create{}({index}, iid={:?})", if encoder { "Encoder" } else { "Decoder" }, unsafe { *iid });
     let direct = if encoder { lib.create_encoder } else { lib.create_decoder };
     if let Some(f) = direct {
-        return unsafe { f(m.index, iid, out) };
+        let hr = unsafe { f(m.index, iid, out) };
+        eprintln!("trace:   -> hr={hr:#x} obj={:?}", unsafe { *out });
+        return hr;
     }
     match (lib.create_object, coder_guid(c, index, if encoder { MPROP_ENCODER } else { MPROP_DECODER })) {
         (Some(f), Some(g)) => unsafe { f(&g, iid, out) },
@@ -520,6 +527,17 @@ fn load_codecs(lib_path: &str) -> *mut c_void {
         let create_decoder = unsafe { lib.get::<CreateCoderFn>(b"CreateDecoder") }.ok().map(|s| *s);
         let create_encoder = unsafe { lib.get::<CreateCoderFn>(b"CreateEncoder") }.ok().map(|s| *s);
         let has_set_codecs = unsafe { lib.get::<*const c_void>(b"SetCodecs") }.is_ok();
+        type GetModulePropFn = unsafe extern "system" fn(u32, *mut PropVariant) -> HRESULT;
+        if let Ok(gmp) = unsafe { lib.get::<GetModulePropFn>(b"GetModuleProp") } {
+            let mut pv = PropVariant::empty();
+            unsafe { gmp(0, &mut pv) };
+            let itype = unsafe { take(&mut pv, false) };
+            unsafe { gmp(1, &mut pv) };
+            let ver = unsafe { take(&mut pv, false) };
+            println!("codecs: {} GetModuleProp interface type={itype:?} version={ver:?}", p.display());
+        } else {
+            println!("codecs: {} has no GetModuleProp", p.display());
+        }
         let mut n = 0u32;
         unsafe { num(&mut n) };
         let li = libs.len();
